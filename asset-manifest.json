@@ -1,15 +1,15 @@
 {
   "files": {
-    "main.css": "/static/css/main.db26b7d0.css",
-    "main.js": "/static/js/main.440670f1.js",
-    "static/js/453.a6a97343.chunk.js": "/static/js/453.a6a97343.chunk.js",
-    "index.html": "/index.html",
-    "main.db26b7d0.css.map": "/static/css/main.db26b7d0.css.map",
-    "main.440670f1.js.map": "/static/js/main.440670f1.js.map",
-    "453.a6a97343.chunk.js.map": "/static/js/453.a6a97343.chunk.js.map"
+    "main.css": "/ChessLaunchpad/static/css/main.db26b7d0.css",
+    "main.js": "/ChessLaunchpad/static/js/main.d64a3be8.js",
+    "static/js/453.a6a97343.chunk.js": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js",
+    "index.html": "/ChessLaunchpad/index.html",
+    "main.db26b7d0.css.map": "/ChessLaunchpad/static/css/main.db26b7d0.css.map",
+    "main.d64a3be8.js.map": "/ChessLaunchpad/static/js/main.d64a3be8.js.map",
+    "453.a6a97343.chunk.js.map": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.db26b7d0.css",
-    "static/js/main.440670f1.js"
+    "static/js/main.d64a3be8.js"
   ]
 }
