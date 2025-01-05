@@ -34,3 +34,14 @@ jobs:
       - name: Run tests
         run: yarn test
         working-directory: app
+        
+      # If tests pass, do a build
+      - name: Build
+        run: yarn build
+        working-directory: app
+
+      # Deploy only if tests & build succeeded
+      - name: Deploy to GitHub Pages
+        if: ${{ success() }}  # Only run if previous steps succeeded
+        run: yarn run deploy
+        working-directory: app

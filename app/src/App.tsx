@@ -30,7 +30,7 @@ const App: React.FC = () => {
 
   return (
     <div>
-      <h1>Chess Launchpad</h1>
+      <h1>Chess Launchpad v2</h1>
       <Chessboard variants={selectedVariants} onCompletion={handleCompletion} orientation={randomOrientation} />
     </div>
   );
