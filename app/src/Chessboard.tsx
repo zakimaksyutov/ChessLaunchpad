@@ -47,6 +47,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
 
     const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]);
 
+    /* eslint-disable react-hooks/exhaustive-deps */
     useEffect(() => {
         if (!boardRef.current) {
             return;
@@ -91,6 +92,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
             // doesn’t strictly require cleanup unless you have custom logic.
         };
     }, []);
+    /* eslint-enable react-hooks/exhaustive-deps */
 
     const movePlayed = (orig: string, dest: string, metadata: any, isLastMoveAutoplayed: boolean) => {
 
