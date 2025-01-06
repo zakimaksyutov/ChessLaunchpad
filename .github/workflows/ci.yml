@@ -53,5 +53,4 @@ jobs:
         working-directory: app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh-pages -d build -r https://x-access-token:${GITHUB_TOKEN}@github.com/zakimaksyutov/ChessLaunchpad.git
+        run: yarn deploy
