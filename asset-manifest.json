@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/ChessLaunchpad/static/css/main.db26b7d0.css",
+    "main.js": "/ChessLaunchpad/static/js/main.f19a7ec6.js",
+    "static/js/453.a6a97343.chunk.js": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js",
+    "index.html": "/ChessLaunchpad/index.html",
+    "main.db26b7d0.css.map": "/ChessLaunchpad/static/css/main.db26b7d0.css.map",
+    "main.f19a7ec6.js.map": "/ChessLaunchpad/static/js/main.f19a7ec6.js.map",
+    "453.a6a97343.chunk.js.map": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.db26b7d0.css",
+    "static/js/main.f19a7ec6.js"
+  ]
+}
