@@ -82,14 +82,22 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
         // Initialize Chessground
         chessgroundInstance.current = Chessground(boardRef.current, config);
 
+        // Listen for window resizes and call redrawAll()
+        // Without this rank and file labels will not render correctly on resize
+        const handleResize = () => {
+            if (chessgroundInstance.current) {
+                chessgroundInstance.current.redrawAll();
+            }
+        };
+        window.addEventListener('resize', handleResize);
+    
         // If we're playing black - then auto-play the first white move.
         if (orientation === 'black') {
             scheduleToPlayNextMove(chess);
         }
 
         return () => {
-            // If you need to do any cleanup, do it here. Chessground
-            // doesn’t strictly require cleanup unless you have custom logic.
+            window.removeEventListener('resize', handleResize);
         };
     }, []);
     /* eslint-enable react-hooks/exhaustive-deps */
