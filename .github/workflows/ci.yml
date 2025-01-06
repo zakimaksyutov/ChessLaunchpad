@@ -50,7 +50,7 @@ jobs:
       # Deploy only if tests & build succeeded
       - name: Deploy to GitHub Pages
         if: ${{ success() }}  # Only run if previous steps succeeded
-        working-directory: app
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: yarn deploy
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public

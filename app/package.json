@@ -25,8 +25,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "predeploy": "yarn build",
-    "deploy": "gh-pages -d build",
-    "deploy_action": "gh-pages -d build -r https://x-access-token:${GITHUB_TOKEN}@github.com/zakimaksyutov/ChessLaunchpad.git"
+    "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
     "extends": [
