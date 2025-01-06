@@ -13,9 +13,7 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
-        with:
-          persist-credentials: true
-          
+
       - name: Use Node
         uses: actions/setup-node@v3
         with:
@@ -52,5 +50,7 @@ jobs:
       # Deploy only if tests & build succeeded
       - name: Deploy to GitHub Pages
         if: ${{ success() }}  # Only run if previous steps succeeded
-        run: yarn run deploy
         working-directory: app
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh-pages -d build -r https://x-access-token:${GITHUB_TOKEN}@github.com/zakimaksyutov/ChessLaunchpad.git
