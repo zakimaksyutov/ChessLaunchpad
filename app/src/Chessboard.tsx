@@ -208,7 +208,13 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
         <div>
             <div
                 ref={boardRef}
-                style={{ width: 800, height: 800, border: '1px solid #ccc' }}
+                style={{
+                    width: '100%',
+                    maxWidth: 800,
+                    height: 'auto',
+                    aspectRatio: '1 / 1',
+                    border: '1px solid #ccc'
+                }}
             />
             <div style={{ marginTop: '10px' }}>
                 <strong>{pgn}</strong>
