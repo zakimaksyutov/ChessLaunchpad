@@ -14,11 +14,16 @@ import './styles/chessground.base.css';
 import './styles/chessground.brown.css';
 import './styles/chessground.cburnett.css';
 
+const soundMoveFile = require('./assets/move.mp3');
+const soundCaptureFile = require('./assets/capture.mp3');
+const soundErrorFile = require('./assets/error.mp3');
+const soundSuccessFile = require('./assets/energy.mp3');
+
 // Create Audio objects for move/capture/error/success sounds
-const soundMove = new Audio('./sound/move.mp3');
-const soundCapture = new Audio('./sound/capture.mp3');
-const soundError = new Audio('./sound/error.mp3');
-const soundSuccess = new Audio('./sound/energy.mp3');
+const soundMove = new Audio(soundMoveFile);
+const soundCapture = new Audio(soundCaptureFile);
+const soundError = new Audio(soundErrorFile);
+const soundSuccess = new Audio(soundSuccessFile);
 
 interface ChessboardProps {
     variants: OpeningVariant[];
