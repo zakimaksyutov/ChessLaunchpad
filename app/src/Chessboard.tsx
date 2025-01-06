@@ -81,15 +81,6 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
 
         // Initialize Chessground
         chessgroundInstance.current = Chessground(boardRef.current, config);
-
-        // Listen for window resizes and call redrawAll()
-        // Without this rank and file labels will not render correctly on resize
-        const handleResize = () => {
-            if (chessgroundInstance.current) {
-                chessgroundInstance.current.redrawAll();
-            }
-        };
-        window.addEventListener('resize', handleResize);
     
         // If we're playing black - then auto-play the first white move.
         if (orientation === 'black') {
@@ -97,7 +88,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
         }
 
         return () => {
-            window.removeEventListener('resize', handleResize);
+            // Register cleanup logic here if needed
         };
     }, []);
     /* eslint-enable react-hooks/exhaustive-deps */
@@ -149,6 +140,9 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
         sound.play().catch((error) => {
             if (error.name === 'NotAllowedError') {
                 console.warn('Sound playback was blocked by the browser. This is expected if the sound is not triggered by a user action.');
+                return;
+            } else if (error.name === 'NotSupportedError') {
+                console.warn('Playing sound is not supported.');
                 return;
             }
             throw error;
