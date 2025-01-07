@@ -1,4 +1,4 @@
-import { Chess } from 'chess.js';
+import { Chess, Move } from 'chess.js';
 
 export class OpeningVariant {
 
@@ -35,7 +35,10 @@ export class OpeningVariant {
     public recencyFactor: number = 0.0;
     public frequencyFactor: number = 0.0;
     public errorFactor: number = 0.0;
+
+    // One-round values. They make sense only if returned as a part of getNextMove
     public isPicked: boolean = false;
+    public move: Move | null = null;
     
     constructor(
         public name: string,

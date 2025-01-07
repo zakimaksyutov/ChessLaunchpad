@@ -163,7 +163,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
     const playNextMove = (chess: Chess) => {
         const move = logic.getNextMove(chess.fen(), chess.history().length);
 
-        setApplicableVariants(logic.getApplicableVariants(chess.fen(), chess.history().length));
+        setApplicableVariants(logic.getAllVariants().filter(variant => variant.move !== null));
 
         movePlayed(move.from, move.to, {}, true);
     }

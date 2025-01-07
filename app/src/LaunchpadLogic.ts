@@ -3,7 +3,7 @@ import { OpeningVariant } from './OpeningVariant';
 
 export class LaunchpadLogic {
 
-    private variants: OpeningVariant[];
+    private allVariants: OpeningVariant[];
     private fenToVariantMap: Map<string, OpeningVariant[]>;
 
     private ERROR_EMA_ALPHA = 0.7;
@@ -13,18 +13,23 @@ export class LaunchpadLogic {
     private hasErrors: boolean = false;
 
     constructor(variants: OpeningVariant[]) {
-        this.variants = variants;
+        this.allVariants = variants;
         this.fenToVariantMap = new Map<string, OpeningVariant[]>();
 
         this.initializeFenToVariantMap();
     }
 
+    public getAllVariants(): OpeningVariant[] {
+        return this.allVariants;
+    }
+
     public isValidVariant(fen: string): boolean {
-        return this.fenToVariantMap.has(fen);
+        const normalizedFen = this.resetHalfmoveClock(fen);
+        return this.fenToVariantMap.has(normalizedFen);
     }
 
     public isEndOfVariant(fen: string, moveIndex: number): boolean {
-        const variants = this.fenToVariantMap.get(fen)!;
+        const variants = this.getVariantsForFen(fen)!;
 
         for (const variant of variants) {
             const moves = variant.chess.history({ verbose: true });
@@ -39,7 +44,7 @@ export class LaunchpadLogic {
     public markError(fen: string) {
         this.hasErrors = true;
 
-        const variants = this.fenToVariantMap.get(fen)!;
+        const variants = this.getVariantsForFen(fen)!;
 
         for (const variant of variants) {
             variant.numberOfErrors += 1.0 / variants.length; // Distribute an error across all applicable variants.
@@ -47,7 +52,7 @@ export class LaunchpadLogic {
     }
 
     public completeVariant(fen: string) {
-        const variants = this.fenToVariantMap.get(fen)!;
+        const variants = this.getVariantsForFen(fen)!;
 
         if (variants.length > 1) {
             throw new Error(`Cannot complete - more than one variant is availabe for FEN: '${fen}'. It means that exists two variants, one is a subvariant of another.`);
@@ -66,7 +71,7 @@ export class LaunchpadLogic {
             variant.successEMA += (1 - LaunchpadLogic.SUCCESS_EMA_ALPHA) * 1;
         } else {
             // Process all other variants and apply errorEMA if there were errors.
-            for (const variant of this.variants) {
+            for (const variant of this.allVariants) {
                 if (variant.numberOfErrors > 0) {
                     variant.errorEMA = variant.errorEMA * this.ERROR_EMA_ALPHA + variant.numberOfErrors;
                     variant.successEMA = 0;
@@ -75,40 +80,53 @@ export class LaunchpadLogic {
         }
     }
 
-    public getApplicableVariants(fen: string, moveIndex: number): OpeningVariant[] {
-        return this.fenToVariantMap.get(fen)!;
-    }
-
     // This function is called only when isValidVariant is true and isEndOfVariant is false.
     // So, there is a guarantee that there is at least one variant with a move at the given index.
     public getNextMove(fen: string, moveIndex: number): Move {
-        const variants = this.fenToVariantMap.get(fen)!;
+        const applicableVariants = new Array<OpeningVariant>();
 
-        // Calculate weighted probability.
-        for (const variant of variants) {
-            this.calculateWeight(variant);
-        }
-        for (const variant of variants) {
-            variant.weightedProbability = this.calculateProbability(variant.weight, variants);
-        }
-
-        // Reset isPicked
-        for (const variant of variants) {
+        // Variants which will have non-null move - the ones which were considered for picking the next move.
+        for (const variant of this.allVariants) {
+            variant.move = null;
             variant.isPicked = false;
         }
 
-        // Randomly select a variant.
-        const variant = this.pickVariantBasedOnWeightedProbability(variants);
-        
-        variant.isPicked = true;
+        const chess = new Chess(fen);
+        const possibleMoves = chess.moves({ verbose: true });
+        for (const move of possibleMoves) {
+            chess.move(move);
 
-        const moves = variant.chess.history({ verbose: true });
+            const variants = this.getVariantsForFen(chess.fen());
+            if (variants) {
+                for (const variant of variants) {
+                    if (variant.move === null) {
+                        variant.move = move; // Remember the move which resulted in this variant.
+                        applicableVariants.push(variant);
+                    }
+                }
+            }
 
-        if (moves.length <= moveIndex) {
-            throw new Error(`No next move available for the given FEN and move index. FEN: '${fen}', Move Index: '${moveIndex}'. Variant '${variant.name}' has only ${moves.length} moves: '${variant.pgn}'`);
+            chess.undo();
         }
 
-        return moves[moveIndex];
+        if (applicableVariants.length === 0) {
+            throw new Error('No next move available for the given FEN and move index.');
+        }
+
+        // Calculate weighted probability.
+        for (const variant of applicableVariants) {
+            this.calculateWeight(variant);
+        }
+        for (const variant of applicableVariants) {
+            variant.weightedProbability = this.calculateProbability(variant.weight, applicableVariants);
+        }
+
+        // Randomly select a variant.
+        const variant = this.pickVariantBasedOnWeightedProbability(applicableVariants);
+
+        variant.isPicked = true;
+
+        return variant.move!;
     }
 
     private pickVariantBasedOnWeightedProbability(variants: OpeningVariant[]): OpeningVariant {
@@ -143,31 +161,48 @@ export class LaunchpadLogic {
         return weight / totalWeight;
     }
 
+    // We use FEN as a key. And in order to be able to jump from one variant to another, we need to reset halfmove clock.
+    // This clock is used to determine if a draw can be claimed by the fifty-move rule. Since this app focuses on openings - it is not relevant.
+    // Example:
+    // 1. e4 c5 2. Nf3 e6  3. d4 cxd4 4. Nxd4 Nc6 => r1bqkbnr/pp1p1ppp/2n1p3/8/3NP3/8/PPP2PPP/RNBQKB1R w KQkq - 1 5
+    // 1. e4 c5 2. Nf3 Nc6 3. d4 cxd4 4. Nxd4 e6  => r1bqkbnr/pp1p1ppp/2n1p3/8/3NP3/8/PPP2PPP/RNBQKB1R w KQkq - 0 5
+    private resetHalfmoveClock(fen: string): string {
+        const parts = fen.split(" ");
+        parts[4] = "0"; // parts[4] is the halfmove clock field
+        return parts.join(" ");
+    }
+
     private initializeFenToVariantMap() {
-        this.variants.forEach(variant => {
+        for (const variant of this.allVariants) {
             try {
                 const moves = variant.chess.history({ verbose: true });
 
                 const chess = new Chess();
 
                 // Initial position is valid for all variants
-                this.addVariantToMap(chess.fen(), variant, 0);
+                this.addVariantToMap(chess.fen(), variant);
 
-                moves.forEach((move, index) => {
+                for (const move of moves) {
                     chess.move(move);
-                    this.addVariantToMap(chess.fen(), variant, index + 1);
-                });
+                    this.addVariantToMap(chess.fen(), variant);
+                };
             } catch (error) {
                 console.error('Invalid PGN for variant: ' + variant.name + ' - ' + error);
                 throw new Error('Invalid PGN for variant: ' + variant.name);
             }
-        });
+        };
     }
 
-    private addVariantToMap(fen: string, variant: OpeningVariant, moveIndex: number) {
-        if (!this.fenToVariantMap.has(fen)) {
-            this.fenToVariantMap.set(fen, []);
+    private addVariantToMap(fen: string, variant: OpeningVariant) {
+        const normalizedFen = this.resetHalfmoveClock(fen);
+        if (!this.fenToVariantMap.has(normalizedFen)) {
+            this.fenToVariantMap.set(normalizedFen, []);
         }
-        this.fenToVariantMap.get(fen)?.push(variant);
+        this.fenToVariantMap.get(normalizedFen)?.push(variant);
+    }
+
+    private getVariantsForFen(fen: string): OpeningVariant[] | undefined {
+        const normalizedFen = this.resetHalfmoveClock(fen);
+        return this.fenToVariantMap.get(normalizedFen);
     }
 }
