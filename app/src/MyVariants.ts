@@ -243,6 +243,11 @@ export class MyVariants {
                 'B48 Sicilian Defense: Taimanov Variation, Bastrikov Variation, English Attack',
                 '1. e4 c5 2. Nf3 Nc6 3. d4 cxd4 4. Nxd4 e6 5. Nc3 Qc7 6. Be3 a6 7. Qd2 Nf6 8. O-O-O Bb4 9. f3 d5 10. a3 Bxc3 11. Qxc3',
                 'white'
+            ),
+            new OpeningVariant(
+                'B56 Sicilian Defense: Venice Attack',
+                '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 e5 6. Bb5+ Nbd7 7. Nf5 a6 8. Ba4 b5 9. Bb3 Nc5 10. Bg5',
+                'white'
             )
         ];
 
