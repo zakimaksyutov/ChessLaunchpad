@@ -248,6 +248,11 @@ export class MyVariants {
                 'B56 Sicilian Defense: Venice Attack',
                 '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 e5 6. Bb5+ Nbd7 7. Nf5 a6 8. Ba4 b5 9. Bb3 Nc5 10. Bg5',
                 'white'
+            ),
+            new OpeningVariant(
+                'C02 French Defense: Advance Variation',
+                '1. e4 e6 2. d4 d5 3. e5 c5 4. c3 Nc6 5. Be3 Nh6 6. Bd3 Qb6 7. Qd2 Ng4',
+                'black'
             )
         ];
 
