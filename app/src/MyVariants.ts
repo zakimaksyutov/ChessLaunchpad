@@ -258,6 +258,11 @@ export class MyVariants {
                 'B12 Caro-Kann Defense: Advance Variation, Botvinnik-Carls Defense',
                 '1. e4 c6 2. d4 d5 3. e5 c5 4. Nf3 Nc6 5. c4 cxd4 6. Nxd4 e6 7. Nc3 Bb4 8. Nxc6 bxc6 9. Qa4',
                 'black'
+            ),
+            new OpeningVariant(
+                'C07 French Defense: Tarrasch Variation, Chistyakov Defense',
+                '1. e4 e6 2. d4 d5 3. Nd2 c5 4. exd5 Qxd5 5. Ngf3 cxd4 6. Bc4 Qd7 7. Nb3 Nc6 8. O-O Nf6 9. Qe2 a6 10. a4 Bd6 11. Rd1 e5 12. Nbxd4 Nxd4 13. Rxd4 Qe7',
+                'black'
             )
         ];
 
