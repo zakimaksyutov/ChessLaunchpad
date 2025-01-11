@@ -15,3 +15,39 @@
 .highlight {
     background-color: yellow;
 }
+
+/* Fixing coordinate styles for ranks:
+   1. Moving them to the right
+   2. Recoloring since cell colors on which coordinates are displayed are now inverted */
+.my-custom-board.cg-wrap coords.ranks {
+    left: unset;
+    top: 4px;
+    right: 0px;
+    font-weight: bold;
+    font-size: 10pt;
+}
+
+.my-custom-board.cg-wrap coords.ranks coord {
+    transform: none;
+}
+
+.my-custom-board.cg-wrap.orientation-black coords.ranks:nth-child(odd) coord:nth-child(odd),
+.my-custom-board.cg-wrap.orientation-white coords.ranks:nth-child(odd) coord:nth-child(even) {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.my-custom-board.cg-wrap.orientation-black coords.ranks:nth-child(odd) coord:nth-child(even),
+.my-custom-board.cg-wrap.orientation-white coords.ranks:nth-child(odd) coord:nth-child(odd) {
+  color: rgba(72, 72, 72, 0.8);
+}
+
+/* Fixing coordinate styles for files */
+.my-custom-board.cg-wrap coords.files {
+    text-align: left;
+    left: 4px;
+    font-weight: bold;
+    text-transform: initial;
+    bottom: 0px;
+    font-size: 10pt;
+}
+

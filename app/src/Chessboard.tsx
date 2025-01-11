@@ -213,7 +213,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
 
     return (
         <div>
-            <div
+            <div className="my-custom-board"
                 ref={boardRef}
                 style={{
                     width: '100%',
