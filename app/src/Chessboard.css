@@ -21,10 +21,10 @@
    2. Recoloring since cell colors on which coordinates are displayed are now inverted */
 .my-custom-board.cg-wrap coords.ranks {
     left: unset;
-    top: 4px;
-    right: 0px;
+    top: 2px;
+    right: -6px;
     font-weight: bold;
-    font-size: 10pt;
+    font-size: 8px;
 }
 
 .my-custom-board.cg-wrap coords.ranks coord {
@@ -41,13 +41,42 @@
   color: rgba(72, 72, 72, 0.8);
 }
 
+@media(min-width: 320px) {
+    .my-custom-board.cg-wrap coords.ranks {
+        font-size:calc(8px + 4*(100vw - 320px)/480);
+        right:calc(-6px + 6*(100vw - 320px)/480);
+        top:calc(2px + 2*(100vw - 320px)/480)
+    }
+}
+
+@media(min-width: 800px) {
+    .my-custom-board.cg-wrap coords.ranks {
+        font-size:12px;
+        right: 0px;
+        top: 4px;
+    }
+}
+
 /* Fixing coordinate styles for files */
 .my-custom-board.cg-wrap coords.files {
     text-align: left;
     left: 4px;
     font-weight: bold;
     text-transform: initial;
-    bottom: 0px;
-    font-size: 10pt;
+    bottom: -6px;
+    font-size: 8px;
 }
 
+@media(min-width: 320px) {
+    .my-custom-board.cg-wrap coords.files {
+        font-size:calc(8px + 4*(100vw - 320px)/480);
+        bottom:calc(-6px + 6*(100vw - 320px)/480);
+    }
+}
+
+@media(min-width: 800px) {
+    .my-custom-board.cg-wrap coords.files {
+        font-size:12px;
+        bottom: 0px;
+    }
+}
