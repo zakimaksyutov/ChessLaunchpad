@@ -263,6 +263,11 @@ export class MyVariants {
                 'C07 French Defense: Tarrasch Variation, Chistyakov Defense',
                 '1. e4 e6 2. d4 d5 3. Nd2 c5 4. exd5 Qxd5 5. Ngf3 cxd4 6. Bc4 Qd7 7. Nb3 Nc6 8. O-O Nf6 9. Qe2 a6 10. a4 Bd6 11. Rd1 e5 12. Nbxd4 Nxd4 13. Rxd4 Qe7',
                 'black'
+            ),
+            new OpeningVariant(
+                'D00 Queen\'s Pawn Game: Levitsky Attack',
+                '1. d4 d5 2. Bg5 f6 3. Bh4 Nh6 4. f3 c5 5. dxc5 e6 6. Bf2 Qc7',
+                'black'
             )
         ];
 
