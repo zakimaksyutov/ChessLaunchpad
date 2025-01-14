@@ -209,6 +209,9 @@ export class MyVariants {
                 '1. d4 d5 2. c4 e6 3. Nf3 Nf6 4. Nc3 c6 5. Bg5 h6 6. Bh4 dxc4 7. e4 g5 8. Bg3 b5 9. Be2 Bg7 10. e5 Nh5 11. a4 a6 12. Ne4 O-O',
                 'black'
             ),
+
+            // UPDATED
+
             new OpeningVariant(
                 'B90 Sicilian Defense: Najdorf Variation, English Attack',
                 '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e5 7. Nb3 Be6 8. f3 Be7 9. Qd2 h5 10. Nd5 Nxd5 11. exd5 Bf5 12. Na5 Nd7 13. Be2 Qc7 14. O-O O-O 15. c4 Nf6 16. b4',
@@ -267,6 +270,11 @@ export class MyVariants {
             new OpeningVariant(
                 'D00 Queen\'s Pawn Game: Levitsky Attack',
                 '1. d4 d5 2. Bg5 f6 3. Bh4 Nh6 4. f3 c5 5. dxc5 e6 6. Bf2 Qc7',
+                'black'
+            ),
+            new OpeningVariant(
+                'C15 French Defense: Winawer Variation, Alekhine-Maróczy Gambit',
+                '1. e4 e6 2. d4 d5 3. Nc3 Bb4 4. Ne2 dxe4 5. a3 Be7 6. Nxe4 Nf6 7. Nxf6+ Bxf6 8. Be3 Nc6 9. Qd2 b6',
                 'black'
             )
         ];
