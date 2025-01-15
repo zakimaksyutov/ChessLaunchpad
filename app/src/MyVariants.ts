@@ -276,6 +276,11 @@ export class MyVariants {
                 'C15 French Defense: Winawer Variation, Alekhine-Maróczy Gambit',
                 '1. e4 e6 2. d4 d5 3. Nc3 Bb4 4. Ne2 dxe4 5. a3 Be7 6. Nxe4 Nf6 7. Nxf6+ Bxf6 8. Be3 Nc6 9. Qd2 b6',
                 'black'
+            ),
+            new OpeningVariant(
+                'B12 Caro-Kann Defense: Advance Variation, Botvinnik-Carls Defense',
+                '1. e4 c6 2. d4 d5 3. e5 c5 4. Nf3 cxd4 5. Nxd4 Nc6 6. c4 e6 7. Nc3 Bb4 8. Nxc6 bxc6 9. Qa4',
+                'white'
             )
         ];
 
