@@ -1,4 +1,5 @@
 import React from 'react';
+//import React, { useEffect, useState } from 'react';
 import Chessboard from './Chessboard';
 import { OpeningVariant } from './OpeningVariant';
 import { LocalStorageData } from './HistoricalData';
@@ -7,6 +8,27 @@ import { MyVariants } from './MyVariants';
 import './App.css';
 
 const App: React.FC = () => {
+
+  // useEffect(() => {
+  //   const fetchVariants = async () => {
+  //     try {
+  //       //const response = await fetch('http://localhost:7094/api/user/testuser3/variants');
+  //       const response = await fetch('https://chess-prod-function.azurewebsites.net/api/user/testuser3/variants', {
+  //         headers: {
+  //           'Authorization': '123456'
+  //         }
+  //       });
+  //       const data = await response.json();
+  //       const etagValue = response.headers.get('ETag');
+  //       console.log(`Fetched variants (etag: '${etagValue}'):`, data);
+  //     } catch (error) {
+  //       console.error('Error fetching variants:', error);
+  //     }
+  //   };
+
+  //   fetchVariants();
+  // }, []);
+
   const variants: OpeningVariant[] = MyVariants.getVariants();
 
   // Sort variants by the pgn field
