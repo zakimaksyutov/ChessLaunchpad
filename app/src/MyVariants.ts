@@ -5,12 +5,12 @@ export class MyVariants {
 
         const variants: OpeningVariant[] = [
             new OpeningVariant(
-                'Caro-Kann Defense: Advance Variation, Botvinnik-Carls Defense',
+                'B12 Caro-Kann Defense: Advance Variation, Botvinnik-Carls Defense',
                 '1. e4 c6 2. d4 d5 3. e5 c5 4. Nf3 Bg4 5. c4 cxd4 6. cxd5 Qxd5 7. Nc3 Bxf3 8. Nxd5 Bxd1 9. Nc7+ Kd7 10. Nxa8 Bc2 11. Bd2 Nc6 12. Rc1 d3 13. h4',
                 'white'
             ),
             new OpeningVariant(
-                'Caro-Kann Defense: Advance Variation, Botvinnik-Carls Defense',
+                'B12 Caro-Kann Defense: Advance Variation, Botvinnik-Carls Defense',
                 '1. e4 c6 2. d4 d5 3. e5 c5 4. Nf3 Nc6 5. c4 Bg4 6. cxd5 Qxd5 7. Nc3 Bxf3 8. Nxd5 Bxd1 9. Nc7+ Kd8 10. Nxa8',
                 'white'
             ),
@@ -40,22 +40,22 @@ export class MyVariants {
                 'white'
             ),
             new OpeningVariant(
-                'Van Geet Opening',
+                'A00 Van Geet Opening',
                 '1. Nc3 d5 2. e4 d4 3. Nce2 c5 4. Ng3 Nc6 5. Nf3 h5 6. h4 Bg4',
                 'black'
             ),
             new OpeningVariant(
-                'Ruy Lopez: Open, Howell Attack',
+                'C81 Ruy Lopez: Open, Howell Attack',
                 '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Nxe4 6. d4 b5 7. Bb3 d5 8. dxe5 Be6 9. Qe2 Be7 10. Rd1 O-O 11. c4 bxc4 12. Bxc4 Bc5 13. Be3 Bxe3 14. Qxe3',
                 'white'
             ),
             new OpeningVariant(
-                'French Defense: Winawer Variation, Poisoned Pawn Variation, Main Line',
+                'C19 French Defense: Winawer Variation, Poisoned Pawn Variation, Main Line',
                 '1. e4 e6 2. d4 d5 3. Nc3 Bb4 4. e5 c5 5. a3 Bxc3+ 6. bxc3 Ne7 7. Qg4 Qc7 8. Qxg7 Rg8 9. Qxh7 cxd4 10. Ne2 dxc3 11. f4 Nbc6 12. Qd3 d4 13. Nxd4 Nxd4 14. Qxd4 Bd7 15. Rg1 Nf5 16. Qf2 Qc6 17. Bd3 Qd5 18. Be3',
                 'white'
             ),
             new OpeningVariant(
-                'French Defense: Winawer Variation, Poisoned Pawn Variation, Main Line',
+                'C19 French Defense: Winawer Variation, Poisoned Pawn Variation, Main Line',
                 '1. e4 e6 2. d4 d5 3. Nc3 Bb4 4. e5 c5 5. a3 Bxc3+ 6. bxc3 Ne7 7. Qg4 Qc7 8. Qxg7 Rg8 9. Qxh7 cxd4 10. Ne2 dxc3 11. f4 Nbc6 12. Qd3 d4 13. Nxd4 Nxd4 14. Qxd4 Bd7 15. Rg1 Nf5 16. Qf2 Qc6 17. Bd3 Qd5',
                 'black'
             ),
@@ -65,27 +65,27 @@ export class MyVariants {
                 'white'
             ),
             new OpeningVariant(
-                'Sicilian Defense: Dragon Variation, Yugoslav Attack',
+                'B78 Sicilian Defense: Dragon Variation, Yugoslav Attack, Old Line',
                 '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 g6 6. Be3 Bg7 7. f3 O-O 8. Qd2 Nc6 9. Bc4 Bd7 10. O-O-O Rc8 11. Bb3 Ne5 12. Kb1',
                 'white'
             ),
             new OpeningVariant(
-                'Sicilian Defense: Kan Variation, Modern Variation',
+                'B42 Sicilian Defense: Kan Variation, Modern Variation',
                 '1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 a6 5. Bd3 Nf6 6. O-O Qc7 7. Qe2 d6 8. c4 g6 9. Nc3 Bg7 10. Nf3 O-O 11. Bf4',
                 'white'
             ),
             new OpeningVariant(
-                'French Defense: Tarrasch Variation, Chistyakov Defense',
+                'C07 French Defense: Tarrasch Variation, Chistyakov Defense',
                 '1. e4 e6 2. d4 d5 3. Nd2 c5 4. exd5 Qxd5 5. Ngf3 cxd4 6. Bc4 Qd7 7. O-O Nc6 8. Nb3 Nf6 9. Nbxd4 Nxd4 10. Nxd4 a6 11. Re1 Bc5 12. Be3 Qc7 13. Bb3 O-O',
                 'black'
             ),
             new OpeningVariant(
-                'Caro-Kann Defense: Advance Variation, Short Variation',
+                'B12 Caro-Kann Defense: Advance Variation, Short Variation',
                 '1. e4 c6 2. d4 d5 3. e5 Bf5 4. Nf3 e6 5. Be2 Nd7 6. O-O Ne7 7. Nbd2 h6 8. Nb3 g5 9. a4 Bg7 10. a5 Qc7 11. Bd2 f6 12. exf6 Bxf6 13. Ne5 Nxe5 14. dxe5 Bxe5 15. Bh5+',
                 'white'
             ),
             new OpeningVariant(
-                'Semi-Slav Defense: Meran Variation, Wade Variation',
+                'D47 Semi-Slav Defense: Meran Variation, Wade Variation',
                 '1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Nf3 c6 5. e3 Nbd7 6. Bd3 dxc4 7. Bxc4 b5 8. Bd3 Bb7 9. O-O a6 10. e4 c5',
                 'black'
             ),
@@ -95,7 +95,7 @@ export class MyVariants {
                 'white'
             ),
             new OpeningVariant(
-                'Sicilian Defense: Richter-Rauzer Variation, Neo-Modern Variation',
+                'B67 Sicilian Defense: Richter-Rauzer Variation, Neo-Modern Variation',
                 '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 Nc6 6. Bg5 e6 7. Qd2 a6 8. O-O-O Bd7 9. f4 b5 10. Bxf6 gxf6 11. Kb1 Qb6 12. Nxc6 Bxc6 13. f5',
                 'white'
             ),
@@ -209,9 +209,6 @@ export class MyVariants {
                 '1. d4 d5 2. c4 e6 3. Nf3 Nf6 4. Nc3 c6 5. Bg5 h6 6. Bh4 dxc4 7. e4 g5 8. Bg3 b5 9. Be2 Bg7 10. e5 Nh5 11. a4 a6 12. Ne4 O-O',
                 'black'
             ),
-
-            // UPDATED
-
             new OpeningVariant(
                 'B90 Sicilian Defense: Najdorf Variation, English Attack',
                 '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 6. Be3 e5 7. Nb3 Be6 8. f3 Be7 9. Qd2 h5 10. Nd5 Nxd5 11. exd5 Bf5 12. Na5 Nd7 13. Be2 Qc7 14. O-O O-O 15. c4 Nf6 16. b4',
@@ -285,6 +282,11 @@ export class MyVariants {
             new OpeningVariant(
                 'C19 French Defense: Winawer Variation, Positional Variation',
                 '1. e4 e6 2. d4 d5 3. Nc3 Bb4 4. e5 c5 5. a3 Bxc3+ 6. bxc3 Ne7 7. Nf3 b6 8. Bb5+ Bd7 9. Bd3 Ba4 10. O-O c4',
+                'black'
+            ),
+            new OpeningVariant(
+                'B40 Sicilian Defense: Paulsen-Basman Defense',
+                '1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Bc5 5. Nb3 Bb6 6. Nc3 Ne7 7. Bf4',
                 'black'
             )
         ];
