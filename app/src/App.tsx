@@ -1,33 +1,17 @@
-import React from 'react';
-//import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
 import Chessboard from './Chessboard';
 import { OpeningVariant } from './OpeningVariant';
 import { LocalStorageData } from './HistoricalData';
 import { HistoricalDataUtils } from './HistoricalDataUtils';
 import { MyVariants } from './MyVariants';
+import LoginPage from './LoginPage';
+import Header from './Header';
 import './App.css';
 
 const App: React.FC = () => {
-
-  // useEffect(() => {
-  //   const fetchVariants = async () => {
-  //     try {
-  //       //const response = await fetch('http://localhost:7094/api/user/testuser3/variants');
-  //       const response = await fetch('https://chess-prod-function.azurewebsites.net/api/user/testuser3/variants', {
-  //         headers: {
-  //           'Authorization': '123456'
-  //         }
-  //       });
-  //       const data = await response.json();
-  //       const etagValue = response.headers.get('ETag');
-  //       console.log(`Fetched variants (etag: '${etagValue}'):`, data);
-  //     } catch (error) {
-  //       console.error('Error fetching variants:', error);
-  //     }
-  //   };
-
-  //   fetchVariants();
-  // }, []);
+  // Track logged-in user in state
+  const [username, setUsername] = useState<string | null>(null);
 
   const variants: OpeningVariant[] = MyVariants.getVariants();
 
@@ -50,12 +34,57 @@ const App: React.FC = () => {
   const historicalData = LocalStorageData.getHistoricalData();
   HistoricalDataUtils.applyHistoricalData(variants, historicalData);
 
+  // This ref will help us prevent running the effect twice in Strict Mode
+  const didInit = useRef(false);
+
+  // On mount, load username from localStorage (if exists)
+  useEffect(() => {
+    // Only run if we haven't already
+    if (didInit.current) {
+      return;
+    }
+    didInit.current = true;
+
+    const storedName = localStorage.getItem('username');
+    if (storedName) {
+      setUsername(storedName);
+    }
+  }, []);
+
   return (
     <div>
-      <h1>Chess Launchpad</h1>
-      <Chessboard variants={selectedVariants} onCompletion={handleCompletion} orientation={randomOrientation} />
+      {/* Show "Chess Launchpad" plus optional username and logout button */}
+      <Header username={username} onLogout={() => setUsername(null)} />
+
+      <Router>
+        <Routes>
+          <Route path="/ChessLaunchpad" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
+          <Route path="/ChessLaunchpad/:username" element={<Chessboard variants={selectedVariants} onCompletion={handleCompletion} orientation={randomOrientation} />} />
+        </Routes>
+
+        {/* A sub-component that can navigate when the user logs out */}
+        <NavigatorHelper username={username} />
+      </Router>
     </div>
   );
+};
+
+
+/**
+ * A small helper component inside the Router so we have access to useNavigate.
+ * We'll watch the `username` prop. If it becomes null, we navigate to /ChessLaunchpad (the login).
+ */
+const NavigatorHelper: React.FC<{ username: string | null }> = ({ username }) => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (username === null) {
+      // means user logged out => go to the login page
+      navigate('/ChessLaunchpad');
+    }
+  }, [username, navigate]);
+
+  return null;
 };
 
 export default App;
