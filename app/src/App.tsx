@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
 import Chessboard from './Chessboard';
 import { OpeningVariant } from './OpeningVariant';
 import { LocalStorageData } from './HistoricalData';
@@ -58,8 +58,8 @@ const App: React.FC = () => {
 
       <Router>
         <Routes>
-          <Route path="/ChessLaunchpad" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
-          <Route path="/ChessLaunchpad/:username" element={<Chessboard variants={selectedVariants} onCompletion={handleCompletion} orientation={randomOrientation} />} />
+          <Route path="/" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
+          <Route path="/:username" element={<Chessboard variants={selectedVariants} onCompletion={handleCompletion} orientation={randomOrientation} />} />
         </Routes>
 
         {/* A sub-component that can navigate when the user logs out */}
@@ -80,7 +80,7 @@ const NavigatorHelper: React.FC<{ username: string | null }> = ({ username }) =>
   useEffect(() => {
     if (username === null) {
       // means user logged out => go to the login page
-      navigate('/ChessLaunchpad');
+      navigate('/');
     }
   }, [username, navigate]);
 

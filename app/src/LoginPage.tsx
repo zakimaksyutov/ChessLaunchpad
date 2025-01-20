@@ -22,7 +22,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         const storedUser = localStorage.getItem('username');
 
         if (storedUser) {
-            navigate(`/ChessLaunchpad/${storedUser}`);
+            navigate(`/${storedUser}`);
         }
     }, [navigate]);
 
@@ -86,7 +86,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             onLogin(username);
 
             // 6) Navigate to the page with main content
-            navigate(`/ChessLaunchpad/${username}`);
+            navigate(`/${username}`);
         } catch (error) {
             console.error(error);
             setError('Something went wrong');
