@@ -22,7 +22,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         const storedUser = localStorage.getItem('username');
 
         if (storedUser) {
-            navigate(`/${storedUser}`);
+            navigate(`/training`);
         }
     }, [navigate]);
 
@@ -34,7 +34,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const [confirmPassword, setConfirmPassword] = useState<string>('');
     const [error, setError] = useState<string>('');
 
-    const handleSubmit = async (event: React.FormEvent) => {
+    const handleLogin = async (event: React.FormEvent) => {
         event.preventDefault();
         setError('');
 
@@ -86,7 +86,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             onLogin(username);
 
             // 6) Navigate to the page with main content
-            navigate(`/${username}`);
+            navigate(`/training`);
         } catch (error) {
             console.error(error);
             setError('Something went wrong');
@@ -97,7 +97,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         <div style={{ maxWidth: '400px', margin: 'auto' }}>
             <h2>{isSignUp ? 'Sign Up' : 'Login'}</h2>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleLogin}>
                 <div style={{ marginBottom: '8px' }}>
                     <label htmlFor="username">Username:</label><br />
                     <input
