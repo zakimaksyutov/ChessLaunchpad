@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import './Header.css';  // Import the CSS file
 
 interface HeaderProps {
@@ -29,7 +29,17 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
     return (
         <header className="header">
             {/* Left side: Title */}
-            <div className="header-title">Chess Launchpad</div>
+            <Link to="/" className="header-title-link">
+                <div className="header-title">Chess Launchpad</div>
+            </Link>
+
+            {/* Middle Section: Menu items (only if logged in) */}
+            {username && (
+                <nav className="header-nav">
+                    <Link to="/training" className="header-nav-link">Training</Link>
+                    <Link to="/repertoire" className="header-nav-link">Repertoire</Link>
+                </nav>
+            )}
 
             {/* Right side */}
             {username ? (

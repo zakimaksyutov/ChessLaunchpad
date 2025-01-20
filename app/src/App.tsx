@@ -4,6 +4,7 @@ import Header from './Header';
 import LandingPage from './LandingPage';
 import LoginPage from './LoginPage';
 import TrainingPage from './TrainingPage';
+import RepertoirePage from './RepertoirePage';
 import './App.css';
 
 const App: React.FC = () => {
@@ -35,6 +36,7 @@ const App: React.FC = () => {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
           <Route path="/training" element={<TrainingPage />} />
+          <Route path="/repertoire" element={<RepertoirePage />} />
         </Routes>
       </Router>
     </div>
