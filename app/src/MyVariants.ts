@@ -288,6 +288,11 @@ export class MyVariants {
                 'B40 Sicilian Defense: Paulsen-Basman Defense',
                 '1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Bc5 5. Nb3 Bb6 6. Nc3 Ne7 7. Bf4',
                 'black'
+            ),
+            new OpeningVariant(
+                'C00 French Defense: Wing Gambit',
+                '1. e4 e6 2. Nf3 d5 3. e5 c5 4. b4 b6 5. a3 Ne7 6. c3 a5',
+                'black'
             )
         ];
 
