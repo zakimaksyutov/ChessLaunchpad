@@ -5,6 +5,7 @@ import LandingPage from './LandingPage';
 import LoginPage from './LoginPage';
 import TrainingPage from './TrainingPage';
 import RepertoirePage from './RepertoirePage';
+import ProtectedRoute from './ProtectedRoute';
 import './App.css';
 
 const App: React.FC = () => {
@@ -35,8 +36,8 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
-          <Route path="/training" element={<TrainingPage />} />
-          <Route path="/repertoire" element={<RepertoirePage />} />
+          <Route path="/training" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
+          <Route path="/repertoire" element={<ProtectedRoute><RepertoirePage /></ProtectedRoute>} />
         </Routes>
       </Router>
     </div>
