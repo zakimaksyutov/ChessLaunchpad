@@ -105,6 +105,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
+                        autoFocus
                     />
                 </div>
                 <div style={{ marginBottom: '8px' }}>
