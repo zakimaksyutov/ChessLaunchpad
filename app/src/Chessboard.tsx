@@ -28,16 +28,21 @@ const soundSuccess = new Audio(soundSuccessFile);
 interface ChessboardProps {
     variants: OpeningVariant[];
     onCompletion: () => void;
+    onLoadNext: () => void;
     orientation: 'white' | 'black';
 }
 
-const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orientation }) => {
+const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
 
     // We'll reference the HTML container via a ref
     const boardRef = useRef<HTMLDivElement | null>(null);
 
     // Store a reference to the chessground instance (optional)
     const chessgroundInstance = useRef<Api | null>(null);
+
+    // Auto-loading of the next variant & progress bar
+    const [autoLoadNext, setAutoLoadNext] = useState<boolean>(false);
+    const [progress, setProgress] = useState<number>(0);
 
     // Stores a current state of the chessboard
     const chess = new Chess();
@@ -144,15 +149,48 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
         updateChessground(chess);
 
         if (isEndOfVariant) {
-            logic.completeVariant(chess.fen());
-
-            // Notify parent component that the variant is complete
-            onCompletion();
+            handleCompletion();
         } else if (!isLastMoveAutoplayed) {
             // Auto-play next move
             scheduleToPlayNextMove(chess);
         }
     }
+
+    const handleCompletion = () => {
+        logic.completeVariant(chess.fen());
+
+        // Notify parent component that the variant is complete
+        onCompletion();
+
+        // Set the progress bar for auto-reload
+        setAutoLoadNext(true);
+        setProgress(0);
+    };
+
+    // Reacts to autoLoadNext state & progresses the progress bar
+    useEffect(() => {
+        let interval: NodeJS.Timeout | null = null;
+
+        if (autoLoadNext) {
+            interval = setInterval(() => {
+                setProgress(prev => {
+                    const newVal = prev + 5; // e.g. increment by 5% every 100ms for 2s total
+                    if (newVal >= 100) {
+                        clearInterval(interval!);
+                        onLoadNext();
+                        return 100;
+                    }
+                    return newVal;
+                });
+            }, 100);
+        }
+
+        return () => {
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [autoLoadNext, onLoadNext]);
 
     const playSound = (sound: HTMLAudioElement): void => {
         sound.play().catch((error) => {
@@ -236,10 +274,60 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
                     border: '1px solid #ccc'
                 }}
             />
-            <div style={{ marginTop: '10px' }}>
-                <strong>{pgn}</strong>
+            <div className="pgn-container"
+                style={{
+                    width: '100%',
+                    maxWidth: '800px',
+                    height: '100px',
+                    position: 'relative',
+                    overflowY: 'auto',
+                    backgroundColor: '#f5f5f5',
+                    marginTop: '10px'
+                }}
+            >
+                {/* PGN text in the background */}
+                <div style={{ padding: '0.5rem', opacity: autoLoadNext ? 0.4 : 1 }}>
+                    <strong>{pgn}</strong>
+                </div>
+
+                {/* If auto-loading is active, show a semi-transparent overlay with progress bar */}
+                {autoLoadNext && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: 'rgba(0,0,0,0.3)'
+                        }}
+                    >
+                        <div
+                            style={{
+                                width: '80%',
+                                backgroundColor: '#ccc',
+                                height: '10px',
+                                marginBottom: '1rem',
+                                borderRadius: '5px',
+                                overflow: 'hidden'
+                            }}
+                        >
+                            <div
+                                style={{
+                                    width: `${progress}%`,
+                                    backgroundColor: 'green',
+                                    height: '100%'
+                                }}
+                            />
+                        </div>
+                        <button onClick={() => setAutoLoadNext(false)}>
+                            Stop Auto-Load
+                        </button>
+                    </div>
+                )}
             </div>
-            <div style={{ marginLeft: '20px' }}>
+            <div style={{ marginTop: '10px' }}>
                 <table className="table">
                     <thead>
                         <tr>
