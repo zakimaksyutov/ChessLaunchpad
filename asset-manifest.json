@@ -1,6 +1,6 @@
 {
   "files": {
-    "main.css": "/ChessLaunchpad/static/css/main.44431d4e.css",
+    "main.css": "/ChessLaunchpad/static/css/main.5a5126de.css",
     "main.js": "/ChessLaunchpad/static/js/main.8969b803.js",
     "static/js/453.a6a97343.chunk.js": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js",
     "static/media/energy.mp3": "/ChessLaunchpad/static/media/energy.2c67a59425d0d65ec2d3.mp3",
@@ -8,12 +8,12 @@
     "static/media/move.mp3": "/ChessLaunchpad/static/media/move.8d802efe2b36f390b1a4.mp3",
     "static/media/error.mp3": "/ChessLaunchpad/static/media/error.b4e94191b8de029342c6.mp3",
     "index.html": "/ChessLaunchpad/index.html",
-    "main.44431d4e.css.map": "/ChessLaunchpad/static/css/main.44431d4e.css.map",
+    "main.5a5126de.css.map": "/ChessLaunchpad/static/css/main.5a5126de.css.map",
     "main.8969b803.js.map": "/ChessLaunchpad/static/js/main.8969b803.js.map",
     "453.a6a97343.chunk.js.map": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.44431d4e.css",
+    "static/css/main.5a5126de.css",
     "static/js/main.8969b803.js"
   ]
 }
