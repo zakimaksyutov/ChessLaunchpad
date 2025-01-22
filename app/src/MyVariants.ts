@@ -293,6 +293,11 @@ export class MyVariants {
                 'C00 French Defense: Wing Gambit',
                 '1. e4 e6 2. Nf3 d5 3. e5 c5 4. b4 b6 5. a3 Ne7 6. c3 a5',
                 'black'
+            ),
+            new OpeningVariant(
+                'C88 Ruy Lopez: Closed, Anti-Marshall',
+                '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 O-O 8. a4 b4 9. d3 d6 10. a5',
+                'white'
             )
         ];
 
