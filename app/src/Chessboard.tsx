@@ -86,17 +86,30 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, orienta
 
         // Initialize Chessground
         chessgroundInstance.current = Chessground(boardRef.current, config);
-    
+
         // If we're playing black - then auto-play the first white move.
         if (orientation === 'black') {
             scheduleToPlayNextMove(chess);
         }
 
+        // Delay the resize by 0.5 seconds
+        // On mobile devices, when user refreshes a training page, the board and touch coordinates are not aligned.
+        // This is a workaround to fix the issue.
+        setTimeout(() => {
+            redrawChessGroundControl();
+        }, 500);
+        window.addEventListener('resize', redrawChessGroundControl);
+
         return () => {
-            // Register cleanup logic here if needed
+            // Cleanup
+            window.removeEventListener('resize', redrawChessGroundControl);
         };
     }, []);
     /* eslint-enable react-hooks/exhaustive-deps */
+
+    const redrawChessGroundControl = () => {
+        chessgroundInstance.current?.redrawAll();
+    };
 
     const movePlayed = (orig: string, dest: string, metadata: any, isLastMoveAutoplayed: boolean) => {
 
