@@ -1,7 +1,15 @@
-html {
-  /* Always reserve scrollbar gutter, even if not needed */
-  scrollbar-gutter: stable;
-  overflow-y: scroll;
+/* For desktop (or tablets above X width), reserve scrollbar space */
+@media (min-width: 768px) {
+  html {
+    overflow-y: scroll; /* always show vertical scrollbar */
+  }
+}
+
+/* For mobile, let overflow auto/hide. */
+@media (max-width: 767px) {
+  html {
+    overflow-y: auto; /* or overlay, letting the browser handle it */
+  }
 }
 
 body {
