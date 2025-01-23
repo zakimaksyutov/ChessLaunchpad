@@ -50,7 +50,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
 
     ////////////////////////////////////////////
     // React Memory
-    const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants), [orientation, variants]);
+    const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants), [variants]);
 
     ////////////////////////////////////////////
     // React Effect: Full reset when orientation or variants change
@@ -64,6 +64,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
 
     ////////////////////////////////////////////
     // React Effect: Creates Chessground instance
+    /* eslint-disable react-hooks/exhaustive-deps */
     useEffect(() => {
         if (!boardRef.current) {
             return;
@@ -115,7 +116,8 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
             // Cleanup
             window.removeEventListener('resize', redrawChessGroundControl);
         };
-    }, [chess]);
+    }, [chess, orientation]);
+    /* eslint-enable react-hooks/exhaustive-deps */
 
     ////////////////////////////////////////////
     // React Effect: Reacts to autoLoadNext state & progresses the progress bar
