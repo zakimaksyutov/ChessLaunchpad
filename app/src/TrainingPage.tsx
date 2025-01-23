@@ -1,43 +1,62 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
 import Chessboard from './Chessboard';
 import { OpeningVariant } from './OpeningVariant';
-import { LocalStorageData } from './HistoricalData';
+import { HistoricalData, LocalStorageData } from './HistoricalData';
 import { HistoricalDataUtils } from './HistoricalDataUtils';
 import { MyVariants } from './MyVariants';
 
 const TrainingPage: React.FC = () => {
-    const navigate = useNavigate();
 
     // Get variants and sort by PGN
-    const variants: OpeningVariant[] = MyVariants.getVariants();
-    variants.sort((a, b) => a.pgn.localeCompare(b.pgn));
+    const allVariants: OpeningVariant[] = MyVariants.getVariants();
+    allVariants.sort((a, b) => a.pgn.localeCompare(b.pgn));
 
-    // Randomly select orientation (white or black)
-    const whiteVariants = variants.filter(variant => variant.orientation === 'white');
-    const blackVariants = variants.filter(variant => variant.orientation === 'black');
-    const whiteRatio = whiteVariants.length / (whiteVariants.length + blackVariants.length);
-    const randomOrientation: 'white' | 'black' = Math.random() < whiteRatio ? 'white' : 'black';
-    const selectedVariants = randomOrientation === 'white' ? whiteVariants : blackVariants;
+    const pickOrientationAndVariants = (): OrientationAndVariants => {
+        // Load and apply historical data
+        const historicalData: HistoricalData = LocalStorageData.getHistoricalData();
+        HistoricalDataUtils.applyHistoricalData(allVariants, historicalData);
+
+        const whiteVariants: OpeningVariant[] = allVariants.filter(v => v.orientation === 'white');
+        const blackVariants: OpeningVariant[] = allVariants.filter(v => v.orientation === 'black');
+
+        // Guard against zero-length arrays:
+        if (whiteVariants.length === 0 && blackVariants.length === 0) {
+            return { orientation: 'white' as const, selectedVariants: [] as OpeningVariant[] };
+        }
+        if (blackVariants.length === 0) {
+            return { orientation: 'white' as const, selectedVariants: whiteVariants };
+        }
+        if (whiteVariants.length === 0) {
+            return { orientation: 'black' as const, selectedVariants: blackVariants };
+        }
+
+        // Decide orientation based on ratio
+        const whiteRatio: number = whiteVariants.length / (whiteVariants.length + blackVariants.length);
+        const orientation: 'white' | 'black' = Math.random() < whiteRatio ? 'white' : 'black';
+        const selectedVariants: OpeningVariant[] = orientation === 'white' ? whiteVariants : blackVariants;
+        return { orientation, selectedVariants };
+    };
+
+    const [{ orientation, selectedVariants }, setOrientationAndSelected] = useState(() =>
+        pickOrientationAndVariants()
+    );
+
+    interface OrientationAndVariants {
+        orientation: 'white' | 'black';
+        selectedVariants: OpeningVariant[];
+    }
 
     // Handle completion of a training round
     const handleCompletion = () => {
-        const data = HistoricalDataUtils.composeHistoricalData(variants);
+        const data = HistoricalDataUtils.composeHistoricalData(allVariants);
         LocalStorageData.setHistoricalData(data);
     };
 
     const handleLoadNext = () => {
         setTimeout(() => {
-            // Re-navigate to /training => forces a new mount with new orientation
-            // Need to do it in a timeout to avoid this error:
-            // Cannot update a component (`HashRouter`) while rendering a different component (`Chessboard`).
-            navigate(0);
+            setOrientationAndSelected(pickOrientationAndVariants());
         }, 50);
     };
-
-    // Load and apply historical data
-    const historicalData = LocalStorageData.getHistoricalData();
-    HistoricalDataUtils.applyHistoricalData(variants, historicalData);
 
     return (
         <div style={{ padding: '0.5rem' }}>
@@ -45,7 +64,7 @@ const TrainingPage: React.FC = () => {
                 variants={selectedVariants}
                 onCompletion={handleCompletion}
                 onLoadNext={handleLoadNext}
-                orientation={randomOrientation}
+                orientation={orientation}
             />
         </div>
     );

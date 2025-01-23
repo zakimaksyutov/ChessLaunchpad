@@ -1,5 +1,5 @@
 // filepath: src/Chessboard.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Chessground } from 'chessground';
 import { Config } from 'chessground/config';
 import { Api } from 'chessground/api';
@@ -34,40 +34,46 @@ interface ChessboardProps {
 
 const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
 
-    // We'll reference the HTML container via a ref
-    const boardRef = useRef<HTMLDivElement | null>(null);
+    ////////////////////////////////////////////
+    // React References
+    const boardRef = useRef<HTMLDivElement | null>(null); // Board container reference
+    const chessgroundInstance = useRef<Api | null>(null); // Chessground instance reference
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Timeout reference for auto-play
 
-    // Store a reference to the chessground instance (optional)
-    const chessgroundInstance = useRef<Api | null>(null);
+    ////////////////////////////////////////////
+    // React States
+    const [chess, setChess] = useState(() => new Chess()); // Stores a current state of the chessboard
+    const [pgn, setPgn] = useState<string>(''); // Game's PGN
+    const [autoLoadNext, setAutoLoadNext] = useState<boolean>(false); // Whether to auto-load the next variant
+    const [progress, setProgress] = useState<number>(0); // Progress bar till auto-loading
+    const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]); // Applicable variants for the position before the last move
 
-    // Auto-loading of the next variant & progress bar
-    const [autoLoadNext, setAutoLoadNext] = useState<boolean>(false);
-    const [progress, setProgress] = useState<number>(0);
+    ////////////////////////////////////////////
+    // React Memory
+    const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants), [orientation, variants]);
 
-    // Stores a current state of the chessboard
-    const chess = new Chess();
+    ////////////////////////////////////////////
+    // React Effect: Full reset when orientation or variants change
+    useEffect(() => {
+        setChess(new Chess());
+        setPgn('');
+        setAutoLoadNext(false);
+        setProgress(0);
+        setApplicableVariants([]);
+    }, [orientation, variants]);
 
-    // State to store the current PGN
-    const [pgn, setPgn] = useState<string>('');
-
-    const logic = new LaunchpadLogic(variants);
-
-    // This ref will help us prevent running the effect twice in Strict Mode
-    const didInit = useRef(false);
-
-    const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]);
-
-    /* eslint-disable react-hooks/exhaustive-deps */
+    ////////////////////////////////////////////
+    // React Effect: Creates Chessground instance
     useEffect(() => {
         if (!boardRef.current) {
             return;
         }
 
-        // Only run if we haven't already
-        if (didInit.current) {
-            return;
+        // If there was a previous Chessground, destroy it
+        if (chessgroundInstance.current) {
+            chessgroundInstance.current.destroy();
+            chessgroundInstance.current = null;
         }
-        didInit.current = true;
 
         // Configuration object for Chessground (strongly typed!)
         const config: Config = {
@@ -109,8 +115,33 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
             // Cleanup
             window.removeEventListener('resize', redrawChessGroundControl);
         };
-    }, []);
-    /* eslint-enable react-hooks/exhaustive-deps */
+    }, [chess]);
+
+    ////////////////////////////////////////////
+    // React Effect: Reacts to autoLoadNext state & progresses the progress bar
+    useEffect(() => {
+        let interval: NodeJS.Timeout | null = null;
+
+        if (autoLoadNext) {
+            interval = setInterval(() => {
+                setProgress(prev => {
+                    const newVal = prev + 5; // e.g. increment by 5% every 100ms for 2s total
+                    if (newVal >= 100) {
+                        clearInterval(interval!);
+                        onLoadNext();
+                        return 100;
+                    }
+                    return newVal;
+                });
+            }, 100);
+        }
+
+        return () => {
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [autoLoadNext, onLoadNext]);
 
     const redrawChessGroundControl = () => {
         chessgroundInstance.current?.redrawAll();
@@ -167,31 +198,6 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
         setProgress(0);
     };
 
-    // Reacts to autoLoadNext state & progresses the progress bar
-    useEffect(() => {
-        let interval: NodeJS.Timeout | null = null;
-
-        if (autoLoadNext) {
-            interval = setInterval(() => {
-                setProgress(prev => {
-                    const newVal = prev + 5; // e.g. increment by 5% every 100ms for 2s total
-                    if (newVal >= 100) {
-                        clearInterval(interval!);
-                        onLoadNext();
-                        return 100;
-                    }
-                    return newVal;
-                });
-            }, 100);
-        }
-
-        return () => {
-            if (interval) {
-                clearInterval(interval);
-            }
-        };
-    }, [autoLoadNext, onLoadNext]);
-
     const playSound = (sound: HTMLAudioElement): void => {
         sound.play().catch((error) => {
             if (error.name === 'NotAllowedError') {
@@ -206,8 +212,15 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
     }
 
     const scheduleToPlayNextMove = (chess: Chess) => {
-        setTimeout(() => {
+        // Clear any existing timeout before setting a new one.
+        // This is needed because it is run from useEffect and it can run multiple times (strict mode in development)
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = setTimeout(() => {
             playNextMove(chess);
+            timeoutRef.current = null; // Reset after execution
         }, 750); // Delay before playing the next move
     }
 
