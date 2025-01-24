@@ -7,11 +7,11 @@ import { MyVariants } from './MyVariants';
 
 const TrainingPage: React.FC = () => {
 
-    // Get variants and sort by PGN
-    const allVariants: OpeningVariant[] = MyVariants.getVariants();
-    allVariants.sort((a, b) => a.pgn.localeCompare(b.pgn));
-
     const pickOrientationAndVariants = (): OrientationAndVariants => {
+        // Get variants and sort by PGN
+        const allVariants = MyVariants.getVariants();
+        allVariants.sort((a, b) => a.pgn.localeCompare(b.pgn))
+
         // Load and apply historical data
         const historicalData: HistoricalData = LocalStorageData.getHistoricalData();
         HistoricalDataUtils.applyHistoricalData(allVariants, historicalData);
@@ -21,29 +21,24 @@ const TrainingPage: React.FC = () => {
 
         // Guard against zero-length arrays:
         if (whiteVariants.length === 0 && blackVariants.length === 0) {
-            return { orientation: 'white' as const, selectedVariants: [] as OpeningVariant[] };
-        }
-        if (blackVariants.length === 0) {
-            return { orientation: 'white' as const, selectedVariants: whiteVariants };
-        }
-        if (whiteVariants.length === 0) {
-            return { orientation: 'black' as const, selectedVariants: blackVariants };
+            return { orientation: 'white' as const, selectedVariants: [] as OpeningVariant[], allVariants: [] as OpeningVariant[] };
         }
 
         // Decide orientation based on ratio
         const whiteRatio: number = whiteVariants.length / (whiteVariants.length + blackVariants.length);
         const orientation: 'white' | 'black' = Math.random() < whiteRatio ? 'white' : 'black';
         const selectedVariants: OpeningVariant[] = orientation === 'white' ? whiteVariants : blackVariants;
-        return { orientation, selectedVariants };
+        return { allVariants, orientation, selectedVariants };
     };
 
-    const [{ orientation, selectedVariants }, setOrientationAndSelected] = useState(() =>
+    const [{ allVariants, orientation, selectedVariants }, setOrientationAndSelected] = useState(() =>
         pickOrientationAndVariants()
     );
 
     interface OrientationAndVariants {
         orientation: 'white' | 'black';
         selectedVariants: OpeningVariant[];
+        allVariants: OpeningVariant[];
     }
 
     // Handle completion of a training round
