@@ -125,9 +125,15 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
         let interval: NodeJS.Timeout | null = null;
 
         if (autoLoadNext) {
+            // We auto-play in 1 second if there were errors, otherwise in 5 seconds
+            const durationMilliseconds = logic.hadErrors() ? 5000 : 1000;
+            const stepMilliseconds = 100;
+            const numberOfSteps = durationMilliseconds / stepMilliseconds;
+            const progressBarStepSize = 100 / numberOfSteps;
+
             interval = setInterval(() => {
                 setProgress(prev => {
-                    const newVal = prev + 5; // e.g. increment by 5% every 100ms for 2s total
+                    const newVal = prev + progressBarStepSize;
                     if (newVal >= 100) {
                         clearInterval(interval!);
                         onLoadNext();
@@ -135,7 +141,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
                     }
                     return newVal;
                 });
-            }, 100);
+            }, stepMilliseconds);
         }
 
         return () => {
@@ -143,7 +149,7 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
                 clearInterval(interval);
             }
         };
-    }, [autoLoadNext, onLoadNext]);
+    }, [autoLoadNext, onLoadNext, logic]);
 
     const redrawChessGroundControl = () => {
         chessgroundInstance.current?.redrawAll();

@@ -51,6 +51,10 @@ export class LaunchpadLogic {
         }
     }
 
+    public hadErrors(): boolean {
+        return this.hasErrors;
+    }
+
     public completeVariant(fen: string) {
         const variants = this.getVariantsForFen(fen)!;
 
