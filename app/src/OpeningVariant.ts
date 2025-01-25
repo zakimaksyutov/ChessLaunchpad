@@ -41,7 +41,6 @@ export class OpeningVariant {
     public move: Move | null = null;
     
     constructor(
-        public name: string,
         public pgn: string,
         public orientation: 'black' | 'white'
     ) {
