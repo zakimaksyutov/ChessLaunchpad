@@ -70,6 +70,11 @@ export class MyVariants {
                 'white'
             ),
             new OpeningVariant(
+                'B78 Sicilian Defense: Dragon Variation, Yugoslav Attack, Old Line',
+                '1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 g6 6. Be3 Bg7 7. f3 O-O 8. Qd2 Nc6 9. Bc4 Bd7 10. O-O-O Rc8 11. Bb3 Nxd4 12. Bxd4 b5 13. Nd5 Nxd5 14. Bxg7 Kxg7 15. exd5 a5 16. a3',
+                'white'
+            ),
+            new OpeningVariant(
                 'B42 Sicilian Defense: Kan Variation, Modern Variation',
                 '1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 a6 5. Bd3 Nf6 6. O-O Qc7 7. Qe2 d6 8. c4 g6 9. Nc3 Bg7 10. Nf3 O-O 11. Bf4',
                 'white'
