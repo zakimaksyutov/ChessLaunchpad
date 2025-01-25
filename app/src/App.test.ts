@@ -1,6 +1,6 @@
 import { LaunchpadLogic } from './LaunchpadLogic';
 import { MyVariants } from './MyVariants';
-import { LocalStorageData } from './HistoricalData';
+import { LocalStorageData } from './RepertoireData';
 import { HistoricalDataUtils } from './HistoricalDataUtils';
 import { Chess } from "chess.js";
 

@@ -1,6 +1,6 @@
 import { HistoricalDataUtils } from "./HistoricalDataUtils";
 import { OpeningVariant } from "./OpeningVariant";
-import { RepertoireData } from "./HistoricalData";
+import { RepertoireData } from "./RepertoireData";
 
 describe('HistoricalDataUtils', () => {
     describe('applyHistoricalData', () => {

@@ -1,5 +1,5 @@
 import { OpeningVariant } from "./OpeningVariant";
-import { RepertoireData, OpeningVariantData } from "./HistoricalData";
+import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { LaunchpadLogic } from "./LaunchpadLogic";
 
 export class HistoricalDataUtils {

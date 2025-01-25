@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Chessboard from './Chessboard';
 import { OpeningVariant } from './OpeningVariant';
-import { RepertoireData, LocalStorageData } from './HistoricalData';
+import { RepertoireData, LocalStorageData } from './RepertoireData';
 import { HistoricalDataUtils } from './HistoricalDataUtils';
 import { MyVariants } from './MyVariants';
 
