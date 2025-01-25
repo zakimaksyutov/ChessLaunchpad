@@ -1,7 +1,7 @@
-import { LocalStorageData, HistoricalData } from "./HistoricalData";
+import { LocalStorageData, RepertoireData } from "./HistoricalData";
 
 describe('LocalStorageData', () => {
-    const mockData: HistoricalData = {
+    const mockData: RepertoireData = {
         data: [
             {
                 pgn: '1. e4 e5 2. Nf3 Nc6',

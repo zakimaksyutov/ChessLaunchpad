@@ -1,9 +1,9 @@
 import { OpeningVariant } from "./OpeningVariant";
-import { HistoricalData, OpeningVariantData } from "./HistoricalData";
+import { RepertoireData, OpeningVariantData } from "./HistoricalData";
 import { LaunchpadLogic } from "./LaunchpadLogic";
 
 export class HistoricalDataUtils {
-    public static applyHistoricalData(variants: OpeningVariant[], historicalData: HistoricalData): void {
+    public static applyHistoricalData(variants: OpeningVariant[], historicalData: RepertoireData): void {
         const dataMap = new Map<string, OpeningVariantData>(
             historicalData.data.map(data => [`${data.pgn}_${data.orientation}`, data])
         );
@@ -36,7 +36,7 @@ export class HistoricalDataUtils {
         }
     }
 
-    public static composeHistoricalData(variants: OpeningVariant[]): HistoricalData {
+    public static composeHistoricalData(variants: OpeningVariant[]): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
             orientation: variant.orientation,

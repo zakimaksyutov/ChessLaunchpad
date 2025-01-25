@@ -7,14 +7,14 @@ export interface OpeningVariantData {
     successEMA: number;
 }
 
-export interface HistoricalData {
+export interface RepertoireData {
     data: OpeningVariantData[];
     currentEpoch: number;
     lastPlayedDate: Date;
 }
 
 export class LocalStorageData {
-    public static getHistoricalData(): HistoricalData {
+    public static getHistoricalData(): RepertoireData {
         const data = localStorage.getItem('historicalData');
         if (data) {
             try {
@@ -30,7 +30,7 @@ export class LocalStorageData {
         return { data: [], currentEpoch: 0, lastPlayedDate: new Date(0) };
     }
 
-    public static setHistoricalData(data: HistoricalData): void {
+    public static setHistoricalData(data: RepertoireData): void {
         localStorage.setItem('historicalData', JSON.stringify(data));
     }
 }

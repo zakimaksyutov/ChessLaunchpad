@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Chessboard from './Chessboard';
 import { OpeningVariant } from './OpeningVariant';
-import { HistoricalData, LocalStorageData } from './HistoricalData';
+import { RepertoireData, LocalStorageData } from './HistoricalData';
 import { HistoricalDataUtils } from './HistoricalDataUtils';
 import { MyVariants } from './MyVariants';
 
@@ -13,7 +13,7 @@ const TrainingPage: React.FC = () => {
         allVariants.sort((a, b) => a.pgn.localeCompare(b.pgn))
 
         // Load and apply historical data
-        const historicalData: HistoricalData = LocalStorageData.getHistoricalData();
+        const historicalData: RepertoireData = LocalStorageData.getHistoricalData();
         HistoricalDataUtils.applyHistoricalData(allVariants, historicalData);
 
         const whiteVariants: OpeningVariant[] = allVariants.filter(v => v.orientation === 'white');

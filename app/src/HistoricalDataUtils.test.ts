@@ -1,16 +1,16 @@
 import { HistoricalDataUtils } from "./HistoricalDataUtils";
 import { OpeningVariant } from "./OpeningVariant";
-import { HistoricalData } from "./HistoricalData";
+import { RepertoireData } from "./HistoricalData";
 
 describe('HistoricalDataUtils', () => {
     describe('applyHistoricalData', () => {
         it('should apply historical data to the variants correctly', () => {
             const variants: OpeningVariant[] = [
-                new OpeningVariant('varian1', '1. e4', 'white'),
-                new OpeningVariant('varian2', '1. d4', 'black'),
+                new OpeningVariant('1. e4', 'white'),
+                new OpeningVariant('1. d4', 'black'),
             ];
 
-            const historicalData: HistoricalData = {
+            const historicalData: RepertoireData = {
                 currentEpoch: 5,
                 lastPlayedDate: HistoricalDataUtils.getCurrnetDateOnly(),
                 data: [
@@ -34,11 +34,11 @@ describe('HistoricalDataUtils', () => {
 
         it('should account for orientation in addition to PGN', () => {
             const variants: OpeningVariant[] = [
-                new OpeningVariant('varian1', '1. e4', 'white'),
-                new OpeningVariant('varian2', '1. e4', 'black'),
+                new OpeningVariant('1. e4', 'white'),
+                new OpeningVariant('1. e4', 'black'),
             ];
 
-            const historicalData: HistoricalData = {
+            const historicalData: RepertoireData = {
                 currentEpoch: 5,
                 lastPlayedDate: HistoricalDataUtils.getCurrnetDateOnly(),
                 data: [
@@ -61,10 +61,10 @@ describe('HistoricalDataUtils', () => {
 
         it('should not modify variants if no matching historical data is found', () => {
             const variants: OpeningVariant[] = [
-                new OpeningVariant('varian1', '1. e4', 'white')
+                new OpeningVariant('1. e4', 'white')
             ];
 
-            const historicalData: HistoricalData = {
+            const historicalData: RepertoireData = {
                 currentEpoch: 5,
                 lastPlayedDate: HistoricalDataUtils.getCurrnetDateOnly(),
                 data: [
@@ -82,10 +82,10 @@ describe('HistoricalDataUtils', () => {
 
         it('epoch is not incremented if already played this date', () => {
             const variants: OpeningVariant[] = [
-                new OpeningVariant('varian1', '1. e4', 'white'),
+                new OpeningVariant('1. e4', 'white'),
             ];
 
-            const historicalData: HistoricalData = {
+            const historicalData: RepertoireData = {
                 currentEpoch: 1,
                 lastPlayedDate: HistoricalDataUtils.getCurrnetDateOnly(),
                 data: [
@@ -100,13 +100,13 @@ describe('HistoricalDataUtils', () => {
 
         it('epoch is incremented if this is a new date', () => {
             const variants: OpeningVariant[] = [
-                new OpeningVariant('varian1', '1. e4', 'white'),
+                new OpeningVariant('1. e4', 'white'),
             ];
 
             const yesterday = HistoricalDataUtils.getCurrnetDateOnly();
             yesterday.setDate(yesterday.getDate() - 1);
 
-            const historicalData: HistoricalData = {
+            const historicalData: RepertoireData = {
                 currentEpoch: 1,
                 lastPlayedDate: yesterday,
                 data: [

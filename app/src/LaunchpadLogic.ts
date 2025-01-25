@@ -191,8 +191,8 @@ export class LaunchpadLogic {
                     this.addVariantToMap(chess.fen(), variant);
                 };
             } catch (error) {
-                console.error('Invalid PGN for variant: ' + variant.name + ' - ' + error);
-                throw new Error('Invalid PGN for variant: ' + variant.name);
+                console.error('Invalid PGN for variant: ' + variant.pgn + ' - ' + error);
+                throw new Error('Invalid PGN for variant: ' + variant.pgn);
             }
         };
     }
