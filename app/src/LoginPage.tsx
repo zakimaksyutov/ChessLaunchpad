@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 import { hashPassword } from './HashPassword';
+import { DataAccessLayer, DataAccessError } from './DataAccessLayer';
 
 type LoginPageProps = {
     onLogin: (username: string) => void;
@@ -45,7 +46,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
 
         try {
-            // 1) Derive a new "hashed password" from the user's raw password
+            // Derive a new "hashed password" from the user's raw password
             // This is one-way hash and from backend API perspective this will represent the user's password.
             // The real password will not be sent to the backend.
             // Also, the hashed password will be stored in localStorage for future requests. While this makes it vulnerable to XSS attacks,
@@ -53,43 +54,34 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             // effort was made not to store a password in plain text in case a user uses this password in other more critical places.
             const hashedPassword = await hashPassword(password);
 
-            let response: Response;
+            const dal = new DataAccessLayer(username, hashedPassword);
             if (isSignUp) {
-                // 2a) Create a new user account
-                response = await fetch(`https://chess-prod-function.azurewebsites.net/api/user/${username}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': hashedPassword
-                    }
-                });
+                // Create a new user account
+                await dal.createAccount();
             } else {
-                // 2b) Try to retrieve the user's variants to validate that password is correct
-                response = await fetch(`https://chess-prod-function.azurewebsites.net/api/user/${username}/variants`, {
-                    headers: {
-                        'Authorization': hashedPassword
-                    }
-                });
+                // Attempt to retrieve the user’s variants to validate the password
+                await dal.retrieveRepertoireData();
             }
 
-            // 3) Check if successful
-            if (!response.ok) {
-                const msg = await response.text();
-                setError(msg || 'Something went wrong');
-                return;
-            }
-
-            // 4) Store the derived password in localStorage (instead of the real password)
+            // Store the derived password in localStorage (instead of the real password)
             localStorage.setItem('username', username);
             localStorage.setItem('hashedPassword', hashedPassword);
 
-            // 5) Call the parent component's callback to update the username
+            // Call the parent component's callback to update the username
             onLogin(username);
 
-            // 6) Navigate to the page with main content
+            // Navigate to the page with main content
             navigate(`/training`);
         } catch (error) {
             console.error(error);
-            setError('Something went wrong');
+
+            // The DataAccessLayer throws an Error object,
+            // so we can attempt to display its message here:
+            if (error instanceof DataAccessError) {
+                setError(error.message);
+            } else {
+                setError('Something went wrong');
+            }
         }
     };
 

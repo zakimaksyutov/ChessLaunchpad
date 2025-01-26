@@ -1,4 +1,4 @@
-import { DataAccessLayer } from "./DataAccessLayer";
+import { DataAccessError, DataAccessLayer } from "./DataAccessLayer";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 
 describe.skip("DataAccessLayer - Main E2E Test", () => {
@@ -52,15 +52,16 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         repertoireData.lastPlayedDate = new Date();
 
         // Store with the fresh DAL -> Expect a "Precondition Failed." error (from server)
-        let missingIfMatchError: any;
+        let missingIfMatchError: DataAccessError | undefined;
         const newDalNoEtag = new DataAccessLayer(testUsername, randomPassword);
         try {
             await newDalNoEtag.storeRepertoireData(repertoireData);
         } catch (err) {
-            missingIfMatchError = err;
+            expect(err).toBeInstanceOf(DataAccessError);
+            missingIfMatchError = err as DataAccessError;
         }
         expect(missingIfMatchError).toBeDefined();
-        expect(missingIfMatchError.message).toMatch(/Precondition Failed/i);
+        expect(missingIfMatchError!.statusCode).toBe(412); // Precondition Failed
 
         // ----------------------------------------------------------------------------
         // 5. Now store with the original DAL (which has the ETag), expect success

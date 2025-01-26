@@ -1,5 +1,20 @@
 import { RepertoireData } from "./RepertoireData";
 
+export class DataAccessError extends Error {
+    public statusCode?: number;
+
+    constructor(message: string, statusCode?: number) {
+        super(statusCode ? `${statusCode}: ${message}` : message);
+        
+        this.name = 'DataAccessError';
+        this.statusCode = statusCode;
+
+        // Fix prototype chain; this is required in some JS runtimes
+        // so that `instanceof DataAccessError` works properly.
+        Object.setPrototypeOf(this, DataAccessError.prototype);
+    }
+}
+
 export class DataAccessLayer {
     readonly ApiEndpointUri = "https://chess-prod-function.azurewebsites.net/api/user";
 
@@ -11,7 +26,7 @@ export class DataAccessLayer {
         private password: string
     ) {
         if (!this.username || !this.password) {
-            throw new Error("No valid user session.");
+            throw new DataAccessError("No valid user session.");
         }
     }
 
@@ -29,7 +44,7 @@ export class DataAccessLayer {
 
             if (!response.ok) {
                 const msg = await response.text();
-                throw new Error(`${response.statusText}: ${msg}`);
+                throw new DataAccessError(msg, response.status);
             }
         } catch (error) {
             console.log("Failed to create account:", error);
@@ -51,7 +66,7 @@ export class DataAccessLayer {
 
             if (!response.ok) {
                 const msg = await response.text();
-                throw new Error(`${response.statusText}: ${msg}`);
+                throw new DataAccessError(msg, response.status);
             }
         } catch (error) {
             console.log("Failed to delete account:", error);
@@ -74,7 +89,7 @@ export class DataAccessLayer {
 
             if (!response.ok) {
                 const msg = await response.text();
-                throw new Error(`${response.statusText}: ${msg}`);
+                throw new DataAccessError(msg, response.status);
             }
 
             // Store the ETag returned by the server, if present
@@ -114,7 +129,7 @@ export class DataAccessLayer {
 
             if (!response.ok) {
                 const msg = await response.text();
-                throw new Error(`${response.statusText}: ${msg}; If-Match: ${this.etag}`);
+                throw new DataAccessError(msg, response.status);
             }
 
             // Update our internal etag if a new one is returned
