@@ -243,6 +243,10 @@ export class MyVariants {
             new OpeningVariant(
                 '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 O-O 8. a4 b4 9. d3 d6 10. a5',
                 'white'
+            ),
+            new OpeningVariant(
+                '1. d4 d5 2. Nf3 Nf6 3. Bf4 c5 4. e3 Nc6 5. Nbd2 Qb6 6. dxc5 Qxb2 7. Rb1 Qc3 8. Bb5 e6',
+                'black'
             )
         ];
 
