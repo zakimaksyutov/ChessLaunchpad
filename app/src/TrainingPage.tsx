@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import Chessboard from './Chessboard';
+import TrainingPageControl from './TrainingPageControl';
 import { OpeningVariant } from './OpeningVariant';
 import { DataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
@@ -116,7 +116,7 @@ const TrainingPage: React.FC = () => {
 
     return (
         <div style={{ padding: '0.5rem' }}>
-            <Chessboard
+            <TrainingPageControl
                 variants={selectedVariants}
                 onCompletion={handleCompletion}
                 onLoadNext={handleLoadNext}

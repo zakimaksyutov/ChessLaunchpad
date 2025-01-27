@@ -1,4 +1,3 @@
-// filepath: src/Chessboard.tsx
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Chessground } from 'chessground';
 import { Config } from 'chessground/config';
@@ -7,7 +6,7 @@ import { Key } from 'chessground/types';
 import { Chess, Square, Move } from "chess.js";
 import { OpeningVariant } from './OpeningVariant';
 import { LaunchpadLogic } from './LaunchpadLogic';
-import './Chessboard.css';
+import './TrainingPageControl.css';
 
 // Copied from chessground/assets, version 9.1.1. Must be updated upon version upgrade.
 import './styles/chessground.base.css';
@@ -25,14 +24,14 @@ const soundCapture = new Audio(soundCaptureFile);
 const soundError = new Audio(soundErrorFile);
 const soundSuccess = new Audio(soundSuccessFile);
 
-interface ChessboardProps {
+interface TrainingPageControlProps {
     variants: OpeningVariant[];
     onCompletion: () => void;
     onLoadNext: () => void;
     orientation: 'white' | 'black';
 }
 
-const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
+const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
 
     ////////////////////////////////////////////
     // React References
@@ -384,4 +383,4 @@ const Chessboard: React.FC<ChessboardProps> = ({ variants, onCompletion, onLoadN
     );
 };
 
-export default Chessboard;
+export default TrainingPageControl;
