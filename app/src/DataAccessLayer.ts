@@ -1,11 +1,12 @@
 import { RepertoireData } from "./RepertoireData";
+import { RepertoireDataUtils } from "./RepertoireDataUtils";
 
 export class DataAccessError extends Error {
     public statusCode?: number;
 
     constructor(message: string, statusCode?: number) {
         super(statusCode ? `${statusCode}: ${message}` : message);
-        
+
         this.name = 'DataAccessError';
         this.statusCode = statusCode;
 
@@ -99,11 +100,7 @@ export class DataAccessLayer {
             }
 
             const remoteData: RepertoireData = await response.json();
-
-            // Re-hydrate any date fields that might have been serialized
-            if (remoteData.lastPlayedDate) {
-                remoteData.lastPlayedDate = new Date(remoteData.lastPlayedDate);
-            }
+            RepertoireDataUtils.normalize(remoteData);
 
             return remoteData;
         } catch (error) {
