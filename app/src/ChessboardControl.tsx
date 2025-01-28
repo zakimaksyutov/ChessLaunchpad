@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Chessground } from 'chessground';
 import { Config } from 'chessground/config';
 import { Api } from 'chessground/api';
@@ -12,17 +12,25 @@ import './styles/chessground.brown.css';
 import './styles/chessground.cburnett.css';
 
 interface TrainingPageControlProps {
-    chess: Chess;
+    roundId: string,
+    fen: string;
     orientation: 'white' | 'black';
-    movePlayed: (orig: string, dest: string) => void;
+    movePlayed: (orig: string, dest: string) => boolean;
 }
 
-const ChessboardControl: React.FC<TrainingPageControlProps> = ({ chess, orientation, movePlayed }) => {
+const ChessboardControl: React.FC<TrainingPageControlProps> = ({ roundId, fen, orientation, movePlayed }) => {
 
     ////////////////////////////////////////////
     // React References
     const boardRef = useRef<HTMLDivElement | null>(null); // Board container reference
     const chessgroundInstance = useRef<Api | null>(null); // Chessground instance reference
+    const fenRef = useRef(fen);
+
+    ////////////////////////////////////////////
+    // React Effect: Update FEN reference
+    useEffect(() => {
+        fenRef.current = fen;
+    }, [fen]);
 
     ////////////////////////////////////////////
     // React Effect: Creates Chessground instance
@@ -41,18 +49,18 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ chess, orientat
         // Configuration object for Chessground (strongly typed!)
         const config: Config = {
             orientation: orientation,
-            turnColor: chess.turn() === 'w' ? 'white' : 'black',
             highlight: {
                 lastMove: true,
                 check: true,
             },
             movable: {
                 free: false,
-                color: chess.turn() === 'w' ? 'white' : 'black',
-                dests: generateMovesMap(chess),
                 events: {
                     after: (orig: string, dest: string, _: any) => {
-                        movePlayed(orig, dest);
+                        const wasValidMove = movePlayed(orig, dest);
+                        if (!wasValidMove) {
+                            updateChessground();
+                        }
                     }
                 }
             },
@@ -60,6 +68,7 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ chess, orientat
 
         // Initialize Chessground
         chessgroundInstance.current = Chessground(boardRef.current, config);
+        updateChessground();
 
         // Delay the resize by 0.5 seconds
         // On mobile devices, when user refreshes a training page, the board and touch coordinates are not aligned.
@@ -73,20 +82,23 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ chess, orientat
             // Cleanup
             window.removeEventListener('resize', redrawChessGroundControl);
         };
-    }, [orientation]);
+    }, [orientation, roundId]);
     /* eslint-enable react-hooks/exhaustive-deps */
 
     ////////////////////////////////////////////
     // React Effect: Update chess position
+    /* eslint-disable react-hooks/exhaustive-deps */
     useEffect(() => {
-        updateChessground(chess);
-    }, [chess]);
+        updateChessground();
+    }, [fen]);
+    /* eslint-enable react-hooks/exhaustive-deps */
 
     const redrawChessGroundControl = () => {
         chessgroundInstance.current?.redrawAll();
     };
 
-    const updateChessground = (chess: Chess) => {
+    const updateChessground = () => {
+        const chess: Chess = new Chess(fenRef.current);
         chessgroundInstance.current?.set({
             fen: chess.fen(),
             turnColor: chess.turn() === 'w' ? 'white' : 'black',

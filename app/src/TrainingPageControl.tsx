@@ -1,17 +1,9 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { Chessground } from 'chessground';
-import { Config } from 'chessground/config';
-import { Api } from 'chessground/api';
-import { Key } from 'chessground/types';
-import { Chess, Square, Move } from "chess.js";
+import ChessboardControl from './ChessboardControl';
+import { Chess, Move } from "chess.js";
 import { OpeningVariant } from './OpeningVariant';
 import { LaunchpadLogic } from './LaunchpadLogic';
 import './TrainingPageControl.css';
-
-// Copied from chessground/assets, version 9.1.1. Must be updated upon version upgrade.
-import './styles/chessground.base.css';
-import './styles/chessground.brown.css';
-import './styles/chessground.cburnett.css';
 
 const soundMoveFile = require('./assets/move.mp3');
 const soundCaptureFile = require('./assets/capture.mp3');
@@ -35,87 +27,48 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
     ////////////////////////////////////////////
     // React References
-    const boardRef = useRef<HTMLDivElement | null>(null); // Board container reference
-    const chessgroundInstance = useRef<Api | null>(null); // Chessground instance reference
     const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Timeout reference for auto-play
 
     ////////////////////////////////////////////
     // React States
-    const [chess, setChess] = useState(() => new Chess()); // Stores a current state of the chessboard
     const [pgn, setPgn] = useState<string>(''); // Game's PGN
+    const [fen, setFen] = useState<string>(() => new Chess().fen()); // Game's FEN
     const [autoLoadNext, setAutoLoadNext] = useState<boolean>(false); // Whether to auto-load the next variant
     const [progress, setProgress] = useState<number>(0); // Progress bar till auto-loading
     const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]); // Applicable variants for the position before the last move
+    const [roundId, setRoundId] = useState<string>(''); // ID of the current round
 
     ////////////////////////////////////////////
     // React Memory
     const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants), [variants]);
+    const chess = useMemo(() => new Chess(), []);
 
     ////////////////////////////////////////////
     // React Effect: Full reset when orientation or variants change
+    /* eslint-disable react-hooks/exhaustive-deps */
     useEffect(() => {
-        setChess(new Chess());
+        chess.reset();
         setPgn('');
+        setFen(chess.fen());
         setAutoLoadNext(false);
         setProgress(0);
         setApplicableVariants([]);
-    }, [orientation, variants]);
 
-    ////////////////////////////////////////////
-    // React Effect: Creates Chessground instance
-    /* eslint-disable react-hooks/exhaustive-deps */
-    useEffect(() => {
-        if (!boardRef.current) {
-            return;
-        }
+        // Generate a new ID for the round
+        setRoundId(Math.random().toString(36).substring(7));
 
-        // If there was a previous Chessground, destroy it
-        if (chessgroundInstance.current) {
-            chessgroundInstance.current.destroy();
-            chessgroundInstance.current = null;
-        }
-
-        // Configuration object for Chessground (strongly typed!)
-        const config: Config = {
-            orientation: orientation,
-            turnColor: chess.turn() === 'w' ? 'white' : 'black',
-            highlight: {
-                lastMove: true,
-                check: true,
-            },
-            movable: {
-                free: false,
-                color: chess.turn() === 'w' ? 'white' : 'black',
-                dests: generateMovesMap(chess),
-                events: {
-                    after: (orig: string, dest: string, metadata: any) => {
-                        movePlayed(orig, dest, metadata, false);
-                    }
-                }
-            },
-        };
-
-        // Initialize Chessground
-        chessgroundInstance.current = Chessground(boardRef.current, config);
-
-        // If we're playing black - then auto-play the first white move.
+        // If playing black, schedule the first white move automatically
         if (orientation === 'black') {
             scheduleToPlayNextMove(chess);
         }
 
-        // Delay the resize by 0.5 seconds
-        // On mobile devices, when user refreshes a training page, the board and touch coordinates are not aligned.
-        // This is a workaround to fix the issue.
-        setTimeout(() => {
-            redrawChessGroundControl();
-        }, 500);
-        window.addEventListener('resize', redrawChessGroundControl);
-
         return () => {
-            // Cleanup
-            window.removeEventListener('resize', redrawChessGroundControl);
-        };
-    }, [chess, orientation]);
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+        }
+    }, [orientation, variants]);
     /* eslint-enable react-hooks/exhaustive-deps */
 
     ////////////////////////////////////////////
@@ -150,22 +103,17 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         };
     }, [autoLoadNext, onLoadNext, logic]);
 
-    const redrawChessGroundControl = () => {
-        chessgroundInstance.current?.redrawAll();
-    };
-
-    const movePlayed = (orig: string, dest: string, metadata: any, isLastMoveAutoplayed: boolean) => {
+    const handleMove = (orig: string, dest: string, isLastMoveAutoplayed: boolean) : boolean => {
 
         const chessTestMove = new Chess();
         chessTestMove.loadPgn(chess.pgn());
         const move: Move = chessTestMove.move({ from: orig, to: dest })!;
 
         if (!logic.isValidVariant(chessTestMove.fen())) {
-            // There is no such variant. Play an error sound and revert the move.
+            // There is no such variant. Play an error sound and return false to revert the move.
             playSound(soundError);
-            updateChessground(chess);
             logic.markError(chess.fen());
-            return;
+            return false;
         }
 
         var isEndOfVariant = logic.isEndOfVariant(chessTestMove.fen(), chessTestMove.history().length);
@@ -182,9 +130,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         // Update internal position
         chess.move({ from: orig, to: dest });
 
-        // Update the PGN state
+        // Update the PGN and FEN states
         setPgn(chess.pgn());
-        updateChessground(chess);
+        setFen(chess.fen());
 
         if (isEndOfVariant) {
             handleCompletion();
@@ -192,6 +140,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             // Auto-play next move
             scheduleToPlayNextMove(chess);
         }
+
+        return true;
     }
 
     const handleCompletion = () => {
@@ -236,63 +186,16 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
         setApplicableVariants(logic.getAllVariants().filter(variant => variant.move !== null));
 
-        movePlayed(move.from, move.to, {}, true);
+        handleMove(move.from, move.to, true);
     }
-
-    const updateChessground = (chess: Chess) => {
-        chessgroundInstance.current?.set({
-            fen: chess.fen(),
-            turnColor: chess.turn() === 'w' ? 'white' : 'black',
-            movable: {
-                color: chess.turn() === 'w' ? 'white' : 'black',
-                dests: generateMovesMap(chess),
-            },
-        });
-    }
-
-    // Generate a map of valid moves for Chessground
-    const generateMovesMap = (chess: Chess): Map<Key, Key[]> => {
-        const movesMap: Map<Key, Key[]> = new Map();
-
-        // Loop through all squares of the board
-        const squares: Key[] = [
-            "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8",
-            "b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8",
-            "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8",
-            "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8",
-            "e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8",
-            "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
-            "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8",
-            "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8",
-        ];
-
-        for (const square of squares) {
-            // Get legal moves starting from this square
-            const moves = chess.moves({ square: square as Square, verbose: true });
-
-            // Extract destination squares
-            const destinations = moves.map((move) => move.to);
-
-            // Add to the map if there are valid moves
-            if (destinations.length > 0) {
-                movesMap.set(square, destinations);
-            }
-        }
-
-        return movesMap;
-    };
 
     return (
         <div>
-            <div className="my-custom-board"
-                ref={boardRef}
-                style={{
-                    width: '100%',
-                    maxWidth: 800,
-                    height: 'auto',
-                    aspectRatio: '1 / 1',
-                    border: '1px solid #ccc'
-                }}
+            <ChessboardControl
+                roundId={roundId}
+                fen={fen}
+                orientation={orientation}
+                movePlayed={(orig, dest) => handleMove(orig, dest, false)}
             />
             <div className="pgn-container"
                 style={{
