@@ -1,6 +1,13 @@
 import { RepertoireData } from "./RepertoireData";
 import { RepertoireDataUtils } from "./RepertoireDataUtils";
 
+export interface IDataAccessLayer {
+    createAccount(): Promise<void>;
+    deleteAccount(): Promise<void>;
+    retrieveRepertoireData(): Promise<RepertoireData>;
+    storeRepertoireData(data: RepertoireData): Promise<void>;
+}
+
 export class DataAccessError extends Error {
     public statusCode?: number;
 
@@ -16,7 +23,11 @@ export class DataAccessError extends Error {
     }
 }
 
-export class DataAccessLayer {
+export function createDataAccessLayer(username: string, password: string): IDataAccessLayer {
+    return new DataAccessLayer(username, password);
+}
+
+class DataAccessLayer implements IDataAccessLayer {
     readonly ApiEndpointUri = "https://chess-prod-function.azurewebsites.net/api/user";
 
     // Keep track of the ETag from the server. If none is returned, it remains undefined.

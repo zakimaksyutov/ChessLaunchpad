@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import TrainingPageControl from './TrainingPageControl';
 import { OpeningVariant } from './OpeningVariant';
-import { DataAccessLayer } from './DataAccessLayer';
+import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 
@@ -17,13 +17,13 @@ const TrainingPage: React.FC = () => {
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
 
-    const dal = useMemo(() => {
+    const dal: IDataAccessLayer = useMemo(() => {
         const username = localStorage.getItem('username');
         const hashedPassword = localStorage.getItem('hashedPassword');
         if (!username || !hashedPassword) {
             setError('No user session found. Please log in first.');
         }
-        return new DataAccessLayer(username!, hashedPassword!);
+        return createDataAccessLayer(username!, hashedPassword!);
     }, []);
 
     // On mount, retrieve data from the server and merge with local

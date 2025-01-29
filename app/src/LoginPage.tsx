@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 import { hashPassword } from './HashPassword';
-import { DataAccessLayer, DataAccessError } from './DataAccessLayer';
+import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from './DataAccessLayer';
 
 type LoginPageProps = {
     onLogin: (username: string) => void;
@@ -54,7 +54,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             // effort was made not to store a password in plain text in case a user uses this password in other more critical places.
             const hashedPassword = await hashPassword(password);
 
-            const dal = new DataAccessLayer(username, hashedPassword);
+            const dal: IDataAccessLayer = createDataAccessLayer(username, hashedPassword);
             if (isSignUp) {
                 // Create a new user account
                 await dal.createAccount();

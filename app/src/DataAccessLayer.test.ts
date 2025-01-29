@@ -1,5 +1,5 @@
-import { DataAccessError, DataAccessLayer } from "./DataAccessLayer";
-import { RepertoireData, OpeningVariantData } from "./RepertoireData";
+import { DataAccessError, createDataAccessLayer } from "./DataAccessLayer";
+import { OpeningVariantData } from "./RepertoireData";
 
 describe.skip("DataAccessLayer - Main E2E Test", () => {
     const testUsername = "UnitTest";
@@ -11,7 +11,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         // 1. Cleanup from previous runs: Delete the "UnitTest" account using "UnitTest" password
         //    (this won't throw an error if the account doesn't exist; if it does, it deletes it)
         // ----------------------------------------------------------------------------
-        const cleanupDAL = new DataAccessLayer(testUsername, cleanupPassword);
+        const cleanupDAL = createDataAccessLayer(testUsername, cleanupPassword);
         try {
             await cleanupDAL.deleteAccount();
         } catch (error) {
@@ -22,7 +22,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         // 2. Create "UnitTest" user account with a *random* password (NOT "UnitTest")
         // ----------------------------------------------------------------------------
         randomPassword = "Pwd-" + Math.random().toString(36).slice(2, 10);
-        const dal = new DataAccessLayer(testUsername, randomPassword);
+        const dal = createDataAccessLayer(testUsername, randomPassword);
         await dal.createAccount();
 
         // ----------------------------------------------------------------------------
@@ -53,7 +53,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
 
         // Store with the fresh DAL -> Expect a "Precondition Failed." error (from server)
         let missingIfMatchError: DataAccessError | undefined;
-        const newDalNoEtag = new DataAccessLayer(testUsername, randomPassword);
+        const newDalNoEtag = createDataAccessLayer(testUsername, randomPassword);
         try {
             await newDalNoEtag.storeRepertoireData(repertoireData);
         } catch (err) {
