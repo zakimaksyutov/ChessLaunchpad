@@ -1,7 +1,7 @@
 // RepertoirePage.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
-import { RepertoireData, OpeningVariantData } from './RepertoireData';
+import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import ChessboardControl from './ChessboardControl';
 import HoverablePgnText from './HoverablePgnText';
@@ -147,7 +147,7 @@ const RepertoirePage: React.FC = () => {
                 if (left + popoverWidth > window.innerWidth) {
                     left = mousePos.x - offset - popoverWidth;
                 }
-                
+
                 return (
                     <div
                         style={{
