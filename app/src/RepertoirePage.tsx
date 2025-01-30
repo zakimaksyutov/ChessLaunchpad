@@ -1,5 +1,5 @@
 // RepertoirePage.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
@@ -12,6 +12,8 @@ interface ParsedVariant {
     numberOfTimesPlayed: number;
 }
 
+const FILE_EXTENSION = 'chess';
+
 // This page will do the following:
 // - Load repertoire data from the server
 // - Display the data in a table
@@ -20,6 +22,7 @@ interface ParsedVariant {
 //   - PGN is split into half moves and the board will show the position after each half move
 // - The table will show the orientation, PGN, and number of times played
 const RepertoirePage: React.FC = () => {
+    const [repData, setRepData] = useState<RepertoireData | null>(null);
     const [variants, setVariants] = useState<ParsedVariant[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -30,6 +33,9 @@ const RepertoirePage: React.FC = () => {
 
     // We'll store the mouse position so we can pop up the board near the cursor.
     const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+    // For file selection when importing
+    const importInputRef = useRef<HTMLInputElement>(null);
 
     // Build the Data Access Layer. This is the same approach as in TrainingPage:
     const dal: IDataAccessLayer = useMemo(() => {
@@ -43,10 +49,11 @@ const RepertoirePage: React.FC = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const repData: RepertoireData = await dal.retrieveRepertoireData();
+                const repDataFromServer: RepertoireData = await dal.retrieveRepertoireData();
+                setRepData(repDataFromServer);
 
                 // Convert to OpeningVariant then to something simpler for display
-                const ovList = RepertoireDataUtils.convertToVariantData(repData);
+                const ovList = RepertoireDataUtils.convertToVariantData(repDataFromServer);
 
                 // Make a simpler array of objects for the table
                 const parsed = ovList.map((ov) => ({
@@ -75,6 +82,68 @@ const RepertoirePage: React.FC = () => {
         fetchData();
     }, [dal]);
 
+    const handleNew = () => {
+        window.alert('New repertoire placeholder');
+    };
+
+    const handleExport = () => {
+        if (!repData) {
+            return;
+        }
+
+        const json = JSON.stringify(repData, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+
+        const username = localStorage.getItem('username') || 'user';
+        const now = new Date().toISOString();
+        const count = variants.length;
+        const filename = `Repertoire-${username}-${now}-${count} variants.${FILE_EXTENSION}`;
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0) {
+            return;
+        }
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            if (!event.target?.result) {
+                return;
+            }
+            try {
+                const data: RepertoireData = JSON.parse(event.target.result as string);
+                await dal.storeRepertoireData(data);
+                setRepData(data);
+                // Re-derive variants for the table
+                const ovList = RepertoireDataUtils.convertToVariantData(data);
+                const parsed = ovList.map((ov) => ({
+                    orientation: ov.orientation,
+                    pgn: ov.pgn,
+                    numberOfTimesPlayed: ov.numberOfTimesPlayed,
+                })).sort((a, b) => {
+                    if (a.orientation === b.orientation) {
+                        return a.pgn.localeCompare(b.pgn);
+                    } else if (a.orientation === 'white' && b.orientation === 'black') {
+                        return -1;
+                    } else {
+                        return 1;
+                    }
+                });
+                setVariants(parsed);
+            } catch (ex: any) {
+                alert('Failed to import: ' + ex.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+
     // Track mouse move to position the popover
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         setMousePos({ x: e.clientX, y: e.clientY });
@@ -93,7 +162,19 @@ const RepertoirePage: React.FC = () => {
             style={{ position: 'relative', padding: '1rem' }}
             onMouseMove={handleMouseMove}
         >
-            <h2>Repertoire Page</h2>
+            {/* Menu bar at the top */}
+            <div style={{ marginBottom: '1rem' }}>
+                <button onClick={handleNew}>New</button>
+                <button onClick={handleExport}>Export</button>
+                <button onClick={() => importInputRef.current?.click()}>Import</button>
+                <input
+                    type="file"
+                    ref={importInputRef}
+                    style={{ display: 'none' }}
+                    accept={`.${FILE_EXTENSION}`}
+                    onChange={handleImportFileSelected}
+                />
+            </div>
             {variants.length === 0 ? (
                 <p>No variants found.</p>
             ) : (
