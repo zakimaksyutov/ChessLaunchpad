@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
+import { useNavigate } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
 import HoverablePgnText from './HoverablePgnText';
 
@@ -22,6 +23,8 @@ const FILE_EXTENSION = 'chess';
 //   - PGN is split into half moves and the board will show the position after each half move
 // - The table will show the orientation, PGN, and number of times played
 const RepertoirePage: React.FC = () => {
+    const navigate = useNavigate();
+
     const [repData, setRepData] = useState<RepertoireData | null>(null);
     const [variants, setVariants] = useState<ParsedVariant[]>([]);
     const [loading, setLoading] = useState(true);
@@ -120,23 +123,11 @@ const RepertoirePage: React.FC = () => {
             try {
                 const data: RepertoireData = JSON.parse(event.target.result as string);
                 await dal.storeRepertoireData(data);
-                setRepData(data);
-                // Re-derive variants for the table
-                const ovList = RepertoireDataUtils.convertToVariantData(data);
-                const parsed = ovList.map((ov) => ({
-                    orientation: ov.orientation,
-                    pgn: ov.pgn,
-                    numberOfTimesPlayed: ov.numberOfTimesPlayed,
-                })).sort((a, b) => {
-                    if (a.orientation === b.orientation) {
-                        return a.pgn.localeCompare(b.pgn);
-                    } else if (a.orientation === 'white' && b.orientation === 'black') {
-                        return -1;
-                    } else {
-                        return 1;
-                    }
-                });
-                setVariants(parsed);
+
+                // Instead of updating our state or the UI here, simply reload the page.
+                // This ensures we fetch fresh data from the backend and re-render.
+                // This also should make it clear to a user that import succeeded.
+                navigate(0);
             } catch (ex: any) {
                 alert('Failed to import: ' + ex.message);
             }
