@@ -88,10 +88,6 @@ const RepertoirePage: React.FC = () => {
         fetchData();
     }, [dal]);
 
-    const handleNew = () => {
-        window.alert('New repertoire placeholder');
-    };
-
     const handleExport = () => {
         if (!repData) {
             return;
@@ -143,6 +139,10 @@ const RepertoirePage: React.FC = () => {
         setMousePos({ x: e.clientX, y: e.clientY });
     };
 
+    const handleNew = () => {
+        window.alert('New repertoire placeholder');
+    };
+
     const handleEdit = (v: ParsedVariant) => {
         // Placeholder for an edit flow
         window.alert(`Edit variant placeholder:\nOrientation: ${v.orientation}\nPGN: ${v.pgn}`);
@@ -157,9 +157,27 @@ const RepertoirePage: React.FC = () => {
         if (!confirmed) {
             return;
         }
-        // Here you would remove from repData and/or call dal.storeRepertoireData(...)
-        // For now we just show an alert:
-        window.alert(`Deleting variant placeholder: ${v.pgn}`);
+
+        if (!repData) {
+            console.error("No repData loaded. Cannot delete variant.");
+            return;
+        }
+
+        // Create a new RepertoireData without the selected variant
+        const updatedData: RepertoireData = {
+            ...repData,
+            data: repData.data.filter((od) =>
+                !(od.orientation === v.orientation && od.pgn === v.pgn)
+            ),
+        };
+
+        try {
+            await dal.storeRepertoireData(updatedData);
+            // Force a reload so we fetch fresh data and reflect the deletion
+            navigate(0);
+        } catch (ex: any) {
+            alert(`Failed to delete variant: ${ex.message}`);
+        }
     };
 
     if (loading) {

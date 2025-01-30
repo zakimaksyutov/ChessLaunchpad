@@ -28,7 +28,7 @@ export class RepertoireDataUtils {
         }
     }
 
-    public static normalize(repertoireData: RepertoireData): void {
+    public static normalize(repertoireData: RepertoireData, addLocalVariants: boolean = false): void {
         // Handle data from backend, normalize/provide defaults if needed.
         if (!repertoireData.data) {
             repertoireData.data = [];
@@ -44,7 +44,9 @@ export class RepertoireDataUtils {
         }
 
         // Load my hardcoded variants into the repertoire data.
-        RepertoireDataUtils.addMyVariantsToRepertoireData(repertoireData);
+        if (addLocalVariants) {
+            RepertoireDataUtils.addMyVariantsToRepertoireData(repertoireData);
+        }
 
         // Check whether we started a new epoch (a new day).
         // Note, if a player hasn't played for N days, then the epoch will be incremented only once and not N times.
