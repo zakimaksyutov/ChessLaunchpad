@@ -1,0 +1,48 @@
+.variant-page {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+  }
+  
+  .variant-menu-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .variant-board-section {
+    margin-bottom: 1rem;
+  }
+  
+  .variant-orientation-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .variant-orientation-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .variant-pgn-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 600px;
+  }
+  
+  .variant-pgn-section label {
+    font-weight: bold;
+  }
+  
+  .variant-pgn-section textarea {
+    width: 100%;
+    resize: vertical;
+    font-family: monospace;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+  }
+  
