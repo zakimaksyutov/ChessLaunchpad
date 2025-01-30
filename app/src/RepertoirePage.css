@@ -1,0 +1,10 @@
+.actionsIcon {
+    cursor: pointer;
+    margin-right: 8px;
+    color: #888; /* A softer gray */
+  }
+  
+  .actionsIcon:hover {
+    color: #555; /* Slightly darker on hover */
+  }
+  

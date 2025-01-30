@@ -4,8 +4,10 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import { useNavigate } from 'react-router-dom';
+import { FaEdit, FaTrashAlt } from 'react-icons/fa';
 import ChessboardControl from './ChessboardControl';
 import HoverablePgnText from './HoverablePgnText';
+import './RepertoirePage.css';
 
 interface ParsedVariant {
     orientation: 'white' | 'black';
@@ -22,6 +24,7 @@ const FILE_EXTENSION = 'chess';
 //   - The ChessboardControl will be a floating popover
 //   - PGN is split into half moves and the board will show the position after each half move
 // - The table will show the orientation, PGN, and number of times played
+// - At the top there is a menu bar with New, Export, and Import buttons
 const RepertoirePage: React.FC = () => {
     const navigate = useNavigate();
 
@@ -140,6 +143,25 @@ const RepertoirePage: React.FC = () => {
         setMousePos({ x: e.clientX, y: e.clientY });
     };
 
+    const handleEdit = (v: ParsedVariant) => {
+        // Placeholder for an edit flow
+        window.alert(`Edit variant placeholder:\nOrientation: ${v.orientation}\nPGN: ${v.pgn}`);
+    };
+
+    const handleDelete = async (v: ParsedVariant) => {
+        const confirmed = window.confirm(
+            `Are you sure you want to permanently delete this variant?\n\n` +
+            `Orientation: ${v.orientation}\nPGN: ${v.pgn}\n\n` +
+            `You may want to export first if you plan to restore later.`
+        );
+        if (!confirmed) {
+            return;
+        }
+        // Here you would remove from repData and/or call dal.storeRepertoireData(...)
+        // For now we just show an alert:
+        window.alert(`Deleting variant placeholder: ${v.pgn}`);
+    };
+
     if (loading) {
         return <div style={{ padding: '1rem' }}>Loading repertoire...</div>;
     }
@@ -180,13 +202,16 @@ const RepertoirePage: React.FC = () => {
                         <tr style={{ backgroundColor: '#eee' }}>
                             <th style={thStyle}>Orientation</th>
                             <th style={thStyle}>PGN</th>
+                            <th style={thStyle}>Actions</th>
                             <th style={thStyle}>Times Played</th>
                         </tr>
                     </thead>
                     <tbody>
                         {variants.map((v, i) => (
                             <tr key={i}>
-                                <td style={tdStyle}>{v.orientation}</td>
+                                <td style={tdStyle}>
+                                    {v.orientation}
+                                </td>
                                 <td style={tdStyle}>
                                     <HoverablePgnText
                                         pgn={v.pgn}
@@ -198,6 +223,16 @@ const RepertoirePage: React.FC = () => {
                                             setHoveredFen(null);
                                             setHoveredOrientation(null);
                                         }}
+                                    />
+                                </td>
+                                <td style={tdStyle}>
+                                    <FaEdit className="actionsIcon"
+                                        style={{ cursor: 'pointer', marginRight: '8px' }}
+                                        onClick={() => handleEdit(v)}
+                                    />
+                                    <FaTrashAlt className="actionsIcon"
+                                        style={{ cursor: 'pointer' }}
+                                        onClick={() => handleDelete(v)}
                                     />
                                 </td>
                                 <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
