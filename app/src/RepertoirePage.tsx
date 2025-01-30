@@ -26,6 +26,7 @@ const RepertoirePage: React.FC = () => {
 
     // We'll store the FEN we're previewing (hovered).
     const [hoveredFen, setHoveredFen] = useState<string | null>(null);
+    const [hoveredOrientation, setHoveredOrientation] = useState<'white' | 'black' | null>(null);
 
     // We'll store the mouse position so we can pop up the board near the cursor.
     const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -117,8 +118,14 @@ const RepertoirePage: React.FC = () => {
                                 <td style={tdStyle}>
                                     <HoverablePgnText
                                         pgn={v.pgn}
-                                        onHoverMove={(fen) => setHoveredFen(fen)}
-                                        onLeavePgn={() => setHoveredFen(null)}
+                                        onHoverMove={(fen) => {
+                                            setHoveredFen(fen);
+                                            setHoveredOrientation(v.orientation);
+                                        }}
+                                        onLeavePgn={() => {
+                                            setHoveredFen(null);
+                                            setHoveredOrientation(null);
+                                        }}
                                     />
                                 </td>
                                 <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
@@ -165,7 +172,7 @@ const RepertoirePage: React.FC = () => {
                         <ChessboardControl
                             roundId="preview-board"
                             fen={hoveredFen}
-                            orientation="white"
+                            orientation={hoveredOrientation === 'black' ? 'black' : 'white'}
                             movePlayed={() => false} // read-only
                         />
                     </div>
