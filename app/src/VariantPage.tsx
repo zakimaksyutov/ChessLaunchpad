@@ -210,6 +210,7 @@ const VariantPage: React.FC = () => {
                             }}
                             onLeavePgn={() => {
                             }}
+                            selectedFen={fen}
                         />
                     </div>
                 </div>

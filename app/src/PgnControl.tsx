@@ -11,6 +11,7 @@ interface PgnControlProps {
     pgn: string;
     onLeavePgn?: () => void; // Called when user leaves the PGN text entirely
     onClickMove?: (fen: string) => void; // Called when user clicks a particular halfmove
+    selectedFen?: string | null; // If this half-move is selected
 }
 
 /**
@@ -59,7 +60,8 @@ function parsePgnWithMoveNumbers(pgn: string): MoveToken[] {
 const PgnControl: React.FC<PgnControlProps> = ({
     pgn,
     onLeavePgn,
-    onClickMove
+    onClickMove,
+    selectedFen
 }) => {
     const moveTokens: MoveToken[] = useMemo(() => parsePgnWithMoveNumbers(pgn), [pgn]);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -72,7 +74,8 @@ const PgnControl: React.FC<PgnControlProps> = ({
                 ? pgn // fallback if parse failed
                 : moveTokens.map((token, idx) => {
                     const isHovered = (hoveredIndex === idx);
-                    const backgroundColor = isHovered ? 'blue' : 'transparent';
+                    const isSelected = (selectedFen === token.fen);
+                    const backgroundColor = isHovered ? 'blue' : (isSelected ? 'lightblue' : 'transparent');
                     const color = isHovered ? 'white' : 'black';
                     return (
                         <span
