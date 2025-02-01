@@ -127,7 +127,7 @@ const VariantPage: React.FC = () => {
             <div className="pgn-container"
                 style={{
                     width: '100%',
-                    maxWidth: '800px',
+                    maxWidth: '700px',
                     position: 'relative',
                     overflowY: 'auto',
                 }}

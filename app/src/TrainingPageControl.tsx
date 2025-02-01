@@ -200,7 +200,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             <div className="pgn-container"
                 style={{
                     width: '100%',
-                    maxWidth: '800px',
+                    maxWidth: '700px',
                     height: '100px',
                     position: 'relative',
                     overflowY: 'auto',
