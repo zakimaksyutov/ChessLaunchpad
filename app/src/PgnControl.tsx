@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Chess, Move } from 'chess.js';
 
 // Each halfmove token: "1. d4" or "d5" etc.
@@ -7,10 +7,10 @@ interface MoveToken {
     fen: string;   // FEN after that move is played
 }
 
-interface HoverablePgnTextProps {
+interface PgnControlProps {
     pgn: string;
-    onHoverMove?: (fen: string) => void; // Called when user hovers a particular halfmove
     onLeavePgn?: () => void; // Called when user leaves the PGN text entirely
+    onClickMove?: (fen: string) => void; // Called when user clicks a particular halfmove
 }
 
 /**
@@ -59,37 +59,50 @@ function parsePgnWithMoveNumbers(pgn: string): MoveToken[] {
     return tokens;
 }
 
-const HoverablePgnText: React.FC<HoverablePgnTextProps> = ({
+const PgnControl: React.FC<PgnControlProps> = ({
     pgn,
-    onHoverMove,
     onLeavePgn,
+    onClickMove
 }) => {
     const moveTokens: MoveToken[] = useMemo(() => parsePgnWithMoveNumbers(pgn), [pgn]);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
     return (
         <span
             style={{ cursor: 'default' }}
-            onMouseLeave={() => {
-                // Once the mouse leaves the entire PGN area:
-                if (onLeavePgn) onLeavePgn();
-            }}
         >
             {moveTokens.length === 0
                 ? pgn // fallback if parse failed
-                : moveTokens.map((token, idx) => (
-                    <span
-                        key={idx}
-                        style={{ marginRight: 6 }}
-                        onMouseEnter={() => {
-                            // on hover, notify parent with the FEN
-                            if (onHoverMove) onHoverMove(token.fen);
-                        }}
-                    >
-                        {token.text}{' '}
-                    </span>
-                ))}
+                : moveTokens.map((token, idx) => {
+                    const isHovered = (hoveredIndex === idx);
+                    const backgroundColor = isHovered ? 'blue' : 'transparent';
+                    const color = isHovered ? 'white' : 'black';
+                    return (
+                        <span
+                            key={idx}
+                            style={{ 
+                                marginRight: 6,
+                                cursor: 'pointer',
+                                backgroundColor,
+                                color
+                            }}
+                            onMouseEnter={() => {
+                                setHoveredIndex(idx);
+                            }}
+                            onMouseLeave={() => {
+                                setHoveredIndex(null)
+                                if (onLeavePgn) onLeavePgn();
+                            }}
+                            onClick={() => {
+                                if (onClickMove) onClickMove(token.fen);
+                            }}
+                        >
+                            {token.text}{' '}
+                        </span>
+                    );
+                })}
         </span>
     );
 };
 
-export default HoverablePgnText;
+export default PgnControl;

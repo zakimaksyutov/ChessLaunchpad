@@ -6,7 +6,7 @@ import { RepertoireDataUtils } from './RepertoireDataUtils';
 import { useNavigate } from 'react-router-dom';
 import { FaEdit, FaTrashAlt } from 'react-icons/fa';
 import ChessboardControl from './ChessboardControl';
-import HoverablePgnText from './HoverablePgnText';
+import PgnControl from './PgnControl';
 import './RepertoirePage.css';
 
 interface ParsedVariant {
@@ -232,9 +232,9 @@ const RepertoirePage: React.FC = () => {
                                     {v.orientation}
                                 </td>
                                 <td style={tdStyle}>
-                                    <HoverablePgnText
+                                    <PgnControl
                                         pgn={v.pgn}
-                                        onHoverMove={(fen) => {
+                                        onClickMove={(fen) => {
                                             setHoveredFen(fen);
                                             setHoveredOrientation(v.orientation);
                                         }}
