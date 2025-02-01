@@ -146,7 +146,7 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ roundId, fen, o
             ref={boardRef}
             style={{
                 width: '100%',
-                maxWidth: 700,
+                maxWidth: 704,
                 height: 'auto',
                 aspectRatio: '1 / 1',
                 border: '1px solid #ccc'

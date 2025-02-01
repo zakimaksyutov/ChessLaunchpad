@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
 import { Chess } from 'chess.js';
+import PgnControl from './PgnControl';
 import './VariantPage.css';
 
 /**
@@ -127,18 +128,22 @@ const VariantPage: React.FC = () => {
             <div className="pgn-container"
                 style={{
                     width: '100%',
-                    maxWidth: '700px',
+                    maxWidth: '704px',
                     position: 'relative',
                     overflowY: 'auto',
                 }}
             >
                 <div className="variant-pgn-section">
                     <label>PGN:</label>
-                    <textarea
-                        value={pgn}
-                        rows={4}
-                        readOnly
-                    />
+                    <div className="pgn-wrapper">
+                        <PgnControl
+                            pgn={pgn}
+                            onClickMove={(fen) => {
+                            }}
+                            onLeavePgn={() => {
+                            }}
+                        />
+                    </div>
                 </div>
             </div>
         </div>
