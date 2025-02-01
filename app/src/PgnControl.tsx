@@ -48,10 +48,7 @@ function parsePgnWithMoveNumbers(pgn: string): MoveToken[] {
         }
 
         // Rebuild up to this move to get its resulting FEN
-        temp.reset();
-        for (let j = 0; j <= i; j++) {
-            temp.move(movesVerbose[j]);
-        }
+        temp.move(movesVerbose[i]);
 
         tokens.push({ text: label, fen: temp.fen() });
     }
