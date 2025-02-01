@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
-import { Chess } from 'chess.js';
+import { Chess, Move } from 'chess.js';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
@@ -48,25 +48,44 @@ const VariantPage: React.FC = () => {
     const [orientation, setOrientation] = useState<'white' | 'black'>(initialOrientationParam || 'white');
     const [chess] = useState(() => new Chess());
     const [pgn, setPgn] = useState<string>(initialPgn);
+    const [fen, setFen] = useState<string>(chess.fen());
+    const [moveIndex, setMoveIndex] = useState<number>(0);
 
     // On mount (or if initialPgn changes in edit mode), load the PGN into chess
     useEffect(() => {
         chess.reset();
         if (initialPgn) {
             chess.loadPgn(initialPgn);
-            setPgn(chess.pgn()); // in case chess.js normalized the PGN
+            setPgn(chess.pgn()); 
         } else {
-            // If new mode, we just start from scratch (already did `chess.reset()`)
             setPgn(chess.pgn());
         }
+
+        setMoveIndex(Math.max(0, chess.history().length));
+
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialPgn]);
 
-    // Each time pgn changes from user moves, we keep the chess object updated.
-    // In this small example, we do this in handleMove below. So no effect needed here.
+    useEffect(() => {
+        const moves = chess.history({ verbose: true }) as Move[];
+
+        const newChess = new Chess();
+        for (let i = 0; i < moveIndex; i++) {
+            newChess.move(moves[i]);
+        }
+        setFen(newChess.fen());
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [moveIndex]);
 
     // Called when user attempts a move on the board
     const handleMove = (orig: string, dest: string): boolean => {
+
+        // If we're not at the end of the move list, don't allow new moves
+        if (moveIndex < chess.history().length) {
+            return false;
+        }
+
         // Try the move in a cloned Chess instance
         const clone = new Chess(chess.fen());
         const moveObj = clone.move({ from: orig, to: dest });
@@ -79,6 +98,8 @@ const VariantPage: React.FC = () => {
         // If legal, apply it to the "real" chess object
         chess.move({ from: orig, to: dest });
         setPgn(chess.pgn());
+
+        setMoveIndex(Math.max(0, chess.history().length));
 
         return true;
     };
@@ -118,7 +139,7 @@ const VariantPage: React.FC = () => {
             <div className="variant-board-section">
                 <ChessboardControl
                     roundId="variant-editor"
-                    fen={chess.fen()}
+                    fen={fen}
                     orientation={orientation}
                     movePlayed={handleMove}
                 />
@@ -135,6 +156,41 @@ const VariantPage: React.FC = () => {
             >
                 <div className="variant-pgn-section">
                     <label>PGN:</label>
+
+                    {/* Move-navigation buttons */}
+                    {(() => {
+                        const numMoves = chess.history().length;
+
+                        return (
+                            <div className="pgn-navigation">
+                                <button
+                                    onClick={() => setMoveIndex(0)}
+                                    disabled={moveIndex === 0}
+                                >
+                                    |&lt;
+                                </button>
+                                <button
+                                    onClick={() => setMoveIndex(prev => Math.max(prev - 1, 0))}
+                                    disabled={moveIndex === 0}
+                                >
+                                    &lt;
+                                </button>
+                                <button
+                                    onClick={() => setMoveIndex(prev => Math.min(prev + 1, numMoves))}
+                                    disabled={moveIndex === numMoves}
+                                >
+                                    &gt;
+                                </button>
+                                <button
+                                    onClick={() => setMoveIndex(numMoves)}
+                                    disabled={moveIndex >= numMoves}
+                                >
+                                    &gt;|
+                                </button>
+                            </div>
+                        );
+                    })()}
+
                     <div className="pgn-wrapper">
                         <PgnControl
                             pgn={pgn}

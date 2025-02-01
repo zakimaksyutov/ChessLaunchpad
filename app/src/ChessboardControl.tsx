@@ -26,6 +26,11 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ roundId, fen, o
     const chessgroundInstance = useRef<Api | null>(null); // Chessground instance reference
     const fenRef = useRef(fen);
 
+    const movePlayedRef = useRef(movePlayed);
+    useEffect(() => {
+        movePlayedRef.current = movePlayed;
+    }, [movePlayed]);
+
     ////////////////////////////////////////////
     // React Effect: Update FEN reference
     useEffect(() => {
@@ -57,7 +62,7 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ roundId, fen, o
                 free: false,
                 events: {
                     after: (orig: string, dest: string, _: any) => {
-                        const wasValidMove = movePlayed(orig, dest);
+                        const wasValidMove = movePlayedRef.current(orig, dest);
                         if (!wasValidMove) {
                             updateChessground();
                         }
