@@ -78,7 +78,6 @@ const PgnControl: React.FC<PgnControlProps> = ({
                         <span
                             key={idx}
                             style={{ 
-                                marginRight: 6,
                                 cursor: 'pointer',
                                 backgroundColor,
                                 color

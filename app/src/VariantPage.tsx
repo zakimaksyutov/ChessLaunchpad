@@ -56,7 +56,7 @@ const VariantPage: React.FC = () => {
         chess.reset();
         if (initialPgn) {
             chess.loadPgn(initialPgn);
-            setPgn(chess.pgn()); 
+            setPgn(chess.pgn());
         } else {
             setPgn(chess.pgn());
         }
@@ -155,46 +155,58 @@ const VariantPage: React.FC = () => {
                 }}
             >
                 <div className="variant-pgn-section">
-                    <label>PGN:</label>
+                    <div className="pgn-row">
+                        <label>PGN:</label>
 
-                    {/* Move-navigation buttons */}
-                    {(() => {
-                        const numMoves = chess.history().length;
+                        {/* Move-navigation buttons */}
+                        {(() => {
+                            const numMoves = chess.history().length;
 
-                        return (
-                            <div className="pgn-navigation">
-                                <button
-                                    onClick={() => setMoveIndex(0)}
-                                    disabled={moveIndex === 0}
-                                >
-                                    |&lt;
-                                </button>
-                                <button
-                                    onClick={() => setMoveIndex(prev => Math.max(prev - 1, 0))}
-                                    disabled={moveIndex === 0}
-                                >
-                                    &lt;
-                                </button>
-                                <button
-                                    onClick={() => setMoveIndex(prev => Math.min(prev + 1, numMoves))}
-                                    disabled={moveIndex === numMoves}
-                                >
-                                    &gt;
-                                </button>
-                                <button
-                                    onClick={() => setMoveIndex(numMoves)}
-                                    disabled={moveIndex >= numMoves}
-                                >
-                                    &gt;|
-                                </button>
-                            </div>
-                        );
-                    })()}
+                            return (
+                                <div className="pgn-navigation">
+                                    <button
+                                        onClick={() => setMoveIndex(0)}
+                                        disabled={moveIndex === 0}
+                                    >
+                                        |&lt;
+                                    </button>
+                                    <button
+                                        onClick={() => setMoveIndex(prev => Math.max(prev - 1, 0))}
+                                        disabled={moveIndex === 0}
+                                    >
+                                        &lt;
+                                    </button>
+                                    <button
+                                        onClick={() => setMoveIndex(prev => Math.min(prev + 1, numMoves))}
+                                        disabled={moveIndex === numMoves}
+                                    >
+                                        &gt;
+                                    </button>
+                                    <button
+                                        onClick={() => setMoveIndex(numMoves)}
+                                        disabled={moveIndex >= numMoves}
+                                    >
+                                        &gt;|
+                                    </button>
+                                </div>
+                            );
+                        })()}
+                    </div>
 
                     <div className="pgn-wrapper">
                         <PgnControl
                             pgn={pgn}
                             onClickMove={(fen) => {
+                                // Find the move in the history and set the index
+                                const moves = chess.history({ verbose: true }) as Move[];
+                                const newChess = new Chess();
+                                for (let i = 0; i < moves.length; i++) {
+                                    newChess.move(moves[i]);
+                                    if (newChess.fen() === fen) {
+                                        setMoveIndex(i + 1);
+                                        break;
+                                    }
+                                }
                             }}
                             onLeavePgn={() => {
                             }}
