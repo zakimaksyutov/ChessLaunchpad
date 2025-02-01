@@ -43,6 +43,22 @@ export class RepertoireDataUtils {
             repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
         }
 
+        // Normalize the data
+        for (const variant of repertoireData.data) {
+            if (!variant.errorEMA) {
+                variant.errorEMA = 0;
+            }
+            if (!variant.numberOfTimesPlayed) {
+                variant.numberOfTimesPlayed = 0;
+            }
+            if (!variant.lastSucceededEpoch) {
+                variant.lastSucceededEpoch = 0;
+            }
+            if (!variant.successEMA) {
+                variant.successEMA = 0;
+            }
+        }
+
         // Load my hardcoded variants into the repertoire data.
         if (addLocalVariants) {
             RepertoireDataUtils.addMyVariantsToRepertoireData(repertoireData);

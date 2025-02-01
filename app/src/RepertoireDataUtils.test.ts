@@ -1,5 +1,5 @@
 import { RepertoireDataUtils } from "./RepertoireDataUtils";
-import { RepertoireData } from "./RepertoireData";
+import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { MyVariants } from './MyVariants';
 import { OpeningVariant } from "./OpeningVariant";
 
@@ -31,7 +31,7 @@ describe('RepertoireDataUtils', () => {
     });
 
     describe('normalize', () => {
-        it('should set default fields if they are missing', () => {
+        it('should not add any variants', () => {
             // Prepare
             const repertoireData: Partial<RepertoireData> = {};
 
@@ -40,7 +40,23 @@ describe('RepertoireDataUtils', () => {
 
             // Assert
             expect(repertoireData.data).toBeDefined();
-            expect(repertoireData.data).toHaveLength(2); // Because it merges MyVariants
+            expect(repertoireData.data).toHaveLength(0);
+        });
+
+        it('should set default fields if they are missing', () => {
+            // Prepare
+            const repertoireData: Partial<RepertoireData> = {
+                data: [
+                    { pgn: '1. e4 e5', orientation: 'white' } as unknown as OpeningVariantData
+                ]
+            };
+
+            // Act
+            RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+            // Assert
+            expect(repertoireData.data).toBeDefined();
+            expect(repertoireData.data).toHaveLength(1);
             expect(repertoireData.data![0].errorEMA).toBe(0);
             expect(repertoireData.data![0].successEMA).toBe(0);
             expect(repertoireData.data![0].lastSucceededEpoch).toBe(0);
