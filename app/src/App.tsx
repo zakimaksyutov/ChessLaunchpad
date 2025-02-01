@@ -5,6 +5,7 @@ import LandingPage from './LandingPage';
 import LoginPage from './LoginPage';
 import TrainingPage from './TrainingPage';
 import RepertoirePage from './RepertoirePage';
+import VariantPage from './VariantPage';
 import ProtectedRoute from './ProtectedRoute';
 import './App.css';
 
@@ -38,6 +39,7 @@ const App: React.FC = () => {
           <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
           <Route path="/training" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
           <Route path="/repertoire" element={<ProtectedRoute><RepertoirePage /></ProtectedRoute>} />
+          <Route path="/repertoire/variant" element={<ProtectedRoute><VariantPage /></ProtectedRoute>} />
         </Routes>
       </Router>
     </div>

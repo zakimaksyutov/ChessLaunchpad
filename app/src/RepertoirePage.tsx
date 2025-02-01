@@ -140,12 +140,13 @@ const RepertoirePage: React.FC = () => {
     };
 
     const handleNew = () => {
-        window.alert('New repertoire placeholder');
+        navigate('/repertoire/variant?mode=new');
     };
 
     const handleEdit = (v: ParsedVariant) => {
-        // Placeholder for an edit flow
-        window.alert(`Edit variant placeholder:\nOrientation: ${v.orientation}\nPGN: ${v.pgn}`);
+        navigate(
+            `/repertoire/variant?mode=edit&pgn=${encodeURIComponent(v.pgn)}&orientation=${v.orientation}`
+        );
     };
 
     const handleDelete = async (v: ParsedVariant) => {

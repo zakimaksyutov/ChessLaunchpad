@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
-import { Chess, Move } from 'chess.js';
+import { Chess } from 'chess.js';
 import './VariantPage.css';
 
 /**
@@ -82,10 +82,8 @@ const VariantPage: React.FC = () => {
         return true;
     };
 
-    // Called by "Back" button to remove the last move
-    const handleBack = () => {
-        chess.undo(); // remove one half-move
-        setPgn(chess.pgn());
+    const handleFlipBoard = () => {
+        setOrientation((o) => (o === 'white' ? 'black' : 'white'));
     };
 
     // Called by "Save"
@@ -112,6 +110,7 @@ const VariantPage: React.FC = () => {
             <div className="variant-menu-bar">
                 <button onClick={handleSave}>Save</button>
                 <button onClick={handleCancel}>Cancel</button>
+                <button onClick={handleFlipBoard}>Flip board</button>
             </div>
 
             {/* Chessboard */}
@@ -124,51 +123,23 @@ const VariantPage: React.FC = () => {
                 />
             </div>
 
-            {/* Orientation + Back Move Row */}
-            <div className="variant-orientation-row">
-                <div className="variant-orientation-controls">
-                    <span>Orientation:&nbsp;</span>
-                    <label>
-                        <input
-                            type="radio"
-                            name="orientation"
-                            value="white"
-                            checked={orientation === 'white'}
-                            onChange={() => setOrientation('white')}
-                        />
-                        White
-                    </label>
-                    &nbsp;
-                    <label>
-                        <input
-                            type="radio"
-                            name="orientation"
-                            value="black"
-                            checked={orientation === 'black'}
-                            onChange={() => setOrientation('black')}
-                        />
-                        Black
-                    </label>
-                </div>
-                <button onClick={handleBack}>Back Move</button>
-            </div>
-
             {/* PGN field */}
-            <div className="variant-pgn-section">
-                <label>PGN:</label>
-                <textarea
-                    value={pgn}
-                    rows={4}
-                    onChange={(e) => {
-                        // If user manually edits the PGN, we can attempt to re-load the game.
-                        // (Alternatively, we could make this read-only and force them to use the board.)
-                        const newPgn = e.target.value;
-                        const newChess = new Chess();
-                        const loaded = newChess.loadPgn(newPgn);
-                        setPgn(newPgn);
-                        chess.loadPgn(newPgn);
-                    }}
-                />
+            <div className="pgn-container"
+                style={{
+                    width: '100%',
+                    maxWidth: '800px',
+                    position: 'relative',
+                    overflowY: 'auto',
+                }}
+            >
+                <div className="variant-pgn-section">
+                    <label>PGN:</label>
+                    <textarea
+                        value={pgn}
+                        rows={4}
+                        readOnly
+                    />
+                </div>
             </div>
         </div>
     );
