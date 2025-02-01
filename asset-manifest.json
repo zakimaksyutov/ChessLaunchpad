@@ -1,19 +1,19 @@
 {
   "files": {
-    "main.css": "/ChessLaunchpad/static/css/main.bf214c3f.css",
-    "main.js": "/ChessLaunchpad/static/js/main.ea5b5b1a.js",
+    "main.css": "/ChessLaunchpad/static/css/main.7ac7df95.css",
+    "main.js": "/ChessLaunchpad/static/js/main.ba8c0ea1.js",
     "static/js/453.a6a97343.chunk.js": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js",
     "static/media/energy.mp3": "/ChessLaunchpad/static/media/energy.2c67a59425d0d65ec2d3.mp3",
     "static/media/capture.mp3": "/ChessLaunchpad/static/media/capture.bcc979ef4d63c9b55d33.mp3",
     "static/media/move.mp3": "/ChessLaunchpad/static/media/move.8d802efe2b36f390b1a4.mp3",
     "static/media/error.mp3": "/ChessLaunchpad/static/media/error.b4e94191b8de029342c6.mp3",
     "index.html": "/ChessLaunchpad/index.html",
-    "main.bf214c3f.css.map": "/ChessLaunchpad/static/css/main.bf214c3f.css.map",
-    "main.ea5b5b1a.js.map": "/ChessLaunchpad/static/js/main.ea5b5b1a.js.map",
+    "main.7ac7df95.css.map": "/ChessLaunchpad/static/css/main.7ac7df95.css.map",
+    "main.ba8c0ea1.js.map": "/ChessLaunchpad/static/js/main.ba8c0ea1.js.map",
     "453.a6a97343.chunk.js.map": "/ChessLaunchpad/static/js/453.a6a97343.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.bf214c3f.css",
-    "static/js/main.ea5b5b1a.js"
+    "static/css/main.7ac7df95.css",
+    "static/js/main.ba8c0ea1.js"
   ]
 }
