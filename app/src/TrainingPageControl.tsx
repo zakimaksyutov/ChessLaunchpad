@@ -104,7 +104,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         };
     }, [autoLoadNext, onLoadNext, logic]);
 
-    const handleMove = (orig: string, dest: string, isLastMoveAutoplayed: boolean) : boolean => {
+    const handleMove = (orig: string, dest: string, isLastMoveAutoplayed: boolean): boolean => {
 
         const chessTestMove = new Chess();
         chessTestMove.loadPgn(chess.pgn());
@@ -192,12 +192,19 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
     return (
         <div>
-            <ChessboardControl
-                roundId={roundId}
-                fen={fen}
-                orientation={orientation}
-                movePlayed={(orig, dest) => handleMove(orig, dest, false)}
-            />
+            {(() => {
+                const annotations = logic.getAnnotations(fen);
+
+                return (
+                    <ChessboardControl
+                        roundId={roundId}
+                        fen={fen}
+                        orientation={orientation}
+                        movePlayed={(orig, dest) => handleMove(orig, dest, false)}
+                        annotations={annotations}
+                    />
+                );
+            })()}
             <div className="pgn-container"
                 style={{
                     width: '100%',

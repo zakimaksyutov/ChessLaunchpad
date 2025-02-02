@@ -1,8 +1,12 @@
 import { Chess, Move } from 'chess.js';
+import { Annotation } from './Annotation';
+import { extractAnnotations } from './AnnotationUtils';
 
 export class OpeningVariant {
 
     public chess: Chess = new Chess();
+
+    public annotations: { [fen: string]: Annotation[] } = {};
 
     public numberOfTimesPlayed: number = 0; // Not used in probability calculation.
 
@@ -27,7 +31,7 @@ export class OpeningVariant {
     public currentEpoch: number = 1;
 
     // Used to update errorEMA at the end of a round. Note, one error might be attributed to multiple variants (if they share a move).
-    public numberOfErrors: number = 0; 
+    public numberOfErrors: number = 0;
 
     // Debug information (shown in a table below the chessboard)
     public weight: number = 0.0;
@@ -39,11 +43,23 @@ export class OpeningVariant {
     // One-round values. They make sense only if returned as a part of getNextMove
     public isPicked: boolean = false;
     public move: Move | null = null;
-    
+
     constructor(
         public pgn: string,
         public orientation: 'black' | 'white'
     ) {
+        // PGN might have comments. We should initialize chess.js with a provided PGN,
+        // parse comments and convert to annotations.
+        // After that, we should remove comments from the PGN (so, they wouldn't appear in places which cannot handle them).
         this.chess.loadPgn(pgn);
+
+        this.chess.getComments().forEach(comment => {
+            const fen = comment.fen;
+            const fenAnnotations = extractAnnotations(comment.comment);
+            this.annotations[fen] = fenAnnotations;
+        });
+        this.chess.deleteComments();
+
+        this.pgn = this.chess.pgn();
     }
 }

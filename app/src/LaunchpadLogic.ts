@@ -1,5 +1,6 @@
 import { Chess, Move } from 'chess.js';
 import { OpeningVariant } from './OpeningVariant';
+import { Annotation } from './Annotation';
 
 export class LaunchpadLogic {
 
@@ -39,6 +40,19 @@ export class LaunchpadLogic {
         }
 
         return false;
+    }
+
+    public getAnnotations(fen: string): Annotation[] {
+        // Merge annotations from all variants for the given FEN.
+        const variants = this.getVariantsForFen(fen)!;
+        const annotations: Annotation[] = [];
+        for (const variant of variants) {
+            const variantAnnotations = variant.annotations[fen];
+            if (variantAnnotations) {
+                annotations.push(...variantAnnotations);
+            }
+        }
+        return annotations;
     }
 
     public markError(fen: string) {

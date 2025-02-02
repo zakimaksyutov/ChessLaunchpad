@@ -2,7 +2,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
-import { RepertoireDataUtils } from './RepertoireDataUtils';
 import { useNavigate } from 'react-router-dom';
 import { FaEdit, FaTrashAlt } from 'react-icons/fa';
 import ChessboardControl from './ChessboardControl';
@@ -58,14 +57,10 @@ const RepertoirePage: React.FC = () => {
                 const repDataFromServer: RepertoireData = await dal.retrieveRepertoireData();
                 setRepData(repDataFromServer);
 
-                // Convert to OpeningVariant then to something simpler for display
-                const ovList = RepertoireDataUtils.convertToVariantData(repDataFromServer);
-
-                // Make a simpler array of objects for the table
-                const parsed = ovList.map((ov) => ({
-                    orientation: ov.orientation,
-                    pgn: ov.pgn,
-                    numberOfTimesPlayed: ov.numberOfTimesPlayed,
+                const parsed = repDataFromServer.data.map((data) => ({
+                    orientation: data.orientation,
+                    pgn: data.pgn,
+                    numberOfTimesPlayed: data.numberOfTimesPlayed,
                 })).sort((a, b) => {
                     // Sort so that 'white' comes before 'black'.
                     // If orientation is the same, then sort by pgn lexicographically.
