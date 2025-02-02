@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
 import { Chess, Move } from 'chess.js';
@@ -121,19 +122,55 @@ const VariantPage: React.FC = () => {
         setOrientation((o) => (o === 'white' ? 'black' : 'white'));
     };
 
-    // Called by "Save"
-    // In a real app, you would call your DAL to store the variant, then navigate back to repertoire.
-    const handleSave = () => {
-        // If in new mode, we would create a new variant in the backend.
-        // If in edit mode, we would update the existing variant in the backend.
+    const handleSave = async () => {
+        const username = localStorage.getItem('username') || '';
+        const hashedPassword = localStorage.getItem('hashedPassword') || '';
+        try {
+            const dal: IDataAccessLayer = createDataAccessLayer(username, hashedPassword);
+            const repertoire = await dal.retrieveRepertoireData();
 
-        // For now, just show a placeholder alert and go back.
-        alert(`Saving Variant:\nOrientation: ${orientation}\nPGN: ${pgn}`);
-        navigate('/repertoire');
+            // Check whether such a variant already exists
+            const newVariant = repertoire.data.find(v => v.pgn === pgn && v.orientation === orientation);
+            const oldVariant = repertoire.data.find(v => v.pgn === initialPgn && v.orientation === initialOrientationParam);
+
+            if (mode === 'new') {
+                if (newVariant) {
+                    throw new Error('This variant already exists in the repertoire.');
+                }
+            } else if (mode === 'edit') {
+                if (!oldVariant) {
+                    throw new Error('Could not find the original variant to edit.');
+                }
+                if (newVariant && newVariant !== oldVariant) {
+                    throw new Error('This variant already exists in the repertoire.');
+                }
+            }
+
+            // In editing mode - remove the original variant
+            if (mode === 'edit') {
+                repertoire.data = repertoire.data.filter(v => v !== oldVariant);
+            }
+
+            // Add to the repertoire
+            repertoire.data.push({
+                pgn,
+                orientation,
+                errorEMA: 0,
+                numberOfTimesPlayed: 0,
+                lastSucceededEpoch: 0,
+                successEMA: 0
+            });
+
+            // Persist the updated repertoire
+            await dal.storeRepertoireData(repertoire);
+
+            navigate('/repertoire');
+        }
+        catch (ex: any) {
+            alert(`Failed to save variant: ${ex.message}`);
+        }
     };
 
-    // Called by "Cancel"
-    // In a real app, just navigate back or show a discard-changes confirmation.
     const handleCancel = () => {
         navigate('/repertoire');
     };
