@@ -44,12 +44,14 @@ export class LaunchpadLogic {
 
     public getAnnotations(fen: string): Annotation[] {
         // Merge annotations from all variants for the given FEN.
-        const variants = this.getVariantsForFen(fen)!;
         const annotations: Annotation[] = [];
-        for (const variant of variants) {
-            const variantAnnotations = variant.annotations[fen];
-            if (variantAnnotations) {
-                annotations.push(...variantAnnotations);
+        const variants = this.getVariantsForFen(fen)!;
+        if (variants) {
+            for (const variant of variants) {
+                const variantAnnotations = variant.annotations[fen];
+                if (variantAnnotations) {
+                    annotations.push(...variantAnnotations);
+                }
             }
         }
         return annotations;
