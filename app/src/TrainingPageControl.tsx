@@ -3,6 +3,7 @@ import ChessboardControl from './ChessboardControl';
 import { Chess, Move } from "chess.js";
 import { OpeningVariant } from './OpeningVariant';
 import { LaunchpadLogic } from './LaunchpadLogic';
+import PgnControl from './PgnControl';
 import './TrainingPageControl.css';
 
 const soundMoveFile = require('./assets/move.mp3');
@@ -210,7 +211,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             >
                 {/* PGN text in the background */}
                 <div style={{ padding: '0.5rem', opacity: autoLoadNext ? 0.4 : 1 }}>
-                    <strong>{pgn}</strong>
+                    <PgnControl pgn={pgn} />
                 </div>
 
                 {/* If auto-loading is active, show a semi-transparent overlay with progress bar */}
