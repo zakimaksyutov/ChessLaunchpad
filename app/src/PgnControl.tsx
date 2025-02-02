@@ -11,6 +11,7 @@ interface PgnControlProps {
     pgn: string;
     onLeavePgn?: () => void; // Called when user leaves the PGN text entirely
     onClickMove?: (fen: string) => void; // Called when user clicks a particular halfmove
+    onRightClickMove?: (fen: string, event: React.MouseEvent) => void; // Called when user right-clicks a particular halfmove
     selectedFen?: string | null; // If this half-move is selected
 }
 
@@ -61,7 +62,8 @@ const PgnControl: React.FC<PgnControlProps> = ({
     pgn,
     onLeavePgn,
     onClickMove,
-    selectedFen
+    selectedFen,
+    onRightClickMove
 }) => {
     const moveTokens: MoveToken[] = useMemo(() => parsePgnWithMoveNumbers(pgn), [pgn]);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -80,7 +82,7 @@ const PgnControl: React.FC<PgnControlProps> = ({
                     return (
                         <span
                             key={idx}
-                            style={{ 
+                            style={{
                                 cursor: 'pointer',
                                 backgroundColor,
                                 color
@@ -94,6 +96,10 @@ const PgnControl: React.FC<PgnControlProps> = ({
                             }}
                             onClick={() => {
                                 if (onClickMove) onClickMove(token.fen);
+                            }}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                onRightClickMove?.(token.fen, e);
                             }}
                         >
                             {token.text}{' '}

@@ -5,6 +5,13 @@ import { Chess, Move } from 'chess.js';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
+interface ContextMenuState {
+    show: boolean;
+    x: number;
+    y: number;
+    moveIndex: number;
+}
+
 /**
  * Displays a page for creating or editing a chess opening variant.
  * - In edit mode, expects `pgn` and `orientation` in query params.
@@ -50,6 +57,12 @@ const VariantPage: React.FC = () => {
     const [pgn, setPgn] = useState<string>(initialPgn);
     const [fen, setFen] = useState<string>(chess.fen());
     const [moveIndex, setMoveIndex] = useState<number>(0);
+    const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+        show: false,
+        x: 0,
+        y: 0,
+        moveIndex: -1,
+    });
 
     // On mount (or if initialPgn changes in edit mode), load the PGN into chess
     useEffect(() => {
@@ -125,9 +138,65 @@ const VariantPage: React.FC = () => {
         navigate('/repertoire');
     };
 
+    const handleRightClickMove = (fen: string, e: React.MouseEvent) => {
+        const moveIdx = mapFenToMoveIndex(fen);
+        if (moveIdx === -1) {
+            return;
+        }
+
+        setContextMenu({
+            show: true,
+            x: e.clientX,
+            y: e.clientY,
+            moveIndex: moveIdx
+        });
+    };
+
+    // If user clicks anywhere else on the page, close the context menu
+    const handlePageClick = () => {
+        if (contextMenu.show) {
+            setContextMenu(prev => ({ ...prev, show: false }));
+        }
+    };
+
+    const mapFenToMoveIndex = (fen: string): number => {
+        const moves = chess.history({ verbose: true }) as Move[];
+        const newChess = new Chess();
+        for (let i = 0; i < moves.length; i++) {
+            newChess.move(moves[i]);
+            if (newChess.fen() === fen) {
+                return i + 1;
+            }
+        }
+
+        return -1;
+    }
+
+    // Delete all moves from `moveIndex` onward.
+    // This means we keep only the first `moveIndex` half-moves in the chess history.
+    const handleDeleteFromHere = () => {
+        const movesVerbose = chess.history({ verbose: true }) as Move[];
+        const idx = contextMenu.moveIndex;
+
+        console.log('Deleting from index', idx, 'of', movesVerbose.length);
+
+        // Rebuild from scratch up to (but not including) moveIndex
+        // Note - we need to iterate till moveIndex - 1. Otherwise, we will not delete the move at moveIndex. 
+        chess.reset();
+        for (let i = 0; i < idx - 1; i++) {
+            chess.move(movesVerbose[i]);
+        }
+
+        setPgn(chess.pgn());
+        setMoveIndex(chess.history().length);
+
+        // Hide context menu
+        setContextMenu((prev) => ({ ...prev, show: false }));
+    };
+
     // Render
     return (
-        <div className="variant-page">
+        <div className="variant-page" onClick={handlePageClick}>
             {/* Top menu bar */}
             <div className="variant-menu-bar">
                 <button onClick={handleSave}>Save</button>
@@ -198,23 +267,42 @@ const VariantPage: React.FC = () => {
                             pgn={pgn}
                             onClickMove={(fen) => {
                                 // Find the move in the history and set the index
-                                const moves = chess.history({ verbose: true }) as Move[];
-                                const newChess = new Chess();
-                                for (let i = 0; i < moves.length; i++) {
-                                    newChess.move(moves[i]);
-                                    if (newChess.fen() === fen) {
-                                        setMoveIndex(i + 1);
-                                        break;
-                                    }
+                                const moveIdx = mapFenToMoveIndex(fen);
+                                if (moveIdx !== -1) {
+                                    setMoveIndex(moveIdx);
                                 }
                             }}
                             onLeavePgn={() => {
                             }}
                             selectedFen={fen}
+                            onRightClickMove={handleRightClickMove}
                         />
                     </div>
                 </div>
             </div>
+
+            {contextMenu.show && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        background: 'white',
+                        border: '1px solid black',
+                        zIndex: 999
+                    }}
+                >
+                    <div
+                        style={{ padding: '8px', cursor: 'pointer' }}
+                        onClick={(e) => {
+                            e.stopPropagation(); // prevent handlePageClick from firing
+                            handleDeleteFromHere();
+                        }}
+                    >
+                        Delete from here
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
