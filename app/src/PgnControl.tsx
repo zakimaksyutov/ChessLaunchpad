@@ -28,6 +28,7 @@ function parsePgnWithMoveNumbers(pgn: string): MoveToken[] {
 
     const chess = new Chess();
     chess.loadPgn(pgn);
+    chess.deleteComments(); // This control only visualizes moves, comments will break the logic.
 
     // We'll gather the full move list from the loaded game
     const movesVerbose = chess.history({ verbose: true }) as Move[];

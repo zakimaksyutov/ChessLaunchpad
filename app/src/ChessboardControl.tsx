@@ -3,7 +3,10 @@ import { Chessground } from 'chessground';
 import { Config } from 'chessground/config';
 import { Api } from 'chessground/api';
 import { Key } from 'chessground/types';
+import { DrawShape } from 'chessground/draw';
 import { Chess, Square } from "chess.js";
+import { Annotation } from './Annotation';
+import { convertDrawShapesToAnnotations } from './AnnotationUtils';
 import './ChessboardControl.css';
 
 // Copied from chessground/assets, version 9.1.1. Must be updated upon version upgrade.
@@ -11,14 +14,15 @@ import './styles/chessground.base.css';
 import './styles/chessground.brown.css';
 import './styles/chessground.cburnett.css';
 
-interface TrainingPageControlProps {
+interface ChessboardControlProps {
     roundId: string,
     fen: string;
     orientation: 'white' | 'black';
     movePlayed: (orig: string, dest: string) => boolean;
+    annotationsChanged?: (fen: string, annotations: Annotation[]) => void;
 }
 
-const ChessboardControl: React.FC<TrainingPageControlProps> = ({ roundId, fen, orientation, movePlayed }) => {
+const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged }) => {
 
     ////////////////////////////////////////////
     // React References
@@ -69,6 +73,14 @@ const ChessboardControl: React.FC<TrainingPageControlProps> = ({ roundId, fen, o
                     }
                 }
             },
+            drawable: {
+                onChange: (shapes: DrawShape[]) => {
+                    if (annotationsChanged) {
+                        const annotations = convertDrawShapesToAnnotations(shapes);
+                        annotationsChanged(fenRef.current, annotations);
+                    }
+                }
+            }
         };
 
         // Initialize Chessground

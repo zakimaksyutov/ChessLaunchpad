@@ -215,8 +215,6 @@ const VariantPage: React.FC = () => {
         const movesVerbose = chess.history({ verbose: true }) as Move[];
         const idx = contextMenu.moveIndex;
 
-        console.log('Deleting from index', idx, 'of', movesVerbose.length);
-
         // Rebuild from scratch up to (but not including) moveIndex
         // Note - we need to iterate till moveIndex - 1. Otherwise, we will not delete the move at moveIndex. 
         chess.reset();
