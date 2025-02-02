@@ -53,6 +53,36 @@ export function extractAnnotations(comment: string): Annotation[] {
     return annotations;
 }
 
+export function serializeAnnotationsAsComment(annotations: Annotation[]): string {
+    // Separate arrow vs. square annotations
+    const arrowParts: string[] = [];
+    const squareParts: string[] = [];
+
+    annotations.forEach(annotation => {
+        const { brush, orig, dest } = annotation;
+        // If 'dest' is present, it's an arrow
+        if (dest) {
+            arrowParts.push(`${brush}${orig}${dest}`);
+        } else {
+            // Otherwise it's a colored square
+            squareParts.push(`${brush}${orig}`);
+        }
+    });
+
+    // Build up the optional cal/csl segments
+    const calSegment = arrowParts.length > 0
+        ? `[%cal ${arrowParts.join(',')}]`
+        : '';
+    const cslSegment = squareParts.length > 0
+        ? `[%csl ${squareParts.join(',')}]`
+        : '';
+
+    // Combine them into a single comment string
+    // Feel free to insert a space or line-break between segments
+    const segments = [calSegment, cslSegment].filter(s => s.length > 0);
+    return segments.join(' ');
+}
+
 export function convertDrawShapesToAnnotations(shapes: DrawShape[]): Annotation[] {
     // Map from Lichess brush to internal brush
     const brushMap: Record<string, Annotation['brush']> = {

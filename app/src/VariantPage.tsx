@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
 import { Chess, Move } from 'chess.js';
 import { Annotation } from './Annotation';
-import { extractAnnotations } from './AnnotationUtils';
+import { extractAnnotations, serializeAnnotationsAsComment } from './AnnotationUtils';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
@@ -73,7 +73,6 @@ const VariantPage: React.FC = () => {
         chess.reset();
         if (initialPgn) {
             chess.loadPgn(initialPgn);
-            setPgn(chess.pgn());
 
             // Parse annotations
             const newMap: { [fen: string]: Annotation[] } = {};
@@ -83,6 +82,12 @@ const VariantPage: React.FC = () => {
                 newMap[fen] = annotations;
             });
             setAnnotationsMap(newMap);
+
+            // We parsed annotations from comments. Now, remove comments from the PGN.
+            // We will re-add them back during save.
+            chess.deleteComments();
+
+            setPgn(chess.pgn());
         } else {
             setPgn(chess.pgn());
         }
@@ -148,8 +153,22 @@ const VariantPage: React.FC = () => {
             const dal: IDataAccessLayer = createDataAccessLayer(username, hashedPassword);
             const repertoire = await dal.retrieveRepertoireData();
 
+            // Add annotations back to the PGN
+            const moves = chess.history({ verbose: true }) as Move[];
+            const newChess = new Chess();
+            for (let i = 0; i < moves.length; i++) {
+                newChess.move(moves[i]);
+                const annotations = annotationsMap[newChess.fen()] || [];
+                if (annotations.length > 0) {
+                    const comment = serializeAnnotationsAsComment(annotations);
+                    newChess.setComment(comment);
+                }
+            }
+
+            const finalPgn = newChess.pgn();
+
             // Check whether such a variant already exists
-            const newVariant = repertoire.data.find(v => v.pgn === pgn && v.orientation === orientation);
+            const newVariant = repertoire.data.find(v => v.pgn === finalPgn && v.orientation === orientation);
             const oldVariant = repertoire.data.find(v => v.pgn === initialPgn && v.orientation === initialOrientationParam);
 
             if (mode === 'new') {
@@ -172,7 +191,7 @@ const VariantPage: React.FC = () => {
 
             // Add to the repertoire
             repertoire.data.push({
-                pgn,
+                pgn: finalPgn,
                 orientation,
                 errorEMA: 0,
                 numberOfTimesPlayed: 0,

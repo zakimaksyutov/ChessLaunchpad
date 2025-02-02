@@ -191,7 +191,7 @@ const RepertoirePage: React.FC = () => {
     return (
         // We use onMouseMove at the container level
         <div
-            style={{ position: 'relative', padding: '1rem' }}
+            style={{ padding: '1rem' }}
             onMouseMove={handleMouseMove}
         >
             {/* Menu bar at the top */}
