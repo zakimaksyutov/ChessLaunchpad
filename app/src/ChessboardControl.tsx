@@ -6,7 +6,7 @@ import { Key } from 'chessground/types';
 import { DrawShape } from 'chessground/draw';
 import { Chess, Square } from "chess.js";
 import { Annotation } from './Annotation';
-import { convertDrawShapesToAnnotations } from './AnnotationUtils';
+import { convertDrawShapesToAnnotations, convertAnnotationsToDrawShapes } from './AnnotationUtils';
 import './ChessboardControl.css';
 
 // Copied from chessground/assets, version 9.1.1. Must be updated upon version upgrade.
@@ -20,9 +20,10 @@ interface ChessboardControlProps {
     orientation: 'white' | 'black';
     movePlayed: (orig: string, dest: string) => boolean;
     annotationsChanged?: (fen: string, annotations: Annotation[]) => void;
+    annotations?: Annotation[];
 }
 
-const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged }) => {
+const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged, annotations }) => {
 
     ////////////////////////////////////////////
     // React References
@@ -74,6 +75,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
                 }
             },
             drawable: {
+                eraseOnClick: false,
                 onChange: (shapes: DrawShape[]) => {
                     if (annotationsChanged) {
                         const annotations = convertDrawShapesToAnnotations(shapes);
@@ -116,6 +118,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
 
     const updateChessground = () => {
         const chess: Chess = new Chess(fenRef.current);
+        const shapes = convertAnnotationsToDrawShapes(annotations || []);
         chessgroundInstance.current?.set({
             fen: chess.fen(),
             turnColor: chess.turn() === 'w' ? 'white' : 'black',
@@ -123,6 +126,9 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
                 color: chess.turn() === 'w' ? 'white' : 'black',
                 dests: generateMovesMap(chess),
             },
+            drawable: {
+                shapes
+            }
         });
     }
 

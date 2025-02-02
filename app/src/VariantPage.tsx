@@ -3,6 +3,8 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
 import { Chess, Move } from 'chess.js';
+import { Annotation } from './Annotation';
+import { extractAnnotations } from './AnnotationUtils';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
@@ -56,6 +58,7 @@ const VariantPage: React.FC = () => {
     const [orientation, setOrientation] = useState<'white' | 'black'>(initialOrientationParam || 'white');
     const [chess] = useState(() => new Chess());
     const [pgn, setPgn] = useState<string>(initialPgn);
+    const [annotationsMap, setAnnotationsMap] = useState<{ [fen: string]: Annotation[] }>({});
     const [fen, setFen] = useState<string>(chess.fen());
     const [moveIndex, setMoveIndex] = useState<number>(0);
     const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -71,6 +74,15 @@ const VariantPage: React.FC = () => {
         if (initialPgn) {
             chess.loadPgn(initialPgn);
             setPgn(chess.pgn());
+
+            // Parse annotations
+            const newMap: { [fen: string]: Annotation[] } = {};
+            chess.getComments().forEach(comment => {
+                const fen = comment.fen;
+                const annotations = extractAnnotations(comment.comment);
+                newMap[fen] = annotations;
+            });
+            setAnnotationsMap(newMap);
         } else {
             setPgn(chess.pgn());
         }
@@ -91,6 +103,13 @@ const VariantPage: React.FC = () => {
 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [moveIndex]);
+
+    const handleAnnotationsChanged = (fen: string, annotations: Annotation[]) => {
+        setAnnotationsMap(prevMap => ({
+            ...prevMap,
+            [fen]: annotations
+        }));
+    };
 
     // Called when user attempts a move on the board
     const handleMove = (orig: string, dest: string): boolean => {
@@ -246,6 +265,8 @@ const VariantPage: React.FC = () => {
                     fen={fen}
                     orientation={orientation}
                     movePlayed={handleMove}
+                    annotationsChanged={handleAnnotationsChanged}
+                    annotations={annotationsMap[fen] || []}
                 />
             </div>
 

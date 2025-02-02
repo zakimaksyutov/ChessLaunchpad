@@ -1,5 +1,6 @@
 import { Annotation } from './Annotation';
 import { DrawShape } from 'chessground/draw';
+import { Key } from 'chessground/types';
 
 function isValidBrush(char: string): char is Annotation['brush'] {
     return char === 'G' || char === 'Y' || char === 'R' || char === 'B';
@@ -77,4 +78,23 @@ export function convertDrawShapesToAnnotations(shapes: DrawShape[]): Annotation[
             } as Annotation;
         })
         .filter((annotation): annotation is Annotation => annotation !== null);
+}
+
+export function convertAnnotationsToDrawShapes(annotations: Annotation[]): DrawShape[] {
+    // Map from internal brush to Lichess brush
+    const brushMap: Record<Annotation['brush'], string> = {
+        G: 'green',
+        Y: 'yellow',
+        R: 'red',
+        B: 'blue'
+    };
+
+    return annotations.map((annotation) => {
+        const brush = brushMap[annotation.brush];
+        return {
+            brush,
+            orig: annotation.orig as Key,
+            dest: annotation.dest as Key
+        };
+    });
 }
