@@ -276,7 +276,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                     <tbody>
                         {applicableVariants.map((variant, index) => (
                             <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
-                                <td className="td">{variant.pgn}</td>
+                                <td className="td">{variant.pgnWithoutAnnotations}</td>
                                 <td className="td">{variant.numberOfTimesPlayed}</td>
                                 <td className="td">{Math.round(variant.errorEMA * 100) / 100}</td>
                                 <td className="td">{variant.lastSucceededEpoch}</td>

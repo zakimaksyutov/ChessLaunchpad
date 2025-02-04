@@ -7,6 +7,7 @@ export class OpeningVariant {
     public chess: Chess = new Chess();
 
     public annotations: { [fen: string]: Annotation[] } = {};
+    public pgnWithoutAnnotations: string = '';
 
     public numberOfTimesPlayed: number = 0; // Not used in probability calculation.
 
@@ -60,6 +61,6 @@ export class OpeningVariant {
         });
         this.chess.deleteComments();
 
-        this.pgn = this.chess.pgn();
+        this.pgnWithoutAnnotations = this.chess.pgn();
     }
 }
