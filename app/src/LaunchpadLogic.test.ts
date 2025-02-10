@@ -3,7 +3,7 @@ import { OpeningVariant } from './OpeningVariant';
 import { Chess } from 'chess.js';
 
 function createOpeningVariant(pgn: string): OpeningVariant {
-    return new OpeningVariant(pgn, 'white');
+    return new OpeningVariant(pgn, 'white', []);
 }
 
 describe('LaunchpadLogic - FEN to Variant Map', () => {

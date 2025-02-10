@@ -4,6 +4,7 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { useNavigate } from 'react-router-dom';
 import { FaEdit, FaTrashAlt } from 'react-icons/fa';
+import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
 import ChessboardControl from './ChessboardControl';
 import PgnControl from './PgnControl';
 import './RepertoirePage.css';
@@ -129,6 +130,37 @@ const RepertoirePage: React.FC = () => {
         reader.readAsText(file);
     };
 
+    const handleClassify = async () => {
+        try {
+            if (!repData) {
+                throw new Error('No repertoire data loaded. Cannot classify.');
+            }
+
+            // Load the openings database
+            const openings: DatabaseOpening[] = await DatabaseOpeningsUtils.DownloadOpenings();
+
+            // For each variant, classify the opening
+            for (const variant of repData.data) {
+                const classifications = DatabaseOpeningsUtils.ClassifyOpening(variant.pgn, openings);
+                variant.classifications = classifications;
+            }
+
+            // Store the updated data
+            await dal.storeRepertoireData(repData);
+
+            // Instead of updating our state or the UI here, simply reload the page.
+            // This ensures we fetch fresh data from the backend and re-render.
+            // This also should make it clear to a user that import succeeded.
+            //navigate(0);
+        }
+        catch (ex: any) {
+            alert(`Failed to classify: ${ex.message}`);
+
+            // We modified internal state, it is easier to reload the page.
+            navigate(0);
+        }
+    };
+
     // Track mouse move to position the popover
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         setMousePos({ x: e.clientX, y: e.clientY });
@@ -194,6 +226,7 @@ const RepertoirePage: React.FC = () => {
                 <button onClick={handleNew}>New</button>
                 <button onClick={handleExport}>Export</button>
                 <button onClick={() => importInputRef.current?.click()}>Import</button>
+                <button onClick={handleClassify}>Classify</button>
                 <input
                     type="file"
                     ref={importInputRef}

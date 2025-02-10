@@ -40,6 +40,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
             {
                 pgn: "1. e4 e5",
                 orientation: "white",
+                classifications: [],
                 errorEMA: 0,
                 numberOfTimesPlayed: 0,
                 lastSucceededEpoch: 0,
@@ -88,6 +89,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
             {
                 pgn: "1. d4 d5",
                 orientation: "white",
+                classifications: [],
                 errorEMA: 0,
                 numberOfTimesPlayed: 0,
                 lastSucceededEpoch: 0,

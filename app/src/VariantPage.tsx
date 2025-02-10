@@ -193,6 +193,7 @@ const VariantPage: React.FC = () => {
             repertoire.data.push({
                 pgn: finalPgn,
                 orientation,
+                classifications: [],
                 errorEMA: 0,
                 numberOfTimesPlayed: 0,
                 lastSucceededEpoch: 0,

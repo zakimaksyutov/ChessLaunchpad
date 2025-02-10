@@ -47,7 +47,8 @@ export class OpeningVariant {
 
     constructor(
         public pgn: string,
-        public orientation: 'black' | 'white'
+        public orientation: 'black' | 'white',
+        public classifications: string[]
     ) {
         // PGN might have comments. We should initialize chess.js with a provided PGN,
         // parse comments and convert to annotations.

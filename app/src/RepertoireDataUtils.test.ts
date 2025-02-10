@@ -1,11 +1,8 @@
 import { RepertoireDataUtils } from "./RepertoireDataUtils";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
-import { MyVariants } from './MyVariants';
 import { OpeningVariant } from "./OpeningVariant";
 
 // --- Mocks ---
-jest.mock('./MyVariants');
-
 jest.mock('./LaunchpadLogic', () => ({
     LaunchpadLogic: {
         SUCCESS_EMA_ALPHA: 0.5
@@ -18,11 +15,6 @@ describe('RepertoireDataUtils', () => {
 
         jest.useFakeTimers();
         jest.setSystemTime(new Date('2025-01-23T17:08:34.159Z').getTime());
-
-        (MyVariants.getVariants as any).mockImplementation(() => [
-            { pgn: '1. e4 e5', orientation: 'white' },
-            { pgn: '1. d4 d5', orientation: 'white' },
-        ]);
     });
 
     afterEach(() => {
@@ -77,6 +69,7 @@ describe('RepertoireDataUtils', () => {
                     {
                         pgn: '1. e4 e5',
                         orientation: 'white',
+                        classifications: [],
                         errorEMA: 1,
                         numberOfTimesPlayed: 1,
                         lastSucceededEpoch: 0,
@@ -110,6 +103,7 @@ describe('RepertoireDataUtils', () => {
                     {
                         pgn: '1. e4 e5',
                         orientation: 'white',
+                        classifications: [],
                         errorEMA: 1,
                         numberOfTimesPlayed: 1,
                         lastSucceededEpoch: 0,
@@ -142,6 +136,7 @@ describe('RepertoireDataUtils', () => {
                     {
                         pgn: '1. e4 e5',
                         orientation: 'white',
+                        classifications: [],
                         errorEMA: 2,
                         numberOfTimesPlayed: 5,
                         lastSucceededEpoch: 3,
@@ -150,6 +145,7 @@ describe('RepertoireDataUtils', () => {
                     {
                         pgn: '1. d4 d5',
                         orientation: 'white',
+                        classifications: [],
                         errorEMA: 0,
                         numberOfTimesPlayed: 10,
                         lastSucceededEpoch: 2,
@@ -189,8 +185,8 @@ describe('RepertoireDataUtils', () => {
         it('should convert an array of OpeningVariant objects into RepertoireData', () => {
             // Prepare
             const variants: OpeningVariant[] = [
-                new OpeningVariant('1. e4 e5', 'white'),
-                new OpeningVariant('1. d4 d5', 'white')
+                new OpeningVariant('1. e4 e5', 'white', []),
+                new OpeningVariant('1. d4 d5', 'white', [])
             ];
 
             // Modify some fields

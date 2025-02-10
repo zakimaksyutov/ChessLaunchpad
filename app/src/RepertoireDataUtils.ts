@@ -1,34 +1,10 @@
 import { OpeningVariant } from "./OpeningVariant";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { LaunchpadLogic } from "./LaunchpadLogic";
-import { MyVariants } from './MyVariants';
 
 export class RepertoireDataUtils {
 
-    // This is temp solution while migrating from hardcoded list to backend.
-    // Moving forward this should be removed.
-    private static addMyVariantsToRepertoireData(repertoireData: RepertoireData): void {
-        const dataMap = new Map<string, OpeningVariantData>(
-            repertoireData.data.map(data => [`${data.pgn}_${data.orientation}`, data])
-        );
-
-        const variants = MyVariants.getVariants();
-        for (const variant of variants) {
-            const key = `${variant.pgn}_${variant.orientation}`;
-            if (!dataMap.has(key)) {
-                repertoireData.data.push({
-                    pgn: variant.pgn,
-                    orientation: variant.orientation,
-                    errorEMA: 0,
-                    numberOfTimesPlayed: 0,
-                    lastSucceededEpoch: 0,
-                    successEMA: 0
-                });
-            }
-        }
-    }
-
-    public static normalize(repertoireData: RepertoireData, addLocalVariants: boolean = false): void {
+    public static normalize(repertoireData: RepertoireData): void {
         // Handle data from backend, normalize/provide defaults if needed.
         if (!repertoireData.data) {
             repertoireData.data = [];
@@ -59,11 +35,6 @@ export class RepertoireDataUtils {
             }
         }
 
-        // Load my hardcoded variants into the repertoire data.
-        if (addLocalVariants) {
-            RepertoireDataUtils.addMyVariantsToRepertoireData(repertoireData);
-        }
-
         // Check whether we started a new epoch (a new day).
         // Note, if a player hasn't played for N days, then the epoch will be incremented only once and not N times.
         var newEpoch: boolean = false;
@@ -85,7 +56,7 @@ export class RepertoireDataUtils {
 
     public static convertToVariantData(repertoireData: RepertoireData): OpeningVariant[] {
         const variants = repertoireData.data.map(data => {
-            const variant = new OpeningVariant(data.pgn, data.orientation);
+            const variant = new OpeningVariant(data.pgn, data.orientation, data.classifications);
             variant.errorEMA = data.errorEMA;
             variant.numberOfTimesPlayed = data.numberOfTimesPlayed;
             variant.lastSucceededEpoch = data.lastSucceededEpoch;
@@ -104,6 +75,7 @@ export class RepertoireDataUtils {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
             orientation: variant.orientation,
+            classifications: variant.classifications,
             errorEMA: variant.errorEMA,
             numberOfTimesPlayed: variant.numberOfTimesPlayed,
             lastSucceededEpoch: variant.lastSucceededEpoch,

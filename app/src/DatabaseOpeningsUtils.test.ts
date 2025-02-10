@@ -91,4 +91,16 @@ describe('DatabaseOpeningsUtils with real data', () => {
         expect(results[3]).toBe('C00 French Defense: Normal Variation');
         expect(results[4]).toBe('C10 French Defense: Paulsen Variation');
     });
+
+    test('classifies a known Sicilian Defense line (B44) from real data with comments', () => {
+        // A PGN for "B44 Sicilian Defense: Taimanov Variation"
+        const testPgn = '1. e4 c5 2. Nf3 {[%cal Ge7e5,Gd2d4]} e6 3. d4 {[%cal Gc5d4,Gf3d4]} cxd4 4. Nxd4 Nc6';
+
+        const results = DatabaseOpeningsUtils.ClassifyOpening(testPgn, realOpenings);
+
+        // Expect the following classification:
+        expect(results.length).toBe(2);
+        expect(results[0]).toBe('B40 Sicilian Defense: French Variation, Open');
+        expect(results[1]).toBe('B44 Sicilian Defense: Taimanov Variation');
+    });
 });

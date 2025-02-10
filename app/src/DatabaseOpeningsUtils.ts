@@ -32,7 +32,7 @@ export class DatabaseOpeningsUtils {
 
     public static async DownloadOpenings(): Promise<DatabaseOpening[]> {
         try {
-            const response = await fetch('/openings.tsv');
+            const response = await fetch(process.env.PUBLIC_URL + '/openings.tsv');
             if (!response.ok) {
                 throw new Error(`Failed to fetch openings.tsv: ${response.statusText}`);
             }
@@ -65,6 +65,7 @@ export class DatabaseOpeningsUtils {
 
         const chess = new Chess();
         chess.loadPgn(pgn);
+        chess.deleteComments(); // We use pgn to match with database openings, need to remove comments first
 
         // We'll check from the longest line downward.
         // We'll ignore the first white's move since it doesn't add much value to classification.

@@ -1,6 +1,7 @@
 export interface OpeningVariantData {
     pgn: string;
     orientation: 'black' | 'white';
+    classifications: string[];
     errorEMA: number;
     numberOfTimesPlayed: number;
     lastSucceededEpoch: number;
