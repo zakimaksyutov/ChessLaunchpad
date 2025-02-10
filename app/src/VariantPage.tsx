@@ -5,7 +5,7 @@ import ChessboardControl from './ChessboardControl';
 import { Chess, Move } from 'chess.js';
 import { Annotation } from './Annotation';
 import { extractAnnotations, serializeAnnotationsAsComment } from './AnnotationUtils';
-import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
+import { DatabaseOpeningsUtils } from './DatabaseOpeningsUtils';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
