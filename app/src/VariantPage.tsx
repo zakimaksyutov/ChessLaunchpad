@@ -26,13 +26,11 @@ interface ContextMenuState {
  * 
  * Page layout:
  *   +--------------------------------------------------------+
- *   | Save   Cancel                                          |
+ *   | Save   Cancel  Flip board                              |
  *   +--------------------------------------------------------+
  *   | [ ChessboardControl ]                                  |
  *   +--------------------------------------------------------+
- *   | Orientation: [ white / black ]   [Back Move button]    |
- *   +--------------------------------------------------------+
- *   | PGN:  <text area> or read-only text for the PGN        |
+ *   | PGN:  Read-only text for the PGN                       |
  *   +--------------------------------------------------------+
  */
 const VariantPage: React.FC = () => {
