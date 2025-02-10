@@ -5,6 +5,7 @@ import ChessboardControl from './ChessboardControl';
 import { Chess, Move } from 'chess.js';
 import { Annotation } from './Annotation';
 import { extractAnnotations, serializeAnnotationsAsComment } from './AnnotationUtils';
+import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
@@ -189,11 +190,15 @@ const VariantPage: React.FC = () => {
                 repertoire.data = repertoire.data.filter(v => v !== oldVariant);
             }
 
+            // Classify the variant
+            const openings = await DatabaseOpeningsUtils.DownloadOpenings();
+            const classifications = DatabaseOpeningsUtils.ClassifyOpening(finalPgn, openings);
+
             // Add to the repertoire
             repertoire.data.push({
                 pgn: finalPgn,
                 orientation,
-                classifications: [],
+                classifications: classifications,
                 errorEMA: 0,
                 numberOfTimesPlayed: 0,
                 lastSucceededEpoch: 0,

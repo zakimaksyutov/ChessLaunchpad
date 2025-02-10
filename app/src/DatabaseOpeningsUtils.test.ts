@@ -71,8 +71,9 @@ describe('DatabaseOpeningsUtils with real data', () => {
     let realOpenings: DatabaseOpening[] = [];
 
     beforeAll(() => {
-        // Read .\..\public\openings.tsv relative to this file
-        const tsvPath = path.resolve(__dirname, '.\\..\\public\\openings.tsv');
+        // If the test file is at: app/src/DatabaseOpeningsUtils.test.ts
+        // and public/ is at:      app/public/openings.tsv
+        const tsvPath = path.resolve(__dirname, '..', 'public', 'openings.tsv');
         const tsvContent = fs.readFileSync(tsvPath, 'utf8');
         realOpenings = DatabaseOpeningsUtils.ParseOpeningsTsv(tsvContent);
     });
