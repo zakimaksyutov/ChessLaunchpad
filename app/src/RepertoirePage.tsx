@@ -13,6 +13,7 @@ interface ParsedVariant {
     orientation: 'white' | 'black';
     pgn: string;
     numberOfTimesPlayed: number;
+    classifications: string[];
 }
 
 const FILE_EXTENSION = 'chess';
@@ -30,6 +31,7 @@ const RepertoirePage: React.FC = () => {
 
     const [repData, setRepData] = useState<RepertoireData | null>(null);
     const [variants, setVariants] = useState<ParsedVariant[]>([]);
+    const [filter, setFilter] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -50,6 +52,16 @@ const RepertoirePage: React.FC = () => {
         return createDataAccessLayer(username, hashedPassword);
     }, []);
 
+    const filteredVariants = useMemo(() => {
+        if (!filter.trim()) {
+            return variants;
+        }
+        const f = filter.toLowerCase();
+        return variants.filter((v) =>
+            v.classifications.some((cls) => cls.toLowerCase().includes(f))
+        );
+    }, [variants, filter]);
+
     // On mount, load repertoire data
     useEffect(() => {
         const fetchData = async () => {
@@ -62,6 +74,7 @@ const RepertoirePage: React.FC = () => {
                     orientation: data.orientation,
                     pgn: data.pgn,
                     numberOfTimesPlayed: data.numberOfTimesPlayed,
+                    classifications: data.classifications ?? [],
                 })).sort((a, b) => {
                     // Sort so that 'white' comes before 'black'.
                     // If orientation is the same, then sort by pgn lexicographically.
@@ -234,6 +247,13 @@ const RepertoirePage: React.FC = () => {
                     accept={`.${FILE_EXTENSION}`}
                     onChange={handleImportFileSelected}
                 />
+                <input
+                    type="text"
+                    placeholder="Enter opening name"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    style={{ marginLeft: '1rem' }}
+                />
             </div>
             {variants.length === 0 ? (
                 <p>No variants found.</p>
@@ -254,7 +274,7 @@ const RepertoirePage: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {variants.map((v, i) => (
+                        {filteredVariants.map((v, i) => (
                             <tr key={i}>
                                 <td style={tdStyle}>
                                     {v.orientation}
