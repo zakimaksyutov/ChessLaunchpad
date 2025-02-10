@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom'; // to read query params
 import TrainingPageControl from './TrainingPageControl';
 import { OpeningVariant } from './OpeningVariant';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
@@ -16,6 +17,9 @@ const TrainingPage: React.FC = () => {
     const [orientationAndVariants, setOrientationAndVariants] = useState<OrientationAndVariants | null>(null);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
+
+    const [searchParams] = useSearchParams();
+    const filterParam = searchParams.get('filter') ?? '';
 
     const dal: IDataAccessLayer = useMemo(() => {
         const username = localStorage.getItem('username');
@@ -38,7 +42,7 @@ const TrainingPage: React.FC = () => {
             try {
                 const data: RepertoireData = await dal.retrieveRepertoireData();
                 setRepertoireData(data);
-                setOrientationAndVariants(pickOrientationAndVariants(data));
+                setOrientationAndVariants(pickOrientationAndVariants(data, filterParam));
 
                 console.log(`DAL: Loaded ${data.data.length} variants.`);
             } catch (e: any) {
@@ -52,25 +56,41 @@ const TrainingPage: React.FC = () => {
 
         fetchVariants();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // run once on mount
+    }, [filterParam]); // run once on mount
 
 
-    const pickOrientationAndVariants = (repertoireData: RepertoireData): OrientationAndVariants => {
-        const allVariants = RepertoireDataUtils.convertToVariantData(repertoireData);
+    const pickOrientationAndVariants = (repertoireData: RepertoireData, filter: string): OrientationAndVariants => {
+        let variants = RepertoireDataUtils.convertToVariantData(repertoireData);
 
-        const whiteVariants: OpeningVariant[] = allVariants.filter(v => v.orientation === 'white');
-        const blackVariants: OpeningVariant[] = allVariants.filter(v => v.orientation === 'black');
+        // Only *logically* filter if filter is provided
+        if (filter.trim()) {
+            const lowerFilter = filter.toLowerCase();
+            variants = variants.filter((v) =>
+                v.classifications.some((cls) => cls.toLowerCase().includes(lowerFilter))
+            );
+        }
+        
+        const whiteVariants: OpeningVariant[] = variants.filter(v => v.orientation === 'white');
+        const blackVariants: OpeningVariant[] = variants.filter(v => v.orientation === 'black');
 
         // Guard against zero-length arrays:
         if (whiteVariants.length === 0 && blackVariants.length === 0) {
-            return { orientation: 'white' as const, selectedVariants: [] as OpeningVariant[], allVariants: [] as OpeningVariant[] };
+            return {
+                orientation: 'white' as const,
+                selectedVariants: [] as OpeningVariant[],
+                allVariants: RepertoireDataUtils.convertToVariantData(repertoireData), // the entire unfiltered set
+            };
         }
 
         // Decide orientation based on ratio
         const whiteRatio: number = whiteVariants.length / (whiteVariants.length + blackVariants.length);
         const orientation: 'white' | 'black' = Math.random() < whiteRatio ? 'white' : 'black';
         const selectedVariants: OpeningVariant[] = orientation === 'white' ? whiteVariants : blackVariants;
-        return { allVariants, orientation, selectedVariants };
+        return { 
+            allVariants: RepertoireDataUtils.convertToVariantData(repertoireData), // the entire unfiltered set
+            orientation,
+            selectedVariants
+        };
     };
 
     // Handle completion of a training round
@@ -95,7 +115,7 @@ const TrainingPage: React.FC = () => {
     const handleLoadNext = () => {
         setTimeout(() => {
             // If we're loading next - it means we successfully loaded repertoire data.
-            setOrientationAndVariants(pickOrientationAndVariants(repertoireData!));
+            setOrientationAndVariants(pickOrientationAndVariants(repertoireData!, filterParam));
         }, 50);
     };
 

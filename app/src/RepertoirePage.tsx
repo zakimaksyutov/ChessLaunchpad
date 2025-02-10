@@ -174,6 +174,14 @@ const RepertoirePage: React.FC = () => {
         }
     };
 
+    const handleTrain = () => {
+        if (filteredVariants.length === 0) {
+            alert("No variants match your filter. Please adjust your filter before training.");
+            return;
+        }
+        navigate(`/training?filter=${encodeURIComponent(filter.trim())}`);
+    };
+
     // Track mouse move to position the popover
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         setMousePos({ x: e.clientX, y: e.clientY });
@@ -254,6 +262,9 @@ const RepertoirePage: React.FC = () => {
                     onChange={(e) => setFilter(e.target.value)}
                     style={{ marginLeft: '1rem' }}
                 />
+                <button onClick={handleTrain} style={{ marginLeft: '8px' }}>
+                    Train
+                </button>
             </div>
             {variants.length === 0 ? (
                 <p>No variants found.</p>
