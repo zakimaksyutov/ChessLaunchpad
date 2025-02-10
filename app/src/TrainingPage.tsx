@@ -60,9 +60,10 @@ const TrainingPage: React.FC = () => {
 
 
     const pickOrientationAndVariants = (repertoireData: RepertoireData, filter: string): OrientationAndVariants => {
-        let variants = RepertoireDataUtils.convertToVariantData(repertoireData);
+        const allVariants = RepertoireDataUtils.convertToVariantData(repertoireData);
 
         // Only *logically* filter if filter is provided
+        let variants = allVariants;
         if (filter.trim()) {
             const lowerFilter = filter.toLowerCase();
             variants = variants.filter((v) =>
@@ -78,7 +79,7 @@ const TrainingPage: React.FC = () => {
             return {
                 orientation: 'white' as const,
                 selectedVariants: [] as OpeningVariant[],
-                allVariants: RepertoireDataUtils.convertToVariantData(repertoireData), // the entire unfiltered set
+                allVariants
             };
         }
 
@@ -87,7 +88,7 @@ const TrainingPage: React.FC = () => {
         const orientation: 'white' | 'black' = Math.random() < whiteRatio ? 'white' : 'black';
         const selectedVariants: OpeningVariant[] = orientation === 'white' ? whiteVariants : blackVariants;
         return { 
-            allVariants: RepertoireDataUtils.convertToVariantData(repertoireData), // the entire unfiltered set
+            allVariants,
             orientation,
             selectedVariants
         };
