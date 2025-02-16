@@ -26,6 +26,8 @@ interface TrainingPageControlProps {
 
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
 
+    const EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS = 200;
+
     ////////////////////////////////////////////
     // React References
     const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Timeout reference for auto-play
@@ -79,7 +81,14 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
         if (autoLoadNext) {
             // We auto-play in 1 second if there were errors, otherwise in 5 seconds
-            const durationMilliseconds = logic.hadErrors() ? 5000 : 1000;
+            let durationMilliseconds = logic.hadErrors() ? 5000 : 1000;
+
+            // We also give extra time per annotation
+            const annotations = logic.getAnnotations(chess.fen());
+            durationMilliseconds += annotations.length * EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS;
+
+            console.log(`Auto-playing in ${durationMilliseconds}ms`);
+
             const stepMilliseconds = 100;
             const numberOfSteps = durationMilliseconds / stepMilliseconds;
             const progressBarStepSize = 100 / numberOfSteps;
@@ -176,14 +185,14 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             clearTimeout(timeoutRef.current);
         }
 
-        // If there are annotations then we delay auto-play by 150ms per annotation.
+        // If there are annotations then we delay auto-play by extra time per annotation.
         // The idea is that we want to give the user to follow annotations.
         const annotations = logic.getAnnotations(chess.fen());
 
         timeoutRef.current = setTimeout(() => {
             playNextMove(chess);
             timeoutRef.current = null; // Reset after execution
-        }, 750 + annotations.length * 150); // Delay before playing the next move
+        }, 750 + annotations.length * EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS); // Delay before playing the next move
     }
 
     const playNextMove = (chess: Chess) => {
