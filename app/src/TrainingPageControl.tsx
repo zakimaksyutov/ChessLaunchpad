@@ -87,8 +87,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             const annotations = logic.getAnnotations(chess.fen());
             durationMilliseconds += annotations.length * EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS;
 
-            console.log(`Auto-playing in ${durationMilliseconds}ms`);
-
             const stepMilliseconds = 100;
             const numberOfSteps = durationMilliseconds / stepMilliseconds;
             const progressBarStepSize = 100 / numberOfSteps;
@@ -111,7 +109,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                 clearInterval(interval);
             }
         };
-    }, [autoLoadNext, onLoadNext, logic]);
+    }, [autoLoadNext, onLoadNext, logic, chess]);
 
     const handleMove = (orig: string, dest: string, isLastMoveAutoplayed: boolean): boolean => {
 
