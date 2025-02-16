@@ -176,10 +176,14 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             clearTimeout(timeoutRef.current);
         }
 
+        // If there are annotations then we delay auto-play by 150ms per annotation.
+        // The idea is that we want to give the user to follow annotations.
+        const annotations = logic.getAnnotations(chess.fen());
+
         timeoutRef.current = setTimeout(() => {
             playNextMove(chess);
             timeoutRef.current = null; // Reset after execution
-        }, 750); // Delay before playing the next move
+        }, 750 + annotations.length * 150); // Delay before playing the next move
     }
 
     const playNextMove = (chess: Chess) => {
