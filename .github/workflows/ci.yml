@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set build version env
+        run: |
+          echo "REACT_APP_BUILD_VERSION=$(date -u +'%Y%m%d-%H%M%SZ')-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+        
       - name: Check out repository
         uses: actions/checkout@v3
 
@@ -41,6 +45,8 @@ jobs:
       - name: Build
         run: yarn build
         working-directory: app
+        env:
+          REACT_APP_BUILD_VERSION: ${{ env.REACT_APP_BUILD_VERSION }}
 
       - name: Configure git user
         # This ensures gh-pages can commit with a known identity
