@@ -18,6 +18,7 @@ interface ParsedVariant {
     recencyFactor: number;
     frequencyFactor: number;
     errorFactor: number;
+    newnessFactor: number;
     weight: number;
 }
 
@@ -91,6 +92,7 @@ const RepertoirePage: React.FC = () => {
                     recencyFactor: ov.recencyFactor,
                     frequencyFactor: ov.frequencyFactor,
                     errorFactor: ov.errorFactor,
+                    newnessFactor: ov.newnessFactor,
                     weight: ov.weight
                 })).sort((a, b) => {
                     // Sort so that 'white' comes before 'black'.
@@ -309,6 +311,12 @@ const RepertoirePage: React.FC = () => {
                             {showStats && (
                                 <>
                                     <th style={thStyle}>
+                                        _nf
+                                        <FaInfoCircle title="Newness Factor - If a variant has been played successfully fewer than 7 times, the factor is higher. Formula: (1 + max(7 - num, 0))^2."
+                                            style={{ marginLeft: '4px', color: '#888' }}
+                                        />
+                                    </th>
+                                    <th style={thStyle}>
                                         _rf
                                         <FaInfoCircle title="Recency Factor - The longer it has been since last played, the higher the factor. Formula: 1 + (number of days since last played)."
                                             style={{ marginLeft: '4px', color: '#888' }}
@@ -326,7 +334,7 @@ const RepertoirePage: React.FC = () => {
                                         /></th>
                                     <th style={thStyle}>
                                         _w
-                                        <FaInfoCircle title="Weight - Used to calculate the probability of selecting the next move from available variants. Formula: _w = _rf * _ff * _ef."
+                                        <FaInfoCircle title="Weight - Used to calculate the probability of selecting the next move from available variants. Formula: _w = _nf * _rf * _ff * _ef."
                                             style={{ marginLeft: '4px', color: '#888' }}
                                         /></th>
                                 </>
@@ -365,10 +373,11 @@ const RepertoirePage: React.FC = () => {
                                 <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
                                 {showStats && (
                                     <>
-                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.recencyFactor !== undefined ? v.recencyFactor.toFixed(4) : '-'}</td>
-                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.frequencyFactor !== undefined ? v.frequencyFactor.toFixed(4) : '-'}</td>
-                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.errorFactor !== undefined ? v.errorFactor.toFixed(4) : '-'}</td>
-                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.weight !== undefined ? v.weight.toFixed(4) : '-'}</td>
+                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.newnessFactor !== undefined ? v.newnessFactor.toFixed(4) : '-'}</td>
+                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.recencyFactor !== undefined ? v.recencyFactor.toFixed(4) : '-'}</td>
+                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.frequencyFactor !== undefined ? v.frequencyFactor.toFixed(4) : '-'}</td>
+                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.errorFactor !== undefined ? v.errorFactor.toFixed(4) : '-'}</td>
+                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.weight !== undefined ? v.weight.toFixed(4) : '-'}</td>
                                     </>
                                 )}
                             </tr>

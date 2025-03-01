@@ -40,6 +40,7 @@ export class OpeningVariant {
     public recencyFactor: number = 0.0;
     public frequencyFactor: number = 0.0;
     public errorFactor: number = 0.0;
+    public newnessFactor: number = 0.0;
 
     // One-round values. They make sense only if returned as a part of getNextMove
     public isPicked: boolean = false;
@@ -77,6 +78,9 @@ export class OpeningVariant {
         // If there were errors while playing a variant, increase its weight.
         this.errorFactor = Math.pow(1.0 + this.errorEMA, 2);
 
-        this.weight = this.errorFactor * this.recencyFactor * this.frequencyFactor;
+        // If a variant is played less than 7 times, increase its weight.
+        this.newnessFactor = Math.pow(1.0 + Math.max(7 - this.numberOfTimesPlayed, 0), 2);
+
+        this.weight = this.errorFactor * this.recencyFactor * this.frequencyFactor * this.newnessFactor;
     }
 }

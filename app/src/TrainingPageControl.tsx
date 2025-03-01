@@ -275,13 +275,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                         <tr>
                             <th className="th">pgn</th>
                             <th className="th">#</th>
-                            <th className="th">EMA</th>
-                            <th className="th">last</th>
-                            <th className="th">rf</th>
-                            <th className="th">ff</th>
-                            <th className="th">ef</th>
-                            <th className="th">w</th>
-                            <th className="th">wp</th>
+                            <th className="th">_nf</th>
+                            <th className="th">_rf</th>
+                            <th className="th">_ff</th>
+                            <th className="th">_ef</th>
+                            <th className="th">_w</th>
+                            <th className="th">_wp</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -289,8 +288,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                             <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
                                 <td className="td">{variant.pgnWithoutAnnotations}</td>
                                 <td className="td">{variant.numberOfTimesPlayed}</td>
-                                <td className="td">{Math.round(variant.errorEMA * 100) / 100}</td>
-                                <td className="td">{variant.lastSucceededEpoch}</td>
+                                <td className="td">{Math.round(variant.newnessFactor * 100) / 100}</td>
                                 <td className="td">{Math.round(variant.recencyFactor * 100) / 100}</td>
                                 <td className="td">{Math.round(variant.frequencyFactor * 100) / 100}</td>
                                 <td className="td">{Math.round(variant.errorFactor * 100) / 100}</td>
