@@ -64,4 +64,19 @@ export class OpeningVariant {
 
         this.pgnWithoutAnnotations = this.chess.pgn();
     }
+
+    public calculateWeight(): void {
+        // Increase weight if it hasn't been played for a while.
+        // For newly added variants this will immediately result in a big weight.
+        this.recencyFactor = 1 + (this.currentEpoch - this.lastSucceededEpoch);
+
+        // If we successfully played a variant, decreate its weight.
+        // We use EMA to calculate successEMA (see above).
+        this.frequencyFactor = 1.0 / Math.pow(1 + this.successEMA, 2);
+
+        // If there were errors while playing a variant, increase its weight.
+        this.errorFactor = Math.pow(1.0 + this.errorEMA, 2);
+
+        this.weight = this.errorFactor * this.recencyFactor * this.frequencyFactor;
+    }
 }

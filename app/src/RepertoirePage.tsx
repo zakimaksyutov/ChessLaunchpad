@@ -3,8 +3,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { useNavigate } from 'react-router-dom';
-import { FaEdit, FaTrashAlt } from 'react-icons/fa';
+import { FaEdit, FaTrashAlt, FaInfoCircle } from 'react-icons/fa';
 import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
+import { RepertoireDataUtils } from './RepertoireDataUtils';
 import ChessboardControl from './ChessboardControl';
 import PgnControl from './PgnControl';
 import './RepertoirePage.css';
@@ -14,6 +15,10 @@ interface ParsedVariant {
     pgn: string;
     numberOfTimesPlayed: number;
     classifications: string[];
+    recencyFactor: number;
+    frequencyFactor: number;
+    errorFactor: number;
+    weight: number;
 }
 
 const FILE_EXTENSION = 'chess';
@@ -34,6 +39,7 @@ const RepertoirePage: React.FC = () => {
     const [filter, setFilter] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [showStats, setShowStats] = useState(false);
 
     // We'll store the FEN we're previewing (hovered).
     const [hoveredFen, setHoveredFen] = useState<string | null>(null);
@@ -70,11 +76,22 @@ const RepertoirePage: React.FC = () => {
                 const repDataFromServer: RepertoireData = await dal.retrieveRepertoireData();
                 setRepData(repDataFromServer);
 
-                const parsed = repDataFromServer.data.map((data) => ({
-                    orientation: data.orientation,
-                    pgn: data.pgn,
-                    numberOfTimesPlayed: data.numberOfTimesPlayed,
-                    classifications: data.classifications ?? [],
+                // Convert to OpeningVariant objects:
+                const allVariants = RepertoireDataUtils.convertToVariantData(repDataFromServer);
+                for (const ov of allVariants) {
+                    ov.calculateWeight();
+                }
+
+                // Map them to your ParsedVariant structure:
+                const parsed = allVariants.map((ov) => ({
+                    orientation: ov.orientation,
+                    pgn: ov.pgn,
+                    numberOfTimesPlayed: ov.numberOfTimesPlayed,
+                    classifications: ov.classifications ?? [],
+                    recencyFactor: ov.recencyFactor,
+                    frequencyFactor: ov.frequencyFactor,
+                    errorFactor: ov.errorFactor,
+                    weight: ov.weight
                 })).sort((a, b) => {
                     // Sort so that 'white' comes before 'black'.
                     // If orientation is the same, then sort by pgn lexicographically.
@@ -265,7 +282,14 @@ const RepertoirePage: React.FC = () => {
                 <button onClick={handleTrain} style={{ marginLeft: '8px' }}>
                     Train
                 </button>
-            </div>
+                <label style={{ marginLeft: '8px' }}>
+                    <input
+                        type="checkbox"
+                        checked={showStats}
+                        onChange={(e) => setShowStats(e.target.checked)}
+                    />
+                    Internal stats
+                </label>            </div>
             {variants.length === 0 ? (
                 <p>No variants found.</p>
             ) : (
@@ -282,6 +306,31 @@ const RepertoirePage: React.FC = () => {
                             <th style={thStyle}>PGN</th>
                             <th style={thStyle}>Actions</th>
                             <th style={thStyle}>Times Played</th>
+                            {showStats && (
+                                <>
+                                    <th style={thStyle}>
+                                        _rf
+                                        <FaInfoCircle title="Recency Factor - The longer it has been since last played, the higher the factor. Formula: 1 + (number of days since last played)."
+                                            style={{ marginLeft: '4px', color: '#888' }}
+                                        />
+                                    </th>
+                                    <th style={thStyle}>
+                                        _ff
+                                        <FaInfoCircle title="Frequency Factor - The more often a variant is played, the lower the factor. It is internally tracked as an Exponential Moving Average (EMA) with α = 0.6667 (averaging across three days). Any error resets the factor to 0, and it increases daily. Formula: 1 / (1 + EMA)^2."
+                                            style={{ marginLeft: '4px', color: '#888' }}
+                                        /></th>
+                                    <th style={thStyle}>
+                                        _ef
+                                        <FaInfoCircle title="Error Factor - The more errors recorded, the higher the factor. It is internally tracked as a decaying sum of errors. Formula: (1 + sum of errors)^2."
+                                            style={{ marginLeft: '4px', color: '#888' }}
+                                        /></th>
+                                    <th style={thStyle}>
+                                        _w
+                                        <FaInfoCircle title="Weight - Used to calculate the probability of selecting the next move from available variants. Formula: _w = _rf * _ff * _ef."
+                                            style={{ marginLeft: '4px', color: '#888' }}
+                                        /></th>
+                                </>
+                            )}
                         </tr>
                     </thead>
                     <tbody>
@@ -314,6 +363,14 @@ const RepertoirePage: React.FC = () => {
                                     />
                                 </td>
                                 <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
+                                {showStats && (
+                                    <>
+                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.recencyFactor !== undefined ? v.recencyFactor.toFixed(4) : '-'}</td>
+                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.frequencyFactor !== undefined ? v.frequencyFactor.toFixed(4) : '-'}</td>
+                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.errorFactor !== undefined ? v.errorFactor.toFixed(4) : '-'}</td>
+                                        <td style={{...tdStyle, whiteSpace: 'nowrap', width: '1%'}}>{v.weight !== undefined ? v.weight.toFixed(4) : '-'}</td>
+                                    </>
+                                )}
                             </tr>
                         ))}
                     </tbody>

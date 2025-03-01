@@ -135,7 +135,7 @@ export class LaunchpadLogic {
 
         // Calculate weighted probability.
         for (const variant of applicableVariants) {
-            this.calculateWeight(variant);
+            variant.calculateWeight();
         }
         for (const variant of applicableVariants) {
             variant.weightedProbability = this.calculateProbability(variant.weight, applicableVariants);
@@ -159,21 +159,6 @@ export class LaunchpadLogic {
         }
 
         throw new Error('No variant selected based on weighted probability.');
-    }
-
-    public calculateWeight(variant: OpeningVariant): void {
-        // Increase weight if it hasn't been played for a while.
-        // For newly added variants this will immediately result in a big weight.
-        variant.recencyFactor = 1 + (variant.currentEpoch - variant.lastSucceededEpoch);
-
-        // If we successfully played a variant, decreate its weight.
-        // We use EMA to calculate successEMA (see above).
-        variant.frequencyFactor = 1.0 / Math.pow(1 + variant.successEMA, 2);
-
-        // If there were errors while playing a variant, increase its weight.
-        variant.errorFactor = Math.pow(1.0 + variant.errorEMA, 2);
-
-        variant.weight = variant.errorFactor * variant.recencyFactor * variant.frequencyFactor;
     }
 
     private calculateProbability(weight: number, variants: OpeningVariant[]): number {
