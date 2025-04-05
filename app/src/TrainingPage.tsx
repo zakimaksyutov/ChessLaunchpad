@@ -12,9 +12,58 @@ interface OrientationAndVariants {
     allVariants: OpeningVariant[];
 }
 
+function BadgeRow({ oldest, eightieth, errorsCount }: { oldest: number; eightieth: number; errorsCount: number }) {
+    const wrapperStyle: React.CSSProperties = {
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '5px',
+    };
+
+    const leftPartStyle: React.CSSProperties = {
+        backgroundColor: '#555', // typical left segment color (dark gray)
+        color: '#fff',
+        padding: '1px 8px',
+        paddingBottom: '2px',
+        borderRadius: '4px 0 0 4px',
+        fontSize: '0.8rem',
+    };
+
+    const rightPartStyle: React.CSSProperties = {
+        backgroundColor: '#4c1', // typical right segment color (green)
+        color: '#fff',
+        padding: '1px 8px',
+        paddingBottom: '2px',
+        borderRadius: '0 4px 4px 0',
+        fontSize: '0.8rem',
+    };
+
+    // Reusable helper to render a two-part badge
+    const renderBadge = (label: React.ReactNode, value: string, isError?: boolean) => {
+        const adjustedRightPartStyle = isError
+            ? { ...rightPartStyle, backgroundColor: '#FF8C00' }
+            : rightPartStyle;
+
+        return (<div style={{ display: 'inline-flex' }}>
+            <span style={leftPartStyle}>{label}</span>
+            <span style={adjustedRightPartStyle}>{value}</span>
+        </div>);
+    };
+
+    return (
+        <div style={wrapperStyle}>
+            {renderBadge('oldest', oldest.toString())}
+            {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString())}
+            {renderBadge('errors', errorsCount.toString(), true)}
+        </div>
+    );
+}
+
 const TrainingPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [orientationAndVariants, setOrientationAndVariants] = useState<OrientationAndVariants | null>(null);
+    const [oldest, setOldest] = useState<number>(0);
+    const [eightieth, setEightieth] = useState<number>(0);
+    const [errorsCount, setErrorsCount] = useState<number>(0);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -58,6 +107,32 @@ const TrainingPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterParam]); // run once on mount
 
+    useEffect(() => {
+        if (!orientationAndVariants?.allVariants || orientationAndVariants.allVariants.length === 0) {
+            setOldest(0);
+            setEightieth(0);
+            setErrorsCount(0);
+            return;
+        }
+
+        // List of “ages”: how many epochs ago each variant was last played
+        const ages = orientationAndVariants.allVariants.map(
+            v => v.currentEpoch - v.lastSucceededEpoch
+        );
+
+        ages.sort((a, b) => a - b);  // sort ascending
+        const maxAge = Math.max(...ages);
+
+        // 80th percentile index
+        const rankIndex = Math.floor(0.8 * (ages.length - 1));
+        const percentile80 = ages[rankIndex];
+
+        setOldest(maxAge);
+        setEightieth(percentile80);
+
+        const count = orientationAndVariants.allVariants.filter((v) => v.errorEMA > 2).length;
+        setErrorsCount(count);
+    }, [orientationAndVariants]);
 
     const pickOrientationAndVariants = (repertoireData: RepertoireData, filter: string): OrientationAndVariants => {
         const allVariants = RepertoireDataUtils.convertToVariantData(repertoireData);
@@ -137,6 +212,7 @@ const TrainingPage: React.FC = () => {
 
     return (
         <div style={{ padding: '0.5rem' }}>
+            <BadgeRow oldest={oldest} eightieth={eightieth} errorsCount={errorsCount} />
             <TrainingPageControl
                 variants={selectedVariants}
                 onCompletion={handleCompletion}
