@@ -38,7 +38,7 @@ function BadgeRow({ oldest, eightieth, errorsCount }: { oldest: number; eightiet
     };
 
     // Reusable helper to render a two-part badge
-    const renderBadge = (label: string, value: string) => (
+    const renderBadge = (label: React.ReactNode, value: string) => (
         <div style={{ display: 'inline-flex' }}>
             <span style={leftPartStyle}>{label}</span>
             <span style={rightPartStyle}>{value}</span>
@@ -48,7 +48,7 @@ function BadgeRow({ oldest, eightieth, errorsCount }: { oldest: number; eightiet
     return (
         <div style={wrapperStyle}>
             {renderBadge('oldest', oldest.toString())}
-            {renderBadge('80th', eightieth.toString())}
+            {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString())}
             {renderBadge('errors', errorsCount.toString())}
         </div>
     );
