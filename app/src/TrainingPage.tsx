@@ -12,7 +12,7 @@ interface OrientationAndVariants {
     allVariants: OpeningVariant[];
 }
 
-function BadgeRow({ oldest, eightieth }: { oldest: number; eightieth: number }) {
+function BadgeRow({ oldest, eightieth, errorsCount }: { oldest: number; eightieth: number; errorsCount: number }) {
     const wrapperStyle: React.CSSProperties = {
         display: 'flex',
         gap: '8px',
@@ -49,7 +49,7 @@ function BadgeRow({ oldest, eightieth }: { oldest: number; eightieth: number }) 
         <div style={wrapperStyle}>
             {renderBadge('oldest', oldest.toString())}
             {renderBadge('80th', eightieth.toString())}
-            {renderBadge('today', '3')}
+            {renderBadge('errors', errorsCount.toString())}
         </div>
     );
 }
@@ -59,6 +59,7 @@ const TrainingPage: React.FC = () => {
     const [orientationAndVariants, setOrientationAndVariants] = useState<OrientationAndVariants | null>(null);
     const [oldest, setOldest] = useState<number>(0);
     const [eightieth, setEightieth] = useState<number>(0);
+    const [errorsCount, setErrorsCount] = useState<number>(0);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -106,6 +107,7 @@ const TrainingPage: React.FC = () => {
         if (!orientationAndVariants?.allVariants || orientationAndVariants.allVariants.length === 0) {
             setOldest(0);
             setEightieth(0);
+            setErrorsCount(0);
             return;
         }
 
@@ -123,6 +125,9 @@ const TrainingPage: React.FC = () => {
 
         setOldest(maxAge);
         setEightieth(percentile80);
+
+        const count = orientationAndVariants.allVariants.filter((v) => v.errorEMA > 2).length;
+        setErrorsCount(count);
     }, [orientationAndVariants]);
 
     const pickOrientationAndVariants = (repertoireData: RepertoireData, filter: string): OrientationAndVariants => {
@@ -203,7 +208,7 @@ const TrainingPage: React.FC = () => {
 
     return (
         <div style={{ padding: '0.5rem' }}>
-            <BadgeRow oldest={oldest} eightieth={eightieth} />
+            <BadgeRow oldest={oldest} eightieth={eightieth} errorsCount={errorsCount} />
             <TrainingPageControl
                 variants={selectedVariants}
                 onCompletion={handleCompletion}
