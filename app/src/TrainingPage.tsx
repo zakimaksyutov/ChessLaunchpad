@@ -12,6 +12,48 @@ interface OrientationAndVariants {
     allVariants: OpeningVariant[];
 }
 
+function BadgeRow() {
+    const wrapperStyle: React.CSSProperties = {
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '5px',
+    };
+
+    const leftPartStyle: React.CSSProperties = {
+        backgroundColor: '#555', // typical left segment color (dark gray)
+        color: '#fff',
+        padding: '1px 8px',
+        paddingBottom: '2px',
+        borderRadius: '4px 0 0 4px',
+        fontSize: '0.8rem',
+    };
+
+    const rightPartStyle: React.CSSProperties = {
+        backgroundColor: '#4c1', // typical right segment color (green)
+        color: '#fff',
+        padding: '1px 8px',
+        paddingBottom: '2px',
+        borderRadius: '0 4px 4px 0',
+        fontSize: '0.8rem',
+    };
+
+    // Reusable helper to render a two-part badge
+    const renderBadge = (label: string, value: string) => (
+        <div style={{ display: 'inline-flex' }}>
+            <span style={leftPartStyle}>{label}</span>
+            <span style={rightPartStyle}>{value}</span>
+        </div>
+    );
+
+    return (
+        <div style={wrapperStyle}>
+            {renderBadge('oldest', '1')}
+            {renderBadge('80th', '2')}
+            {renderBadge('today', '3')}
+        </div>
+    );
+}
+
 const TrainingPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [orientationAndVariants, setOrientationAndVariants] = useState<OrientationAndVariants | null>(null);
@@ -137,6 +179,7 @@ const TrainingPage: React.FC = () => {
 
     return (
         <div style={{ padding: '0.5rem' }}>
+            <BadgeRow />
             <TrainingPageControl
                 variants={selectedVariants}
                 onCompletion={handleCompletion}
