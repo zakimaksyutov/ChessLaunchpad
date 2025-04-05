@@ -12,7 +12,7 @@ interface OrientationAndVariants {
     allVariants: OpeningVariant[];
 }
 
-function BadgeRow() {
+function BadgeRow({ oldest, eightieth }: { oldest: number; eightieth: number }) {
     const wrapperStyle: React.CSSProperties = {
         display: 'flex',
         gap: '8px',
@@ -47,8 +47,8 @@ function BadgeRow() {
 
     return (
         <div style={wrapperStyle}>
-            {renderBadge('oldest', '1')}
-            {renderBadge('80th', '2')}
+            {renderBadge('oldest', oldest.toString())}
+            {renderBadge('80th', eightieth.toString())}
             {renderBadge('today', '3')}
         </div>
     );
@@ -57,6 +57,8 @@ function BadgeRow() {
 const TrainingPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [orientationAndVariants, setOrientationAndVariants] = useState<OrientationAndVariants | null>(null);
+    const [oldest, setOldest] = useState<number>(0);
+    const [eightieth, setEightieth] = useState<number>(0);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
 
@@ -100,6 +102,28 @@ const TrainingPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterParam]); // run once on mount
 
+    useEffect(() => {
+        if (!orientationAndVariants?.allVariants || orientationAndVariants.allVariants.length === 0) {
+            setOldest(0);
+            setEightieth(0);
+            return;
+        }
+
+        // List of “ages”: how many epochs ago each variant was last played
+        const ages = orientationAndVariants.allVariants.map(
+            v => v.currentEpoch - v.lastSucceededEpoch
+        );
+
+        ages.sort((a, b) => a - b);  // sort ascending
+        const maxAge = Math.max(...ages);
+
+        // 80th percentile index
+        const rankIndex = Math.floor(0.8 * (ages.length - 1));
+        const percentile80 = ages[rankIndex];
+
+        setOldest(maxAge);
+        setEightieth(percentile80);
+    }, [orientationAndVariants]);
 
     const pickOrientationAndVariants = (repertoireData: RepertoireData, filter: string): OrientationAndVariants => {
         const allVariants = RepertoireDataUtils.convertToVariantData(repertoireData);
@@ -179,7 +203,7 @@ const TrainingPage: React.FC = () => {
 
     return (
         <div style={{ padding: '0.5rem' }}>
-            <BadgeRow />
+            <BadgeRow oldest={oldest} eightieth={eightieth} />
             <TrainingPageControl
                 variants={selectedVariants}
                 onCompletion={handleCompletion}
