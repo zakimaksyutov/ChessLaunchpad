@@ -9,14 +9,14 @@ interface BadgeRowProps {
 const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     const wrapperStyle: React.CSSProperties = {
         display: 'flex',
-        gap: '8px',
+        gap: '6px',
         marginBottom: '5px',
     };
 
     const leftPartStyle: React.CSSProperties = {
         backgroundColor: '#555',
         color: '#fff',
-        padding: '1px 8px',
+        padding: '1px 6px',
         paddingBottom: '2px',
         borderRadius: '4px 0 0 4px',
         fontSize: '0.8rem',
