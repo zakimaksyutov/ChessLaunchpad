@@ -32,9 +32,9 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     };
 
     // Compute oldest, eightieth, and error counts from RepertoireData:
-    const { oldest, eightieth, errorsCount, total } = useMemo(() => {
+    const { oldest, eightieth, errorsCount, total, dailyCount } = useMemo(() => {
         if (!repertoireData || !repertoireData.data?.length) {
-            return { oldest: 0, eightieth: 0, errorsCount: 0, total: 0 };
+            return { oldest: 0, eightieth: 0, errorsCount: 0, total: 0, dailyCount: 0 };
         }
 
         const ages = repertoireData.data.map(v => repertoireData.currentEpoch - v.lastSucceededEpoch);
@@ -52,6 +52,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
             eightieth: percentile80,
             errorsCount: errorCount,
             total: total,
+            dailyCount: repertoireData.dailyPlayCount
         };
     }, [repertoireData]);
 
@@ -77,6 +78,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
 
     const oldestBgColor = useMemo(() => getGradientColor(oldest, 6, 10), [oldest]);
     const eightiethBgColor = useMemo(() => getGradientColor(eightieth, 4, 8), [eightieth]);
+    const dailyCountBgColor = useMemo(() => getGradientColor(Math.max(0, 10 - dailyCount), 0, 10), [dailyCount]);
 
     const renderBadge = (label: React.ReactNode, value: string, backgroundColor?: string) => {
         const finalStyle: React.CSSProperties = {
@@ -98,6 +100,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
             {renderBadge('oldest', oldest.toString(), oldestBgColor)}
             {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString(), eightiethBgColor)}
             {renderBadge('errors', errorsCount.toString(), '#FF8C00')}
+            {renderBadge('today', dailyCount.toString(), dailyCountBgColor)}
         </div>
     );
 };

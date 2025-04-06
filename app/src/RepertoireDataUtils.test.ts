@@ -77,7 +77,8 @@ describe('RepertoireDataUtils', () => {
                     }
                 ],
                 currentEpoch: 5,
-                lastPlayedDate: yesterday
+                lastPlayedDate: yesterday,
+                dailyPlayCount: 5 // pretend we've played 5 times "yesterday"
             };
 
             // Act
@@ -91,6 +92,9 @@ describe('RepertoireDataUtils', () => {
 
             // Validate that successEMA has been adjusted
             expect(repertoireData.data[0].successEMA).toBe(10 * 0.5);
+
+            // Check dailyPlayCount gets reset on new day
+            expect(repertoireData.dailyPlayCount).toBe(0);
         });
 
         it('should NOT increment epoch and adjust success EMA if current date has not changed', () => {
@@ -111,7 +115,8 @@ describe('RepertoireDataUtils', () => {
                     }
                 ],
                 currentEpoch: 5,
-                lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly()
+                lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
+                dailyPlayCount: 5
             };
 
             // Act
@@ -125,6 +130,9 @@ describe('RepertoireDataUtils', () => {
 
             // Validate that successEMA has NOT been adjusted
             expect(repertoireData.data[0].successEMA).toBe(10);
+
+            // Confirm dailyPlayCount remains unchanged if the day hasn't changed
+            expect(repertoireData.dailyPlayCount).toBe(5);
         });
     });
 
@@ -153,7 +161,8 @@ describe('RepertoireDataUtils', () => {
                     },
                 ],
                 currentEpoch: 10,
-                lastPlayedDate: new Date()
+                lastPlayedDate: new Date(),
+                dailyPlayCount: 0
             };
 
             // Act
@@ -203,7 +212,7 @@ describe('RepertoireDataUtils', () => {
             variants[1].currentEpoch = 9; // bigger than first
 
             // Act
-            const result = RepertoireDataUtils.convertToRepertoireData(variants);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3);
 
             // Assert
             expect(result.data).toHaveLength(2);
@@ -223,6 +232,7 @@ describe('RepertoireDataUtils', () => {
 
             // currentEpoch should be the max among the variants
             expect(result.currentEpoch).toBe(9);
+            expect(result.dailyPlayCount).toBe(3);
 
             // lastPlayedDate should be "today"
             const today = RepertoireDataUtils.getCurrentDateOnly();

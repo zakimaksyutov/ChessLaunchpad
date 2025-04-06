@@ -18,6 +18,9 @@ export class RepertoireDataUtils {
             // If it was sent as a string, re-hydrate into a real Date
             repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
         }
+        if (!repertoireData.dailyPlayCount) {
+            repertoireData.dailyPlayCount = 0;
+        }
 
         // Normalize the data
         for (const variant of repertoireData.data) {
@@ -48,6 +51,9 @@ export class RepertoireDataUtils {
 
         // If a new epoch has started, adjust successEMA.
         if (newEpoch) {
+            // Reset daily counter on new epoch
+            repertoireData.dailyPlayCount = 0;
+        
             for (const variant of repertoireData.data) {
                 variant.successEMA = LaunchpadLogic.SUCCESS_EMA_ALPHA * variant.successEMA;
             }
@@ -71,7 +77,7 @@ export class RepertoireDataUtils {
         return variants;
     }
 
-    public static convertToRepertoireData(variants: OpeningVariant[]): RepertoireData {
+    public static convertToRepertoireData(variants: OpeningVariant[], dailyPlayCount: number): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
             orientation: variant.orientation,
@@ -85,7 +91,8 @@ export class RepertoireDataUtils {
         return {
             data,
             currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
-            lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly()
+            lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
+            dailyPlayCount: dailyPlayCount
         };
     }
 
