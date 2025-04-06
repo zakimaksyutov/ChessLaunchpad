@@ -32,9 +32,9 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     };
 
     // Compute oldest, eightieth, and error counts from RepertoireData:
-    const { oldest, eightieth, errorsCount } = useMemo(() => {
+    const { oldest, eightieth, errorsCount, total } = useMemo(() => {
         if (!repertoireData || !repertoireData.data?.length) {
-            return { oldest: 0, eightieth: 0, errorsCount: 0 };
+            return { oldest: 0, eightieth: 0, errorsCount: 0, total: 0 };
         }
 
         const ages = repertoireData.data.map(v => repertoireData.currentEpoch - v.lastSucceededEpoch);
@@ -43,34 +43,61 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
         const maxAge = Math.max(...ages);
         const rankIndex = Math.floor(0.8 * (ages.length - 1));
         const percentile80 = ages[rankIndex];
+        const total = ages.length;
 
         const errorCount = repertoireData.data.filter(v => v.errorEMA > 2).length;
 
         return {
             oldest: maxAge,
             eightieth: percentile80,
-            errorsCount: errorCount
+            errorsCount: errorCount,
+            total: total,
         };
     }, [repertoireData]);
 
-    const renderBadge = (label: React.ReactNode, value: string, isError?: boolean) => {
-        const adjustedRightPartStyle = isError
-            ? { ...rightPartStyle, backgroundColor: '#FF8C00' }
-            : rightPartStyle;
+    // Helper to compute a gradient from green (minVal) to red (maxVal).
+    // For example, getGradientColor(value, 6, 10) moves from green if value <= 6
+    // to red if value >= 10 (and smoothly transitions in between).
+    const getGradientColor = (value: number, minVal: number, maxVal: number): string => {
+        // Clamp value to [minVal, maxVal].
+        if (value <= minVal) return '#4c1'; // green
+        if (value >= maxVal) return '#c00'; // red
+
+        // Compute ratio for linear interpolation.
+        const ratio = (value - minVal) / (maxVal - minVal);
+
+        // Green (#4c1) = (76,193,1), Red (#c00) = (204,0,0)
+        const greenRGB = [76, 193, 1];
+        const redRGB = [204, 0, 0];
+        const r = Math.round(greenRGB[0] + ratio * (redRGB[0] - greenRGB[0]));
+        const g = Math.round(greenRGB[1] + ratio * (redRGB[1] - greenRGB[1]));
+        const b = Math.round(greenRGB[2] + ratio * (redRGB[2] - greenRGB[2]));
+        return `rgb(${r}, ${g}, ${b})`;
+    };
+
+    const oldestBgColor = useMemo(() => getGradientColor(oldest, 6, 10), [oldest]);
+    const eightiethBgColor = useMemo(() => getGradientColor(eightieth, 4, 8), [eightieth]);
+
+    const renderBadge = (label: React.ReactNode, value: string, backgroundColor?: string) => {
+        const finalStyle: React.CSSProperties = {
+            ...rightPartStyle,
+            backgroundColor: backgroundColor ?? rightPartStyle.backgroundColor,
+        };
 
         return (
             <div style={{ display: 'inline-flex' }}>
                 <span style={leftPartStyle}>{label}</span>
-                <span style={adjustedRightPartStyle}>{value}</span>
+                <span style={finalStyle}>{value}</span>
             </div>
         );
     };
 
     return (
         <div style={wrapperStyle}>
-            {renderBadge('oldest', oldest.toString())}
-            {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString())}
-            {renderBadge('errors', errorsCount.toString(), true)}
+            {renderBadge('total', total.toString())}
+            {renderBadge('oldest', oldest.toString(), oldestBgColor)}
+            {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString(), eightiethBgColor)}
+            {renderBadge('errors', errorsCount.toString(), '#FF8C00')}
         </div>
     );
 };
