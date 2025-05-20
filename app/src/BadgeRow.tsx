@@ -7,11 +7,6 @@ interface BadgeRowProps {
 }
 
 const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
-    const wrapperStyle: React.CSSProperties = {
-        display: 'flex',
-        gap: '6px',
-        marginBottom: '5px',
-    };
 
     const leftPartStyle: React.CSSProperties = {
         backgroundColor: '#555',
@@ -107,7 +102,16 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     };
 
     return (
-        <div style={wrapperStyle}>
+        <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: '0.4rem',
+            margin: '0',
+            marginBottom: '0.4rem',
+            maxWidth: '100%',
+            paddingBottom: '0'
+        }}>
             {renderBadge('total', total.toString())}
             {renderBadge('oldest', oldest.toString(), oldestBgColor)}
             {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString(), eightiethBgColor)}

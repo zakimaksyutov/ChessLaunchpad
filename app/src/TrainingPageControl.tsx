@@ -202,7 +202,13 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
     }
 
     return (
-        <div>
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            width: '100%',
+            maxWidth: '100%'
+        }}>
             {(() => {
                 const annotations = logic.getAnnotations(fen);
 
@@ -224,7 +230,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                     position: 'relative',
                     overflowY: 'auto',
                     backgroundColor: '#f5f5f5',
-                    marginTop: '10px'
+                    margin: '10px auto'
                 }}
             >
                 {/* PGN text in the background */}
@@ -269,7 +275,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                     </div>
                 )}
             </div>
-            <div style={{ marginTop: '10px' }}>
+            <div className="table-container">
                 <table className="table">
                     <thead>
                         <tr>

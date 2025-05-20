@@ -136,7 +136,15 @@ const TrainingPage: React.FC = () => {
     const { orientation, selectedVariants } = orientationAndVariants;
 
     return (
-        <div style={{ padding: '0.5rem' }}>
+        <div style={{ 
+            padding: '0.5rem',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            width: '100%',
+            maxWidth: '100vw',
+            overflowX: 'hidden'
+        }}>
             <BadgeRow repertoireData={repertoireData} />
             <TrainingPageControl
                 variants={selectedVariants}
