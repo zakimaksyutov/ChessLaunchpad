@@ -141,7 +141,9 @@ const TrainingPage: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            width: '100%'
+            width: '100%',
+            maxWidth: '100vw',
+            overflowX: 'hidden'
         }}>
             <BadgeRow repertoireData={repertoireData} />
             <TrainingPageControl

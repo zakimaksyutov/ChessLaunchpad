@@ -5,9 +5,23 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Ensure all elements respect box sizing */
+* {
+  box-sizing: border-box;
+}
+
+/* Ensure root div doesn't overflow */
+#root {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
 }

@@ -1,12 +1,24 @@
+/* Apply box-sizing to all elements */
+* {
+    box-sizing: border-box;
+}
+
 .table {
     border-collapse: collapse;
     width: 100%;
     max-width: 704px;
     margin: 0 auto;
+    table-layout: fixed;
 }
 
 .th, .td {
     border: 1px solid #ddd;
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 2px;
+    font-size: 0.8rem;
+    max-width: 80px;
 }
 
 .th {
@@ -16,4 +28,12 @@
 
 .highlight {
     background-color: yellow;
+}
+
+/* Add container for table with overflow handling */
+.table-container {
+    width: 100%;
+    max-width: 704px;
+    overflow-x: auto;
+    margin: 0 auto;
 }
