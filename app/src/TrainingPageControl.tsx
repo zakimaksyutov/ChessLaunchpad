@@ -40,11 +40,28 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
     const [progress, setProgress] = useState<number>(0); // Progress bar till auto-loading
     const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]); // Applicable variants for the position before the last move
     const [roundId, setRoundId] = useState<string>(''); // ID of the current round
+    const [showDebugTable, setShowDebugTable] = useState<boolean>(false); // Whether to show the debug table
 
     ////////////////////////////////////////////
     // React Memory
     const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants), [variants]);
     const chess = useMemo(() => new Chess(), []);
+
+    ////////////////////////////////////////////
+    // React Effect: Handle keyboard shortcuts for debugging
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            // Check for Ctrl+Alt+D
+            if (event.ctrlKey && event.altKey && event.key === 'd') {
+                setShowDebugTable(prev => !prev);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
 
     ////////////////////////////////////////////
     // React Effect: Full reset when orientation or variants change
@@ -275,36 +292,38 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                     </div>
                 )}
             </div>
-            <div className="table-container">
-                <table className="table">
-                    <thead>
-                        <tr>
-                            <th className="th">pgn</th>
-                            <th className="th">#</th>
-                            <th className="th">_nf</th>
-                            <th className="th">_rf</th>
-                            <th className="th">_ff</th>
-                            <th className="th">_ef</th>
-                            <th className="th">_w</th>
-                            <th className="th">_wp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {applicableVariants.map((variant, index) => (
-                            <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
-                                <td className="td">{variant.pgnWithoutAnnotations}</td>
-                                <td className="td">{variant.numberOfTimesPlayed}</td>
-                                <td className="td">{Math.round(variant.newnessFactor * 100) / 100}</td>
-                                <td className="td">{Math.round(variant.recencyFactor * 100) / 100}</td>
-                                <td className="td">{Math.round(variant.frequencyFactor * 100) / 100}</td>
-                                <td className="td">{Math.round(variant.errorFactor * 100) / 100}</td>
-                                <td className="td">{Math.round(variant.weight * 100) / 100}</td>
-                                <td className="td">{Math.round(variant.weightedProbability * 10000) / 100}%</td>
+            {showDebugTable && (
+                <div className="table-container">
+                    <table className="table">
+                        <thead>
+                            <tr>
+                                <th className="th">pgn</th>
+                                <th className="th">#</th>
+                                <th className="th">_nf</th>
+                                <th className="th">_rf</th>
+                                <th className="th">_ff</th>
+                                <th className="th">_ef</th>
+                                <th className="th">_w</th>
+                                <th className="th">_wp</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody>
+                            {applicableVariants.map((variant, index) => (
+                                <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
+                                    <td className="td">{variant.pgnWithoutAnnotations}</td>
+                                    <td className="td">{variant.numberOfTimesPlayed}</td>
+                                    <td className="td">{Math.round(variant.newnessFactor * 100) / 100}</td>
+                                    <td className="td">{Math.round(variant.recencyFactor * 100) / 100}</td>
+                                    <td className="td">{Math.round(variant.frequencyFactor * 100) / 100}</td>
+                                    <td className="td">{Math.round(variant.errorFactor * 100) / 100}</td>
+                                    <td className="td">{Math.round(variant.weight * 100) / 100}</td>
+                                    <td className="td">{Math.round(variant.weightedProbability * 10000) / 100}%</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 };
