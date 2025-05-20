@@ -45,7 +45,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
         const percentile80 = ages[rankIndex];
         const total = ages.length;
 
-        const errorCount = repertoireData.data.filter(v => v.errorEMA > 2).length;
+        const errorCount = repertoireData.data.filter(v => v.errorEMA > 1).length;
 
         return {
             oldest: maxAge,
@@ -76,9 +76,21 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
         return `rgb(${r}, ${g}, ${b})`;
     };
 
-    const oldestBgColor = useMemo(() => getGradientColor(oldest, 6, 10), [oldest]);
-    const eightiethBgColor = useMemo(() => getGradientColor(eightieth, 4, 8), [eightieth]);
-    const dailyCountBgColor = useMemo(() => getGradientColor(Math.max(0, 10 - dailyCount), 0, 10), [dailyCount]);
+    // Dynamic thresholds based on total number of variants
+    const oldestMin = Math.ceil(total * 0.1);
+    const oldestMax = Math.floor(total * 0.2);
+    const eightiethMin = Math.ceil(total * 0.05);
+    const eightiethMax = Math.floor(total * 0.1);
+    const dailyCountMax = Math.ceil(total * 0.2);
+    
+    // Dynamic thresholds for errors badge
+    const errorsMin = Math.ceil(total * 0.02);
+    const errorsMax = Math.floor(total * 0.08);
+
+    const oldestBgColor = useMemo(() => getGradientColor(oldest, oldestMin, oldestMax), [oldest, oldestMin, oldestMax]);
+    const eightiethBgColor = useMemo(() => getGradientColor(eightieth, eightiethMin, eightiethMax), [eightieth, eightiethMin, eightiethMax]);
+    const dailyCountBgColor = useMemo(() => getGradientColor(Math.max(0, dailyCountMax - dailyCount), 0, dailyCountMax), [dailyCount, dailyCountMax]);
+    const errorsBgColor = useMemo(() => getGradientColor(errorsCount, errorsMin, errorsMax), [errorsCount, errorsMin, errorsMax]);
 
     const renderBadge = (label: React.ReactNode, value: string, backgroundColor?: string) => {
         const finalStyle: React.CSSProperties = {
@@ -99,7 +111,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
             {renderBadge('total', total.toString())}
             {renderBadge('oldest', oldest.toString(), oldestBgColor)}
             {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString(), eightiethBgColor)}
-            {renderBadge('errors', errorsCount.toString(), '#FF8C00')}
+            {renderBadge('errors', errorsCount.toString(), errorsBgColor)}
             {renderBadge('today', dailyCount.toString(), dailyCountBgColor)}
         </div>
     );
