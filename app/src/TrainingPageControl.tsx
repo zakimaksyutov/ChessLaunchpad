@@ -314,7 +314,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                         </thead>
                         <tbody>
                             {applicableVariants
-                                .filter(variant => tableVisibility === TABLE_FULL || variant.isPicked)
+                                .filter(variant => tableVisibility === TABLE_FULL || 
+                                                 (tableVisibility === TABLE_SELECTED_ONLY && variant.isPicked))
                                 .map((variant, index) => (
                                     <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
                                         <td className="td">{variant.pgnWithoutAnnotations}</td>
