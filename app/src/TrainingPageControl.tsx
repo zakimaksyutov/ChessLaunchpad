@@ -24,6 +24,11 @@ interface TrainingPageControlProps {
     orientation: 'white' | 'black';
 }
 
+// Table visibility states
+const TABLE_HIDDEN = 0;
+const TABLE_SELECTED_ONLY = 1;
+const TABLE_FULL = 2;
+
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
 
     const EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS = 200;
@@ -40,7 +45,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
     const [progress, setProgress] = useState<number>(0); // Progress bar till auto-loading
     const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]); // Applicable variants for the position before the last move
     const [roundId, setRoundId] = useState<string>(''); // ID of the current round
-    const [showDebugTable, setShowDebugTable] = useState<boolean>(false); // Whether to show the debug table
+    const [tableVisibility, setTableVisibility] = useState<number>(TABLE_HIDDEN); // Table visibility state
 
     ////////////////////////////////////////////
     // React Memory
@@ -53,7 +58,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         const handleKeyDown = (event: KeyboardEvent) => {
             // Check for Ctrl+Alt+D
             if (event.ctrlKey && event.altKey && event.key === 'd') {
-                setShowDebugTable(prev => !prev);
+                setTableVisibility(prev => (prev + 1) % 3); // Cycle through 0, 1, 2
             }
         };
 
@@ -292,7 +297,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                     </div>
                 )}
             </div>
-            {showDebugTable && (
+            {tableVisibility !== TABLE_HIDDEN && (
                 <div className="table-container">
                     <table className="table">
                         <thead>
@@ -308,18 +313,20 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
                             </tr>
                         </thead>
                         <tbody>
-                            {applicableVariants.map((variant, index) => (
-                                <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
-                                    <td className="td">{variant.pgnWithoutAnnotations}</td>
-                                    <td className="td">{variant.numberOfTimesPlayed}</td>
-                                    <td className="td">{Math.round(variant.newnessFactor * 100) / 100}</td>
-                                    <td className="td">{Math.round(variant.recencyFactor * 100) / 100}</td>
-                                    <td className="td">{Math.round(variant.frequencyFactor * 100) / 100}</td>
-                                    <td className="td">{Math.round(variant.errorFactor * 100) / 100}</td>
-                                    <td className="td">{Math.round(variant.weight * 100) / 100}</td>
-                                    <td className="td">{Math.round(variant.weightedProbability * 10000) / 100}%</td>
-                                </tr>
-                            ))}
+                            {applicableVariants
+                                .filter(variant => tableVisibility === TABLE_FULL || variant.isPicked)
+                                .map((variant, index) => (
+                                    <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
+                                        <td className="td">{variant.pgnWithoutAnnotations}</td>
+                                        <td className="td">{variant.numberOfTimesPlayed}</td>
+                                        <td className="td">{Math.round(variant.newnessFactor * 100) / 100}</td>
+                                        <td className="td">{Math.round(variant.recencyFactor * 100) / 100}</td>
+                                        <td className="td">{Math.round(variant.frequencyFactor * 100) / 100}</td>
+                                        <td className="td">{Math.round(variant.errorFactor * 100) / 100}</td>
+                                        <td className="td">{Math.round(variant.weight * 100) / 100}</td>
+                                        <td className="td">{Math.round(variant.weightedProbability * 10000) / 100}%</td>
+                                    </tr>
+                                ))}
                         </tbody>
                     </table>
                 </div>
