@@ -59,7 +59,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 // Create a new user account
                 await dal.createAccount();
             } else {
-                // Attempt to retrieve the user’s variants to validate the password
+                // Attempt to retrieve the user's variants to validate the password
                 await dal.retrieveRepertoireData();
             }
 
@@ -126,6 +126,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         />
                     </div>
                 )}
+                
+                <div style={{ marginBottom: '12px', fontSize: '0.85rem', color: '#555' }}>
+                    🔒 Security Note: Your password is hashed locally in your browser. Only the hash is sent to our servers — your actual password never leaves your device.
+                </div>
+                
                 <button type="submit">
                     {isSignUp ? 'Sign Up' : 'Login'}
                 </button>
