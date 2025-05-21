@@ -89,7 +89,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     const dailyCountBgColor = useMemo(() => getGradientColor(Math.max(0, dailyCountMax - dailyCount), 0, dailyCountMax), [dailyCount, dailyCountMax]);
     const errorsBgColor = useMemo(() => getGradientColor(errorsCount, errorsMin, errorsMax), [errorsCount, errorsMin, errorsMax]);
 
-    const renderBadge = (label: React.ReactNode, value: string, backgroundColor?: string) => {
+    const renderBadge = (label: React.ReactNode, value: React.ReactNode, backgroundColor?: string) => {
         const finalStyle: React.CSSProperties = {
             ...rightPartStyle,
             backgroundColor: backgroundColor ?? rightPartStyle.backgroundColor,
@@ -115,7 +115,25 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
             paddingBottom: '0'
         }}>
             {renderBadge('total', total.toString())}
-            {renderBadge('oldest', `${oldest} (${oldestCount})`, oldestBgColor)}
+            {renderBadge('oldest', 
+                <span>
+                    {oldest}{' '}
+                    <span style={{ 
+                        display: 'inline-block', 
+                        position: 'relative',
+                        bottom: '0.1em', 
+                        fontSize: '0.85em',
+                    }}>(</span>
+                    {oldestCount}
+                    <span style={{ 
+                        display: 'inline-block', 
+                        position: 'relative',
+                        bottom: '0.1em', 
+                        fontSize: '0.85em',
+                    }}>)</span>
+                </span>, 
+                oldestBgColor
+            )}
             {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString(), eightiethBgColor)}
             {renderBadge('errors', errorsCount.toString(), errorsBgColor)}
             {renderBadge('today', dailyCount.toString(), dailyCountBgColor)}
