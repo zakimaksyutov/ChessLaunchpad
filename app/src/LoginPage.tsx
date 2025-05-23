@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from "react-router-dom";
-import { hashPassword } from './HashPassword';
+import { derivePassword } from './HashPassword';
 import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from './DataAccessLayer';
 
 type LoginPageProps = {
@@ -46,15 +46,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
 
         try {
-            // Derive a new "hashed password" from the user's raw password
-            // This is one-way hash and from backend API perspective this will represent the user's password.
+            // Derive a password using PBKDF2 with username as salt for better security
+            // This is a one-way derivation and from backend API perspective this will represent the user's password.
             // The real password will not be sent to the backend.
-            // Also, the hashed password will be stored in localStorage for future requests. While this makes it vulnerable to XSS attacks,
-            // since the data in this app is not sensitive (worst case - someone can read or delete opening variants), the main
-            // effort was made not to store a password in plain text in case a user uses this password in other more critical places.
-            const hashedPassword = await hashPassword(password);
+            const derivedPassword = await derivePassword(password, username);
 
-            const dal: IDataAccessLayer = createDataAccessLayer(username, hashedPassword);
+            const dal: IDataAccessLayer = createDataAccessLayer(username, derivedPassword);
             if (isSignUp) {
                 // Create a new user account
                 await dal.createAccount();
@@ -65,7 +62,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
             // Store the derived password in localStorage (instead of the real password)
             localStorage.setItem('username', username);
-            localStorage.setItem('hashedPassword', hashedPassword);
+            localStorage.setItem('hashedPassword', derivedPassword);
 
             // Call the parent component's callback to update the username
             onLogin(username);
@@ -128,7 +125,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 )}
                 
                 <div style={{ marginBottom: '12px', fontSize: '0.85rem', color: '#555' }}>
-                    🔒 Security Note: Your password is hashed locally in your browser. Only the hash is sent to our servers — your actual password never leaves your device.
+                    🔒 Security Note: Your password is securely derived using PBKDF2 in your browser. Only this derived value is sent to our servers — your actual password never leaves your device.
                 </div>
                 
                 <button type="submit">
