@@ -7,6 +7,7 @@ import TrainingPage from './TrainingPage';
 import RepertoirePage from './RepertoirePage';
 import VariantPage from './VariantPage';
 import ProtectedRoute from './ProtectedRoute';
+import appInsights, { initializeAppInsights } from './AppInsights';
 import './App.css';
 
 const App: React.FC = () => {
@@ -23,6 +24,18 @@ const App: React.FC = () => {
       return;
     }
     didInit.current = true;
+
+    // Initialize Application Insights
+    initializeAppInsights();
+    
+    // Emit a custom event to track app initialization
+    appInsights.trackEvent({
+      name: 'AppInitialized',
+      properties: {
+        timestamp: new Date().toISOString(),
+        hasStoredUser: !!localStorage.getItem('username')
+      }
+    });
 
     const storedName = localStorage.getItem('username');
     if (storedName) {
