@@ -39,23 +39,6 @@ const appInsights = new ApplicationInsights({
   }
 });
 
-// Telemetry initializer to add build version to every telemetry item
-const addBuildVersionToTelemetry = (envelope: any) => {
-  const buildVersion = process.env.REACT_APP_BUILD_VERSION;
-  if (buildVersion) {
-    // Add build version to custom properties
-    envelope.data = envelope.data || {};
-    envelope.data.baseData = envelope.data.baseData || {};
-    envelope.data.baseData.properties = envelope.data.baseData.properties || {};
-    envelope.data.baseData.properties.buildVersion = buildVersion;
-    
-    // Also add to tags for easier filtering in Application Insights
-    envelope.tags = envelope.tags || {};
-    envelope.tags['ai.application.ver'] = buildVersion;
-  }
-  return true;
-};
-
 // Initialize but don't load yet since everything is disabled
 // appInsights.loadAppInsights();
 
@@ -65,11 +48,12 @@ export default appInsights;
 // Helper functions for when we want to enable specific features
 export const initializeAppInsights = () => {
   if (process.env.REACT_APP_APPINSIGHTS_CONNECTION_STRING) {
-    // Add the telemetry initializer before loading
-    appInsights.addTelemetryInitializer(addBuildVersionToTelemetry);
-    
     appInsights.loadAppInsights();
-    console.log('Application Insights initialized with build version:', process.env.REACT_APP_BUILD_VERSION);
+    
+    // Set the build version
+    appInsights.context.application.build = process.env.REACT_APP_BUILD_VERSION || 'unknown';
+
+    console.log('Application Insights initialized');
   } else {
     console.log('Application Insights not initialized - no connection string provided');
   }
