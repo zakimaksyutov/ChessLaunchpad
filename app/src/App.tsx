@@ -28,14 +28,14 @@ const App: React.FC = () => {
     // Initialize Application Insights
     initializeAppInsights();
     
-    // Emit a custom event to track app initialization
-    appInsights.trackEvent({
-      name: 'AppInitialized',
-      properties: {
-        timestamp: new Date().toISOString(),
-        hasStoredUser: !!localStorage.getItem('username')
-      }
-    });
+    // // Emit a custom event to track app initialization
+    // appInsights.trackEvent({
+    //   name: 'AppInitialized',
+    //   properties: {
+    //     timestamp: new Date().toISOString(),
+    //     hasStoredUser: !!localStorage.getItem('username')
+    //   }
+    // });
 
     const storedName = localStorage.getItem('username');
     if (storedName) {
