@@ -34,10 +34,21 @@ const App: React.FC = () => {
     trackEvent("AppLoad");
   }, []);
 
+  const handleLogout = () => {
+    // Track logout event
+    trackEvent("UserLogout");
+    
+    // Clear authenticated user context
+    appInsights.clearAuthenticatedUserContext();
+    
+    // Clear username state
+    setUsername(null);
+  };
+
   return (
     <div>
       <Router>
-        <Header username={username} onLogout={() => setUsername(null)} />
+        <Header username={username} onLogout={handleLogout} />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
