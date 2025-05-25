@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 import { derivePassword } from './HashPassword';
 import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from './DataAccessLayer';
-import appInsights, { trackEvent } from './AppInsights';
+import { trackEvent, setAuthenticatedUserContext } from './AppInsights';
 
 type LoginPageProps = {
     onLogin: (username: string) => void;
@@ -66,7 +66,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             localStorage.setItem('hashedPassword', derivedPassword);
 
             // Set authenticated context and track event to App Insights
-            appInsights.setAuthenticatedUserContext(username);
+            setAuthenticatedUserContext(username);
             trackEvent(isSignUp ? "UserSignUp" : "UserLogin");
 
             // Call the parent component's callback to update the username

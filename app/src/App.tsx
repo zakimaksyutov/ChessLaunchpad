@@ -8,7 +8,7 @@ import RepertoirePage from './RepertoirePage';
 import VariantPage from './VariantPage';
 import ProtectedRoute from './ProtectedRoute';
 import './App.css';
-import appInsights, { trackEvent } from './AppInsights';
+import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
 
 const App: React.FC = () => {
   // Track logged-in user in state
@@ -28,7 +28,7 @@ const App: React.FC = () => {
     const storedName = localStorage.getItem('username');
     if (storedName) {
       setUsername(storedName);
-      appInsights.setAuthenticatedUserContext(storedName);
+      setAuthenticatedUserContext(storedName);
     }
 
     trackEvent("AppLoad");
@@ -39,7 +39,7 @@ const App: React.FC = () => {
     trackEvent("UserLogout");
     
     // Clear authenticated user context
-    appInsights.clearAuthenticatedUserContext();
+    clearAuthenticatedUserContext();
     
     // Clear username state
     setUsername(null);
