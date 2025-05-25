@@ -12,6 +12,9 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
 
+    env:
+      REACT_APP_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }} 
+
     steps:
       - name: Set build version env
         run: |
