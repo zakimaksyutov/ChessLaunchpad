@@ -8,25 +8,7 @@ import RepertoirePage from './RepertoirePage';
 import VariantPage from './VariantPage';
 import ProtectedRoute from './ProtectedRoute';
 import './App.css';
-import { ApplicationInsights } from '@microsoft/applicationinsights-web';
-
-const appInsights = new ApplicationInsights({
-  config: {
-    connectionString: process.env.REACT_APP_APPINSIGHTS_CONNECTION_STRING,
-    disableAjaxTracking: true,
-    disableCorrelationHeaders: true,
-    disableFetchTracking: true,
-    enableAutoRouteTracking: false
-  }
-});
-
-appInsights.loadAppInsights();
-appInsights.context.application.ver = process.env.REACT_APP_BUILD_VERSION || 'unknown';
-
-appInsights.trackEvent(
-  { name: "MainLoad" },
-  { key1: "Value1", key2: "Value2" }
-);
+import appInsights, { trackEvent } from './AppInsights';
 
 const App: React.FC = () => {
   // Track logged-in user in state
@@ -46,7 +28,10 @@ const App: React.FC = () => {
     const storedName = localStorage.getItem('username');
     if (storedName) {
       setUsername(storedName);
+      appInsights.setAuthenticatedUserContext(storedName);
     }
+
+    trackEvent("AppLoad");
   }, []);
 
   return (
