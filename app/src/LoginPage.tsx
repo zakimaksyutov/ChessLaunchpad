@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 import { derivePassword } from './HashPassword';
 import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from './DataAccessLayer';
+import { trackEvent, setAuthenticatedUserContext } from './AppInsights';
 
 type LoginPageProps = {
     onLogin: (username: string) => void;
@@ -63,6 +64,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             // Store the derived password in localStorage (instead of the real password)
             localStorage.setItem('username', username);
             localStorage.setItem('hashedPassword', derivedPassword);
+
+            // Set authenticated context and track event to App Insights
+            setAuthenticatedUserContext(username);
+            trackEvent(isSignUp ? "UserSignUp" : "UserLogin");
 
             // Call the parent component's callback to update the username
             onLogin(username);

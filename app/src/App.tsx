@@ -8,6 +8,7 @@ import RepertoirePage from './RepertoirePage';
 import VariantPage from './VariantPage';
 import ProtectedRoute from './ProtectedRoute';
 import './App.css';
+import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
 
 const App: React.FC = () => {
   // Track logged-in user in state
@@ -27,13 +28,27 @@ const App: React.FC = () => {
     const storedName = localStorage.getItem('username');
     if (storedName) {
       setUsername(storedName);
+      setAuthenticatedUserContext(storedName);
     }
+
+    trackEvent("AppLoad");
   }, []);
+
+  const handleLogout = () => {
+    // Track logout event
+    trackEvent("UserLogout");
+    
+    // Clear authenticated user context
+    clearAuthenticatedUserContext();
+    
+    // Clear username state
+    setUsername(null);
+  };
 
   return (
     <div>
       <Router>
-        <Header username={username} onLogout={() => setUsername(null)} />
+        <Header username={username} onLogout={handleLogout} />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
