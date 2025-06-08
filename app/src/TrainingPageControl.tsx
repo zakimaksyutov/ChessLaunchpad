@@ -102,7 +102,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         let interval: NodeJS.Timeout | null = null;
 
         if (autoLoadNext) {
-            // We auto-play in 1 second if there were errors, otherwise in 5 seconds
+            // We auto-play in 5 seconds if there were errors, otherwise in 1 second
             let durationMilliseconds = logic.hadErrors() ? 5000 : 1000;
 
             // We also give extra time per annotation
