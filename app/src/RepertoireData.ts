@@ -6,6 +6,7 @@ export interface OpeningVariantData {
     numberOfTimesPlayed: number;
     lastSucceededEpoch: number;
     successEMA: number;
+    moveScores: { [key: string]: number };
 }
 
 export interface RepertoireData {
@@ -13,4 +14,5 @@ export interface RepertoireData {
     currentEpoch: number;
     lastPlayedDate: Date;
     dailyPlayCount: number; // How many times user has played on the current date
+    moveScores: { [key: string]: number };
 }

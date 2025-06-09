@@ -101,7 +101,7 @@ const TrainingPage: React.FC = () => {
         }
 
         try {
-            const newData = RepertoireDataUtils.convertToRepertoireData(orientationAndVariants.allVariants, repertoireData!.dailyPlayCount + 1);
+            const newData = RepertoireDataUtils.convertToRepertoireData(orientationAndVariants.allVariants, repertoireData!.dailyPlayCount + 1, repertoireData!.moveScores);
             setRepertoireData(newData); // Updating local copy - it will be used for loading the next round.
             await dal.storeRepertoireData(newData);
 
