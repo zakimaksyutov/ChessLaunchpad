@@ -25,7 +25,7 @@ describe('RepertoireDataUtils', () => {
     describe('normalize', () => {
         it('should not add any variants', () => {
             // Prepare
-            const repertoireData: Partial<RepertoireData> = {};
+            const repertoireData: Partial<RepertoireData> = {} as RepertoireData;
 
             // Act
             RepertoireDataUtils.normalize(repertoireData as RepertoireData);
@@ -33,6 +33,8 @@ describe('RepertoireDataUtils', () => {
             // Assert
             expect(repertoireData.data).toBeDefined();
             expect(repertoireData.data).toHaveLength(0);
+            expect(repertoireData.moveScores).toBeDefined();
+            expect(Object.keys(repertoireData.moveScores!)).toHaveLength(0);
         });
 
         it('should set default fields if they are missing', () => {
@@ -41,7 +43,7 @@ describe('RepertoireDataUtils', () => {
                 data: [
                     { pgn: '1. e4 e5', orientation: 'white' } as unknown as OpeningVariantData
                 ]
-            };
+            } as RepertoireData;
 
             // Act
             RepertoireDataUtils.normalize(repertoireData as RepertoireData);
@@ -57,6 +59,7 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.data![0].orientation).toBe('white');
             expect(repertoireData.currentEpoch).toBe(1);
             expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
+            expect(repertoireData.moveScores).toBeDefined();
         });
 
         it('should increment epoch and adjust success EMA if current date > lastPlayedDate (next day)', () => {
@@ -78,7 +81,8 @@ describe('RepertoireDataUtils', () => {
                 ],
                 currentEpoch: 5,
                 lastPlayedDate: yesterday,
-                dailyPlayCount: 5 // pretend we've played 5 times "yesterday"
+                dailyPlayCount: 5, // pretend we've played 5 times "yesterday"
+                moveScores: {}
             };
 
             // Act
@@ -116,7 +120,8 @@ describe('RepertoireDataUtils', () => {
                 ],
                 currentEpoch: 5,
                 lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-                dailyPlayCount: 5
+                dailyPlayCount: 5,
+                moveScores: {}
             };
 
             // Act
@@ -162,7 +167,8 @@ describe('RepertoireDataUtils', () => {
                 ],
                 currentEpoch: 10,
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0
+                dailyPlayCount: 0,
+                moveScores: {}
             };
 
             // Act
@@ -212,7 +218,7 @@ describe('RepertoireDataUtils', () => {
             variants[1].currentEpoch = 9; // bigger than first
 
             // Act
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3, {});
 
             // Assert
             expect(result.data).toHaveLength(2);
@@ -233,6 +239,7 @@ describe('RepertoireDataUtils', () => {
             // currentEpoch should be the max among the variants
             expect(result.currentEpoch).toBe(9);
             expect(result.dailyPlayCount).toBe(3);
+            expect(result.moveScores).toEqual({});
 
             // lastPlayedDate should be "today"
             const today = RepertoireDataUtils.getCurrentDateOnly();

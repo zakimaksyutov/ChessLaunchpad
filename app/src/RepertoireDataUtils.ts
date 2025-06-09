@@ -21,6 +21,9 @@ export class RepertoireDataUtils {
         if (!repertoireData.dailyPlayCount) {
             repertoireData.dailyPlayCount = 0;
         }
+        if (!repertoireData.moveScores) {
+            repertoireData.moveScores = {};
+        }
 
         // Normalize the data
         for (const variant of repertoireData.data) {
@@ -77,7 +80,7 @@ export class RepertoireDataUtils {
         return variants;
     }
 
-    public static convertToRepertoireData(variants: OpeningVariant[], dailyPlayCount: number): RepertoireData {
+    public static convertToRepertoireData(variants: OpeningVariant[], dailyPlayCount: number, moveScores: { [key: string]: number }): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
             orientation: variant.orientation,
@@ -92,7 +95,8 @@ export class RepertoireDataUtils {
             data,
             currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-            dailyPlayCount: dailyPlayCount
+            dailyPlayCount: dailyPlayCount,
+            moveScores
         };
     }
 

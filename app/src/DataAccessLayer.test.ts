@@ -29,6 +29,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         // 3. Retrieve variants (should be empty or default)
         // ----------------------------------------------------------------------------
         let repertoireData = await dal.retrieveRepertoireData();
+        repertoireData.moveScores = {};
         // We can do some basic validation. For example, ensure the structure is correct.
         // The exact checks depend on your backend’s default initialization.
         expect(repertoireData).toBeDefined();
@@ -45,6 +46,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
                 numberOfTimesPlayed: 0,
                 lastSucceededEpoch: 0,
                 successEMA: 0,
+                moveScores: {}
             }
         ];
 
@@ -94,6 +96,7 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
                 numberOfTimesPlayed: 0,
                 lastSucceededEpoch: 0,
                 successEMA: 0,
+                moveScores: {}
             }
         ];
         updatedData.data = newVariants2;
