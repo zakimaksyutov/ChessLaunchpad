@@ -1,6 +1,7 @@
 // BadgeRow.tsx
 import React, { useMemo } from 'react';
 import { RepertoireData } from './RepertoireData';
+import { calculateEightiethCount } from './BadgeRowUtils';
 
 interface BadgeRowProps {
     repertoireData: RepertoireData | null;
@@ -27,9 +28,9 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     };
 
     // Compute oldest, eightieth, and error counts from RepertoireData:
-    const { oldest, oldestCount, eightieth, errorsCount, total, dailyCount } = useMemo(() => {
+    const { oldest, oldestCount, eightieth, eightiethCount, errorsCount, total, dailyCount } = useMemo(() => {
         if (!repertoireData || !repertoireData.data?.length) {
-            return { oldest: 0, oldestCount: 0, eightieth: 0, errorsCount: 0, total: 0, dailyCount: 0 };
+            return { oldest: 0, oldestCount: 0, eightieth: 0, eightiethCount: 0, errorsCount: 0, total: 0, dailyCount: 0 };
         }
 
         const ages = repertoireData.data.map(v => repertoireData.currentEpoch - v.lastSucceededEpoch);
@@ -39,6 +40,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
         const oldestCount = ages.filter(age => age === maxAge).length;
         const rankIndex = Math.floor(0.8 * (ages.length - 1));
         const percentile80 = ages[rankIndex];
+        const eightiethCount = calculateEightiethCount(ages, percentile80);
         const total = ages.length;
 
         const errorCount = repertoireData.data.filter(v => v.errorEMA > 1).length;
@@ -47,6 +49,7 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
             oldest: maxAge,
             oldestCount: oldestCount,
             eightieth: percentile80,
+            eightiethCount: eightiethCount,
             errorsCount: errorCount,
             total: total,
             dailyCount: repertoireData.dailyPlayCount
@@ -134,7 +137,25 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
                 </span>, 
                 oldestBgColor
             )}
-            {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, eightieth.toString(), eightiethBgColor)}
+            {renderBadge(<span>80<sup style={{ fontSize: '0.6em' }}>TH</sup></span>, 
+                <span>
+                    {eightieth}{' '}
+                    <span style={{ 
+                        display: 'inline-block', 
+                        position: 'relative',
+                        bottom: '0.1em', 
+                        fontSize: '0.85em',
+                    }}>(</span>
+                    {eightiethCount}
+                    <span style={{ 
+                        display: 'inline-block', 
+                        position: 'relative',
+                        bottom: '0.1em', 
+                        fontSize: '0.85em',
+                    }}>)</span>
+                </span>, 
+                eightiethBgColor
+            )}
             {renderBadge('errors', errorsCount.toString(), errorsBgColor)}
             {renderBadge('today', dailyCount.toString(), dailyCountBgColor)}
         </div>
