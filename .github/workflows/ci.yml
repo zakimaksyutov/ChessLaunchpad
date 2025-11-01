@@ -60,7 +60,7 @@ jobs:
 
       # Deploy only if tests & build succeeded
       - name: Deploy to GitHub Pages
-        if: ${{ success() }}  # Only run if previous step succeeded
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}  # Only run if previous step succeeded & this is not a PR
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
