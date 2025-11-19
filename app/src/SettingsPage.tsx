@@ -51,7 +51,7 @@ const SettingsPage: React.FC = () => {
 
     const parseCoefficient = (value: string): number | null => {
         const num = Number(value);
-        if (!isFinite(num) || num <= 0) {
+        if (!isFinite(num) || num < 0) {
             return null;
         }
         return num;
@@ -148,7 +148,7 @@ const SettingsPage: React.FC = () => {
                         <input
                             type="number"
                             step="0.1"
-                            min="0.01"
+                            min="0"
                             value={values.recency}
                             onChange={handleChange('recency')}
                         />
@@ -162,7 +162,7 @@ const SettingsPage: React.FC = () => {
                         <input
                             type="number"
                             step="0.1"
-                            min="0.01"
+                            min="0"
                             value={values.frequency}
                             onChange={handleChange('frequency')}
                         />
@@ -176,7 +176,7 @@ const SettingsPage: React.FC = () => {
                         <input
                             type="number"
                             step="0.1"
-                            min="0.01"
+                            min="0"
                             value={values.error}
                             onChange={handleChange('error')}
                         />

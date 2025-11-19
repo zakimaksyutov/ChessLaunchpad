@@ -58,7 +58,7 @@ export class WeightSettings {
 
     private static sanitizeCoefficient(value: any, fallback: number): number {
         const parsed = Number(value);
-        if (!isFinite(parsed) || parsed <= 0) {
+        if (!isFinite(parsed) || parsed < 0) {
             return fallback;
         }
         return parsed;
