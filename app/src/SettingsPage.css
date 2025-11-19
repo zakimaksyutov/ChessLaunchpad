@@ -28,40 +28,52 @@
   color: #8a1c1c;
 }
 
-.formula-preview {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 1rem;
-  background: #f9fafc;
-  border: 1px solid #dde3ea;
-  border-radius: 6px;
-  padding: 1rem;
-  margin-bottom: 1rem;
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
 }
 
-.formula-text {
-  display: flex;
-  align-items: center;
+.settings-table th,
+.settings-table td {
+  padding: 0.65rem;
+  border-bottom: 1px solid #e1e6ed;
+  text-align: left;
 }
 
-.formula-input input {
+.settings-table th {
+  background: #f5f7fb;
+  font-weight: 600;
+}
+
+.settings-table td.exponent-cell {
+  width: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-table input {
   width: 60px;
-  margin-left: 0.3rem;
-  padding: 0.2rem 0.3rem;
-  font-family: inherit;
-  font-size: 0.95rem;
+  padding: 0.2rem 0;
   text-align: center;
 }
 
-.settings-hints {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.8rem;
-  margin-bottom: 1.5rem;
-  color: #333;
+.settings-table input[readonly] {
+  background: #f2f2f2;
+  cursor: not-allowed;
+}
+
+.inline-power {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.negative-sign {
+  display: inline-block;
+  min-width: 12px;
+  text-align: center;
 }
 
 .settings-actions {

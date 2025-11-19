@@ -125,46 +125,67 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const renderFormula = () => (
-        <div className="formula-preview">
-            <span className="formula-text">weight&nbsp;=&nbsp;</span>
-            <span className="formula-text">
-                (1&nbsp;+&nbsp;(currentEpoch&nbsp;-&nbsp;lastSucceededEpoch))<sup className="formula-input">
-                    <input
-                        type="number"
-                        step="0.1"
-                        min="0.01"
-                        value={values.recency}
-                        onChange={handleChange('recency')}
-                    />
-                </sup>
-            </span>
-            <span className="formula-text">&nbsp;×&nbsp;</span>
-            <span className="formula-text">
-                1&nbsp;/&nbsp;(1&nbsp;+&nbsp;successEMA)<sup className="formula-input">
-                    <input
-                        type="number"
-                        step="0.1"
-                        min="0.01"
-                        value={values.frequency}
-                        onChange={handleChange('frequency')}
-                    />
-                </sup>
-            </span>
-            <span className="formula-text">&nbsp;×&nbsp;</span>
-            <span className="formula-text">
-                (1&nbsp;+&nbsp;errorEMA)<sup className="formula-input">
-                    <input
-                        type="number"
-                        step="0.1"
-                        min="0.01"
-                        value={values.error}
-                        onChange={handleChange('error')}
-                    />
-                </sup>
-            </span>
-            <span className="formula-text">&nbsp;×&nbsp;newnessFactor</span>
-        </div>
+    const renderTable = () => (
+        <table className="settings-table">
+            <thead>
+                <tr>
+                    <th>Factor</th>
+                    <th>Exponent</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>newnessFactor</td>
+                    <td>
+                        <input type="number" value="2" readOnly />
+                    </td>
+                    <td>Boosts openings played fewer than seven times.</td>
+                </tr>
+                <tr>
+                    <td>recencyFactor</td>
+                    <td>
+                        <input
+                            type="number"
+                            step="0.1"
+                            min="0.01"
+                            value={values.recency}
+                            onChange={handleChange('recency')}
+                        />
+                    </td>
+                    <td>Rewards lines that have not been solved recently.</td>
+                </tr>
+                <tr>
+                    <td>frequencyFactor</td>
+                    <td className="exponent-cell">
+                        <div className="inline-power">
+                            <span className="negative-sign">-</span>
+                            <input
+                                type="number"
+                                step="0.1"
+                                min="0.01"
+                                value={values.frequency}
+                                onChange={handleChange('frequency')}
+                            />
+                        </div>
+                    </td>
+                    <td>Down-weights variants you solve consistently.</td>
+                </tr>
+                <tr>
+                    <td>errorFactor</td>
+                    <td>
+                        <input
+                            type="number"
+                            step="0.1"
+                            min="0.01"
+                            value={values.error}
+                            onChange={handleChange('error')}
+                        />
+                    </td>
+                    <td>Prioritizes lines with recent mistakes.</td>
+                </tr>
+            </tbody>
+        </table>
     );
 
     return (
@@ -182,18 +203,7 @@ const SettingsPage: React.FC = () => {
                     <div>Loading...</div>
                 ) : (
                     <>
-                        {renderFormula()}
-                        <div className="settings-hints">
-                            <div>
-                                <strong>Recency:</strong> Rewards lines that have not been solved recently.
-                            </div>
-                            <div>
-                                <strong>Frequency:</strong> Down-weights variants you solve consistently.
-                            </div>
-                            <div>
-                                <strong>Error:</strong> Prioritizes lines with recent mistakes.
-                            </div>
-                        </div>
+                        {renderTable()}
 
                         <div className="settings-actions">
                             <button
