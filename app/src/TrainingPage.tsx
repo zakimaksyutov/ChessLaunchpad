@@ -6,6 +6,7 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import BadgeRow from './BadgeRow';
+import { WeightSettings } from './WeightSettings';
 
 interface OrientationAndVariants {
     orientation: 'white' | 'black';
@@ -101,7 +102,12 @@ const TrainingPage: React.FC = () => {
         }
 
         try {
-            const newData = RepertoireDataUtils.convertToRepertoireData(orientationAndVariants.allVariants, repertoireData!.dailyPlayCount + 1);
+            const settings = repertoireData?.weightSettings ?? WeightSettings.createDefault();
+            const newData = RepertoireDataUtils.convertToRepertoireData(
+                orientationAndVariants.allVariants,
+                repertoireData!.dailyPlayCount + 1,
+                settings
+            );
             setRepertoireData(newData); // Updating local copy - it will be used for loading the next round.
             await dal.storeRepertoireData(newData);
 

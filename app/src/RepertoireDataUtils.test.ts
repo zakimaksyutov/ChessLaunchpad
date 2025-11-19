@@ -1,6 +1,7 @@
 import { RepertoireDataUtils } from "./RepertoireDataUtils";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { OpeningVariant } from "./OpeningVariant";
+import { WeightSettings } from "./WeightSettings";
 
 // --- Mocks ---
 jest.mock('./LaunchpadLogic', () => ({
@@ -33,6 +34,10 @@ describe('RepertoireDataUtils', () => {
             // Assert
             expect(repertoireData.data).toBeDefined();
             expect(repertoireData.data).toHaveLength(0);
+            expect(repertoireData.weightSettings).toBeDefined();
+            expect(repertoireData.weightSettings?.recencyPower).toBe(WeightSettings.DEFAULT_RECENCY_POWER);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(WeightSettings.DEFAULT_FREQUENCY_POWER);
+            expect(repertoireData.weightSettings?.errorPower).toBe(WeightSettings.DEFAULT_ERROR_POWER);
         });
 
         it('should set default fields if they are missing', () => {
@@ -57,6 +62,9 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.data![0].orientation).toBe('white');
             expect(repertoireData.currentEpoch).toBe(1);
             expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
+            expect(repertoireData.weightSettings?.recencyPower).toBe(WeightSettings.DEFAULT_RECENCY_POWER);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(WeightSettings.DEFAULT_FREQUENCY_POWER);
+            expect(repertoireData.weightSettings?.errorPower).toBe(WeightSettings.DEFAULT_ERROR_POWER);
         });
 
         it('should increment epoch and adjust success EMA if current date > lastPlayedDate (next day)', () => {
@@ -78,7 +86,8 @@ describe('RepertoireDataUtils', () => {
                 ],
                 currentEpoch: 5,
                 lastPlayedDate: yesterday,
-                dailyPlayCount: 5 // pretend we've played 5 times "yesterday"
+                dailyPlayCount: 5, // pretend we've played 5 times "yesterday"
+                weightSettings: new WeightSettings(1.2, 2.3, 3.4)
             };
 
             // Act
@@ -95,6 +104,9 @@ describe('RepertoireDataUtils', () => {
 
             // Check dailyPlayCount gets reset on new day
             expect(repertoireData.dailyPlayCount).toBe(0);
+            expect(repertoireData.weightSettings?.recencyPower).toBe(1.2);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(2.3);
+            expect(repertoireData.weightSettings?.errorPower).toBe(3.4);
         });
 
         it('should NOT increment epoch and adjust success EMA if current date has not changed', () => {
@@ -116,7 +128,8 @@ describe('RepertoireDataUtils', () => {
                 ],
                 currentEpoch: 5,
                 lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-                dailyPlayCount: 5
+                dailyPlayCount: 5,
+                weightSettings: new WeightSettings(1.4, 2.2, 3.8)
             };
 
             // Act
@@ -133,6 +146,9 @@ describe('RepertoireDataUtils', () => {
 
             // Confirm dailyPlayCount remains unchanged if the day hasn't changed
             expect(repertoireData.dailyPlayCount).toBe(5);
+            expect(repertoireData.weightSettings?.recencyPower).toBe(1.4);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(2.2);
+            expect(repertoireData.weightSettings?.errorPower).toBe(3.8);
         });
     });
 
@@ -162,7 +178,8 @@ describe('RepertoireDataUtils', () => {
                 ],
                 currentEpoch: 10,
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0
+                dailyPlayCount: 0,
+                weightSettings: new WeightSettings(1.5, 2.5, 3.5)
             };
 
             // Act
@@ -187,6 +204,10 @@ describe('RepertoireDataUtils', () => {
             expect(variants[1].lastSucceededEpoch).toBe(3);
             expect(variants[1].successEMA).toBe(1.5);
             expect(variants[1].currentEpoch).toBe(10);
+            expect(variants[0].weightSettings.recencyPower).toBe(1.5);
+            expect(variants[0].weightSettings.frequencyPower).toBe(2.5);
+            expect(variants[0].weightSettings.errorPower).toBe(3.5);
+            expect(variants[1].weightSettings.recencyPower).toBe(1.5);
         });
     });
 
@@ -211,8 +232,10 @@ describe('RepertoireDataUtils', () => {
             variants[1].numberOfTimesPlayed = 20;
             variants[1].currentEpoch = 9; // bigger than first
 
+            const customSettings = new WeightSettings(2.1, 3.2, 4.3);
+
             // Act
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3, customSettings);
 
             // Assert
             expect(result.data).toHaveLength(2);
@@ -239,6 +262,10 @@ describe('RepertoireDataUtils', () => {
             expect(result.lastPlayedDate.getFullYear()).toBe(today.getFullYear());
             expect(result.lastPlayedDate.getMonth()).toBe(today.getMonth());
             expect(result.lastPlayedDate.getDate()).toBe(today.getDate());
+            expect(result.weightSettings).not.toBe(customSettings);
+            expect(result.weightSettings?.recencyPower).toBe(2.1);
+            expect(result.weightSettings?.frequencyPower).toBe(3.2);
+            expect(result.weightSettings?.errorPower).toBe(4.3);
         });
     });
 });

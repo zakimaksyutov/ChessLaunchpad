@@ -1,0 +1,115 @@
+.settings-page {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.settings-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.5rem;
+  max-width: 720px;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.settings-description {
+  margin-top: 0.5rem;
+  margin-bottom: 1.25rem;
+  color: #444;
+}
+
+.settings-error {
+  background-color: #ffe3e3;
+  border: 1px solid #ff9a9a;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #8a1c1c;
+}
+
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+}
+
+.settings-table th,
+.settings-table td {
+  padding: 0.65rem;
+  border-bottom: 1px solid #e1e6ed;
+  text-align: left;
+}
+
+.settings-table th {
+  background: #f5f7fb;
+  font-weight: 600;
+}
+
+.settings-table th:nth-child(2),
+.settings-table td:nth-child(2) {
+  width: 160px;
+  text-align: center;
+}
+
+.settings-table .exponent-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.settings-table .exponent-sign {
+  min-width: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.settings-table input {
+  width: 60px;
+  padding: 0.2rem 0;
+  text-align: center;
+  border: 1px solid #b7c2d0;
+}
+
+.settings-table input[readonly] {
+  background: #f2f2f2;
+  cursor: not-allowed;
+  border-color: #b7c2d0;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.settings-actions button {
+  padding: 0.5rem 1.25rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.settings-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-actions .primary {
+  background-color: rgb(0, 130, 210);
+  color: #fff;
+}
+
+.settings-actions .secondary {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.settings-actions .link {
+  background: transparent;
+  color: rgb(0, 130, 210);
+  text-decoration: underline;
+  padding-left: 0;
+  padding-right: 0;
+}

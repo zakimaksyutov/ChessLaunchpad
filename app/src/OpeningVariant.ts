@@ -1,6 +1,7 @@
 import { Chess, Move } from 'chess.js';
 import { Annotation } from './Annotation';
 import { extractAnnotations } from './AnnotationUtils';
+import { WeightSettings } from './WeightSettings';
 
 export class OpeningVariant {
 
@@ -41,6 +42,7 @@ export class OpeningVariant {
     public frequencyFactor: number = 0.0;
     public errorFactor: number = 0.0;
     public newnessFactor: number = 0.0;
+    public weightSettings: WeightSettings = WeightSettings.createDefault();
 
     // One-round values. They make sense only if returned as a part of getNextMove
     public isPicked: boolean = false;
@@ -67,19 +69,28 @@ export class OpeningVariant {
     }
 
     public calculateWeight(): void {
+        const recencyBase = 1 + (this.currentEpoch - this.lastSucceededEpoch);
+        const frequencyBase = 1 + this.successEMA;
+        const errorBase = 1 + this.errorEMA;
+        const newnessBase = 1 + Math.max(7 - this.numberOfTimesPlayed, 0);
+
+        const recencyPower = this.weightSettings?.recencyPower ?? WeightSettings.DEFAULT_RECENCY_POWER;
+        const frequencyPower = this.weightSettings?.frequencyPower ?? WeightSettings.DEFAULT_FREQUENCY_POWER;
+        const errorPower = this.weightSettings?.errorPower ?? WeightSettings.DEFAULT_ERROR_POWER;
+
         // Increase weight if it hasn't been played for a while.
         // For newly added variants this will immediately result in a big weight.
-        this.recencyFactor = 1 + (this.currentEpoch - this.lastSucceededEpoch);
+        this.recencyFactor = Math.pow(recencyBase, recencyPower);
 
-        // If we successfully played a variant, decreate its weight.
+        // If we successfully played a variant, decrease its weight (negative exponent).
         // We use EMA to calculate successEMA (see above).
-        this.frequencyFactor = 1.0 / Math.pow(1 + this.successEMA, 2);
+        this.frequencyFactor = Math.pow(frequencyBase, -frequencyPower);
 
         // If there were errors while playing a variant, increase its weight.
-        this.errorFactor = Math.pow(1.0 + this.errorEMA, 2);
+        this.errorFactor = Math.pow(errorBase, errorPower);
 
         // If a variant is played less than 7 times, increase its weight.
-        this.newnessFactor = Math.pow(1.0 + Math.max(7 - this.numberOfTimesPlayed, 0), 2);
+        this.newnessFactor = Math.pow(newnessBase, 2);
 
         this.weight = this.errorFactor * this.recencyFactor * this.frequencyFactor * this.newnessFactor;
     }

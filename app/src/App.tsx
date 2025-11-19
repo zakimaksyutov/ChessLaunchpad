@@ -6,6 +6,7 @@ import LoginPage from './LoginPage';
 import TrainingPage from './TrainingPage';
 import RepertoirePage from './RepertoirePage';
 import VariantPage from './VariantPage';
+import SettingsPage from './SettingsPage';
 import ProtectedRoute from './ProtectedRoute';
 import './App.css';
 import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
@@ -55,6 +56,7 @@ const App: React.FC = () => {
           <Route path="/training" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
           <Route path="/repertoire" element={<ProtectedRoute><RepertoirePage /></ProtectedRoute>} />
           <Route path="/repertoire/variant" element={<ProtectedRoute><VariantPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         </Routes>
       </Router>
     </div>

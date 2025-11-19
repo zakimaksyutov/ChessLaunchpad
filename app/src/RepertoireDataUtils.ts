@@ -1,6 +1,7 @@
 import { OpeningVariant } from "./OpeningVariant";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { LaunchpadLogic } from "./LaunchpadLogic";
+import { WeightSettings } from "./WeightSettings";
 
 export class RepertoireDataUtils {
 
@@ -38,6 +39,9 @@ export class RepertoireDataUtils {
             }
         }
 
+        // Ensure weight settings are always present and hydrated.
+        repertoireData.weightSettings = WeightSettings.from(repertoireData.weightSettings);
+
         // Check whether we started a new epoch (a new day).
         // Note, if a player hasn't played for N days, then the epoch will be incremented only once and not N times.
         var newEpoch: boolean = false;
@@ -61,6 +65,7 @@ export class RepertoireDataUtils {
     }
 
     public static convertToVariantData(repertoireData: RepertoireData): OpeningVariant[] {
+        const settings = WeightSettings.from(repertoireData.weightSettings);
         const variants = repertoireData.data.map(data => {
             const variant = new OpeningVariant(data.pgn, data.orientation, data.classifications);
             variant.errorEMA = data.errorEMA;
@@ -69,6 +74,7 @@ export class RepertoireDataUtils {
             variant.successEMA = data.successEMA;
             variant.numberOfErrors = 0;
             variant.currentEpoch = repertoireData.currentEpoch;
+            variant.weightSettings = settings.clone();
             return variant;
         });
 
@@ -77,7 +83,11 @@ export class RepertoireDataUtils {
         return variants;
     }
 
-    public static convertToRepertoireData(variants: OpeningVariant[], dailyPlayCount: number): RepertoireData {
+    public static convertToRepertoireData(
+        variants: OpeningVariant[],
+        dailyPlayCount: number,
+        weightSettings?: WeightSettings
+    ): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
             orientation: variant.orientation,
@@ -88,11 +98,17 @@ export class RepertoireDataUtils {
             successEMA: variant.successEMA
         }));
 
+        const settings =
+            weightSettings?.clone() ??
+            variants[0]?.weightSettings?.clone() ??
+            WeightSettings.createDefault();
+
         return {
             data,
             currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-            dailyPlayCount: dailyPlayCount
+            dailyPlayCount: dailyPlayCount,
+            weightSettings: settings
         };
     }
 
