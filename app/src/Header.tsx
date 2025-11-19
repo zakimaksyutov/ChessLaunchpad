@@ -38,6 +38,11 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         navigate('/login');
     };
 
+    const handleSettingsClick = () => {
+        setIsDropdownOpen(false);
+        navigate('/settings');
+    };
+
     const handleLogoutClick = () => {
         // Close the dropdown (otherwise it would be autoshown after next login)
         setIsDropdownOpen(false);
@@ -80,6 +85,7 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
                         {/* Conditionally render the dropdown menu */}
                         {isDropdownOpen && (
                             <div className="dropdown-menu">
+                                <button onClick={handleSettingsClick}>Settings</button>
                                 <button onClick={handleLogoutClick}>Logout</button>
                             </div>
                         )}
