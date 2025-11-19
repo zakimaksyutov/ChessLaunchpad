@@ -14,7 +14,6 @@ interface CoefficientValues {
 const SettingsPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [values, setValues] = useState<CoefficientValues>({ recency: '', frequency: '', error: '' });
-    const [initialSettings, setInitialSettings] = useState<WeightSettings | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
@@ -35,7 +34,6 @@ const SettingsPage: React.FC = () => {
                 const data = await dal.retrieveRepertoireData();
                 setRepertoireData(data);
                 const settings = WeightSettings.from(data.weightSettings);
-                setInitialSettings(settings.clone());
                 setValues({
                     recency: settings.recencyPower.toString(),
                     frequency: settings.frequencyPower.toString(),
@@ -66,13 +64,14 @@ const SettingsPage: React.FC = () => {
     };
 
     const hasInvalidInput = Object.values(parsedValues).some(v => v === null);
+    const referenceSettings = repertoireData?.weightSettings ?? null;
     const hasChanges =
         !hasInvalidInput &&
-        initialSettings !== null &&
+        referenceSettings !== null &&
         (
-            parsedValues.recency !== initialSettings.recencyPower ||
-            parsedValues.frequency !== initialSettings.frequencyPower ||
-            parsedValues.error !== initialSettings.errorPower
+            parsedValues.recency !== referenceSettings.recencyPower ||
+            parsedValues.frequency !== referenceSettings.frequencyPower ||
+            parsedValues.error !== referenceSettings.errorPower
         );
 
     const handleChange = (field: keyof CoefficientValues) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,7 +114,6 @@ const SettingsPage: React.FC = () => {
                 weightSettings: newSettings
             };
             await dal.storeRepertoireData(updatedData);
-            setInitialSettings(newSettings.clone());
             setRepertoireData(updatedData);
             navigate(-1);
         } catch (err: any) {
