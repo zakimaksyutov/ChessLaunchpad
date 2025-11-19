@@ -137,14 +137,16 @@ const SettingsPage: React.FC = () => {
             <tbody>
                 <tr>
                     <td>newnessFactor</td>
-                    <td>
+                    <td className="exponent-cell">
+                        <span className="exponent-sign">+</span>
                         <input type="number" value="2" readOnly />
                     </td>
                     <td>Boosts openings played fewer than seven times.</td>
                 </tr>
                 <tr>
                     <td>recencyFactor</td>
-                    <td>
+                    <td className="exponent-cell">
+                        <span className="exponent-sign">+</span>
                         <input
                             type="number"
                             step="0.1"
@@ -158,22 +160,21 @@ const SettingsPage: React.FC = () => {
                 <tr>
                     <td>frequencyFactor</td>
                     <td className="exponent-cell">
-                        <div className="inline-power">
-                            <span className="negative-sign">-</span>
-                            <input
-                                type="number"
-                                step="0.1"
-                                min="0.01"
-                                value={values.frequency}
-                                onChange={handleChange('frequency')}
-                            />
-                        </div>
+                        <span className="exponent-sign">-</span>
+                        <input
+                            type="number"
+                            step="0.1"
+                            min="0.01"
+                            value={values.frequency}
+                            onChange={handleChange('frequency')}
+                        />
                     </td>
                     <td>Down-weights variants you solve consistently.</td>
                 </tr>
                 <tr>
                     <td>errorFactor</td>
-                    <td>
+                    <td className="exponent-cell">
+                        <span className="exponent-sign">+</span>
                         <input
                             type="number"
                             step="0.1"

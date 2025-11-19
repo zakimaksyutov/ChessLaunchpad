@@ -46,11 +46,23 @@
   font-weight: 600;
 }
 
-.settings-table td.exponent-cell {
-  width: 140px;
-  display: flex;
+.settings-table th:nth-child(2),
+.settings-table td:nth-child(2) {
+  width: 160px;
+  text-align: center;
+}
+
+.settings-table .exponent-cell {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.25rem;
+}
+
+.settings-table .exponent-sign {
+  min-width: 12px;
+  text-align: center;
+  font-weight: 600;
 }
 
 .settings-table input {
@@ -62,18 +74,6 @@
 .settings-table input[readonly] {
   background: #f2f2f2;
   cursor: not-allowed;
-}
-
-.inline-power {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.negative-sign {
-  display: inline-block;
-  min-width: 12px;
-  text-align: center;
 }
 
 .settings-actions {
