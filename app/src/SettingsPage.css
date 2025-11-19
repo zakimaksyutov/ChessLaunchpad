@@ -69,11 +69,13 @@
   width: 60px;
   padding: 0.2rem 0;
   text-align: center;
+  border: 1px solid #b7c2d0;
 }
 
 .settings-table input[readonly] {
   background: #f2f2f2;
   cursor: not-allowed;
+  border-color: #b7c2d0;
 }
 
 .settings-actions {
