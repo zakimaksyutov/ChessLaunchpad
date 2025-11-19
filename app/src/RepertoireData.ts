@@ -1,3 +1,5 @@
+import { WeightSettings } from "./WeightSettings";
+
 export interface OpeningVariantData {
     pgn: string;
     orientation: 'black' | 'white';
@@ -13,4 +15,5 @@ export interface RepertoireData {
     currentEpoch: number;
     lastPlayedDate: Date;
     dailyPlayCount: number; // How many times user has played on the current date
+    weightSettings?: WeightSettings;
 }

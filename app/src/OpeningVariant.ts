@@ -1,6 +1,7 @@
 import { Chess, Move } from 'chess.js';
 import { Annotation } from './Annotation';
 import { extractAnnotations } from './AnnotationUtils';
+import { WeightSettings } from './WeightSettings';
 
 export class OpeningVariant {
 
@@ -41,6 +42,7 @@ export class OpeningVariant {
     public frequencyFactor: number = 0.0;
     public errorFactor: number = 0.0;
     public newnessFactor: number = 0.0;
+    public weightSettings: WeightSettings = WeightSettings.createDefault();
 
     // One-round values. They make sense only if returned as a part of getNextMove
     public isPicked: boolean = false;
