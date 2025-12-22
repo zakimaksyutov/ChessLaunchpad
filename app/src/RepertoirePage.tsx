@@ -318,7 +318,7 @@ const RepertoirePage: React.FC = () => {
                 />
                 <input
                     type="text"
-                    placeholder="Enter opening name"
+                    placeholder="Enter opening name or FEN"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     style={{ marginLeft: '1rem' }}
