@@ -7,6 +7,7 @@ import { RepertoireData } from './RepertoireData';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import BadgeRow from './BadgeRow';
 import { WeightSettings } from './WeightSettings';
+import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock } from './FenUtils';
 
 interface OrientationAndVariants {
     orientation: 'white' | 'black';
@@ -66,10 +67,18 @@ const TrainingPage: React.FC = () => {
         // Only *logically* filter if filter is provided
         let variants = allVariants;
         if (filter.trim()) {
-            const lowerFilter = filter.toLowerCase();
-            variants = variants.filter((v) =>
-                v.classifications.some((cls) => cls.toLowerCase().includes(lowerFilter))
-            );
+            const trimmed = filter.trim();
+            if (isLikelyFen(trimmed)) {
+                const normalizedFilter = normalizeFenResetHalfmoveClock(trimmed);
+                variants = variants.filter((v) =>
+                    buildNormalizedFensFromPgn(v.pgn).includes(normalizedFilter)
+                );
+            } else {
+                const lowerFilter = trimmed.toLowerCase();
+                variants = variants.filter((v) =>
+                    v.classifications.some((cls) => cls.toLowerCase().includes(lowerFilter))
+                );
+            }
         }
         
         const whiteVariants: OpeningVariant[] = variants.filter(v => v.orientation === 'white');
