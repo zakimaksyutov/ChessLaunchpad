@@ -28,6 +28,8 @@ interface ParsedVariant {
 const FILE_EXTENSION = 'chess';
 
 const isLikelyFen = (value: string): boolean => {
+    // Heuristic check: FENs have 6 space-delimited fields and 8 ranks in the piece placement.
+    // This avoids false positives on normal opening-name text while staying lightweight.
     const trimmed = value.trim();
     const parts = trimmed.split(/\s+/);
     if (parts.length !== 6) {
