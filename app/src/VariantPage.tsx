@@ -26,7 +26,7 @@ interface ContextMenuState {
  * 
  * Page layout:
  *   +--------------------------------------------------------+
- *   | Save   Cancel  Flip board                              |
+ *   | Save   Save and reset stats   Cancel  Flip board         |
  *   +--------------------------------------------------------+
  *   | [ ChessboardControl ]                                  |
  *   +--------------------------------------------------------+
@@ -145,7 +145,7 @@ const VariantPage: React.FC = () => {
         setOrientation((o) => (o === 'white' ? 'black' : 'white'));
     };
 
-    const handleSave = async () => {
+    const handleSave = async (resetStats: boolean = false) => {
         const username = localStorage.getItem('username') || '';
         const hashedPassword = localStorage.getItem('hashedPassword') || '';
         try {
@@ -193,14 +193,20 @@ const VariantPage: React.FC = () => {
             const classifications = DatabaseOpeningsUtils.ClassifyOpening(finalPgn, openings);
 
             // Add to the repertoire
+            const shouldKeepStats = mode === 'edit' && !resetStats;
+            const errorEMA = shouldKeepStats ? (oldVariant?.errorEMA ?? 0) : 0;
+            const numberOfTimesPlayed = shouldKeepStats ? (oldVariant?.numberOfTimesPlayed ?? 0) : 0;
+            const lastSucceededEpoch = shouldKeepStats ? (oldVariant?.lastSucceededEpoch ?? 0) : 0;
+            const successEMA = shouldKeepStats ? (oldVariant?.successEMA ?? 0) : 0;
+
             repertoire.data.push({
                 pgn: finalPgn,
                 orientation,
                 classifications: classifications,
-                errorEMA: 0,
-                numberOfTimesPlayed: 0,
-                lastSucceededEpoch: 0,
-                successEMA: 0
+                errorEMA,
+                numberOfTimesPlayed,
+                lastSucceededEpoch,
+                successEMA
             });
 
             // Persist the updated repertoire
@@ -276,7 +282,10 @@ const VariantPage: React.FC = () => {
         <div className="variant-page" onClick={handlePageClick}>
             {/* Top menu bar */}
             <div className="variant-menu-bar">
-                <button onClick={handleSave}>Save</button>
+                <button onClick={() => handleSave(false)}>Save</button>
+                {mode === 'edit' && (
+                    <button onClick={() => handleSave(true)}>Save and reset stats</button>
+                )}
                 <button onClick={handleCancel}>Cancel</button>
                 <button onClick={handleFlipBoard}>Flip board</button>
             </div>
