@@ -1,11 +1,13 @@
 // RepertoirePage.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Chess } from 'chess.js';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { useNavigate } from 'react-router-dom';
 import { FaEdit, FaTrashAlt, FaInfoCircle } from 'react-icons/fa';
 import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
+import { normalizeFenResetHalfmoveClock } from './FenUtils';
 import ChessboardControl from './ChessboardControl';
 import PgnControl from './PgnControl';
 import './RepertoirePage.css';
@@ -15,6 +17,7 @@ interface ParsedVariant {
     pgn: string;
     numberOfTimesPlayed: number;
     classifications: string[];
+    fensNormalized: string[];
     recencyFactor: number;
     frequencyFactor: number;
     errorFactor: number;
@@ -23,6 +26,37 @@ interface ParsedVariant {
 }
 
 const FILE_EXTENSION = 'chess';
+
+const isLikelyFen = (value: string): boolean => {
+    const trimmed = value.trim();
+    const parts = trimmed.split(/\s+/);
+    if (parts.length !== 6) {
+        return false;
+    }
+    const ranks = parts[0].split('/');
+    return ranks.length === 8;
+};
+
+const buildNormalizedFensFromPgn = (pgn: string): string[] => {
+    const chess = new Chess();
+    try {
+        chess.loadPgn(pgn);
+    } catch {
+        return [];
+    }
+    chess.deleteComments();
+
+    const moves = chess.history({ verbose: true });
+    const temp = new Chess();
+    const fens: string[] = [normalizeFenResetHalfmoveClock(temp.fen())];
+
+    for (const move of moves) {
+        temp.move(move);
+        fens.push(normalizeFenResetHalfmoveClock(temp.fen()));
+    }
+
+    return Array.from(new Set(fens));
+};
 
 // This page will do the following:
 // - Load repertoire data from the server
@@ -63,7 +97,12 @@ const RepertoirePage: React.FC = () => {
         if (!filter.trim()) {
             return variants;
         }
-        const f = filter.toLowerCase();
+        const trimmed = filter.trim();
+        if (isLikelyFen(trimmed)) {
+            const normalizedFilter = normalizeFenResetHalfmoveClock(trimmed);
+            return variants.filter((v) => v.fensNormalized.includes(normalizedFilter));
+        }
+        const f = trimmed.toLowerCase();
         return variants.filter((v) =>
             v.classifications.some((cls) => cls.toLowerCase().includes(f))
         );
@@ -89,6 +128,7 @@ const RepertoirePage: React.FC = () => {
                     pgn: ov.pgn,
                     numberOfTimesPlayed: ov.numberOfTimesPlayed,
                     classifications: ov.classifications ?? [],
+                    fensNormalized: buildNormalizedFensFromPgn(ov.pgn),
                     recencyFactor: ov.recencyFactor,
                     frequencyFactor: ov.frequencyFactor,
                     errorFactor: ov.errorFactor,
