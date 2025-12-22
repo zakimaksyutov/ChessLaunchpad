@@ -1,6 +1,7 @@
 import { Chess, Move } from 'chess.js';
 import { OpeningVariant } from './OpeningVariant';
 import { Annotation } from './Annotation';
+import { normalizeFenResetHalfmoveClock } from './FenUtils';
 
 export class LaunchpadLogic {
 
@@ -25,7 +26,7 @@ export class LaunchpadLogic {
     }
 
     public isValidVariant(fen: string): boolean {
-        const normalizedFen = this.resetHalfmoveClock(fen);
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
         return this.fenToVariantMap.has(normalizedFen);
     }
 
@@ -166,17 +167,6 @@ export class LaunchpadLogic {
         return weight / totalWeight;
     }
 
-    // We use FEN as a key. And in order to be able to jump from one variant to another, we need to reset halfmove clock.
-    // This clock is used to determine if a draw can be claimed by the fifty-move rule. Since this app focuses on openings - it is not relevant.
-    // Example:
-    // 1. e4 c5 2. Nf3 e6  3. d4 cxd4 4. Nxd4 Nc6 => r1bqkbnr/pp1p1ppp/2n1p3/8/3NP3/8/PPP2PPP/RNBQKB1R w KQkq - 1 5
-    // 1. e4 c5 2. Nf3 Nc6 3. d4 cxd4 4. Nxd4 e6  => r1bqkbnr/pp1p1ppp/2n1p3/8/3NP3/8/PPP2PPP/RNBQKB1R w KQkq - 0 5
-    private resetHalfmoveClock(fen: string): string {
-        const parts = fen.split(" ");
-        parts[4] = "0"; // parts[4] is the halfmove clock field
-        return parts.join(" ");
-    }
-
     private initializeFenToVariantMap() {
         for (const variant of this.allVariants) {
             try {
@@ -199,7 +189,7 @@ export class LaunchpadLogic {
     }
 
     private addVariantToMap(fen: string, variant: OpeningVariant) {
-        const normalizedFen = this.resetHalfmoveClock(fen);
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
         if (!this.fenToVariantMap.has(normalizedFen)) {
             this.fenToVariantMap.set(normalizedFen, []);
         }
@@ -207,7 +197,7 @@ export class LaunchpadLogic {
     }
 
     private getVariantsForFen(fen: string): OpeningVariant[] | undefined {
-        const normalizedFen = this.resetHalfmoveClock(fen);
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
         return this.fenToVariantMap.get(normalizedFen);
     }
 }

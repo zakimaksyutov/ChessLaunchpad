@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { FaEdit, FaTrashAlt, FaInfoCircle } from 'react-icons/fa';
 import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
+import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock } from './FenUtils';
 import ChessboardControl from './ChessboardControl';
 import PgnControl from './PgnControl';
 import './RepertoirePage.css';
@@ -15,6 +16,7 @@ interface ParsedVariant {
     pgn: string;
     numberOfTimesPlayed: number;
     classifications: string[];
+    fensNormalized: string[];
     recencyFactor: number;
     frequencyFactor: number;
     errorFactor: number;
@@ -63,7 +65,12 @@ const RepertoirePage: React.FC = () => {
         if (!filter.trim()) {
             return variants;
         }
-        const f = filter.toLowerCase();
+        const trimmed = filter.trim();
+        if (isLikelyFen(trimmed)) {
+            const normalizedFilter = normalizeFenResetHalfmoveClock(trimmed);
+            return variants.filter((v) => v.fensNormalized.includes(normalizedFilter));
+        }
+        const f = trimmed.toLowerCase();
         return variants.filter((v) =>
             v.classifications.some((cls) => cls.toLowerCase().includes(f))
         );
@@ -89,6 +96,7 @@ const RepertoirePage: React.FC = () => {
                     pgn: ov.pgn,
                     numberOfTimesPlayed: ov.numberOfTimesPlayed,
                     classifications: ov.classifications ?? [],
+                    fensNormalized: buildNormalizedFensFromPgn(ov.pgn),
                     recencyFactor: ov.recencyFactor,
                     frequencyFactor: ov.frequencyFactor,
                     errorFactor: ov.errorFactor,
@@ -276,7 +284,7 @@ const RepertoirePage: React.FC = () => {
                 />
                 <input
                     type="text"
-                    placeholder="Enter opening name"
+                    placeholder="Enter opening name or FEN"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     style={{ marginLeft: '1rem' }}
