@@ -79,8 +79,8 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ repertoireData }) => {
     // Dynamic thresholds based on total number of variants
     const oldestMin = Math.ceil(total * 0.1);
     const oldestMax = Math.floor(total * 0.2);
-    const eightiethMin = Math.ceil(total * 0.05);
-    const eightiethMax = Math.floor(total * 0.1);
+    const eightiethMin = Math.ceil(total * 0.06);
+    const eightiethMax = Math.floor(total * 0.11);
     const dailyCountMax = Math.ceil(total * 0.2);
     
     // Dynamic thresholds for errors badge
