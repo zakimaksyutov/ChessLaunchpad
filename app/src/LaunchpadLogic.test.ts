@@ -25,7 +25,7 @@ describe('LaunchpadLogic - FEN to Variant Map', () => {
         expect(firstPosition![0].pgn).toBe('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
 
         // Check the last position (copied from Lichess)
-        const lastPosition = fenMap.get('r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4');
+        const lastPosition = fenMap.get('r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1');
         expect(lastPosition).toBeDefined();
         expect(lastPosition!.length).toBe(1);
         expect(lastPosition![0].pgn).toBe('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
@@ -41,7 +41,7 @@ describe('LaunchpadLogic - FEN to Variant Map', () => {
         const fenMap = (logic as any).fenToVariantMap as Map<string, OpeningVariant[]>;
 
         // PGN after 1. e4 e5 2. Nf3 Nc6 3. Bb5 should return two variants. Note that halfmove clock is reset to 0.
-        const position = fenMap.get('r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 3');
+        const position = fenMap.get('r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1');
         expect(position).toBeDefined();
         expect(position!.length).toBe(2);
         expect(position![0].pgn).toBe(ruyLopezMorphyVariant.pgn);
@@ -58,7 +58,7 @@ describe('LaunchpadLogic - FEN to Variant Map', () => {
         const fenMap = (logic as any).fenToVariantMap as Map<string, OpeningVariant[]>;
 
         // PGN after 1. e4 e5 2. Nf3 Nc6 3. Bb5 should return two variants. Note that halfmove clock is reset to 0.
-        const position = fenMap.get('r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 3');
+        const position = fenMap.get('r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1');
         expect(position).toBeDefined();
         expect(position!.length).toBe(2);
         expect(position![0].pgn).toBe(ruyLopezMorphyVariant.pgn);
@@ -75,7 +75,7 @@ describe('LaunchpadLogic - FEN to Variant Map', () => {
         const fenMap = (logic as any).fenToVariantMap as Map<string, OpeningVariant[]>;
 
         // PGN after 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 should return two variants
-        const position = fenMap.get('r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4');
+        const position = fenMap.get('r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1');
         expect(position).toBeDefined();
         expect(position!.length).toBe(1);
         expect(position![0].pgn).toBe(ruyLopezMorphyVariant.pgn);
@@ -107,7 +107,7 @@ describe('LaunchpadLogic - Get Next Move', () => {
         const ruyLopezVariant: OpeningVariant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
 
         // Above position (copied from Lichess.org)
-        const fen = 'r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4';
+        const fen = 'r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1';
 
         const logic = new LaunchpadLogic([ruyLopezVariant]);
 
