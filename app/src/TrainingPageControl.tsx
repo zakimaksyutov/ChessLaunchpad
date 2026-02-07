@@ -31,7 +31,8 @@ const TABLE_FULL = 2;
 
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
 
-    const EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS = 200;
+    const ANNOTATION_DELAY_BASE_IN_MS = 200;
+    const ANNOTATION_DELAY_GROWTH = 1.35;
 
     ////////////////////////////////////////////
     // React References
@@ -107,7 +108,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
             // We also give extra time per annotation
             const annotations = logic.getAnnotations(chess.fen());
-            durationMilliseconds += annotations.length * EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS;
+            durationMilliseconds += getAnnotationDelayMilliseconds(annotations);
 
             const stepMilliseconds = 100;
             const numberOfSteps = durationMilliseconds / stepMilliseconds;
@@ -206,13 +207,23 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         }
 
         // If there are annotations then we delay auto-play by extra time per annotation.
-        // The idea is that we want to give the user to follow annotations.
+        // The idea is that we want to give the user time to follow annotations.
         const annotations = logic.getAnnotations(chess.fen());
 
         timeoutRef.current = setTimeout(() => {
             playNextMove(chess);
             timeoutRef.current = null; // Reset after execution
-        }, 750 + annotations.length * EXTRA_WAIT_TIME_PER_ANNOTATION_IN_MS); // Delay before playing the next move
+        }, 750 + getAnnotationDelayMilliseconds(annotations)); // Delay before playing the next move
+    }
+
+    const getAnnotationDelayMilliseconds = (annotations: { dest?: string }[]): number => {
+        const annotationCount = annotations.reduce((count, annotation) => count + (annotation.dest ? 1 : 0), 0);
+        if (annotationCount === 0) {
+            return 0;
+        }
+
+        // Geometric series: base * (growth^n - 1) / (growth - 1)
+        return ANNOTATION_DELAY_BASE_IN_MS * (Math.pow(ANNOTATION_DELAY_GROWTH, annotationCount) - 1) / (ANNOTATION_DELAY_GROWTH - 1);
     }
 
     const playNextMove = (chess: Chess) => {
