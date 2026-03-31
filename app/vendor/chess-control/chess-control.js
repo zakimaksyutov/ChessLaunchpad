@@ -252,12 +252,13 @@ var de = e(function({ square: e, x: t, y: n, size: r, piece: i, isSelected: a, i
 		children: [
 			a && /* @__PURE__ */ s("div", { className: "selection-highlight" }),
 			f && /* @__PURE__ */ s("div", { className: "check-highlight" }),
-			i && !o && /* @__PURE__ */ s("div", {
+			i && /* @__PURE__ */ s("div", {
 				className: "chess-piece",
 				"data-piece": `${i.color}${i.type}`,
 				style: {
 					backgroundImage: `url("${m(i.color, i.type, h)}")`,
-					cursor: ee ? "pointer" : "default"
+					cursor: ee ? "pointer" : "default",
+					opacity: o ? .5 : void 0
 				}
 			}),
 			l && !u && /* @__PURE__ */ s("div", { className: "legal-move-dot" }),
@@ -434,7 +435,7 @@ function k({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 				let e = L.current.from;
 				if (L.current = null, G.current = null, I(null), j(null), N(g), H.current && (H.current.style.display = "none"), V.current) {
 					let t = V.current.querySelector(`[data-square="${e}"] .chess-piece`);
-					t && (t.style.visibility = "visible");
+					t && (t.style.opacity = "");
 				}
 				if (K.current !== null) {
 					try {
@@ -486,7 +487,7 @@ function k({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 				let i = e.clientX - t.left - Z / 2, a = e.clientY - t.top - Z / 2;
 				H.current.style.transform = `translate(${i}px, ${a}px)`, H.current.style.backgroundImage = `url("${m(r.color, r.type, p)}")`, H.current.style.display = "block";
 				let o = V.current.querySelector(`[data-square="${n}"] .chess-piece`);
-				o && (o.style.visibility = "hidden");
+				o && (o.style.opacity = "0.5");
 			}
 			I(n), j(n), N(new Set(x?.get(n) ?? [])), K.current = e.pointerId, q.current = e.buttons;
 			try {
@@ -513,7 +514,7 @@ function k({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 				let e = L.current.from;
 				if (L.current = null, G.current = null, I(null), j(null), N(g), H.current && (H.current.style.display = "none"), V.current) {
 					let t = V.current.querySelector(`[data-square="${e}"] .chess-piece`);
-					t && (t.style.visibility = "visible");
+					t && (t.style.opacity = "");
 				}
 				if (K.current !== null) {
 					try {
@@ -569,7 +570,7 @@ function k({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 					let t = Ee.current(e);
 					if (t && t !== L.current.from) {
 						let e = L.current.from;
-						(Se.current?.get(e) ?? []).includes(t) && (Ae.current = !0, xe.current?.(e, t), j(null), N(g));
+						(Se.current?.get(e) ?? []).includes(t) && (Ae.current = !0, xe.current?.(e, t)), j(null), N(g);
 					}
 					L.current = null, G.current = null, I(null), H.current && (H.current.style.display = "none");
 				}
@@ -614,7 +615,7 @@ function k({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 					let e = L.current.from;
 					if (L.current = null, G.current = null, I(null), H.current && (H.current.style.display = "none"), V.current) {
 						let t = V.current.querySelector(`[data-square="${e}"] .chess-piece`);
-						t && (t.style.visibility = "visible");
+						t && (t.style.opacity = "");
 					}
 				}
 				z.current && (z.current = null, B.current = null, G.current = null, R(null), U.current && (U.current.style.display = "none"), W.current && (W.current.style.display = "none")), K.current = null, q.current = 0;
