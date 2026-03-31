@@ -1,18 +1,21 @@
-import React, { useEffect, useRef } from 'react';
-import { Chessground } from 'chessground';
-import { Config } from 'chessground/config';
-import { Api } from 'chessground/api';
-import { Key } from 'chessground/types';
-import { DrawShape } from 'chessground/draw';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { ChessBoard } from 'chess-control';
+import type { Annotation as ChessControlAnnotation, Square as CCSquare } from 'chess-control';
 import { Chess, Square } from "chess.js";
 import { Annotation } from './Annotation';
-import { convertDrawShapesToAnnotations, convertAnnotationsToDrawShapes } from './AnnotationUtils';
+import { convertChessControlAnnotationsToInternal, convertInternalToChessControlAnnotations } from './AnnotationUtils';
 import './ChessboardControl.css';
 
-// Copied from chessground/assets, version 9.1.1. Must be updated upon version upgrade.
-import './styles/chessground.base.css';
-import './styles/chessground.brown.css';
-import './styles/chessground.cburnett.css';
+const ALL_SQUARES: Square[] = [
+    "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8",
+    "b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8",
+    "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8",
+    "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8",
+    "e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8",
+    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+    "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8",
+    "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8",
+];
 
 interface ChessboardControlProps {
     roundId: string,
@@ -23,12 +26,61 @@ interface ChessboardControlProps {
     annotations?: Annotation[];
 }
 
+function getCheckSquare(chess: Chess): CCSquare | undefined {
+    if (!chess.isCheck()) return undefined;
+    const turn = chess.turn();
+    const board = chess.board();
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            if (piece && piece.type === 'k' && piece.color === turn) {
+                const file = String.fromCharCode(97 + c);
+                const rank = String(8 - r);
+                return `${file}${rank}` as CCSquare;
+            }
+        }
+    }
+    return undefined;
+}
+
+function generateLegalMoves(chess: Chess): Map<CCSquare, CCSquare[]> {
+    const movesMap = new Map<CCSquare, CCSquare[]>();
+    for (const square of ALL_SQUARES) {
+        const moves = chess.moves({ square, verbose: true });
+        if (moves.length > 0) {
+            movesMap.set(square as CCSquare, moves.map(m => m.to as CCSquare));
+        }
+    }
+    return movesMap;
+}
+
+function detectMove(prevFen: string, newFen: string): { from: CCSquare; to: CCSquare } | undefined {
+    if (prevFen === newFen) return undefined;
+    try {
+        const prev = new Chess(prevFen);
+        const moves = prev.moves({ verbose: true });
+        for (const move of moves) {
+            const test = new Chess(prevFen);
+            test.move(move);
+            if (test.fen() === newFen) {
+                return { from: move.from as CCSquare, to: move.to as CCSquare };
+            }
+        }
+    } catch {
+        // Invalid FEN or position reset — no animation
+    }
+    return undefined;
+}
+
 const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged, annotations }) => {
 
-    ////////////////////////////////////////////
-    // React References
-    const boardRef = useRef<HTMLDivElement | null>(null); // Board container reference
-    const chessgroundInstance = useRef<Api | null>(null); // Chessground instance reference
+    // Refs for tracking state across renders
+    const prevFenRef = useRef(fen);
+    const prevRoundIdRef = useRef(roundId);
+    const prevOrientationRef = useRef(orientation);
+    const moveJustPlayedRef = useRef(false);
+    const userLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>();
+    const computedLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>();
     const fenRef = useRef(fen);
 
     const movePlayedRef = useRef(movePlayed);
@@ -36,144 +88,84 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
         movePlayedRef.current = movePlayed;
     }, [movePlayed]);
 
-    ////////////////////////////////////////////
-    // React Effect: Update FEN reference
+    const annotationsChangedRef = useRef(annotationsChanged);
+    useEffect(() => {
+        annotationsChangedRef.current = annotationsChanged;
+    }, [annotationsChanged]);
+
     useEffect(() => {
         fenRef.current = fen;
     }, [fen]);
 
-    ////////////////////////////////////////////
-    // React Effect: Creates Chessground instance
-    /* eslint-disable react-hooks/exhaustive-deps */
-    useEffect(() => {
-        if (!boardRef.current) {
-            return;
+    // Compute lastMove synchronously during render so it arrives
+    // in the same render pass as the FEN change — prevents the
+    // two-render gap that caused jump-back animation artifacts.
+    if (prevRoundIdRef.current !== roundId || prevOrientationRef.current !== orientation) {
+        prevRoundIdRef.current = roundId;
+        prevOrientationRef.current = orientation;
+        prevFenRef.current = fen;
+        moveJustPlayedRef.current = false;
+        userLastMoveRef.current = undefined;
+        computedLastMoveRef.current = undefined;
+    } else if (prevFenRef.current !== fen) {
+        if (moveJustPlayedRef.current) {
+            moveJustPlayedRef.current = false;
+            computedLastMoveRef.current = userLastMoveRef.current;
+        } else {
+            computedLastMoveRef.current = detectMove(prevFenRef.current, fen);
         }
-
-        // If there was a previous Chessground, destroy it
-        if (chessgroundInstance.current) {
-            chessgroundInstance.current.destroy();
-            chessgroundInstance.current = null;
-        }
-
-        // Configuration object for Chessground (strongly typed!)
-        const config: Config = {
-            orientation: orientation,
-            highlight: {
-                lastMove: true,
-                check: true,
-            },
-            movable: {
-                free: false,
-                events: {
-                    after: (orig: string, dest: string, _: any) => {
-                        const wasValidMove = movePlayedRef.current(orig, dest);
-                        if (!wasValidMove) {
-                            updateChessground();
-                        }
-                    }
-                }
-            },
-            drawable: {
-                eraseOnClick: false,
-                onChange: (shapes: DrawShape[]) => {
-                    if (annotationsChanged) {
-                        const annotations = convertDrawShapesToAnnotations(shapes);
-                        annotationsChanged(fenRef.current, annotations);
-                    }
-                }
-            }
-        };
-
-        // Initialize Chessground
-        chessgroundInstance.current = Chessground(boardRef.current, config);
-        updateChessground();
-
-        // Delay the resize by 0.5 seconds
-        // On mobile devices, when user refreshes a training page, the board and touch coordinates are not aligned.
-        // This is a workaround to fix the issue.
-        setTimeout(() => {
-            redrawChessGroundControl();
-        }, 500);
-        window.addEventListener('resize', redrawChessGroundControl);
-
-        return () => {
-            // Cleanup
-            window.removeEventListener('resize', redrawChessGroundControl);
-        };
-    }, [orientation, roundId]);
-    /* eslint-enable react-hooks/exhaustive-deps */
-
-    ////////////////////////////////////////////
-    // React Effect: Update chess position
-    /* eslint-disable react-hooks/exhaustive-deps */
-    useEffect(() => {
-        updateChessground();
-    }, [fen]);
-    /* eslint-enable react-hooks/exhaustive-deps */
-
-    const redrawChessGroundControl = () => {
-        chessgroundInstance.current?.redrawAll();
-    };
-
-    const updateChessground = () => {
-        const chess: Chess = new Chess(fenRef.current);
-        const shapes = convertAnnotationsToDrawShapes(annotations || []);
-        chessgroundInstance.current?.set({
-            fen: chess.fen(),
-            turnColor: chess.turn() === 'w' ? 'white' : 'black',
-            movable: {
-                color: chess.turn() === 'w' ? 'white' : 'black',
-                dests: generateMovesMap(chess),
-            },
-            drawable: {
-                shapes
-            }
-        });
+        prevFenRef.current = fen;
     }
 
-    // Generate a map of valid moves for Chessground
-    const generateMovesMap = (chess: Chess): Map<Key, Key[]> => {
-        const movesMap: Map<Key, Key[]> = new Map();
+    const lastMove = computedLastMoveRef.current;
 
-        // Loop through all squares of the board
-        const squares: Key[] = [
-            "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8",
-            "b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8",
-            "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8",
-            "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8",
-            "e1", "e2", "e3", "e4", "e5", "e6", "e7", "e8",
-            "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
-            "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8",
-            "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8",
-        ];
+    // Derive board state from FEN
+    const chess = useMemo(() => new Chess(fen), [fen]);
+    const turnColor = chess.turn() === 'w' ? 'white' : 'black';
+    const legalMoves = useMemo(() => generateLegalMoves(chess), [chess]);
+    const checkSquare = useMemo(() => getCheckSquare(chess), [chess]);
+    const ccAnnotations = useMemo(
+        () => convertInternalToChessControlAnnotations(annotations || []),
+        [annotations]
+    );
 
-        for (const square of squares) {
-            // Get legal moves starting from this square
-            const moves = chess.moves({ square: square as Square, verbose: true });
-
-            // Extract destination squares
-            const destinations = moves.map((move) => move.to);
-
-            // Add to the map if there are valid moves
-            if (destinations.length > 0) {
-                movesMap.set(square, destinations);
-            }
+    const handleOnMove = (from: CCSquare, to: CCSquare) => {
+        const valid = movePlayedRef.current(from, to);
+        if (valid) {
+            moveJustPlayedRef.current = true;
+            userLastMoveRef.current = { from, to };
         }
+    };
 
-        return movesMap;
+    const handleAnnotationsChange = (ccAnns: ChessControlAnnotation[]) => {
+        if (annotationsChangedRef.current) {
+            const internal = convertChessControlAnnotationsToInternal(ccAnns);
+            annotationsChangedRef.current(fenRef.current, internal);
+        }
     };
 
     return (
-        <div className="my-custom-board"
-            ref={boardRef}
+        <div className="chessboard-container"
             style={{
                 width: '100%',
                 maxWidth: 704,
                 height: 'auto',
                 aspectRatio: '1 / 1',
-                border: '1px solid #ccc'
-            }} />
+            }}>
+            <ChessBoard
+                fen={fen}
+                orientation={orientation}
+                turnColor={turnColor}
+                legalMoves={legalMoves}
+                lastMove={lastMove}
+                check={checkSquare}
+                onMove={handleOnMove}
+                annotations={ccAnnotations}
+                onAnnotationsChange={handleAnnotationsChange}
+                clearAnnotationsOnClick={false}
+                drawingMode="lichess"
+            />
+        </div>
     );
 };
 
