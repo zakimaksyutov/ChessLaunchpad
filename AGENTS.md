@@ -8,7 +8,7 @@ ChessLaunchpad is a web application for memorizing chess openings using spaced r
 
 - React 19 with TypeScript
 - chess.js for game logic and PGN parsing
-- Chessground for interactive board rendering
+- chess-control (in-house) for interactive board rendering, vendored in `app/vendor/chess-control/`
 - React Router for client-side routing
 - Microsoft Application Insights for telemetry
 - Create React App (react-scripts) tooling
@@ -48,4 +48,16 @@ yarn startLinux   # Linux / macOS
 - `app/` — React application source and configuration
   - `src/` — TypeScript source files (components, logic, tests)
   - `public/` — Static assets
+  - `vendor/chess-control/` — Vendored chess-control library (built dist files)
 - `openings/` — Opening database files and merge scripts
+
+## Updating chess-control
+
+The chess-control library lives in `../ChessControl` and is vendored via `file:` dependency.
+
+```sh
+cd ../ChessControl && yarn build:lib
+cp dist/chess-control.js dist/index.d.ts dist/ChessBoard.d.ts ../ChessLaunchpad/app/vendor/chess-control/
+# Bump version in app/vendor/chess-control/package.json (busts CI cache)
+cd ../ChessLaunchpad/app && yarn install
+```
