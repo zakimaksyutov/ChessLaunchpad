@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square as CCSquare } from 'chess-control';
 import { Chess, Square } from "chess.js";
@@ -54,10 +54,33 @@ function generateLegalMoves(chess: Chess): Map<CCSquare, CCSquare[]> {
     return movesMap;
 }
 
+function detectMove(prevFen: string, newFen: string): { from: CCSquare; to: CCSquare } | undefined {
+    if (prevFen === newFen) return undefined;
+    try {
+        const prev = new Chess(prevFen);
+        const moves = prev.moves({ verbose: true });
+        for (const move of moves) {
+            const test = new Chess(prevFen);
+            test.move(move);
+            if (test.fen() === newFen) {
+                return { from: move.from as CCSquare, to: move.to as CCSquare };
+            }
+        }
+    } catch {
+        // Invalid FEN or position reset — no animation
+    }
+    return undefined;
+}
+
 const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged, annotations }) => {
 
-    const [lastMove, setLastMove] = useState<{ from: CCSquare; to: CCSquare } | undefined>();
+    // Refs for tracking state across renders
+    const prevFenRef = useRef(fen);
+    const prevRoundIdRef = useRef(roundId);
+    const prevOrientationRef = useRef(orientation);
     const moveJustPlayedRef = useRef(false);
+    const userLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>();
+    const computedLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>();
     const fenRef = useRef(fen);
 
     const movePlayedRef = useRef(movePlayed);
@@ -70,24 +93,31 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
         annotationsChangedRef.current = annotationsChanged;
     }, [annotationsChanged]);
 
-    // Update FEN reference
     useEffect(() => {
         fenRef.current = fen;
     }, [fen]);
 
-    // Clear lastMove on roundId or orientation change
-    useEffect(() => {
-        setLastMove(undefined);
-    }, [roundId, orientation]);
-
-    // Clear lastMove on external FEN changes (e.g., auto-play)
-    useEffect(() => {
+    // Compute lastMove synchronously during render so it arrives
+    // in the same render pass as the FEN change — prevents the
+    // two-render gap that caused jump-back animation artifacts.
+    if (prevRoundIdRef.current !== roundId || prevOrientationRef.current !== orientation) {
+        prevRoundIdRef.current = roundId;
+        prevOrientationRef.current = orientation;
+        prevFenRef.current = fen;
+        moveJustPlayedRef.current = false;
+        userLastMoveRef.current = undefined;
+        computedLastMoveRef.current = undefined;
+    } else if (prevFenRef.current !== fen) {
         if (moveJustPlayedRef.current) {
             moveJustPlayedRef.current = false;
+            computedLastMoveRef.current = userLastMoveRef.current;
         } else {
-            setLastMove(undefined);
+            computedLastMoveRef.current = detectMove(prevFenRef.current, fen);
         }
-    }, [fen]);
+        prevFenRef.current = fen;
+    }
+
+    const lastMove = computedLastMoveRef.current;
 
     // Derive board state from FEN
     const chess = useMemo(() => new Chess(fen), [fen]);
@@ -103,7 +133,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
         const valid = movePlayedRef.current(from, to);
         if (valid) {
             moveJustPlayedRef.current = true;
-            setLastMove({ from, to });
+            userLastMoveRef.current = { from, to };
         }
     };
 
