@@ -1,6 +1,6 @@
 {
   "name": "chess-control",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "main": "chess-control.js",
   "module": "chess-control.js",
   "types": "index.d.ts"
