@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "main" ]
   pull_request:
@@ -60,7 +61,7 @@ jobs:
 
       # Deploy only if tests & build succeeded
       - name: Deploy to GitHub Pages
-        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}  # Only run if previous step succeeded & this is not a PR
+        if: ${{ success() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') }}
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
