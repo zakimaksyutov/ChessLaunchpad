@@ -1,6 +1,5 @@
 import { Annotation } from './Annotation';
-import { DrawShape } from 'chessground/draw';
-import { Key } from 'chessground/types';
+import type { Annotation as ChessControlAnnotation } from 'chess-control';
 
 function isValidBrush(char: string): char is Annotation['brush'] {
     return char === 'G' || char === 'Y' || char === 'R' || char === 'B';
@@ -83,48 +82,40 @@ export function serializeAnnotationsAsComment(annotations: Annotation[]): string
     return segments.join(' ');
 }
 
-export function convertDrawShapesToAnnotations(shapes: DrawShape[]): Annotation[] {
-    // Map from Lichess brush to internal brush
-    const brushMap: Record<string, Annotation['brush']> = {
+export function convertChessControlAnnotationsToInternal(ccAnnotations: ChessControlAnnotation[]): Annotation[] {
+    const colorMap: Record<string, Annotation['brush']> = {
         green: 'G',
         yellow: 'Y',
         red: 'R',
         blue: 'B'
     };
 
-    return shapes
-        .map((shape) => {
-            const mappedBrush = shape.brush ? brushMap[shape.brush] : undefined;
-            // If there's no valid brush mapping, skip this shape
+    return ccAnnotations
+        .map((cc) => {
+            const mappedBrush = colorMap[cc.color];
             if (!mappedBrush) {
                 return null;
             }
-
-            // Convert to an Annotation
             return {
                 brush: mappedBrush,
-                orig: shape.orig,   // Square of origin
-                dest: shape.dest    // Optional square of destination
+                orig: cc.from,
+                dest: cc.to
             } as Annotation;
         })
         .filter((annotation): annotation is Annotation => annotation !== null);
 }
 
-export function convertAnnotationsToDrawShapes(annotations: Annotation[]): DrawShape[] {
-    // Map from internal brush to Lichess brush
-    const brushMap: Record<Annotation['brush'], string> = {
+export function convertInternalToChessControlAnnotations(annotations: Annotation[]): ChessControlAnnotation[] {
+    const colorMap: Record<Annotation['brush'], ChessControlAnnotation['color']> = {
         G: 'green',
         Y: 'yellow',
         R: 'red',
         B: 'blue'
     };
 
-    return annotations.map((annotation) => {
-        const brush = brushMap[annotation.brush];
-        return {
-            brush,
-            orig: annotation.orig as Key,
-            dest: annotation.dest as Key
-        };
-    });
+    return annotations.map((annotation) => ({
+        color: colorMap[annotation.brush],
+        from: annotation.orig,
+        to: annotation.dest
+    } as ChessControlAnnotation));
 }
