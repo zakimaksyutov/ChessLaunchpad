@@ -13,7 +13,6 @@ const LandingPage: React.FC = () => {
         }}>
             <div>
                 <h2>Memorize Chess Openings, Scientifically</h2>
-                <p style={{ color: 'red', fontWeight: 'bold' }}>🚀 Deployed from feature/chessboard branch</p>
                 
                 <p>Chess Launchpad offers a streamlined method to master chess openings through adaptive repetition and real-time feedback. Experience interactive play guided by weighted probabilities tailored to your specific memorization needs, instantly identifying and correcting mistakes. Clear progress indicators and motivational badges keep you engaged and focused.</p>
                 
