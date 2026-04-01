@@ -61,3 +61,7 @@ cp dist/chess-control.js dist/index.d.ts dist/ChessBoard.d.ts ../ChessLaunchpad/
 # Bump version in app/vendor/chess-control/package.json (busts CI cache)
 cd ../ChessLaunchpad/app && yarn install
 ```
+
+## Process — Lessons Learned
+
+- **Never amend commits.** Always create new commits instead of using `git commit --amend`. Amending rewrites history and can cause problems when branches have already been shared or referenced.
