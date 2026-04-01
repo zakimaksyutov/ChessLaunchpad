@@ -64,4 +64,4 @@ cd ../ChessLaunchpad/app && yarn install
 
 ## Process — Lessons Learned
 
-- **Never amend commits.** Always create new commits instead of using `git commit --amend`. Amending rewrites history and can cause problems when branches have already been shared or referenced.
+- **Never amend commits.** Always create new commits instead of using `git commit --amend`.
