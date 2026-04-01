@@ -3312,7 +3312,7 @@ check-types@^11.2.3:
   integrity sha512-+67P1GkJRaxQD6PKK0Et9DhwQB+vGg3PM5+aavopCpZT1lj9jeqfvpgTLAWErNj8qApkkmXlu/Ug74kmhagkXg==
 
 "chess-control@file:vendor/chess-control":
-  version "1.0.5"
+  version "1.0.6"
 
 chess.js@^1.0.0-beta.8:
   version "1.0.0-beta.8"
