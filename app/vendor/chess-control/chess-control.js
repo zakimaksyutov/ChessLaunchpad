@@ -1,4 +1,4 @@
-(function(){try{if(typeof document<`u`){var e=document.createElement(`style`);e.appendChild(document.createTextNode(`.chessboard-container{aspect-ratio:1;justify-content:center;align-items:center;width:100%;height:100%;display:flex}.chessboard{contain:strict;touch-action:none;background:conic-gradient(var(--dark-sq) 90deg, var(--light-sq) 90deg 180deg, var(--dark-sq) 180deg 270deg, var(--light-sq) 270deg) top left / 25% 25%;border-radius:2px;position:relative;overflow:hidden;box-shadow:0 2px 10px #0000004d}.chess-square{contain:layout style;position:absolute}.chess-square.light{background-color:var(--light-sq)}.chess-square.dark{background-color:var(--dark-sq)}.chess-square.light.last-move{background-color:var(--last-move-light)}.chess-square.dark.last-move{background-color:var(--last-move-dark)}.selection-highlight{background-color:var(--selected-sq);z-index:1;position:absolute;inset:0}.check-highlight{z-index:1;background:radial-gradient(red 0%,#e70000 25%,#a9000000 89%,#9e000000 100%);position:absolute;inset:0}.chess-piece{z-index:2;background-position:50%;background-repeat:no-repeat;background-size:cover;position:absolute;inset:0}.dragging-piece{pointer-events:none}.legal-move-dot{background:var(--legal-move-dot);z-index:3;pointer-events:none;position:absolute;inset:0}.legal-move-capture{background:var(--legal-move-capture);z-index:3;pointer-events:none;position:absolute;inset:0}.coord-label{pointer-events:none;-webkit-user-select:none;user-select:none}.arrow-layer{pointer-events:none}.resize-handle{opacity:0;transition:opacity .15s}.resize-handle:hover,.resize-handle:active{opacity:1}.resize-handle:before,.resize-handle:after{content:"";background:#fff9;border-radius:1px;position:absolute}.resize-handle:before{width:12px;height:2px;bottom:5px;right:3px;transform:rotate(-45deg)}.resize-handle:after{width:7px;height:2px;bottom:3px;right:1px;transform:rotate(-45deg)}
+(function(){try{if(typeof document<`u`){var e=document.createElement(`style`);e.appendChild(document.createTextNode(`.chessboard-container{aspect-ratio:1;justify-content:center;align-items:center;width:100%;height:100%;display:flex}.chessboard{contain:strict;touch-action:none;-webkit-tap-highlight-color:transparent;background:conic-gradient(var(--dark-sq) 90deg, var(--light-sq) 90deg 180deg, var(--dark-sq) 180deg 270deg, var(--light-sq) 270deg) top left / 25% 25%;border-radius:2px;position:relative;overflow:hidden;box-shadow:0 2px 10px #0000004d}.chess-square{contain:layout style;position:absolute}.chess-square.light{background-color:var(--light-sq)}.chess-square.dark{background-color:var(--dark-sq)}.chess-square.light.last-move{background-color:var(--last-move-light)}.chess-square.dark.last-move{background-color:var(--last-move-dark)}.selection-highlight{background-color:var(--selected-sq);z-index:1;position:absolute;inset:0}.check-highlight{z-index:1;background:radial-gradient(red 0%,#e70000 25%,#a9000000 89%,#9e000000 100%);position:absolute;inset:0}.chess-piece{z-index:2;background-position:50%;background-repeat:no-repeat;background-size:cover;position:absolute;inset:0}.dragging-piece{pointer-events:none}.legal-move-dot{background:var(--legal-move-dot);z-index:3;pointer-events:none;position:absolute;inset:0}.legal-move-capture{background:var(--legal-move-capture);z-index:3;pointer-events:none;position:absolute;inset:0}.coord-label{pointer-events:none;-webkit-user-select:none;user-select:none}.arrow-layer{pointer-events:none}.resize-handle{opacity:0;transition:opacity .15s}.resize-handle:hover,.resize-handle:active{opacity:1}.resize-handle:before,.resize-handle:after{content:"";background:#fff9;border-radius:1px;position:absolute}.resize-handle:before{width:12px;height:2px;bottom:5px;right:3px;transform:rotate(-45deg)}.resize-handle:after{width:7px;height:2px;bottom:3px;right:1px;transform:rotate(-45deg)}
 /*$vite$:1*/`)),document.head.appendChild(e)}}catch(e){console.error(`vite-plugin-css-injected-by-js`,e)}})();import { memo as e, useCallback as t, useEffect as n, useLayoutEffect as r, useMemo as i, useRef as a, useState as o } from "react";
 import { jsx as s, jsxs as c } from "react/jsx-runtime";
 //#region src/components/PieceSvgs.ts
@@ -375,26 +375,26 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 			let e = document.createElement("div");
 			e.className = "chess-piece ghost-piece", e.style.backgroundImage = `url("${m(c.color, c.type, De.current)}")`, e.style.opacity = "0.5", e.style.zIndex = "1", e.style.pointerEvents = "none", t.insertBefore(e, t.firstChild), Le.current = e;
 		}
-		t.style.contain = "none", t.style.zIndex = "10";
+		t.style.contain = "none", n.style.zIndex = "100";
 		let l = {
 			duration: 250,
 			easing: "cubic-bezier(0.5, 0, 0.5, 1)"
-		}, u = n.animate([{ transform: `translate(${o}px, ${s}px)` }, { transform: "translate(0, 0)" }], l), d = S.from.charCodeAt(0), f = S.to.charCodeAt(0), p = D.get(S.to), h, g;
+		}, u = n.animate([{ transform: `translate(${o}px, ${s}px)` }, { transform: "translate(0, 0)" }], l), d = S.from.charCodeAt(0), f = S.to.charCodeAt(0), p = D.get(S.to), h, g, _;
 		if (p?.type === "k" && Math.abs(f - d) === 2) {
 			let e = S.from[1], t = f > d, n = `${t ? "h" : "a"}${e}`, i = `${t ? "f" : "d"}${e}`, a = R.current.querySelector(`[data-square="${i}"]`), o = a?.querySelector(".chess-piece");
 			if (a && o) {
 				let e = r(n), t = r(i), s = e.x - t.x, c = e.y - t.y;
-				a.style.contain = "none", a.style.zIndex = "10", g = a, h = o.animate([{ transform: `translate(${s}px, ${c}px)` }, { transform: "translate(0, 0)" }], l);
+				a.style.contain = "none", o.style.zIndex = "100", g = a, _ = o, h = o.animate([{ transform: `translate(${s}px, ${c}px)` }, { transform: "translate(0, 0)" }], l);
 			}
 		}
 		if (u.onfinish = () => {
-			t.style.contain = "", t.style.zIndex = "", g && (g.style.contain = "", g.style.zIndex = "");
+			t.style.contain = "", n.style.zIndex = "", g && (g.style.contain = ""), _ && (_.style.zIndex = "");
 			let e = Le.current;
 			e && e.parentNode && (e.remove(), Le.current = null);
 		}, h && g) {
-			let e = g;
+			let e = g, t = _;
 			h.onfinish = () => {
-				e.style.contain = "", e.style.zIndex = "";
+				e.style.contain = "", t.style.zIndex = "";
 			};
 		}
 	}, [S, e]);
