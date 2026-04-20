@@ -2,8 +2,6 @@ import React from 'react';
 
 const LandingPage: React.FC = () => {
     const version = process.env.REACT_APP_BUILD_VERSION;
-    const branch = process.env.REACT_APP_BRANCH;
-    const isFeatureBranch = branch && branch !== 'main';
 
     return (
         <div style={{ 
@@ -13,21 +11,6 @@ const LandingPage: React.FC = () => {
             flexDirection: 'column',
             justifyContent: 'space-between'
         }}>
-            {isFeatureBranch && (
-                <div style={{
-                    background: '#fff3cd',
-                    color: '#856404',
-                    border: '1px solid #ffc107',
-                    borderRadius: '4px',
-                    padding: '0.5rem 1rem',
-                    textAlign: 'center',
-                    fontWeight: 'bold',
-                    fontSize: '0.85rem',
-                    marginBottom: '0.5rem'
-                }}>
-                    ⚠️ Feature branch: {branch}
-                </div>
-            )}
             <div>
                 <h2>Memorize Chess Openings, Scientifically</h2>
                 
