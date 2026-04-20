@@ -61,6 +61,19 @@ export class FSRSService {
         return this.cards;
     }
 
+    getCardData(normalizedFen: string, moveSan: string): FSRSCardData | undefined {
+        const key = FSRSService.makeCardKey(normalizedFen, moveSan);
+        return this.cards[key];
+    }
+
+    getRetrievability(normalizedFen: string, moveSan: string, now: Date): number | null {
+        const key = FSRSService.makeCardKey(normalizedFen, moveSan);
+        const cardData = this.cards[key];
+        if (!cardData || cardData.st !== State.Review) return null;
+        const card = this.hydrate(cardData);
+        return this.scheduler.get_retrievability(card, now, false);
+    }
+
     private hydrate(data: FSRSCardData): Card {
         return {
             due: new Date(data.d),

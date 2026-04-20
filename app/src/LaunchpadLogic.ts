@@ -5,6 +5,13 @@ import { normalizeFenResetHalfmoveClock } from './FenUtils';
 import { FSRSService } from './FSRSService';
 import { FSRSCardData } from './FSRSCardData';
 
+export interface FSRSMoveInfo {
+    san: string;
+    cardData: FSRSCardData | undefined;
+    shouldAutoplay: boolean;
+    retrievability: number | null;
+}
+
 export class LaunchpadLogic {
 
     private allVariants: OpeningVariant[];
@@ -126,6 +133,43 @@ export class LaunchpadLogic {
 
     public getFsrsCards(): Record<string, FSRSCardData> {
         return this.fsrsService.getCards();
+    }
+
+    public getRepertoireMovesAtPosition(fen: string): FSRSMoveInfo[] {
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        const chess = new Chess(fen);
+        const possibleMoves = chess.moves({ verbose: true });
+        const now = new Date();
+        const result: FSRSMoveInfo[] = [];
+        const seen = new Set<string>();
+
+        for (const move of possibleMoves) {
+            chess.move(move);
+            const reachable = this.getVariantsForFen(chess.fen());
+            chess.undo();
+
+            if (reachable && reachable.length > 0 && !seen.has(move.san)) {
+                seen.add(move.san);
+                result.push({
+                    san: move.san,
+                    cardData: this.fsrsService.getCardData(normalizedFen, move.san),
+                    shouldAutoplay: this.fsrsService.shouldAutoplay(normalizedFen, move.san, now),
+                    retrievability: this.fsrsService.getRetrievability(normalizedFen, move.san, now),
+                });
+            }
+        }
+
+        return result;
+    }
+
+    public getCardDataForMove(fen: string, moveSan: string): FSRSCardData | undefined {
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        return this.fsrsService.getCardData(normalizedFen, moveSan);
+    }
+
+    public hasErrorAtPosition(fen: string): boolean {
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        return this.fsrsErrorFens.has(normalizedFen);
     }
 
     public completeVariant(fen: string) {

@@ -18,6 +18,23 @@ const soundCapture = new Audio(soundCaptureFile);
 const soundError = new Audio(soundErrorFile);
 const soundSuccess = new Audio(soundSuccessFile);
 
+const FSRS_STATE_NAMES = ['New', 'Learning', 'Review', 'Relearning'];
+
+function formatCardForLog(card: FSRSCardData) {
+    return {
+        state: FSRS_STATE_NAMES[card.st] ?? card.st,
+        stability: card.s,
+        difficulty: card.di,
+        elapsed_days: card.e,
+        scheduled_days: card.sd,
+        learning_steps: card.ls,
+        reps: card.r,
+        lapses: card.l,
+        due: card.d,
+        last_review: card.lr ?? '—',
+    };
+}
+
 interface TrainingPageControlProps {
     variants: OpeningVariant[];
     fsrsCards: Record<string, FSRSCardData>;
@@ -154,8 +171,22 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
 
         // Rate FSRS card if user played manually (not autoplayed)
         if (!isAutoplay) {
+            const currentFen = chess.fen();
+            const hadError = logic.hasErrorAtPosition(currentFen);
+            const cardBefore = logic.getCardDataForMove(currentFen, move.san);
+
             userHasPlayedManuallyRef.current = true;
-            logic.rateUserMove(chess.fen(), move.san);
+            logic.rateUserMove(currentFen, move.san);
+
+            const cardAfter = logic.getCardDataForMove(currentFen, move.san);
+            console.log(`[FSRS] Played ${move.san}: correct=${!hadError}`);
+            console.table([{
+                label: 'before',
+                ...(cardBefore ? formatCardForLog(cardBefore) : { state: '(new card)' }),
+            }, {
+                label: 'after',
+                ...(cardAfter ? formatCardForLog(cardAfter) : {}),
+            }]);
         }
 
         var isEndOfVariant = logic.isEndOfVariant(chessTestMove.fen(), chessTestMove.history().length);
@@ -242,6 +273,22 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         return (orientation === 'white' && nextMoveIsWhite) || (orientation === 'black' && !nextMoveIsWhite);
     }
 
+    const logFsrsMovesAtPosition = (fen: string, autoplay: boolean = false) => {
+        const movesAtPosition = logic.getRepertoireMovesAtPosition(fen);
+        console.log(`[FSRS] Your turn${autoplay ? ' (autoplaying)' : ''} — FEN:`, fen);
+        console.table(movesAtPosition.map(m => ({
+            move: m.san,
+            state: m.cardData ? FSRS_STATE_NAMES[m.cardData.st] : '(none)',
+            stability: m.cardData?.s ?? '—',
+            difficulty: m.cardData?.di ?? '—',
+            reps: m.cardData?.r ?? '—',
+            lapses: m.cardData?.l ?? '—',
+            retrievability: m.retrievability !== null ? m.retrievability.toFixed(4) : '—',
+            autoplay: m.shouldAutoplay ? '✓' : '✗',
+            due: m.cardData?.d ?? '—',
+        })));
+    }
+
     const decideNextAction = (chess: Chess) => {
         const moveCount = chess.history().length;
 
@@ -250,9 +297,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
             scheduleToPlayNextMove(chess);
         } else if (!userHasPlayedManuallyRef.current && logic.shouldAutoplayUserMove(chess.fen())) {
             // User's turn, still in autoplay prefix, FSRS says autoplay
+            logFsrsMovesAtPosition(chess.fen(), true);
             scheduleToPlayNextMove(chess);
+        } else {
+            // User's turn, user must play manually
+            logFsrsMovesAtPosition(chess.fen());
         }
-        // else: User's turn, user must play manually → do nothing (board is interactive)
     }
 
     const playNextMove = (chess: Chess) => {
