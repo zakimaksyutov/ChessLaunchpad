@@ -21,11 +21,14 @@ A card represents a **user-turn position and the expected move**: `(normalizedFE
 
 A position is **autoplayed** when ALL of:
 1. No previous move in this traversal was user-played (autoplay is a **prefix only** — once the user is asked to play, all subsequent moves are user-played too)
-2. Card state is `Review` (not `New`, `Learning`, or `Relearning`)
-3. Card is **not due** (`now < card.due`)
-4. Retrievability `R ≥ 0.97`
+2. **Every** repertoire move at the position satisfies conditions 3–5 (at branch points, all branches must qualify)
+3. Card exists for the move
+4. Card state is `Review` (not `New`, `Learning`, or `Relearning`)
+5. Card is **not due** (`now < card.due`) and retrievability `R ≥ 0.97`
 
-Otherwise, the user is asked to play the move. Once autoplay ends, it does not resume for the remainder of that variant traversal.
+If any repertoire move at the position has no card, or its card fails conditions 4–5, autoplay stops and the user is asked to play. Once autoplay ends, it does not resume for the remainder of that variant traversal.
+
+When a position is autoplayed, the move is selected using the existing weighted-probability variant selection system (same as opponent-turn moves).
 
 ## FSRS Rating Mapping
 
@@ -103,16 +106,15 @@ These are not user-configurable in this iteration.
 ### LaunchpadLogic / TrainingPageControl
 
 When traversing a variant and it's the user's turn:
-1. Look up the card for `(currentFEN, expectedMove)`.
-2. If no card exists, create a new one (`createEmptyCard` from ts-fsrs).
-3. Apply the autoplay policy.
-4. If autoplayed — animate the move, skip to next position.
-5. If tested — wait for user input, then rate the card (`Good` or `Again`), update FSRS state.
+1. Check all repertoire moves at the current position against the autoplay policy.
+2. If all pass — select a move via weighted-probability variant selection, animate it, skip to next position.
+3. If any fail — the user is asked to play manually. The system accepts any move leading to a known repertoire position.
+4. After the user plays, rate the card for `(currentFEN, playedMoveSAN)`: create a new card if none exists (`createEmptyCard` from ts-fsrs), then apply `Good` or `Again`.
 
 ### Persistence
 
-- On round completion (existing `handleCompletion` in TrainingPage), include updated `fsrsCards` in the `RepertoireData` written to the server.
-- On load (`retrieveRepertoireData`), hydrate `fsrsCards` — convert ISO date strings back to `Date` objects for ts-fsrs consumption.
+- On round completion (existing `handleCompletion` in TrainingPage), include updated `fsrsCards` in the `RepertoireData` written to the server. The `fsrsCards` object is shared by reference between `RepertoireData` and `FSRSService`, following the same mutation pattern used for variant stats (`errorEMA`, `successEMA`, etc.).
+- On load (`retrieveRepertoireData`), `fsrsCards` is stored as-is with minified keys. ISO date strings are converted to `Date` objects lazily by `FSRSService` when cards are accessed, not upfront during normalization.
 - Missing/undefined `fsrsCards` field means no FSRS data yet (backward compatible).
 
 ### Normalization
