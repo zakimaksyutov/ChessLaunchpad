@@ -22,17 +22,17 @@ jobs:
           echo "REACT_APP_BUILD_VERSION=$(date -u +'%Y%m%d-%H%M%SZ')-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
         
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: yarn
           cache-dependency-path: app/yarn.lock
-
-      - name: Enable Corepack
-        run: corepack enable
 
       - name: Install dependencies with Yarn
         run: yarn install --immutable
