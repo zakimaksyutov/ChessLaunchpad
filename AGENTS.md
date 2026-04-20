@@ -67,3 +67,4 @@ cd ../ChessLaunchpad/app && yarn install
 ## Process — Lessons Learned
 
 - **Never amend commits.** Always create new commits instead of using `git commit --amend`.
+- Do not auto-commit. Leave changes uncommitted for review unless explicitly told to commit.
