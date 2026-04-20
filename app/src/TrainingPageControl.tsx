@@ -4,6 +4,7 @@ import { Chess, Move } from "chess.js";
 import { OpeningVariant } from './OpeningVariant';
 import { LaunchpadLogic } from './LaunchpadLogic';
 import PgnControl from './PgnControl';
+import { FSRSCardData } from './FSRSCardData';
 import './TrainingPageControl.css';
 
 const soundMoveFile = require('./assets/move.mp3');
@@ -19,6 +20,7 @@ const soundSuccess = new Audio(soundSuccessFile);
 
 interface TrainingPageControlProps {
     variants: OpeningVariant[];
+    fsrsCards: Record<string, FSRSCardData>;
     onCompletion: () => void;
     onLoadNext: () => void;
     orientation: 'white' | 'black';
@@ -29,7 +31,7 @@ const TABLE_HIDDEN = 0;
 const TABLE_SELECTED_ONLY = 1;
 const TABLE_FULL = 2;
 
-const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onCompletion, onLoadNext, orientation }) => {
+const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsrsCards, onCompletion, onLoadNext, orientation }) => {
 
     const ANNOTATION_DELAY_BASE_IN_MS = 200;
     const ANNOTATION_DELAY_GROWTH = 1.35;
@@ -50,8 +52,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
     ////////////////////////////////////////////
     // React Memory
-    const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants), [variants]);
+    const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants, fsrsCards), [variants, fsrsCards]);
     const chess = useMemo(() => new Chess(), []);
+
+    ////////////////////////////////////////////
+    // React References — FSRS autoplay prefix tracking
+    const userHasPlayedManuallyRef = useRef<boolean>(false);
 
     ////////////////////////////////////////////
     // React Effect: Handle keyboard shortcuts for debugging
@@ -79,14 +85,13 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         setAutoLoadNext(false);
         setProgress(0);
         setApplicableVariants([]);
+        userHasPlayedManuallyRef.current = false;
 
         // Generate a new ID for the round
         setRoundId(Math.random().toString(36).substring(7));
 
-        // If playing black, schedule the first white move automatically
-        if (orientation === 'black') {
-            scheduleToPlayNextMove(chess);
-        }
+        // Schedule the first action based on whose turn it is
+        decideNextAction(chess);
 
         return () => {
             if (timeoutRef.current) {
@@ -134,7 +139,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
         };
     }, [autoLoadNext, onLoadNext, logic, chess]);
 
-    const handleMove = (orig: string, dest: string, isLastMoveAutoplayed: boolean): boolean => {
+    const handleMove = (orig: string, dest: string, isAutoplay: boolean): boolean => {
 
         const chessTestMove = new Chess();
         chessTestMove.loadPgn(chess.pgn());
@@ -145,6 +150,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
             playSound(soundError);
             logic.markError(chess.fen());
             return false;
+        }
+
+        // Rate FSRS card if user played manually (not autoplayed)
+        if (!isAutoplay) {
+            userHasPlayedManuallyRef.current = true;
+            logic.rateUserMove(chess.fen(), move.san);
         }
 
         var isEndOfVariant = logic.isEndOfVariant(chessTestMove.fen(), chessTestMove.history().length);
@@ -167,9 +178,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
         if (isEndOfVariant) {
             handleCompletion();
-        } else if (!isLastMoveAutoplayed) {
-            // Auto-play next move
-            scheduleToPlayNextMove(chess);
+        } else {
+            decideNextAction(chess);
         }
 
         return true;
@@ -224,6 +234,25 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, onC
 
         // Geometric series: base * (growth^n - 1) / (growth - 1)
         return ANNOTATION_DELAY_BASE_IN_MS * (Math.pow(ANNOTATION_DELAY_GROWTH, annotationCount) - 1) / (ANNOTATION_DELAY_GROWTH - 1);
+    }
+
+    const isUserTurn = (moveCount: number): boolean => {
+        // After moveCount moves have been played, the next move is by...
+        const nextMoveIsWhite = moveCount % 2 === 0;
+        return (orientation === 'white' && nextMoveIsWhite) || (orientation === 'black' && !nextMoveIsWhite);
+    }
+
+    const decideNextAction = (chess: Chess) => {
+        const moveCount = chess.history().length;
+
+        if (!isUserTurn(moveCount)) {
+            // Opponent's turn → always autoplay
+            scheduleToPlayNextMove(chess);
+        } else if (!userHasPlayedManuallyRef.current && logic.shouldAutoplayUserMove(chess.fen())) {
+            // User's turn, still in autoplay prefix, FSRS says autoplay
+            scheduleToPlayNextMove(chess);
+        }
+        // else: User's turn, user must play manually → do nothing (board is interactive)
     }
 
     const playNextMove = (chess: Chess) => {

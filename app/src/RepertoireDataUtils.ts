@@ -2,6 +2,7 @@ import { OpeningVariant } from "./OpeningVariant";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { LaunchpadLogic } from "./LaunchpadLogic";
 import { WeightSettings } from "./WeightSettings";
+import { FSRSCardData } from "./FSRSCardData";
 
 export class RepertoireDataUtils {
 
@@ -41,6 +42,11 @@ export class RepertoireDataUtils {
 
         // Ensure weight settings are always present and hydrated.
         repertoireData.weightSettings = WeightSettings.from(repertoireData.weightSettings);
+
+        // Ensure fsrsCards is always present.
+        if (!repertoireData.fsrsCards) {
+            repertoireData.fsrsCards = {};
+        }
 
         // Check whether we started a new epoch (a new day).
         // Note, if a player hasn't played for N days, then the epoch will be incremented only once and not N times.
@@ -86,7 +92,8 @@ export class RepertoireDataUtils {
     public static convertToRepertoireData(
         variants: OpeningVariant[],
         dailyPlayCount: number,
-        weightSettings?: WeightSettings
+        weightSettings?: WeightSettings,
+        fsrsCards?: Record<string, FSRSCardData>
     ): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
@@ -108,7 +115,8 @@ export class RepertoireDataUtils {
             currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
             dailyPlayCount: dailyPlayCount,
-            weightSettings: settings
+            weightSettings: settings,
+            fsrsCards: fsrsCards ?? {}
         };
     }
 

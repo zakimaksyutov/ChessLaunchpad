@@ -1,6 +1,9 @@
 import { LaunchpadLogic } from './LaunchpadLogic';
 import { OpeningVariant } from './OpeningVariant';
 import { Chess } from 'chess.js';
+import { FSRSCardData } from './FSRSCardData';
+import { FSRSService } from './FSRSService';
+import { createEmptyCard, fsrs, Rating, State } from 'ts-fsrs';
 
 function createOpeningVariant(pgn: string): OpeningVariant {
     return new OpeningVariant(pgn, 'white', []);
@@ -207,5 +210,178 @@ describe('LaunchpadLogic - Get Next Move', () => {
         expect(numberOfKanVariantionReturned + numberOfTaimanovVariationReturned).toBe(numberOfTests);
         expect(numberOfKanVariantionReturned).toBeGreaterThan(30);
         expect(numberOfTaimanovVariationReturned).toBeGreaterThan(30);
+    });
+});
+
+describe('LaunchpadLogic - FSRS Integration', () => {
+
+    // Helper: build a Review-state card with high stability
+    function buildReviewCardData(reviewDate: Date): FSRSCardData {
+        const scheduler = fsrs({
+            request_retention: 0.9,
+            maximum_interval: 365,
+            enable_fuzz: false,
+            enable_short_term: true
+        });
+        let card = createEmptyCard(reviewDate);
+        card = scheduler.next(card, reviewDate, Rating.Good).card;
+        card = scheduler.next(card, new Date(card.due), Rating.Good).card;
+        expect(card.state).toBe(State.Review);
+        return FSRSService.serialize(card);
+    }
+
+    describe('shouldAutoplayUserMove', () => {
+        it('should return false when no FSRS cards exist (backward compat)', () => {
+            const variant = createOpeningVariant('1. e4 e5');
+            const logic = new LaunchpadLogic([variant]);
+
+            // Starting position — user's move is e4
+            const chess = new Chess();
+            expect(logic.shouldAutoplayUserMove(chess.fen())).toBe(false);
+        });
+
+        it('should return true when all user moves at position have well-known cards', () => {
+            const variant = createOpeningVariant('1. e4 e5');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startingFen}::e4`]: cardData
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            const chess = new Chess();
+            expect(logic.shouldAutoplayUserMove(chess.fen())).toBe(true);
+
+            jest.useRealTimers();
+        });
+
+        it('should return false when card is not in Review state', () => {
+            const variant = createOpeningVariant('1. e4 e5');
+
+            const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startingFen}::e4`]: {
+                    d: '2026-05-01T00:00:00.000Z',
+                    s: 2, di: 5, e: 0, sd: 0, ls: 1, r: 1, l: 0,
+                    st: State.Learning,
+                    lr: '2026-04-01T00:00:00.000Z'
+                }
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-02T00:00:00Z'));
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
+            jest.useRealTimers();
+        });
+
+        it('should return false when any card at a branch point fails', () => {
+            const morphy = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const berlin = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 Nf6');
+
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const goodCard = buildReviewCardData(reviewDate);
+
+            // Position after 3. Bb5 — black to move
+            const fenAfterBb5 = 'r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 1';
+
+            // Only a6 has a card, Nf6 does not
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${fenAfterBb5}::a6`]: goodCard
+            };
+
+            const logic = new LaunchpadLogic([morphy, berlin], fsrsCards);
+
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date(goodCard.lr!).getTime() + 1000);
+
+            const chess = new Chess();
+            chess.move('e4'); chess.move('e5'); chess.move('Nf3'); chess.move('Nc6'); chess.move('Bb5');
+
+            expect(logic.shouldAutoplayUserMove(chess.fen())).toBe(false);
+
+            jest.useRealTimers();
+        });
+    });
+
+    describe('rateUserMove', () => {
+        it('should rate as Good when no error at position', () => {
+            const variant = createOpeningVariant('1. e4 e5');
+            const fsrsCards: Record<string, FSRSCardData> = {};
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-20T00:00:00Z'));
+
+            const chess = new Chess();
+            logic.rateUserMove(chess.fen(), 'e4');
+
+            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+            expect(fsrsCards[key]).toBeDefined();
+            expect(fsrsCards[key].r).toBe(1);
+            expect(fsrsCards[key].l).toBe(0); // No lapse → rated Good
+
+            jest.useRealTimers();
+        });
+
+        it('should rate as Again when error occurred at position', () => {
+            const variant = createOpeningVariant('1. e4 e5');
+            const fsrsCards: Record<string, FSRSCardData> = {};
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-20T00:00:00Z'));
+
+            const chess = new Chess();
+            logic.markError(chess.fen());
+            logic.rateUserMove(chess.fen(), 'e4');
+
+            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+            expect(fsrsCards[key]).toBeDefined();
+            // Again on a New card → lower stability and higher difficulty than Good
+            expect(fsrsCards[key].s).toBeLessThan(1);
+            expect(fsrsCards[key].di).toBeGreaterThan(5);
+
+            jest.useRealTimers();
+        });
+
+        it('should clear error state after rating so repeated FEN gets fresh assessment', () => {
+            const variant = createOpeningVariant('1. e4 e5');
+            const fsrsCards: Record<string, FSRSCardData> = {};
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            jest.useFakeTimers();
+            jest.setSystemTime(new Date('2026-04-20T00:00:00Z'));
+
+            const chess = new Chess();
+            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+
+            // First encounter: error then correct → Again
+            logic.markError(chess.fen());
+            logic.rateUserMove(chess.fen(), 'e4');
+            const stabilityAfterAgain = fsrsCards[key].s;
+
+            // Second encounter at same FEN: no error → should be rated Good (not Again)
+            logic.rateUserMove(chess.fen(), 'e4');
+            // Good produces higher stability than Again on a card that just had Again
+            expect(fsrsCards[key].s).toBeGreaterThan(stabilityAfterAgain);
+
+            jest.useRealTimers();
+        });
+    });
+
+    describe('getFsrsCards', () => {
+        it('should return the same cards object (shared reference)', () => {
+            const fsrsCards: Record<string, FSRSCardData> = {};
+            const logic = new LaunchpadLogic([createOpeningVariant('1. e4 e5')], fsrsCards);
+            expect(logic.getFsrsCards()).toBe(fsrsCards);
+        });
     });
 });

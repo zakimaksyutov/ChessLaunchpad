@@ -2,6 +2,8 @@ import { Chess, Move } from 'chess.js';
 import { OpeningVariant } from './OpeningVariant';
 import { Annotation } from './Annotation';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
+import { FSRSService } from './FSRSService';
+import { FSRSCardData } from './FSRSCardData';
 
 export class LaunchpadLogic {
 
@@ -14,9 +16,14 @@ export class LaunchpadLogic {
     // Used to properly attribute a game to errorEMA and lastSucceededEpoch
     private hasErrors: boolean = false;
 
-    constructor(variants: OpeningVariant[]) {
+    // FSRS support
+    private fsrsService: FSRSService;
+    private fsrsErrorFens: Set<string> = new Set();
+
+    constructor(variants: OpeningVariant[], fsrsCards: Record<string, FSRSCardData> = {}) {
         this.allVariants = variants;
         this.fenToVariantMap = new Map<string, OpeningVariant[]>();
+        this.fsrsService = new FSRSService(fsrsCards);
 
         this.initializeFenToVariantMap();
     }
@@ -61,6 +68,9 @@ export class LaunchpadLogic {
     public markError(fen: string) {
         this.hasErrors = true;
 
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        this.fsrsErrorFens.add(normalizedFen);
+
         const variants = this.getVariantsForFen(fen)!;
 
         for (const variant of variants) {
@@ -70,6 +80,52 @@ export class LaunchpadLogic {
 
     public hadErrors(): boolean {
         return this.hasErrors;
+    }
+
+    /**
+     * Check if all valid user moves at this position can be autoplayed.
+     * Returns true only when every repertoire move has a Review-state card
+     * that is not due and has R >= 0.97.
+     */
+    public shouldAutoplayUserMove(fen: string): boolean {
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        const chess = new Chess(fen);
+        const possibleMoves = chess.moves({ verbose: true });
+        const now = new Date();
+
+        let hasAnyRepertoireMove = false;
+
+        for (const move of possibleMoves) {
+            chess.move(move);
+            const reachable = this.getVariantsForFen(chess.fen());
+            chess.undo();
+
+            if (reachable && reachable.length > 0) {
+                hasAnyRepertoireMove = true;
+                if (!this.fsrsService.shouldAutoplay(normalizedFen, move.san, now)) {
+                    return false;
+                }
+            }
+        }
+
+        return hasAnyRepertoireMove;
+    }
+
+    /**
+     * Rate an FSRS card after the user plays a move.
+     * Good if no prior error at this FEN, Again if there was an error.
+     */
+    public rateUserMove(fen: string, moveSan: string): void {
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        const isCorrect = !this.fsrsErrorFens.has(normalizedFen);
+        this.fsrsService.rateCard(normalizedFen, moveSan, isCorrect, new Date());
+        // Clear error state after rating so the same FEN later in the
+        // traversal gets a fresh first-try assessment.
+        this.fsrsErrorFens.delete(normalizedFen);
+    }
+
+    public getFsrsCards(): Record<string, FSRSCardData> {
+        return this.fsrsService.getCards();
     }
 
     public completeVariant(fen: string) {

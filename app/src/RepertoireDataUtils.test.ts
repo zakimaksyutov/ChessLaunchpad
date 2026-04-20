@@ -2,6 +2,7 @@ import { RepertoireDataUtils } from "./RepertoireDataUtils";
 import { RepertoireData, OpeningVariantData } from "./RepertoireData";
 import { OpeningVariant } from "./OpeningVariant";
 import { WeightSettings } from "./WeightSettings";
+import { FSRSCardData } from "./FSRSCardData";
 
 // --- Mocks ---
 jest.mock('./LaunchpadLogic', () => ({
@@ -38,6 +39,7 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.weightSettings?.recencyPower).toBe(WeightSettings.DEFAULT_RECENCY_POWER);
             expect(repertoireData.weightSettings?.frequencyPower).toBe(WeightSettings.DEFAULT_FREQUENCY_POWER);
             expect(repertoireData.weightSettings?.errorPower).toBe(WeightSettings.DEFAULT_ERROR_POWER);
+            expect(repertoireData.fsrsCards).toEqual({});
         });
 
         it('should set default fields if they are missing', () => {
@@ -149,6 +151,24 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.weightSettings?.recencyPower).toBe(1.4);
             expect(repertoireData.weightSettings?.frequencyPower).toBe(2.2);
             expect(repertoireData.weightSettings?.errorPower).toBe(3.8);
+        });
+
+        it('should preserve existing fsrsCards during normalization', () => {
+            const cards: Record<string, FSRSCardData> = {
+                'fen1::e4': { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 }
+            };
+            const repertoireData: RepertoireData = {
+                data: [],
+                currentEpoch: 5,
+                lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
+                dailyPlayCount: 0,
+                fsrsCards: cards
+            };
+
+            RepertoireDataUtils.normalize(repertoireData);
+
+            expect(repertoireData.fsrsCards).toBe(cards);
+            expect(Object.keys(repertoireData.fsrsCards!)).toHaveLength(1);
         });
     });
 
@@ -266,6 +286,32 @@ describe('RepertoireDataUtils', () => {
             expect(result.weightSettings?.recencyPower).toBe(2.1);
             expect(result.weightSettings?.frequencyPower).toBe(3.2);
             expect(result.weightSettings?.errorPower).toBe(4.3);
+        });
+
+        it('should include fsrsCards when provided', () => {
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', [])
+            ];
+            variants[0].currentEpoch = 1;
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                'fen1::e4': { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 }
+            };
+
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 1, undefined, fsrsCards);
+
+            expect(result.fsrsCards).toBe(fsrsCards);
+        });
+
+        it('should default fsrsCards to empty object when not provided', () => {
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', [])
+            ];
+            variants[0].currentEpoch = 1;
+
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 1);
+
+            expect(result.fsrsCards).toEqual({});
         });
     });
 });
