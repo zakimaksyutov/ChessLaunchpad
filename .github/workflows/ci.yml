@@ -17,26 +17,30 @@ jobs:
       REACT_APP_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }} 
 
     steps:
-      - name: Set build version env
+      - name: Set build env vars
         run: |
-          echo "REACT_APP_BUILD_VERSION=$(date -u +'%Y%m%d-%H%M%SZ')-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          VERSION="$(date -u +'%Y%m%d-%H%M%SZ')-${GITHUB_SHA:0:7}"
+          if [ "$BRANCH" != "main" ]; then
+            VERSION="$VERSION ($BRANCH)"
+          fi
+          echo "REACT_APP_BUILD_VERSION=$VERSION" >> $GITHUB_ENV
         
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Use Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Cache node_modules
-        uses: actions/cache@v3
-        with:
-          path: app/node_modules
-          key: ${{ runner.os }}-yarn-${{ hashFiles('app/yarn.lock') }}
+          cache: yarn
+          cache-dependency-path: app/yarn.lock
 
       - name: Install dependencies with Yarn
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
         working-directory: app
 
       - name: Run tests
