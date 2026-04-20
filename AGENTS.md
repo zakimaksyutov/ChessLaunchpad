@@ -21,7 +21,7 @@ All commands run from the `app/` directory.
 
 ```sh
 cd app
-yarn install --ignore-engines
+yarn install
 ```
 
 ### Build
@@ -58,11 +58,11 @@ The chess-control library lives in `../ChessControl` and is vendored via `file:`
 ```sh
 cd ../ChessControl && yarn build:lib
 cp dist/chess-control.js dist/index.d.ts dist/ChessBoard.d.ts ../ChessLaunchpad/app/vendor/chess-control/
-# Bump version in app/vendor/chess-control/package.json (busts CI cache)
-cd ../ChessLaunchpad/app && YARN_IGNORE_PATH=1 corepack yarn@1.22.22 install --ignore-engines --force
+# Bump version in app/vendor/chess-control/package.json
+cd ../ChessLaunchpad/app && yarn install
 ```
 
-**Yarn version note:** This machine uses Yarn 4 via `.yarnrc.yml`, but CI uses Yarn 1.x. When updating the lockfile, always use `YARN_IGNORE_PATH=1 corepack yarn@1.22.22` to produce a v1-format lockfile compatible with CI.
+**Yarn version note:** The app is pinned to Yarn 4 via `app/package.json`, and CI uses Corepack plus `yarn install --immutable`. `app/.yarnrc.yml` is tracked so Yarn keeps using the `node-modules` linker instead of switching this project to Plug'n'Play. If `yarn` does not resolve to the pinned version on a machine, run `corepack enable` once and retry.
 
 ## Process — Lessons Learned
 
