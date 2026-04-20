@@ -28,15 +28,15 @@ description: Upgrade the vendored chess-control library to a new version. Use wh
 
 5. **Bump version** in `app/vendor/chess-control/package.json` to `X.X.X`.
 
-6. **Update lockfile** (must use Yarn 1.x to keep v1 format):
+6. **Update lockfile and synced dependency install:**
    ```sh
    cd ../ChessLaunchpad/app
-   YARN_IGNORE_PATH=1 corepack yarn@1.22.22 install --ignore-engines --force
+   yarn install
    ```
 
-7. **Verify** lockfile shows new version:
+7. **Verify** the vendored package resolves to the new version:
    ```sh
-   grep -A1 "chess-control" yarn.lock
+   yarn why chess-control
    ```
 
 8. **Commit:**
@@ -54,6 +54,7 @@ description: Upgrade the vendored chess-control library to a new version. Use wh
 
 ## Important notes
 
-- **Yarn version**: This machine uses Yarn 4 via `.yarnrc.yml`, but CI uses Yarn 1.x. Always use `YARN_IGNORE_PATH=1 corepack yarn@1.22.22` to produce a v1-format lockfile.
-- **Version bump is required** — it changes the lockfile hash, busting the CI cache. Without it, CI may use stale `node_modules`.
+- **Yarn version**: The app is pinned to Yarn 4 in `app/package.json`, and CI uses Corepack with `yarn install --immutable`.
+- **Run `yarn install` after copying the vendored files** so the `file:vendor/chess-control` dependency is refreshed in `node_modules` before you test or build.
+- **Version bump is required** so the vendored package metadata and lockfile stay aligned with the copied release.
 - **Always branch from latest main** — never reuse an old feature branch after it has been merged.

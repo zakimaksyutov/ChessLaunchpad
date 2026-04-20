@@ -4,9 +4,13 @@
 # Binary packages
 *.deb
 
-# Yarn Berry
-app/.yarn/
-app/.yarnrc.yml
+# Yarn 4 runtime state
+app/.yarn/*
+!app/.yarn/patches
+!app/.yarn/plugins
+!app/.yarn/releases
+!app/.yarn/sdks
+!app/.yarn/versions
 
 # npm lockfile (using yarn.lock)
 app/package-lock.json
