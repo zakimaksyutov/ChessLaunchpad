@@ -17,9 +17,15 @@ jobs:
       REACT_APP_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }} 
 
     steps:
-      - name: Set build version env
+      - name: Set build env vars
         run: |
-          echo "REACT_APP_BUILD_VERSION=$(date -u +'%Y%m%d-%H%M%SZ')-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          VERSION="$(date -u +'%Y%m%d-%H%M%SZ')-${GITHUB_SHA:0:7}"
+          if [ "$BRANCH" != "main" ]; then
+            VERSION="$VERSION ($BRANCH)"
+          fi
+          echo "REACT_APP_BUILD_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "REACT_APP_BRANCH=$BRANCH" >> $GITHUB_ENV
         
       - name: Check out repository
         uses: actions/checkout@v4
@@ -48,6 +54,7 @@ jobs:
         working-directory: app
         env:
           REACT_APP_BUILD_VERSION: ${{ env.REACT_APP_BUILD_VERSION }}
+          REACT_APP_BRANCH: ${{ env.REACT_APP_BRANCH }}
 
       - name: Configure git user
         # This ensures gh-pages can commit with a known identity
