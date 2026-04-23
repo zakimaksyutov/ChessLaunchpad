@@ -24,6 +24,7 @@ interface ChessboardControlProps {
     movePlayed: (orig: string, dest: string) => boolean;
     annotationsChanged?: (fen: string, annotations: Annotation[]) => void;
     annotations?: Annotation[];
+    interactive?: boolean;
 }
 
 function getCheckSquare(chess: Chess): CCSquare | undefined {
@@ -72,7 +73,7 @@ function detectMove(prevFen: string, newFen: string): { from: CCSquare; to: CCSq
     return undefined;
 }
 
-const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged, annotations }) => {
+const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, orientation, movePlayed, annotationsChanged, annotations, interactive = true }) => {
 
     // Refs for tracking state across renders
     const prevFenRef = useRef(fen);
@@ -156,6 +157,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
                 fen={fen}
                 orientation={orientation}
                 turnColor={turnColor}
+                interactive={interactive}
                 legalMoves={legalMoves}
                 lastMove={lastMove}
                 check={checkSquare}

@@ -20,6 +20,8 @@ const soundSuccess = new Audio(soundSuccessFile);
 
 const FSRS_STATE_NAMES = ['New', 'Learning', 'Review', 'Relearning'];
 
+type AutoPlayPhase = 'autoplay' | 'idle';
+
 function formatCardForLog(card: FSRSCardData) {
     return {
         state: FSRS_STATE_NAMES[card.st] ?? card.st,
@@ -52,6 +54,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
 
     const ANNOTATION_DELAY_BASE_IN_MS = 200;
     const ANNOTATION_DELAY_GROWTH = 1.35;
+    const AUTOPLAY_MOVE_DELAY_MS = 250;
+    const NORMAL_MOVE_DELAY_MS = 750;
 
     ////////////////////////////////////////////
     // React References
@@ -66,6 +70,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
     const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]); // Applicable variants for the position before the last move
     const [roundId, setRoundId] = useState<string>(''); // ID of the current round
     const [tableVisibility, setTableVisibility] = useState<number>(TABLE_HIDDEN); // Table visibility state
+    const [autoPlayPhase, setAutoPlayPhase] = useState<AutoPlayPhase>('idle'); // FSRS autoplay visual state
 
     ////////////////////////////////////////////
     // React Memory
@@ -102,6 +107,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         setAutoLoadNext(false);
         setProgress(0);
         setApplicableVariants([]);
+        setAutoPlayPhase('idle');
         userHasPlayedManuallyRef.current = false;
 
         // Generate a new ID for the round
@@ -176,6 +182,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
             const cardBefore = logic.getCardDataForMove(currentFen, move.san);
 
             userHasPlayedManuallyRef.current = true;
+            setAutoPlayPhase('idle');
             logic.rateUserMove(currentFen, move.san);
 
             const cardAfter = logic.getCardDataForMove(currentFen, move.san);
@@ -219,6 +226,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
     const handleCompletion = () => {
         logic.completeVariant(chess.fen());
 
+        // Defensive: clear any pending autoplay timeout
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+
+        // Reset autoplay phase so status bar doesn't persist during countdown
+        setAutoPlayPhase('idle');
+
         // Notify parent component that the variant is complete
         onCompletion();
 
@@ -240,12 +256,14 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         });
     }
 
-    const scheduleToPlayNextMove = (chess: Chess) => {
+    const scheduleToPlayNextMove = (chess: Chess, fastAutoplay: boolean = false) => {
         // Clear any existing timeout before setting a new one.
         // This is needed because it is run from useEffect and it can run multiple times (strict mode in development)
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
         }
+
+        const baseDelay = fastAutoplay ? AUTOPLAY_MOVE_DELAY_MS : NORMAL_MOVE_DELAY_MS;
 
         // If there are annotations then we delay auto-play by extra time per annotation.
         // The idea is that we want to give the user time to follow annotations.
@@ -254,7 +272,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         timeoutRef.current = setTimeout(() => {
             playNextMove(chess);
             timeoutRef.current = null; // Reset after execution
-        }, 750 + getAnnotationDelayMilliseconds(annotations)); // Delay before playing the next move
+        }, baseDelay + getAnnotationDelayMilliseconds(annotations));
     }
 
     const getAnnotationDelayMilliseconds = (annotations: { dest?: string }[]): number => {
@@ -291,16 +309,19 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
 
     const decideNextAction = (chess: Chess) => {
         const moveCount = chess.history().length;
+        const inAutoplayPrefix = !userHasPlayedManuallyRef.current;
 
         if (!isUserTurn(moveCount)) {
             // Opponent's turn → always autoplay
-            scheduleToPlayNextMove(chess);
-        } else if (!userHasPlayedManuallyRef.current && logic.shouldAutoplayUserMove(chess.fen())) {
+            scheduleToPlayNextMove(chess, inAutoplayPrefix);
+        } else if (inAutoplayPrefix && logic.shouldAutoplayUserMove(chess.fen())) {
             // User's turn, still in autoplay prefix, FSRS says autoplay
+            setAutoPlayPhase('autoplay');
             logFsrsMovesAtPosition(chess.fen(), true);
-            scheduleToPlayNextMove(chess);
+            scheduleToPlayNextMove(chess, true);
         } else {
             // User's turn, user must play manually
+            setAutoPlayPhase('idle');
             logFsrsMovesAtPosition(chess.fen());
         }
     }
@@ -312,6 +333,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
 
         handleMove(move.from, move.to, true);
     }
+
+    const boardContainerClass = autoPlayPhase === 'autoplay'
+        ? 'board-wrapper board-glow-autoplay'
+        : 'board-wrapper';
 
     return (
         <div style={{
@@ -325,15 +350,23 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
                 const annotations = logic.getAnnotations(fen);
 
                 return (
-                    <ChessboardControl
-                        roundId={roundId}
-                        fen={fen}
-                        orientation={orientation}
-                        movePlayed={(orig, dest) => handleMove(orig, dest, false)}
-                        annotations={annotations}
-                    />
+                    <div className={boardContainerClass}>
+                        <ChessboardControl
+                            roundId={roundId}
+                            fen={fen}
+                            orientation={orientation}
+                            movePlayed={(orig, dest) => handleMove(orig, dest, false)}
+                            annotations={annotations}
+                            interactive={autoPlayPhase !== 'autoplay'}
+                        />
+                    </div>
                 );
             })()}
+            {autoPlayPhase === 'autoplay' && (
+                <div className="status-bar status-bar-autoplay">
+                    ⏩ Auto-playing mastered moves…
+                </div>
+            )}
             <div className="pgn-container"
                 style={{
                     width: '100%',
