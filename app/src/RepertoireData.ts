@@ -1,4 +1,5 @@
 import { WeightSettings } from "./WeightSettings";
+import { FSRSCardData } from "./FSRSCardData";
 
 export interface OpeningVariantData {
     pgn: string;
@@ -16,4 +17,5 @@ export interface RepertoireData {
     lastPlayedDate: Date;
     dailyPlayCount: number; // How many times user has played on the current date
     weightSettings?: WeightSettings;
+    fsrsCards?: Record<string, FSRSCardData>;
 }

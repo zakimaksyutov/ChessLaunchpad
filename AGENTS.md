@@ -50,6 +50,14 @@ yarn startLinux   # Linux / macOS
   - `public/` — Static assets
   - `vendor/chess-control/` — Vendored chess-control library (built dist files)
 - `openings/` — Opening database files and merge scripts
+- `specs/` — Technical specifications
+  - `backend-api-contract.md` — Backend REST API contract (copy from backend repo; do not edit here)
+
+## Backend API
+
+The backend is a REST API (`https://chess-prod-function.azurewebsites.net/api/user`) that stores user repertoire data as a validated JSON blob. See `specs/backend-api-contract.md` for the full contract. Do not edit that file directly — it is a copy from the backend repository.
+
+If a feature requires backend contract changes, produce a separate spec in `specs/` describing the required changes. This spec will be copied to the backend repository for implementation.
 
 ## Updating chess-control
 

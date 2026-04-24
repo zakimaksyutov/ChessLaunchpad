@@ -115,7 +115,8 @@ const TrainingPage: React.FC = () => {
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 orientationAndVariants.allVariants,
                 repertoireData!.dailyPlayCount + 1,
-                settings
+                settings,
+                repertoireData?.fsrsCards
             );
             setRepertoireData(newData); // Updating local copy - it will be used for loading the next round.
             await dal.storeRepertoireData(newData);
@@ -163,6 +164,7 @@ const TrainingPage: React.FC = () => {
             <BadgeRow repertoireData={repertoireData} />
             <TrainingPageControl
                 variants={selectedVariants}
+                fsrsCards={repertoireData?.fsrsCards ?? {}}
                 onCompletion={handleCompletion}
                 onLoadNext={handleLoadNext}
                 orientation={orientation}
