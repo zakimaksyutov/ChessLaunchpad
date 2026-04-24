@@ -4,7 +4,7 @@ let isAppInsightsLoaded = false;
 
 const appInsights = new ApplicationInsights({
   config: {
-    connectionString: process.env.REACT_APP_APPINSIGHTS_CONNECTION_STRING,
+    connectionString: import.meta.env.VITE_APPINSIGHTS_CONNECTION_STRING,
     disableAjaxTracking: true,
     disableCorrelationHeaders: true,
     disableFetchTracking: true,
@@ -14,7 +14,7 @@ const appInsights = new ApplicationInsights({
 
 try {
   appInsights.loadAppInsights();
-  appInsights.context.application.ver = process.env.REACT_APP_BUILD_VERSION || 'unknown';
+  appInsights.context.application.ver = import.meta.env.VITE_BUILD_VERSION || 'unknown';
   isAppInsightsLoaded = true;
   console.log('Application Insights loaded successfully');
 } catch (error) {

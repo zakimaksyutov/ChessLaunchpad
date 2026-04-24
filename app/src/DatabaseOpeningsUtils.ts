@@ -32,7 +32,7 @@ export class DatabaseOpeningsUtils {
 
     public static async DownloadOpenings(): Promise<DatabaseOpening[]> {
         try {
-            const response = await fetch(process.env.PUBLIC_URL + '/openings.tsv');
+            const response = await fetch(import.meta.env.BASE_URL + 'openings.tsv');
             if (!response.ok) {
                 throw new Error(`Failed to fetch openings.tsv: ${response.statusText}`);
             }

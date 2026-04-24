@@ -80,8 +80,8 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
     const prevRoundIdRef = useRef(roundId);
     const prevOrientationRef = useRef(orientation);
     const moveJustPlayedRef = useRef(false);
-    const userLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>();
-    const computedLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>();
+    const userLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>(undefined);
+    const computedLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>(undefined);
     const fenRef = useRef(fen);
 
     const movePlayedRef = useRef(movePlayed);

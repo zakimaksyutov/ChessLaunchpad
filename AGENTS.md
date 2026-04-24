@@ -7,11 +7,12 @@ ChessLaunchpad is a web application for memorizing chess openings using spaced r
 ## Tech Stack
 
 - React 19 with TypeScript
+- Vite for bundling and dev server
+- Vitest for testing
 - chess.js for game logic and PGN parsing
 - chess-control (in-house) for interactive board rendering, vendored in `app/vendor/chess-control/`
 - React Router for client-side routing
 - Microsoft Application Insights for telemetry
-- Create React App (react-scripts) tooling
 
 ## Build and Test
 
@@ -39,8 +40,7 @@ yarn test
 ### Start dev server
 
 ```sh
-yarn start        # Windows
-yarn startLinux   # Linux / macOS
+yarn dev
 ```
 
 ## Project Structure

@@ -7,10 +7,10 @@ import PgnControl from './PgnControl';
 import { FSRSCardData } from './FSRSCardData';
 import './TrainingPageControl.css';
 
-const soundMoveFile = require('./assets/move.mp3');
-const soundCaptureFile = require('./assets/capture.mp3');
-const soundErrorFile = require('./assets/error.mp3');
-const soundSuccessFile = require('./assets/energy.mp3');
+import soundMoveFile from './assets/move.mp3';
+import soundCaptureFile from './assets/capture.mp3';
+import soundErrorFile from './assets/error.mp3';
+import soundSuccessFile from './assets/energy.mp3';
 
 // Create Audio objects for move/capture/error/success sounds
 const soundMove = new Audio(soundMoveFile);

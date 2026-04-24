@@ -1,7 +1,7 @@
 import React from 'react';
 
 const LandingPage: React.FC = () => {
-    const version = process.env.REACT_APP_BUILD_VERSION;
+    const version = import.meta.env.VITE_BUILD_VERSION;
 
     return (
         <div style={{ 

@@ -2,7 +2,7 @@
 // allows you to do things like:
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 
 // Mock TextEncoder and crypto.subtle for tests
 class MockTextEncoder {
@@ -111,4 +111,8 @@ const mockCrypto = {
 
 // Assign mocks to global object - fix the TextEncoder assignment
 global.TextEncoder = MockTextEncoder as any;
-global.crypto = mockCrypto as unknown as Crypto;
+Object.defineProperty(globalThis, 'crypto', {
+  value: mockCrypto,
+  writable: true,
+  configurable: true,
+});

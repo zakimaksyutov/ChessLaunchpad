@@ -252,13 +252,13 @@ describe('LaunchpadLogic - FSRS Integration', () => {
 
             const logic = new LaunchpadLogic([variant], fsrsCards);
 
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
 
             const chess = new Chess();
             expect(logic.shouldAutoplayUserMove(chess.fen())).toBe(true);
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
 
         it('should return false when card is not in Review state', () => {
@@ -276,10 +276,10 @@ describe('LaunchpadLogic - FSRS Integration', () => {
 
             const logic = new LaunchpadLogic([variant], fsrsCards);
 
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date('2026-04-02T00:00:00Z'));
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-04-02T00:00:00Z'));
             expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
 
         it('should return false when any card at a branch point fails', () => {
@@ -299,15 +299,15 @@ describe('LaunchpadLogic - FSRS Integration', () => {
 
             const logic = new LaunchpadLogic([morphy, berlin], fsrsCards);
 
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date(goodCard.lr!).getTime() + 1000);
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(goodCard.lr!).getTime() + 1000);
 
             const chess = new Chess();
             chess.move('e4'); chess.move('e5'); chess.move('Nf3'); chess.move('Nc6'); chess.move('Bb5');
 
             expect(logic.shouldAutoplayUserMove(chess.fen())).toBe(false);
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
     });
 
@@ -317,8 +317,8 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             const fsrsCards: Record<string, FSRSCardData> = {};
             const logic = new LaunchpadLogic([variant], fsrsCards);
 
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date('2026-04-20T00:00:00Z'));
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-04-20T00:00:00Z'));
 
             const chess = new Chess();
             logic.rateUserMove(chess.fen(), 'e4');
@@ -328,7 +328,7 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             expect(fsrsCards[key].r).toBe(1);
             expect(fsrsCards[key].l).toBe(0); // No lapse → rated Good
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
 
         it('should rate as Again when error occurred at position', () => {
@@ -336,8 +336,8 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             const fsrsCards: Record<string, FSRSCardData> = {};
             const logic = new LaunchpadLogic([variant], fsrsCards);
 
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date('2026-04-20T00:00:00Z'));
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-04-20T00:00:00Z'));
 
             const chess = new Chess();
             logic.markError(chess.fen());
@@ -349,7 +349,7 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             expect(fsrsCards[key].s).toBeLessThan(1);
             expect(fsrsCards[key].di).toBeGreaterThan(5);
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
 
         it('should clear error state after rating so repeated FEN gets fresh assessment', () => {
@@ -357,8 +357,8 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             const fsrsCards: Record<string, FSRSCardData> = {};
             const logic = new LaunchpadLogic([variant], fsrsCards);
 
-            jest.useFakeTimers();
-            jest.setSystemTime(new Date('2026-04-20T00:00:00Z'));
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date('2026-04-20T00:00:00Z'));
 
             const chess = new Chess();
             const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
@@ -373,7 +373,7 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             // Good produces higher stability than Again on a card that just had Again
             expect(fsrsCards[key].s).toBeGreaterThan(stabilityAfterAgain);
 
-            jest.useRealTimers();
+            vi.useRealTimers();
         });
     });
 
