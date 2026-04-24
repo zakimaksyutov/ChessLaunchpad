@@ -53,7 +53,7 @@ const TABLE_FULL = 2;
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsrsCards, onCompletion, onLoadNext, orientation }) => {
 
     const ANNOTATION_DELAY_BASE_IN_MS = 200;
-    const ANNOTATION_DELAY_GROWTH = 1.35;
+    const ANNOTATION_DELAY_GROWTH = 1.26;
     const AUTOPLAY_MOVE_DELAY_MS = 250;
     const NORMAL_MOVE_DELAY_MS = 750;
 
