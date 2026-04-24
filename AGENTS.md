@@ -72,6 +72,14 @@ cd ../ChessLaunchpad/app && yarn install
 
 **Yarn version note:** The app is pinned to Yarn 4 via `app/package.json`, and CI uses Corepack plus `yarn install --immutable`. `app/.yarnrc.yml` is tracked so Yarn keeps using the `node-modules` linker instead of switching this project to Plug'n'Play. If `yarn` does not resolve to the pinned version on a machine, run `corepack enable` once and retry.
 
+## Playwright / E2E
+
+Test account credentials are in `.env` at the repo root (git-ignored). Use these to log in during Playwright-based automation.
+
+## Vite Development Notes
+
+The dev server is pinned to **port 5274** (`strictPort: true`) to avoid conflicts with sibling projects.
+
 ## Process — Lessons Learned
 
 - **Never amend commits.** Always create new commits instead of using `git commit --amend`.
