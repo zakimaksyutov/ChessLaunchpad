@@ -60,6 +60,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
     ////////////////////////////////////////////
     // React References
     const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Timeout reference for auto-play
+    const loadNextTriggeredRef = useRef(false); // Guards against double-calling onLoadNext
+    const onLoadNextRef = useRef(onLoadNext);
+    useEffect(() => { onLoadNextRef.current = onLoadNext; }, [onLoadNext]);
 
     ////////////////////////////////////////////
     // React States
@@ -131,6 +134,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         let interval: NodeJS.Timeout | null = null;
 
         if (autoLoadNext) {
+            loadNextTriggeredRef.current = false;
+
             // We auto-play in 5 seconds if there were errors, otherwise in 1 second
             let durationMilliseconds = logic.hadErrors() ? 5000 : 1000;
 
@@ -147,7 +152,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
                     const newVal = prev + progressBarStepSize;
                     if (newVal >= 100) {
                         clearInterval(interval!);
-                        onLoadNext();
                         return 100;
                     }
                     return newVal;
@@ -160,7 +164,17 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
                 clearInterval(interval);
             }
         };
-    }, [autoLoadNext, onLoadNext, logic, chess]);
+    }, [autoLoadNext, logic, chess]);
+
+    // Trigger onLoadNext when the progress bar completes.
+    // Separated from the progress effect to keep the state updater pure
+    // (StrictMode calls updaters twice, which was causing double onLoadNext calls).
+    useEffect(() => {
+        if (autoLoadNext && progress >= 100 && !loadNextTriggeredRef.current) {
+            loadNextTriggeredRef.current = true;
+            onLoadNextRef.current();
+        }
+    }, [autoLoadNext, progress]);
 
     const handleMove = (orig: string, dest: string, isAutoplay: boolean): boolean => {
 
@@ -270,8 +284,11 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         const annotations = logic.getAnnotations(chess.fen());
 
         timeoutRef.current = setTimeout(() => {
+            // Clear ref BEFORE executing: playNextMove may schedule a new
+            // timeout via decideNextAction → scheduleToPlayNextMove, and we
+            // must not overwrite that new reference afterwards.
+            timeoutRef.current = null;
             playNextMove(chess);
-            timeoutRef.current = null; // Reset after execution
         }, baseDelay + getAnnotationDelayMilliseconds(annotations));
     }
 
