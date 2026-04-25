@@ -5,7 +5,7 @@ import { WeightSettings } from "./WeightSettings";
 import { FSRSCardData } from "./FSRSCardData";
 
 // --- Mocks ---
-jest.mock('./LaunchpadLogic', () => ({
+vi.mock('./LaunchpadLogic', () => ({
     LaunchpadLogic: {
         SUCCESS_EMA_ALPHA: 0.5
     }
@@ -13,15 +13,15 @@ jest.mock('./LaunchpadLogic', () => ({
 
 describe('RepertoireDataUtils', () => {
     beforeEach(() => {
-        jest.resetAllMocks();
+        vi.resetAllMocks();
 
-        jest.useFakeTimers();
-        jest.setSystemTime(new Date('2025-01-23T17:08:34.159Z').getTime());
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2025-01-23T17:08:34.159Z').getTime());
     });
 
     afterEach(() => {
-        jest.restoreAllMocks();
-        jest.useRealTimers();
+        vi.restoreAllMocks();
+        vi.useRealTimers();
     });
 
     describe('normalize', () => {

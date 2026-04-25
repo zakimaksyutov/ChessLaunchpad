@@ -14,3 +14,9 @@ app/.yarn/*
 
 # npm lockfile (using yarn.lock)
 app/package-lock.json
+
+# Environment variables (secrets)
+.env
+
+# Playwright MCP
+.playwright-mcp/

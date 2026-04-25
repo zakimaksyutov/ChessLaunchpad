@@ -35,6 +35,8 @@ const TrainingPage: React.FC = () => {
 
     // On mount, retrieve data from the server and merge with local
     useEffect(() => {
+        let cancelled = false;
+
         const fetchVariants = async () => {
             if (!dal) {
                 console.error('DataAccessLayer not initialized');
@@ -44,20 +46,25 @@ const TrainingPage: React.FC = () => {
             setLoading(true);
             try {
                 const data: RepertoireData = await dal.retrieveRepertoireData();
+                if (cancelled) return;
                 setRepertoireData(data);
                 setOrientationAndVariants(pickOrientationAndVariants(data, filterParam));
 
                 console.log(`DAL: Loaded ${data.data.length} variants.`);
             } catch (e: any) {
+                if (cancelled) return;
                 const msg = `Failed to load variants: ${e.message || 'Unknown error'}`;
                 console.error(msg, e);
                 setError(msg);
             } finally {
-                setLoading(false);
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         };
 
         fetchVariants();
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterParam]); // run once on mount
 
@@ -130,10 +137,8 @@ const TrainingPage: React.FC = () => {
     };
 
     const handleLoadNext = () => {
-        setTimeout(() => {
-            // If we're loading next - it means we successfully loaded repertoire data.
-            setOrientationAndVariants(pickOrientationAndVariants(repertoireData!, filterParam));
-        }, 50);
+        // If we're loading next - it means we successfully loaded repertoire data.
+        setOrientationAndVariants(pickOrientationAndVariants(repertoireData!, filterParam));
     };
 
     if (loading) {
