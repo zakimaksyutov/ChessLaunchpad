@@ -279,189 +279,184 @@ const RepertoirePage: React.FC = () => {
     };
 
     if (loading) {
-        return <div style={{ padding: '1rem' }}>Loading repertoire...</div>;
+        return <div className="repertoire-loading">Loading repertoire...</div>;
     }
     if (error) {
-        return <div style={{ padding: '1rem', color: 'red' }}>Error: {error}</div>;
+        return (
+            <div className="repertoire-error">
+                <div className="repertoire-error-card">Error: {error}</div>
+            </div>
+        );
     }
 
     return (
-        <div
-            style={{ padding: '1rem' }}
-        >
-            {/* Menu bar at the top */}
-            <div style={{ marginBottom: '1rem' }}>
-                <button onClick={handleNew}>New</button>
-                <button onClick={handleExport}>Export</button>
-                <button onClick={() => importInputRef.current?.click()}>Import</button>
-                <button onClick={handleClassify}>Classify</button>
-                <input
-                    type="file"
-                    ref={importInputRef}
-                    style={{ display: 'none' }}
-                    accept={`.${FILE_EXTENSION}`}
-                    onChange={handleImportFileSelected}
-                />
-                <input
-                    type="text"
-                    placeholder="Enter opening name or FEN"
-                    value={filter}
-                    onChange={(e) => setFilter(e.target.value)}
-                    style={{ marginLeft: '1rem' }}
-                />
-                <button onClick={handleTrain} style={{ marginLeft: '8px' }}>
-                    Train
-                </button>
-                <label style={{ marginLeft: '8px' }}>
+        <div className="repertoire-page">
+            <div className="repertoire-card">
+                {/* Toolbar */}
+                <div className="repertoire-toolbar">
+                    <button className="rp-primary" onClick={handleNew}>New</button>
+                    <button className="rp-secondary" onClick={handleExport}>Export</button>
+                    <button className="rp-secondary" onClick={() => importInputRef.current?.click()}>Import</button>
+                    <button className="rp-secondary" onClick={handleClassify}>Classify</button>
                     <input
-                        type="checkbox"
-                        checked={showStats}
-                        onChange={(e) => setShowStats(e.target.checked)}
+                        type="file"
+                        ref={importInputRef}
+                        style={{ display: 'none' }}
+                        accept={`.${FILE_EXTENSION}`}
+                        onChange={handleImportFileSelected}
                     />
-                    Internal stats
-                </label>            </div>
-            {evalsLoading && (
-                <div style={{ marginBottom: '0.5rem', color: '#888', fontSize: '0.9em' }}>
-                    Loading move evaluations…
+                    <input
+                        type="text"
+                        className="repertoire-filter-input"
+                        placeholder="Enter opening name or FEN"
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                    />
+                    <button className="rp-primary" onClick={handleTrain}>
+                        Train
+                    </button>
+                    <label className="repertoire-stats-toggle">
+                        <input
+                            type="checkbox"
+                            checked={showStats}
+                            onChange={(e) => setShowStats(e.target.checked)}
+                        />
+                        Internal stats
+                    </label>
                 </div>
-            )}
-            {variants.length === 0 ? (
-                <p>No variants found.</p>
-            ) : (
-                <table
-                    style={{
-                        borderCollapse: 'collapse',
-                        minWidth: 600,
-                        width: '100%',
-                    }}
-                >
-                    <thead>
-                        <tr style={{ backgroundColor: '#eee' }}>
-                            <th style={thStyle}>Orientation</th>
-                            <th style={thStyle}>PGN</th>
-                            <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Actions</th>
-                            <th style={thStyle}>Times Played</th>
-                            {showStats && (
-                                <>
-                                    <th style={thStyle}>
-                                        _nf
-                                        <FaInfoCircle title="Newness Factor - If a variant has been played successfully fewer than 7 times, the factor is higher. Formula: (1 + max(7 - num, 0))^2."
-                                            style={{ marginLeft: '4px', color: '#888' }}
-                                        />
-                                    </th>
-                                    <th style={thStyle}>
-                                        _rf
-                                        <FaInfoCircle title="Recency Factor - The longer it has been since last played, the higher the factor. Formula: 1 + (number of days since last played)."
-                                            style={{ marginLeft: '4px', color: '#888' }}
-                                        />
-                                    </th>
-                                    <th style={thStyle}>
-                                        _ff
-                                        <FaInfoCircle title="Frequency Factor - The more often a variant is played, the lower the factor. It is internally tracked as an Exponential Moving Average (EMA) with α = 0.6667 (averaging across three days). Any error resets the factor to 0, and it increases daily. Formula: 1 / (1 + EMA)^2."
-                                            style={{ marginLeft: '4px', color: '#888' }}
-                                        /></th>
-                                    <th style={thStyle}>
-                                        _ef
-                                        <FaInfoCircle title="Error Factor - The more errors recorded, the higher the factor. It is internally tracked as a decaying sum of errors. Formula: (1 + sum of errors)^2."
-                                            style={{ marginLeft: '4px', color: '#888' }}
-                                        /></th>
-                                    <th style={thStyle}>
-                                        _w
-                                        <FaInfoCircle title="Weight - Used to calculate the probability of selecting the next move from available variants. Formula: _w = _nf * _rf * _ff * _ef."
-                                            style={{ marginLeft: '4px', color: '#888' }}
-                                        /></th>
-                                </>
-                            )}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredVariants.map((v, i) => (
-                            <tr key={i}>
-                                <td style={tdStyle}>
-                                    {v.orientation}
-                                </td>
-                                <td style={tdStyle}>
-                                    <PgnControl
-                                        pgn={v.pgn}
-                                        onClickMove={(fen, prevFen, moveSan, rect) => {
-                                            setHoveredFen(fen);
-                                            setHoveredOrientation(v.orientation);
-                                            setPreviousFen(prevFen);
-                                            setPlayedMoveSan(moveSan);
-                                            setAnchorRect(rect);
-                                        }}
-                                        onLeavePgn={() => {
-                                            // Popover is dismissed via click-away or Escape
-                                        }}
-                                        evalDrops={variantEvalDrops.get(`${v.orientation}::${v.pgn}`)}
-                                    />
-                                </td>
-                                <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                                    <FaEdit className="actionsIcon"
-                                        style={{ cursor: 'pointer', marginRight: '8px' }}
-                                        onClick={() => handleEdit(v)}
-                                    />
-                                    <FaTrashAlt className="actionsIcon"
-                                        style={{ cursor: 'pointer', marginRight: '8px' }}
-                                        onClick={() => handleDelete(v)}
-                                    />
-                                    <a
-                                        href={`https://lichess.org/analysis/pgn/${encodeURIComponent(v.pgn)}?color=${v.orientation}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        title="Analyze on Lichess"
-                                    >
-                                        <FaExternalLinkAlt className="actionsIcon"
-                                            style={{ cursor: 'pointer' }}
-                                        />
-                                    </a>
-                                </td>
-                                <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
-                                {showStats && (
-                                    <>
-                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.newnessFactor !== undefined ? v.newnessFactor.toFixed(4) : '-'}</td>
-                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.recencyFactor !== undefined ? v.recencyFactor.toFixed(4) : '-'}</td>
-                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.frequencyFactor !== undefined ? v.frequencyFactor.toFixed(4) : '-'}</td>
-                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.errorFactor !== undefined ? v.errorFactor.toFixed(4) : '-'}</td>
-                                        <td style={{ ...tdStyle, whiteSpace: 'nowrap', width: '1%' }}>{v.weight !== undefined ? v.weight.toFixed(4) : '-'}</td>
-                                    </>
-                                )}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            )}
+                {evalsLoading && (
+                    <div className="repertoire-evals-loading">
+                        Loading move evaluations…
+                    </div>
+                )}
+                {variants.length === 0 ? (
+                    <p className="repertoire-empty">No variants found.</p>
+                ) : (
+                    <div className="repertoire-table-wrapper">
+                        <table className="repertoire-table">
+                            <thead>
+                                <tr>
+                                    <th>Orientation</th>
+                                    <th>PGN</th>
+                                    <th className="col-nowrap">Actions</th>
+                                    <th className="col-played">Times Played</th>
+                                    {showStats && (
+                                        <>
+                                            <th>
+                                                _nf
+                                                <FaInfoCircle title="Newness Factor - If a variant has been played successfully fewer than 7 times, the factor is higher. Formula: (1 + max(7 - num, 0))^2."
+                                                    style={{ marginLeft: '4px', color: '#888' }}
+                                                />
+                                            </th>
+                                            <th>
+                                                _rf
+                                                <FaInfoCircle title="Recency Factor - The longer it has been since last played, the higher the factor. Formula: 1 + (number of days since last played)."
+                                                    style={{ marginLeft: '4px', color: '#888' }}
+                                                />
+                                            </th>
+                                            <th>
+                                                _ff
+                                                <FaInfoCircle title="Frequency Factor - The more often a variant is played, the lower the factor. It is internally tracked as an Exponential Moving Average (EMA) with α = 0.6667 (averaging across three days). Any error resets the factor to 0, and it increases daily. Formula: 1 / (1 + EMA)^2."
+                                                    style={{ marginLeft: '4px', color: '#888' }}
+                                                />
+                                            </th>
+                                            <th>
+                                                _ef
+                                                <FaInfoCircle title="Error Factor - The more errors recorded, the higher the factor. It is internally tracked as a decaying sum of errors. Formula: (1 + sum of errors)^2."
+                                                    style={{ marginLeft: '4px', color: '#888' }}
+                                                />
+                                            </th>
+                                            <th>
+                                                _w
+                                                <FaInfoCircle title="Weight - Used to calculate the probability of selecting the next move from available variants. Formula: _w = _nf * _rf * _ff * _ef."
+                                                    style={{ marginLeft: '4px', color: '#888' }}
+                                                />
+                                            </th>
+                                        </>
+                                    )}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredVariants.map((v, i) => (
+                                    <tr key={i}>
+                                        <td>
+                                            <span className={`orientation-chip ${v.orientation}`}>
+                                                {v.orientation}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <PgnControl
+                                                pgn={v.pgn}
+                                                onClickMove={(fen, prevFen, moveSan, rect) => {
+                                                    setHoveredFen(fen);
+                                                    setHoveredOrientation(v.orientation);
+                                                    setPreviousFen(prevFen);
+                                                    setPlayedMoveSan(moveSan);
+                                                    setAnchorRect(rect);
+                                                }}
+                                                onLeavePgn={() => {
+                                                    // Popover is dismissed via click-away or Escape
+                                                }}
+                                                evalDrops={variantEvalDrops.get(`${v.orientation}::${v.pgn}`)}
+                                            />
+                                        </td>
+                                        <td className="col-actions">
+                                            <FaEdit className="actionsIcon"
+                                                style={{ cursor: 'pointer', marginRight: '8px' }}
+                                                onClick={() => handleEdit(v)}
+                                            />
+                                            <FaTrashAlt className="actionsIcon"
+                                                style={{ cursor: 'pointer', marginRight: '8px' }}
+                                                onClick={() => handleDelete(v)}
+                                            />
+                                            <a
+                                                href={`https://lichess.org/analysis/pgn/${encodeURIComponent(v.pgn)}?color=${v.orientation}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title="Analyze on Lichess"
+                                            >
+                                                <FaExternalLinkAlt className="actionsIcon"
+                                                    style={{ cursor: 'pointer' }}
+                                                />
+                                            </a>
+                                        </td>
+                                        <td className="col-played">{v.numberOfTimesPlayed}</td>
+                                        {showStats && (
+                                            <>
+                                                <td className="col-stat">{v.newnessFactor !== undefined ? v.newnessFactor.toFixed(4) : '-'}</td>
+                                                <td className="col-stat">{v.recencyFactor !== undefined ? v.recencyFactor.toFixed(4) : '-'}</td>
+                                                <td className="col-stat">{v.frequencyFactor !== undefined ? v.frequencyFactor.toFixed(4) : '-'}</td>
+                                                <td className="col-stat">{v.errorFactor !== undefined ? v.errorFactor.toFixed(4) : '-'}</td>
+                                                <td className="col-stat">{v.weight !== undefined ? v.weight.toFixed(4) : '-'}</td>
+                                            </>
+                                        )}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
 
-            {/* Analysis popover for the clicked position */}
-            {hoveredFen && previousFen && playedMoveSan && anchorRect && (
-                <AnalysisPopover
-                    clickedFen={hoveredFen}
-                    previousFen={previousFen}
-                    playedMoveSan={playedMoveSan}
-                    orientation={hoveredOrientation === 'black' ? 'black' : 'white'}
-                    anchorRect={anchorRect}
-                    onClose={() => {
-                        setHoveredFen(null);
-                        setHoveredOrientation(null);
-                        setPreviousFen(null);
-                        setPlayedMoveSan(null);
-                        setAnchorRect(null);
-                    }}
-                />
-            )}
+                {/* Analysis popover for the clicked position */}
+                {hoveredFen && previousFen && playedMoveSan && anchorRect && (
+                    <AnalysisPopover
+                        clickedFen={hoveredFen}
+                        previousFen={previousFen}
+                        playedMoveSan={playedMoveSan}
+                        orientation={hoveredOrientation === 'black' ? 'black' : 'white'}
+                        anchorRect={anchorRect}
+                        onClose={() => {
+                            setHoveredFen(null);
+                            setHoveredOrientation(null);
+                            setPreviousFen(null);
+                            setPlayedMoveSan(null);
+                            setAnchorRect(null);
+                        }}
+                    />
+                )}
+            </div>
         </div>
     );
 };
 
 export default RepertoirePage;
-
-const thStyle: React.CSSProperties = {
-    border: '1px solid #ccc',
-    padding: '6px',
-    textAlign: 'left',
-};
-
-const tdStyle: React.CSSProperties = {
-    border: '1px solid #ccc',
-    padding: '6px',
-};
