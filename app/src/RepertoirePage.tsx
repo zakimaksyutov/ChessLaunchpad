@@ -4,7 +4,7 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { useNavigate } from 'react-router-dom';
 import { FaEdit, FaTrashAlt, FaInfoCircle, FaExternalLinkAlt } from 'react-icons/fa';
-import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
+
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock } from './FenUtils';
 import PgnControl from './PgnControl';
@@ -197,36 +197,6 @@ const RepertoirePage: React.FC = () => {
         reader.readAsText(file);
     };
 
-    const handleClassify = async () => {
-        try {
-            if (!repData) {
-                throw new Error('No repertoire data loaded. Cannot classify.');
-            }
-
-            // Load the openings database
-            const openings: DatabaseOpening[] = await DatabaseOpeningsUtils.DownloadOpenings();
-
-            // For each variant, classify the opening
-            for (const variant of repData.data) {
-                const classifications = DatabaseOpeningsUtils.ClassifyOpening(variant.pgn, openings);
-                variant.classifications = classifications;
-            }
-
-            // Store the updated data
-            await dal.storeRepertoireData(repData);
-
-            // Instead of updating our state or the UI here, simply reload the page.
-            // This ensures we fetch fresh data from the backend and re-render.
-            // This also should make it clear to a user that import succeeded.
-            //navigate(0);
-        }
-        catch (ex: any) {
-            alert(`Failed to classify: ${ex.message}`);
-
-            // We modified internal state, it is easier to reload the page.
-            navigate(0);
-        }
-    };
 
     const handleTrain = () => {
         if (filteredVariants.length === 0) {
@@ -297,7 +267,7 @@ const RepertoirePage: React.FC = () => {
                     <button className="rp-primary" onClick={handleNew}>New</button>
                     <button className="rp-secondary" onClick={handleExport}>Export</button>
                     <button className="rp-secondary" onClick={() => importInputRef.current?.click()}>Import</button>
-                    <button className="rp-secondary" onClick={handleClassify}>Classify</button>
+
                     <input
                         type="file"
                         ref={importInputRef}
