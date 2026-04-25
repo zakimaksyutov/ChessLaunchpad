@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ChessboardControl from './ChessboardControl';
 import {
     CloudEvalResult,
@@ -6,6 +7,12 @@ import {
     formatEval,
     formatMoveWithNumber,
 } from './LichessCloudEvalService';
+import {
+    MastersExplorerResult,
+    fetchMastersExplorerCached,
+    formatGameCount,
+} from './LichessMastersService';
+import { useLichessAuth } from './LichessAuthContext';
 
 interface AnalysisPopoverProps {
     clickedFen: string;
@@ -93,6 +100,75 @@ const EvalSection: React.FC<EvalSectionProps> = ({ title, fen, result, loading, 
     );
 };
 
+interface MastersSectionProps {
+    fen: string;
+    result: MastersExplorerResult | null;
+    loading: boolean;
+    highlightMoveSan?: string;
+}
+
+const MastersSection: React.FC<MastersSectionProps> = ({ fen, result, loading, highlightMoveSan }) => {
+    const totalLabel = !loading && result && result.moves.length > 0
+        ? ` (${formatGameCount(result.totalGames)})`
+        : '';
+    return (
+        <div className="analysis-popover-section">
+            <div className="analysis-popover-section-header">
+                Master Games
+                {totalLabel && <span className="analysis-popover-depth">{totalLabel}</span>}
+            </div>
+            {loading && (
+                <div className="analysis-popover-loading">Loading…</div>
+            )}
+            {!loading && !result && (
+                <div className="analysis-popover-no-data">No master games found</div>
+            )}
+            {!loading && result && result.moves.length === 0 && (
+                <div className="analysis-popover-no-data">No master games found</div>
+            )}
+            {!loading && result && result.moves.length > 0 && (
+                <div className="masters-moves">
+                    {result.moves.map((move, idx) => {
+                        const isHighlighted = highlightMoveSan !== undefined && move.san === highlightMoveSan;
+                        const moveDisplay = formatMoveWithNumber(fen, move.san);
+                        return (
+                            <div
+                                key={idx}
+                                className={`masters-move-row ${isHighlighted ? 'highlighted' : ''}`}
+                            >
+                                <span className="masters-move-san">{moveDisplay}</span>
+                                <span className="masters-move-games">{formatGameCount(move.totalGames)}</span>
+                                <div className="masters-result-bar" title={`${move.whitePercent}% / ${move.drawPercent}% / ${move.blackPercent}%`}>
+                                    <div className="masters-bar-white" style={{ width: `${move.whitePercent}%` }} />
+                                    <div className="masters-bar-draw" style={{ width: `${move.drawPercent}%` }} />
+                                    <div className="masters-bar-black" style={{ width: `${move.blackPercent}%` }} />
+                                </div>
+                                <span className="masters-move-rating">{move.averageRating}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
+interface MastersConnectPromptProps {
+    onNavigateToSettings: () => void;
+}
+
+const MastersConnectPrompt: React.FC<MastersConnectPromptProps> = ({ onNavigateToSettings }) => (
+    <div className="analysis-popover-section">
+        <div className="analysis-popover-section-header">Master Games</div>
+        <div className="masters-connect-prompt">
+            <a href="#" onClick={(e) => { e.preventDefault(); onNavigateToSettings(); }}>
+                Connect Lichess
+            </a>
+            {' '}for master game statistics
+        </div>
+    </div>
+);
+
 const AnalysisPopover: React.FC<AnalysisPopoverProps> = ({
     clickedFen,
     previousFen,
@@ -105,31 +181,57 @@ const AnalysisPopover: React.FC<AnalysisPopoverProps> = ({
     const [currEval, setCurrEval] = useState<CloudEvalResult | null>(null);
     const [prevLoading, setPrevLoading] = useState(true);
     const [currLoading, setCurrLoading] = useState(true);
+    const [mastersResult, setMastersResult] = useState<MastersExplorerResult | null>(null);
+    const [mastersLoading, setMastersLoading] = useState(true);
     const popoverRef = useRef<HTMLDivElement>(null);
-    const requestIdRef = useRef(0);
+    const evalRequestIdRef = useRef(0);
+    const mastersRequestIdRef = useRef(0);
+
+    const { connected, token } = useLichessAuth();
+    const navigate = useNavigate();
 
     // Fetch cloud evals when FENs change
     useEffect(() => {
-        const thisRequest = ++requestIdRef.current;
+        const thisRequest = ++evalRequestIdRef.current;
         setPrevEval(null);
         setCurrEval(null);
         setPrevLoading(true);
         setCurrLoading(true);
 
         fetchCloudEvalCached(previousFen, MULTI_PV).then((result) => {
-            if (requestIdRef.current === thisRequest) {
+            if (evalRequestIdRef.current === thisRequest) {
                 setPrevEval(result);
                 setPrevLoading(false);
             }
         });
 
         fetchCloudEvalCached(clickedFen, MULTI_PV).then((result) => {
-            if (requestIdRef.current === thisRequest) {
+            if (evalRequestIdRef.current === thisRequest) {
                 setCurrEval(result);
                 setCurrLoading(false);
             }
         });
     }, [clickedFen, previousFen]);
+
+    // Fetch masters explorer when FEN or token changes
+    useEffect(() => {
+        if (!token) {
+            setMastersResult(null);
+            setMastersLoading(false);
+            return;
+        }
+
+        const thisRequest = ++mastersRequestIdRef.current;
+        setMastersResult(null);
+        setMastersLoading(true);
+
+        fetchMastersExplorerCached(previousFen, token).then((result) => {
+            if (mastersRequestIdRef.current === thisRequest) {
+                setMastersResult(result);
+                setMastersLoading(false);
+            }
+        });
+    }, [previousFen, token]);
 
     // Click-away dismissal
     const handleClickOutside = useCallback((e: MouseEvent) => {
@@ -164,7 +266,7 @@ const AnalysisPopover: React.FC<AnalysisPopoverProps> = ({
         if (popoverRef.current) {
             setMeasuredHeight(popoverRef.current.scrollHeight);
         }
-    }, [prevEval, currEval, prevLoading, currLoading]);
+    }, [prevEval, currEval, prevLoading, currLoading, mastersResult, mastersLoading]);
 
     const { top, left } = computePosition(anchorRect, measuredHeight);
 
@@ -191,6 +293,20 @@ const AnalysisPopover: React.FC<AnalysisPopoverProps> = ({
                     interactive={false}
                 />
             </div>
+
+            {connected ? (
+                <MastersSection
+                    fen={previousFen}
+                    result={mastersResult}
+                    loading={mastersLoading}
+                    highlightMoveSan={playedMoveSan}
+                />
+            ) : (
+                <MastersConnectPrompt onNavigateToSettings={() => {
+                    onClose();
+                    navigate('/settings');
+                }} />
+            )}
 
             <EvalSection
                 title="Alternatives"

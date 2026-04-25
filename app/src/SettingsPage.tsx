@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { WeightSettings } from './WeightSettings';
+import { useLichessAuth } from './LichessAuthContext';
 import './SettingsPage.css';
 
 interface CoefficientValues {
@@ -17,7 +18,9 @@ const SettingsPage: React.FC = () => {
     const [loading, setLoading] = useState<boolean>(true);
     const [saving, setSaving] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
+    const [lichessLoading, setLichessLoading] = useState(false);
 
+    const { connected, login, logout } = useLichessAuth();
     const navigate = useNavigate();
 
     const dal: IDataAccessLayer = useMemo(() => {
@@ -123,6 +126,24 @@ const SettingsPage: React.FC = () => {
         }
     };
 
+    const handleLichessConnect = async () => {
+        setLichessLoading(true);
+        try {
+            await login();
+        } catch {
+            setLichessLoading(false);
+        }
+    };
+
+    const handleLichessDisconnect = async () => {
+        setLichessLoading(true);
+        try {
+            await logout();
+        } finally {
+            setLichessLoading(false);
+        }
+    };
+
     const renderTable = () => (
         <table className="settings-table">
             <thead>
@@ -220,6 +241,33 @@ const SettingsPage: React.FC = () => {
                             </button>
                         </div>
                     </>
+                )}
+            </div>
+
+            <div className="settings-card lichess-section">
+                <h1>Lichess Integration</h1>
+                <p className="settings-description">
+                    Connect your Lichess account to see master game statistics in the analysis popover.
+                </p>
+                {connected ? (
+                    <div className="lichess-status">
+                        <span className="lichess-connected-badge">✓ Connected</span>
+                        <button
+                            className="secondary"
+                            onClick={handleLichessDisconnect}
+                            disabled={lichessLoading}
+                        >
+                            {lichessLoading ? 'Disconnecting…' : 'Disconnect'}
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        className="lichess-connect-btn"
+                        onClick={handleLichessConnect}
+                        disabled={lichessLoading}
+                    >
+                        {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
+                    </button>
                 )}
             </div>
         </div>
