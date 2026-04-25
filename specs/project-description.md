@@ -38,6 +38,18 @@ Per-position cards track mastery using the FSRS algorithm (ts-fsrs). Well-known 
 
 React 19 · TypeScript · Vite · Vitest · chess.js · chess-control (vendored) · Azure Functions backend · Application Insights telemetry.
 
+## Lichess Integration
+
+Users can connect their Lichess account via OAuth2 PKCE on the Settings page. No extra OAuth scopes are requested — only public APIs are used. The token is passed as a `Bearer` header to identify the caller and improve rate limits.
+
+### Cloud Eval
+
+The analysis popover fetches position evaluations from the public Lichess Cloud Eval API (`GET https://lichess.org/api/cloud-eval?fen=…&multiPv=N`). Responses are cached in-memory for the session. No authentication is required.
+
+### Masters Opening Explorer
+
+The analysis popover also fetches master-game statistics from the Lichess Opening Explorer (`GET https://explorer.lichess.ovh/masters?fen=…`). The response includes top continuations with game counts, win/draw/loss percentages, and average ratings. Responses are cached in-memory for the session.
+
 ## Data Flow
 
 ```

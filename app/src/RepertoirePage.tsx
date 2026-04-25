@@ -3,12 +3,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { useNavigate } from 'react-router-dom';
-import { FaEdit, FaTrashAlt, FaInfoCircle } from 'react-icons/fa';
+import { FaEdit, FaTrashAlt, FaInfoCircle, FaExternalLinkAlt } from 'react-icons/fa';
 import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock } from './FenUtils';
-import ChessboardControl from './ChessboardControl';
 import PgnControl from './PgnControl';
+import { ExplorerEvals, getExplorerEvals } from './ExplorerEvals';
+import { EvalDrop, computeEvalDrops } from './EvalDropService';
+import AnalysisPopover from './AnalysisPopover';
 import './RepertoirePage.css';
 
 interface ParsedVariant {
@@ -44,12 +46,16 @@ const RepertoirePage: React.FC = () => {
     const [error, setError] = useState('');
     const [showStats, setShowStats] = useState(false);
 
-    // We'll store the FEN we're previewing (hovered).
+    // Explorer evals — lazy loaded
+    const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
+    const [evalsLoading, setEvalsLoading] = useState(true);
+
+    // We'll store the FEN we're previewing (clicked).
     const [hoveredFen, setHoveredFen] = useState<string | null>(null);
     const [hoveredOrientation, setHoveredOrientation] = useState<'white' | 'black' | null>(null);
-
-    // We'll store the mouse position so we can pop up the board near the cursor.
-    const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const [previousFen, setPreviousFen] = useState<string | null>(null);
+    const [playedMoveSan, setPlayedMoveSan] = useState<string | null>(null);
+    const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
     // For file selection when importing
     const importInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +129,27 @@ const RepertoirePage: React.FC = () => {
         };
         fetchData();
     }, [dal]);
+
+    // Lazy-load explorer evals (separate from repertoire data)
+    useEffect(() => {
+        getExplorerEvals()
+            .then(setExplorerEvals)
+            .catch((e) => console.warn('Failed to load explorer evals:', e))
+            .finally(() => setEvalsLoading(false));
+    }, []);
+
+    // Pre-compute eval drops for all variants once evals are loaded
+    const variantEvalDrops = useMemo(() => {
+        if (!explorerEvals) return new Map<string, Map<string, EvalDrop>>();
+        const map = new Map<string, Map<string, EvalDrop>>();
+        for (const v of variants) {
+            const drops = computeEvalDrops(v.pgn, explorerEvals, v.orientation);
+            if (drops.size > 0) {
+                map.set(`${v.orientation}::${v.pgn}`, drops);
+            }
+        }
+        return map;
+    }, [variants, explorerEvals]);
 
     const handleExport = () => {
         if (!repData) {
@@ -209,11 +236,6 @@ const RepertoirePage: React.FC = () => {
         navigate(`/training?filter=${encodeURIComponent(filter.trim())}`);
     };
 
-    // Track mouse move to position the popover
-    const handleMouseMove = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-        setMousePos({ x: e.clientX, y: e.clientY });
-    };
-
     const handleNew = () => {
         navigate('/repertoire/variant?mode=new');
     };
@@ -264,10 +286,8 @@ const RepertoirePage: React.FC = () => {
     }
 
     return (
-        // We use onMouseMove at the container level
         <div
             style={{ padding: '1rem' }}
-            onMouseMove={handleMouseMove}
         >
             {/* Menu bar at the top */}
             <div style={{ marginBottom: '1rem' }}>
@@ -300,6 +320,11 @@ const RepertoirePage: React.FC = () => {
                     />
                     Internal stats
                 </label>            </div>
+            {evalsLoading && (
+                <div style={{ marginBottom: '0.5rem', color: '#888', fontSize: '0.9em' }}>
+                    Loading move evaluations…
+                </div>
+            )}
             {variants.length === 0 ? (
                 <p>No variants found.</p>
             ) : (
@@ -314,7 +339,7 @@ const RepertoirePage: React.FC = () => {
                         <tr style={{ backgroundColor: '#eee' }}>
                             <th style={thStyle}>Orientation</th>
                             <th style={thStyle}>PGN</th>
-                            <th style={thStyle}>Actions</th>
+                            <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Actions</th>
                             <th style={thStyle}>Times Played</th>
                             {showStats && (
                                 <>
@@ -358,25 +383,38 @@ const RepertoirePage: React.FC = () => {
                                 <td style={tdStyle}>
                                     <PgnControl
                                         pgn={v.pgn}
-                                        onClickMove={(fen) => {
+                                        onClickMove={(fen, prevFen, moveSan, rect) => {
                                             setHoveredFen(fen);
                                             setHoveredOrientation(v.orientation);
+                                            setPreviousFen(prevFen);
+                                            setPlayedMoveSan(moveSan);
+                                            setAnchorRect(rect);
                                         }}
                                         onLeavePgn={() => {
-                                            setHoveredFen(null);
-                                            setHoveredOrientation(null);
+                                            // Popover is dismissed via click-away or Escape
                                         }}
+                                        evalDrops={variantEvalDrops.get(`${v.orientation}::${v.pgn}`)}
                                     />
                                 </td>
-                                <td style={tdStyle}>
+                                <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                     <FaEdit className="actionsIcon"
                                         style={{ cursor: 'pointer', marginRight: '8px' }}
                                         onClick={() => handleEdit(v)}
                                     />
                                     <FaTrashAlt className="actionsIcon"
-                                        style={{ cursor: 'pointer' }}
+                                        style={{ cursor: 'pointer', marginRight: '8px' }}
                                         onClick={() => handleDelete(v)}
                                     />
+                                    <a
+                                        href={`https://lichess.org/analysis/pgn/${encodeURIComponent(v.pgn)}?color=${v.orientation}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Analyze on Lichess"
+                                    >
+                                        <FaExternalLinkAlt className="actionsIcon"
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                    </a>
                                 </td>
                                 <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
                                 {showStats && (
@@ -394,49 +432,23 @@ const RepertoirePage: React.FC = () => {
                 </table>
             )}
 
-            {/* Floating popover for the hovered position */}
-            {hoveredFen && (() => {
-                // Here we detect if the popover would go off-screen, and adjust.
-                const popoverWidth = 250;
-                const popoverHeight = 250;
-                const offset = 20;
-
-                let top = mousePos.y + offset;
-                let left = mousePos.x + offset;
-
-                // If popover bottom goes beyond the window height, show it above instead.
-                if (top + popoverHeight > window.innerHeight) {
-                    top = mousePos.y - offset - popoverHeight;
-                }
-
-                // If it goes off the right edge...
-                if (left + popoverWidth > window.innerWidth) {
-                    left = mousePos.x - offset - popoverWidth;
-                }
-
-                return (
-                    <div
-                        style={{
-                            position: 'fixed',
-                            left,
-                            top,
-                            border: '1px solid #ccc',
-                            backgroundColor: '#fff',
-                            zIndex: 9999,
-                            width: popoverWidth,
-                            height: popoverHeight,
-                            pointerEvents: 'none',
-                        }}
-                    >
-                        <ChessboardControl
-                            roundId="preview-board"
-                            fen={hoveredFen}
-                            orientation={hoveredOrientation === 'black' ? 'black' : 'white'}
-                            movePlayed={() => false} // read-only
-                        />
-                    </div>
-                );
-            })()}
+            {/* Analysis popover for the clicked position */}
+            {hoveredFen && previousFen && playedMoveSan && anchorRect && (
+                <AnalysisPopover
+                    clickedFen={hoveredFen}
+                    previousFen={previousFen}
+                    playedMoveSan={playedMoveSan}
+                    orientation={hoveredOrientation === 'black' ? 'black' : 'white'}
+                    anchorRect={anchorRect}
+                    onClose={() => {
+                        setHoveredFen(null);
+                        setHoveredOrientation(null);
+                        setPreviousFen(null);
+                        setPlayedMoveSan(null);
+                        setAnchorRect(null);
+                    }}
+                />
+            )}
         </div>
     );
 };

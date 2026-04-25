@@ -7,4 +7,155 @@
   .actionsIcon:hover {
     color: #555; /* Slightly darker on hover */
   }
+
+/* AnalysisPopover styles */
+.analysis-popover {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 8px;
+    font-size: 13px;
+}
+
+.analysis-popover-section {
+    margin-top: 8px;
+}
+
+.analysis-popover-section-header {
+    font-weight: 600;
+    font-size: 12px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #eee;
+}
+
+.analysis-popover-loading {
+    color: #999;
+    font-style: italic;
+    padding: 4px 0;
+}
+
+.analysis-popover-no-data {
+    color: #999;
+    font-style: italic;
+    padding: 4px 0;
+}
+
+.analysis-popover-moves {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.analysis-popover-move-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 6px;
+    border-radius: 3px;
+}
+
+.analysis-popover-move-row.highlighted {
+    background-color: #d4edda;
+    font-weight: 600;
+}
+
+.analysis-popover-move-san {
+    font-family: monospace;
+}
+
+.analysis-popover-move-eval {
+    font-family: monospace;
+    color: #666;
+    margin-left: 12px;
+}
+
+.analysis-popover-depth {
+    font-size: 11px;
+    color: #aaa;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+/* Masters section */
+.masters-moves {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.masters-move-row {
+    display: flex;
+    align-items: center;
+    padding: 3px 6px;
+    border-radius: 3px;
+    gap: 6px;
+}
+
+.masters-move-row.highlighted {
+    background-color: #d4edda;
+    font-weight: 600;
+}
+
+.masters-move-san {
+    font-family: monospace;
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.masters-move-games {
+    font-size: 11px;
+    color: #666;
+    min-width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.masters-result-bar {
+    display: flex;
+    height: 10px;
+    border-radius: 2px;
+    overflow: hidden;
+    flex: 1;
+    min-width: 60px;
+}
+
+.masters-bar-white {
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-right: none;
+}
+
+.masters-bar-draw {
+    background-color: #999;
+}
+
+.masters-bar-black {
+    background-color: #333;
+}
+
+.masters-move-rating {
+    font-size: 11px;
+    color: #888;
+    min-width: 32px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.masters-connect-prompt {
+    font-size: 12px;
+    color: #888;
+    padding: 4px 0;
+}
+
+.masters-connect-prompt a {
+    color: rgb(0, 130, 210);
+    text-decoration: underline;
+    cursor: pointer;
+}
   

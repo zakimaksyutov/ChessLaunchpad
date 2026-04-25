@@ -273,6 +273,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@bity/oauth2-auth-code-pkce@npm:^2.13.0":
+  version: 2.13.0
+  resolution: "@bity/oauth2-auth-code-pkce@npm:2.13.0"
+  checksum: 10c0/9f13d931160a330ed30c5bd2a00131de3e515f8519e19ae3a4439e81417f47b6eef36d18bad1c619034266f54a7ed6d8bc3a341fc23b14e4a36500bdfd3cc330
+  languageName: node
+  linkType: hard
+
 "@csstools/color-helpers@npm:^5.1.0":
   version: 5.1.0
   resolution: "@csstools/color-helpers@npm:5.1.0"
@@ -1436,6 +1443,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "app@workspace:."
   dependencies:
+    "@bity/oauth2-auth-code-pkce": "npm:^2.13.0"
     "@microsoft/applicationinsights-web": "npm:^3.3.8"
     "@testing-library/jest-dom": "npm:^6.6.3"
     "@testing-library/react": "npm:^16.3.0"

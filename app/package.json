@@ -6,6 +6,7 @@
   "packageManager": "yarn@4.13.0",
   "homepage": "https://zakimaksyutov.github.io/ChessLaunchpad/",
   "dependencies": {
+    "@bity/oauth2-auth-code-pkce": "^2.13.0",
     "@microsoft/applicationinsights-web": "^3.3.8",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
