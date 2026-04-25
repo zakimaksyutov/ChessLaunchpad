@@ -4,6 +4,8 @@
 
 ChessLaunchpad is a web application for memorizing chess openings using spaced repetition. It helps players master their opening repertoires through interactive board training with an adaptive algorithm that prioritizes variants based on recency, error rate, frequency, and newness. Deployed at https://zakimaksyutov.github.io/ChessLaunchpad/.
 
+For a deeper understanding of the product (variant selection, FSRS autoplay, pages, data flow), see `specs/project-description.md`.
+
 ## Tech Stack
 
 - React 19 with TypeScript
