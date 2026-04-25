@@ -1,6 +1,7 @@
 .settings-page {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   padding: 1.5rem;
 }
 
@@ -149,4 +150,45 @@
 .lichess-connect-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .settings-page {
+    padding: 0.75rem;
+  }
+
+  .settings-card {
+    padding: 1rem;
+  }
+
+  .settings-table th:nth-child(3),
+  .settings-table td:nth-child(3) {
+    display: none;
+  }
+
+  .settings-table th:nth-child(2),
+  .settings-table td:nth-child(2) {
+    width: auto;
+  }
+
+  .settings-actions {
+    flex-direction: column;
+  }
+
+  .settings-actions button {
+    width: 100%;
+    text-align: center;
+  }
+
+  .lichess-status {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .lichess-connect-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
