@@ -3,12 +3,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { useNavigate } from 'react-router-dom';
-import { FaEdit, FaTrashAlt, FaInfoCircle } from 'react-icons/fa';
+import { FaEdit, FaTrashAlt, FaInfoCircle, FaExternalLinkAlt } from 'react-icons/fa';
 import { DatabaseOpeningsUtils, DatabaseOpening } from './DatabaseOpeningsUtils';
 import { RepertoireDataUtils } from './RepertoireDataUtils';
 import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock } from './FenUtils';
 import ChessboardControl from './ChessboardControl';
 import PgnControl from './PgnControl';
+import { ExplorerEvals, getExplorerEvals } from './ExplorerEvals';
+import { EvalDrop, computeEvalDrops } from './EvalDropService';
 import './RepertoirePage.css';
 
 interface ParsedVariant {
@@ -43,6 +45,10 @@ const RepertoirePage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [showStats, setShowStats] = useState(false);
+
+    // Explorer evals — lazy loaded
+    const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
+    const [evalsLoading, setEvalsLoading] = useState(true);
 
     // We'll store the FEN we're previewing (hovered).
     const [hoveredFen, setHoveredFen] = useState<string | null>(null);
@@ -123,6 +129,27 @@ const RepertoirePage: React.FC = () => {
         };
         fetchData();
     }, [dal]);
+
+    // Lazy-load explorer evals (separate from repertoire data)
+    useEffect(() => {
+        getExplorerEvals()
+            .then(setExplorerEvals)
+            .catch((e) => console.warn('Failed to load explorer evals:', e))
+            .finally(() => setEvalsLoading(false));
+    }, []);
+
+    // Pre-compute eval drops for all variants once evals are loaded
+    const variantEvalDrops = useMemo(() => {
+        if (!explorerEvals) return new Map<string, Map<string, EvalDrop>>();
+        const map = new Map<string, Map<string, EvalDrop>>();
+        for (const v of variants) {
+            const drops = computeEvalDrops(v.pgn, explorerEvals, v.orientation);
+            if (drops.size > 0) {
+                map.set(`${v.orientation}::${v.pgn}`, drops);
+            }
+        }
+        return map;
+    }, [variants, explorerEvals]);
 
     const handleExport = () => {
         if (!repData) {
@@ -300,6 +327,11 @@ const RepertoirePage: React.FC = () => {
                     />
                     Internal stats
                 </label>            </div>
+            {evalsLoading && (
+                <div style={{ marginBottom: '0.5rem', color: '#888', fontSize: '0.9em' }}>
+                    Loading move evaluations…
+                </div>
+            )}
             {variants.length === 0 ? (
                 <p>No variants found.</p>
             ) : (
@@ -314,7 +346,7 @@ const RepertoirePage: React.FC = () => {
                         <tr style={{ backgroundColor: '#eee' }}>
                             <th style={thStyle}>Orientation</th>
                             <th style={thStyle}>PGN</th>
-                            <th style={thStyle}>Actions</th>
+                            <th style={{ ...thStyle, whiteSpace: 'nowrap' }}>Actions</th>
                             <th style={thStyle}>Times Played</th>
                             {showStats && (
                                 <>
@@ -366,17 +398,28 @@ const RepertoirePage: React.FC = () => {
                                             setHoveredFen(null);
                                             setHoveredOrientation(null);
                                         }}
+                                        evalDrops={variantEvalDrops.get(`${v.orientation}::${v.pgn}`)}
                                     />
                                 </td>
-                                <td style={tdStyle}>
+                                <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
                                     <FaEdit className="actionsIcon"
                                         style={{ cursor: 'pointer', marginRight: '8px' }}
                                         onClick={() => handleEdit(v)}
                                     />
                                     <FaTrashAlt className="actionsIcon"
-                                        style={{ cursor: 'pointer' }}
+                                        style={{ cursor: 'pointer', marginRight: '8px' }}
                                         onClick={() => handleDelete(v)}
                                     />
+                                    <a
+                                        href={`https://lichess.org/analysis/pgn/${encodeURIComponent(v.pgn)}?color=${v.orientation}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Analyze on Lichess"
+                                    >
+                                        <FaExternalLinkAlt className="actionsIcon"
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                    </a>
                                 </td>
                                 <td style={tdStyle}>{v.numberOfTimesPlayed}</td>
                                 {showStats && (
