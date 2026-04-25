@@ -24,10 +24,15 @@ class LichessAuthServiceImpl {
     private listeners: Set<AuthChangeListener> = new Set();
 
     constructor() {
-        this.oauth = new OAuth2AuthCodePKCE({
+        this.oauth = this.createOAuthClient();
+    }
+
+    private createOAuthClient(): OAuth2AuthCodePKCE {
+        return new OAuth2AuthCodePKCE({
             authorizationUrl: `${LICHESS_HOST}/oauth`,
             tokenUrl: `${LICHESS_HOST}/api/token`,
             clientId: CLIENT_ID,
+            // No extra scopes needed — we only use public APIs (Masters Opening Explorer).
             scopes: [],
             redirectUrl: getRedirectUrl(),
             onAccessTokenExpiry: refreshAccessToken => refreshAccessToken(),
@@ -105,18 +110,7 @@ class LichessAuthServiceImpl {
         }
 
         // Reset the library's internal state
-        this.oauth = new OAuth2AuthCodePKCE({
-            authorizationUrl: `${LICHESS_HOST}/oauth`,
-            tokenUrl: `${LICHESS_HOST}/api/token`,
-            clientId: CLIENT_ID,
-            scopes: [],
-            redirectUrl: getRedirectUrl(),
-            onAccessTokenExpiry: refreshAccessToken => refreshAccessToken(),
-            onInvalidGrant: () => {
-                this.accessContext = null;
-                this.notifyListeners();
-            },
-        });
+        this.oauth = this.createOAuthClient();
     }
 
     /** Returns the current Bearer token, or null if not connected. */

@@ -130,7 +130,7 @@ const SettingsPage: React.FC = () => {
         setLichessLoading(true);
         try {
             await login();
-        } catch {
+        } finally {
             setLichessLoading(false);
         }
     };
