@@ -38,6 +38,10 @@ Per-position cards track mastery using the FSRS algorithm (ts-fsrs). Well-known 
 
 React 19 · TypeScript · Vite · Vitest · chess.js · chess-control (vendored) · Azure Functions backend · Application Insights telemetry.
 
+## Lichess Cloud Eval
+
+The analysis popover fetches position evaluations from the public Lichess Cloud Eval API (`GET https://lichess.org/api/cloud-eval?fen=…&multiPv=N`). Responses are cached in-memory for the session. No authentication is required.
+
 ## Data Flow
 
 ```

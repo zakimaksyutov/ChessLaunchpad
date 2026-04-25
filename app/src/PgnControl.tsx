@@ -4,14 +4,16 @@ import { EvalDrop, EvalDropCategory } from './EvalDropService';
 
 // Each halfmove token: "1. d4" or "d5" etc.
 interface MoveToken {
-    text: string;  // e.g. "1. d4" or "d5"
-    fen: string;   // FEN after that move is played
+    text: string;       // e.g. "1. d4" or "d5"
+    fen: string;        // FEN after that move is played
+    previousFen: string; // FEN before that move is played
+    san: string;        // SAN of the move (e.g. "d4")
 }
 
 interface PgnControlProps {
     pgn: string;
     onLeavePgn?: () => void; // Called when user leaves the PGN text entirely
-    onClickMove?: (fen: string) => void; // Called when user clicks a particular halfmove
+    onClickMove?: (fen: string, previousFen: string, moveSan: string, anchorRect: DOMRect) => void;
     onRightClickMove?: (fen: string, event: React.MouseEvent) => void; // Called when user right-clicks a particular halfmove
     selectedFen?: string | null; // If this half-move is selected
     evalDrops?: Map<string, EvalDrop>; // Optional eval-drop data for move highlighting
@@ -52,10 +54,11 @@ function parsePgnWithMoveNumbers(pgn: string): MoveToken[] {
             moveNumber++;
         }
 
+        const previousFen = temp.fen();
         // Rebuild up to this move to get its resulting FEN
         temp.move(movesVerbose[i]);
 
-        tokens.push({ text: label, fen: temp.fen() });
+        tokens.push({ text: label, fen: temp.fen(), previousFen, san: move.san });
     }
 
     return tokens;
@@ -96,10 +99,6 @@ const PgnControl: React.FC<PgnControlProps> = ({
                     const backgroundColor = isHovered ? 'blue' : (isSelected ? 'lightblue' : evalBg);
                     const color = isHovered ? 'white' : 'black';
 
-                    const title = evalDrop && evalDrop.category !== 'ok'
-                        ? `${evalDrop.category} (${evalDrop.evalDrop >= 0 ? '+' : ''}${evalDrop.evalDrop}cp)`
-                        : undefined;
-
                     return (
                         <span
                             key={idx}
@@ -110,7 +109,6 @@ const PgnControl: React.FC<PgnControlProps> = ({
                                 borderRadius: evalDrop && evalDrop.category !== 'ok' ? '3px' : undefined,
                                 padding: evalDrop && evalDrop.category !== 'ok' ? '1px 2px' : undefined,
                             }}
-                            title={title}
                             onMouseEnter={() => {
                                 setHoveredIndex(idx);
                             }}
@@ -118,8 +116,11 @@ const PgnControl: React.FC<PgnControlProps> = ({
                                 setHoveredIndex(null)
                                 if (onLeavePgn) onLeavePgn();
                             }}
-                            onClick={() => {
-                                if (onClickMove) onClickMove(token.fen);
+                            onClick={(e) => {
+                                if (onClickMove) {
+                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                    onClickMove(token.fen, token.previousFen, token.san, rect);
+                                }
                             }}
                             onContextMenu={(e) => {
                                 e.preventDefault();
