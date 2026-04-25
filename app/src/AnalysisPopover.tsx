@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from 'react';
 import ChessboardControl from './ChessboardControl';
 import {
     CloudEvalResult,
@@ -19,9 +19,9 @@ interface AnalysisPopoverProps {
 const POPOVER_WIDTH = 310;
 const BOARD_SIZE = 250;
 const MULTI_PV = 5;
-const ESTIMATED_POPOVER_HEIGHT = 550;
+const ESTIMATED_POPOVER_HEIGHT = 600;
 
-function computePosition(anchorRect: DOMRect): { top: number; left: number } {
+function computePosition(anchorRect: DOMRect, popoverHeight: number): { top: number; left: number } {
     const offset = 8;
     let left = anchorRect.right + offset;
     let top = anchorRect.top;
@@ -35,8 +35,9 @@ function computePosition(anchorRect: DOMRect): { top: number; left: number } {
         left = Math.max(0, window.innerWidth - POPOVER_WIDTH - 8);
     }
     // If the popover would go below the viewport, shift it up
-    if (top + ESTIMATED_POPOVER_HEIGHT > window.innerHeight) {
-        top = Math.max(0, window.innerHeight - ESTIMATED_POPOVER_HEIGHT - 8);
+    const height = Math.max(popoverHeight, ESTIMATED_POPOVER_HEIGHT);
+    if (top + height > window.innerHeight) {
+        top = Math.max(0, window.innerHeight - height - 8);
     }
     if (top < 0) top = 0;
 
@@ -52,9 +53,15 @@ interface EvalSectionProps {
 }
 
 const EvalSection: React.FC<EvalSectionProps> = ({ title, fen, result, loading, highlightMoveSan }) => {
+    const depthLabel = !loading && result && result.pvs.length > 0
+        ? ` (depth ${result.depth})`
+        : '';
     return (
         <div className="analysis-popover-section">
-            <div className="analysis-popover-section-header">{title}</div>
+            <div className="analysis-popover-section-header">
+                {title}
+                {depthLabel && <span className="analysis-popover-depth">{depthLabel}</span>}
+            </div>
             {loading && (
                 <div className="analysis-popover-loading">Loading…</div>
             )}
@@ -80,9 +87,6 @@ const EvalSection: React.FC<EvalSectionProps> = ({ title, fen, result, loading, 
                             </div>
                         );
                     })}
-                    <div className="analysis-popover-depth">
-                        depth {result.depth}
-                    </div>
                 </div>
             )}
         </div>
@@ -154,7 +158,15 @@ const AnalysisPopover: React.FC<AnalysisPopoverProps> = ({
         };
     }, [handleClickOutside, handleKeyDown]);
 
-    const { top, left } = computePosition(anchorRect);
+    // Dynamically reposition after content loads/changes
+    const [measuredHeight, setMeasuredHeight] = useState(0);
+    useLayoutEffect(() => {
+        if (popoverRef.current) {
+            setMeasuredHeight(popoverRef.current.scrollHeight);
+        }
+    }, [prevEval, currEval, prevLoading, currLoading]);
+
+    const { top, left } = computePosition(anchorRect, measuredHeight);
 
     return (
         <div

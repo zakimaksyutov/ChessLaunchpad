@@ -77,7 +77,8 @@
 .analysis-popover-depth {
     font-size: 11px;
     color: #aaa;
-    text-align: right;
-    margin-top: 2px;
+    font-weight: normal;
+    text-transform: none;
+    letter-spacing: normal;
 }
   
