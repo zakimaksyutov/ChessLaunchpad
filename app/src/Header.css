@@ -98,3 +98,38 @@
 .login-button:hover {
   background-color: rgba(255, 255, 255, 0.2);
 }
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .header-title {
+    font-size: 16px;
+    margin-left: 0.25rem;
+  }
+
+  .header-nav {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    margin: 0.25rem 0 0 0;
+    gap: 1.5rem;
+  }
+
+  .header-right {
+    min-width: 0;
+  }
+
+  .username-text {
+    display: inline-block;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+    margin-right: 0.5rem;
+  }
+}
