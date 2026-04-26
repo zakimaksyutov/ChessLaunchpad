@@ -32,7 +32,7 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 /**
- * Preload the entire IDB masters cache into memory in a single cursor scan.
+ * Preload the entire IDB masters cache into memory using batch getAll/getAllKeys.
  * Call early (e.g. on page mount). All cache reads await this promise
  * before doing synchronous Map lookups.
  */
@@ -45,19 +45,21 @@ export function preloadMastersCacheToMemory(): Promise<void> {
                 const results = new Map<string, MastersExplorerResult | null>();
                 const tx = db.transaction(STORE_NAME, 'readonly');
                 const store = tx.objectStore(STORE_NAME);
-                const cursor = store.openCursor();
-                const now = Date.now();
-                cursor.onsuccess = () => {
-                    const c = cursor.result;
-                    if (c) {
-                        const entry = c.value as CachedEntry;
+                const keysReq = store.getAllKeys();
+                const valuesReq = store.getAll();
+                tx.oncomplete = () => {
+                    db.close();
+                    const keys = keysReq.result as string[];
+                    const values = valuesReq.result as CachedEntry[];
+                    const now = Date.now();
+                    for (let i = 0; i < keys.length; i++) {
+                        const entry = values[i];
                         if (entry && now - entry.fetchedAt <= TTL_MS) {
-                            results.set(c.key as string, entry.data);
+                            results.set(keys[i], entry.data);
                         }
-                        c.continue();
                     }
+                    resolve(results);
                 };
-                tx.oncomplete = () => { db.close(); resolve(results); };
                 tx.onerror = () => { db.close(); reject(tx.error); };
                 tx.onabort = () => { db.close(); reject(tx.error); };
             });
