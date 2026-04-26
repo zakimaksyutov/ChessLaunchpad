@@ -72,6 +72,32 @@
   user-select: none;
 }
 
+/* ===== Master theory status indicator ===== */
+.masters-status {
+  margin-left: auto;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.masters-status-prompt {
+  color: #888;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.masters-status-prompt:hover {
+  color: rgb(0, 130, 210);
+}
+
+.masters-status-loading {
+  color: #666;
+}
+
+.masters-status-done {
+  color: #4c1;
+}
+
 /* ===== Evals loading banner ===== */
 .repertoire-evals-loading {
   margin-bottom: 0.5rem;
