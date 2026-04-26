@@ -10,6 +10,9 @@ interface CachedEntry {
     fetchedAt: number;
 }
 
+// Shared in-memory mirror of the IDB store. null = not yet hydrated.
+let memoryCache: Map<string, MastersExplorerResult | null> | null = null;
+
 function openDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -24,21 +27,66 @@ function openDB(): Promise<IDBDatabase> {
     });
 }
 
+/**
+ * Preload the entire IDB masters cache into memory in a single cursor scan.
+ * Call on page mount (fire-and-forget). Once hydrated, all cache reads
+ * become synchronous Map lookups instead of IDB transactions.
+ */
+export async function preloadMastersCacheToMemory(): Promise<void> {
+    if (memoryCache !== null) return; // already hydrated
+    try {
+        const db = await openDB();
+        const loaded = await new Promise<Map<string, MastersExplorerResult | null>>((resolve, reject) => {
+            const results = new Map<string, MastersExplorerResult | null>();
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const cursor = store.openCursor();
+            const now = Date.now();
+            cursor.onsuccess = () => {
+                const c = cursor.result;
+                if (c) {
+                    const entry = c.value as CachedEntry;
+                    if (entry && now - entry.fetchedAt <= TTL_MS) {
+                        results.set(c.key as string, entry.data);
+                    }
+                    c.continue();
+                }
+            };
+            tx.oncomplete = () => { db.close(); resolve(results); };
+            tx.onerror = () => { db.close(); reject(tx.error); };
+            tx.onabort = () => { db.close(); reject(tx.error); };
+        });
+        memoryCache = loaded;
+    } catch {
+        // IDB unavailable — leave memoryCache null, batch reads will fall back to IDB
+    }
+}
+
 export async function getCachedMasters(fen: string): Promise<MastersExplorerResult | null | undefined> {
     const batch = await getCachedMastersBatch([fen]);
     return batch.get(fen);
 }
 
 /**
- * Batch-read multiple FENs from the cache in a single IndexedDB transaction.
- * Returns a map where `undefined` means cache miss (or stale), `null` means
- * the API returned no data, and a result object is a valid cache hit.
+ * Batch-read multiple FENs from the cache. If the in-memory mirror is
+ * hydrated, returns pure Map lookups (zero IDB overhead). Otherwise
+ * falls back to a single IDB transaction.
  */
 export async function getCachedMastersBatch(
     fens: string[]
 ): Promise<Map<string, MastersExplorerResult | null | undefined>> {
     const results = new Map<string, MastersExplorerResult | null | undefined>();
     if (fens.length === 0) return results;
+
+    // Fast path: memory cache is hydrated
+    if (memoryCache !== null) {
+        for (const fen of fens) {
+            results.set(fen, memoryCache.has(fen) ? memoryCache.get(fen)! : undefined);
+        }
+        return results;
+    }
+
+    // Slow path: IDB transaction
     try {
         const db = await openDB();
         return await new Promise((resolve, reject) => {
@@ -82,6 +130,10 @@ export async function setCachedMasters(
     fen: string,
     data: MastersExplorerResult | null
 ): Promise<void> {
+    // Update memory mirror if hydrated
+    if (memoryCache !== null) {
+        memoryCache.set(fen, data);
+    }
     try {
         const db = await openDB();
         return new Promise((resolve, reject) => {
@@ -104,6 +156,10 @@ export async function setCachedMasters(
 }
 
 export async function clearMastersIDBCache(): Promise<void> {
+    // Clear memory mirror
+    if (memoryCache !== null) {
+        memoryCache.clear();
+    }
     try {
         const db = await openDB();
         return new Promise((resolve, reject) => {
@@ -125,6 +181,10 @@ export async function clearMastersIDBCache(): Promise<void> {
 }
 
 export async function getCacheEntryCount(): Promise<number | null> {
+    // If memory is hydrated, return its size directly
+    if (memoryCache !== null) {
+        return memoryCache.size;
+    }
     try {
         const db = await openDB();
         return await new Promise((resolve, reject) => {
@@ -143,6 +203,11 @@ export async function getCacheEntryCount(): Promise<number | null> {
     } catch {
         return null; // IndexedDB unavailable
     }
+}
+
+/** Reset the in-memory cache (for testing). */
+export function _resetMemoryCache(): void {
+    memoryCache = null;
 }
 
 // Exported for testing

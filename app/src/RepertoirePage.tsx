@@ -11,6 +11,7 @@ import PgnControl from './PgnControl';
 import { ExplorerEvals, getExplorerEvals } from './ExplorerEvals';
 import { EvalDrop, computeEvalDrops } from './EvalDropService';
 import { computeMasterOverrides, applyOverrides, MasterOverrideProgress } from './MastersEvalOverrideService';
+import { preloadMastersCacheToMemory } from './MastersCacheService';
 import { useLichessAuth } from './LichessAuthContext';
 import AnalysisPopover from './AnalysisPopover';
 import './RepertoirePage.css';
@@ -144,6 +145,11 @@ const RepertoirePage: React.FC = () => {
             .then(setExplorerEvals)
             .catch((e) => console.warn('Failed to load explorer evals:', e))
             .finally(() => setEvalsLoading(false));
+    }, []);
+
+    // Preload IDB masters cache into memory (fire-and-forget, runs in parallel)
+    useEffect(() => {
+        preloadMastersCacheToMemory();
     }, []);
 
     // Pre-compute eval drops for all variants once evals are loaded
