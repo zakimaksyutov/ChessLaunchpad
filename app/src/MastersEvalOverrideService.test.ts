@@ -95,14 +95,30 @@ describe('shouldSuppressHighlight', () => {
         // Top move as black: 12% black win rate
         // Alt: 30% black win rate, 6% games — should block suppression (18pp edge)
         const result = makeMastersResult([
-            { san: 'g6', totalGames: 940, white: 520, draws: 310, black: 110 },
-            { san: 'd6', totalGames: 60, white: 20, draws: 22, black: 18 },
+            { san: 'g6', totalGames: 94, white: 52, draws: 31, black: 11 },
+            { san: 'd6', totalGames: 6, white: 2, draws: 2, black: 2 },
         ]);
         expect(shouldSuppressHighlight(result, 'g6', 'black')).toBe(false);
     });
 
     it('returns false for empty master data', () => {
         const result = makeMastersResult([]);
+        expect(shouldSuppressHighlight(result, 'a3', 'white')).toBe(false);
+    });
+
+    it('suppresses when move has 150+ master games even if not top move', () => {
+        const result = makeMastersResult([
+            { san: 'Bh3', totalGames: 300, white: 150, draws: 90, black: 60 },
+            { san: 'a3', totalGames: 200, white: 100, draws: 60, black: 40 },
+        ]);
+        expect(shouldSuppressHighlight(result, 'a3', 'white')).toBe(true);
+    });
+
+    it('does not auto-suppress when move has fewer than 150 master games and is not top', () => {
+        const result = makeMastersResult([
+            { san: 'Bh3', totalGames: 300, white: 150, draws: 90, black: 60 },
+            { san: 'a3', totalGames: 149, white: 75, draws: 45, black: 29 },
+        ]);
         expect(shouldSuppressHighlight(result, 'a3', 'white')).toBe(false);
     });
 });

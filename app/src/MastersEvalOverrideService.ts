@@ -12,6 +12,9 @@ const MIN_ALT_GAME_SHARE = 0.05;
 /** Minimum win-rate advantage (percentage points) for an alternative to block suppression. */
 const MIN_ALT_WINRATE_EDGE = 5;
 
+/** If a move has at least this many master games, suppress regardless of share/alternatives. */
+const MIN_GAMES_AUTO_SUPPRESS = 150;
+
 /** Delay between Lichess API requests (ms) to respect rate limits. */
 const API_THROTTLE_MS = 1500;
 
@@ -80,6 +83,17 @@ export function shouldSuppressHighlight(
 ): boolean {
     if (mastersResult.totalGames === 0 || mastersResult.moves.length === 0) {
         return false;
+    }
+
+    // Find the played move in master data
+    const playedMove = mastersResult.moves.find((m) => m.san === moveSan);
+    if (!playedMove) {
+        return false;
+    }
+
+    // Auto-suppress if the move has enough master games on its own
+    if (playedMove.totalGames >= MIN_GAMES_AUTO_SUPPRESS) {
+        return true;
     }
 
     const topMove = mastersResult.moves[0]; // Already sorted by totalGames desc
