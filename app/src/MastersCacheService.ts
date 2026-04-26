@@ -25,32 +25,56 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export async function getCachedMasters(fen: string): Promise<MastersExplorerResult | null | undefined> {
+    const batch = await getCachedMastersBatch([fen]);
+    return batch.get(fen);
+}
+
+/**
+ * Batch-read multiple FENs from the cache in a single IndexedDB transaction.
+ * Returns a map where `undefined` means cache miss (or stale), `null` means
+ * the API returned no data, and a result object is a valid cache hit.
+ */
+export async function getCachedMastersBatch(
+    fens: string[]
+): Promise<Map<string, MastersExplorerResult | null | undefined>> {
+    const results = new Map<string, MastersExplorerResult | null | undefined>();
+    if (fens.length === 0) return results;
     try {
         const db = await openDB();
-        return new Promise((resolve, reject) => {
+        return await new Promise((resolve, reject) => {
             const tx = db.transaction(STORE_NAME, 'readonly');
             const store = tx.objectStore(STORE_NAME);
-            const req = store.get(fen);
-            req.onsuccess = () => {
+            const now = Date.now();
+            for (const fen of fens) {
+                const req = store.get(fen);
+                req.onsuccess = () => {
+                    const entry = req.result as CachedEntry | undefined;
+                    if (!entry || now - entry.fetchedAt > TTL_MS) {
+                        results.set(fen, undefined);
+                    } else {
+                        results.set(fen, entry.data);
+                    }
+                };
+                req.onerror = () => {
+                    results.set(fen, undefined);
+                };
+            }
+            tx.oncomplete = () => {
                 db.close();
-                const entry = req.result as CachedEntry | undefined;
-                if (!entry) {
-                    resolve(undefined); // cache miss
-                    return;
-                }
-                if (Date.now() - entry.fetchedAt > TTL_MS) {
-                    resolve(undefined); // stale
-                    return;
-                }
-                resolve(entry.data); // cache hit (may be null = no master data)
+                resolve(results);
             };
-            req.onerror = () => {
+            tx.onerror = () => {
                 db.close();
-                reject(req.error);
+                reject(tx.error);
+            };
+            tx.onabort = () => {
+                db.close();
+                reject(tx.error);
             };
         });
     } catch {
-        return undefined; // IndexedDB unavailable — treat as cache miss
+        for (const fen of fens) results.set(fen, undefined);
+        return results;
     }
 }
 
@@ -97,6 +121,27 @@ export async function clearMastersIDBCache(): Promise<void> {
         });
     } catch {
         // Silently ignore
+    }
+}
+
+export async function getCacheEntryCount(): Promise<number | null> {
+    try {
+        const db = await openDB();
+        return await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const req = store.count();
+            req.onsuccess = () => {
+                db.close();
+                resolve(req.result);
+            };
+            req.onerror = () => {
+                db.close();
+                reject(req.error);
+            };
+        });
+    } catch {
+        return null; // IndexedDB unavailable
     }
 }
 

@@ -152,6 +152,31 @@
   cursor: not-allowed;
 }
 
+/* Data Cache section */
+.cache-section {
+  margin-top: 1.5rem;
+}
+
+.cache-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.cache-count {
+  font-size: 0.95rem;
+  color: #444;
+}
+
+.cache-success {
+  background-color: #e6f4ea;
+  border: 1px solid #81c995;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #1e7e34;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .settings-page {
@@ -188,6 +213,17 @@
   }
 
   .lichess-connect-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .cache-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .cache-info button {
     width: 100%;
     text-align: center;
   }
