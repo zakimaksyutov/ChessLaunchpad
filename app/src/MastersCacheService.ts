@@ -62,67 +62,38 @@ export async function preloadMastersCacheToMemory(): Promise<void> {
     }
 }
 
-export async function getCachedMasters(fen: string): Promise<MastersExplorerResult | null | undefined> {
-    const batch = await getCachedMastersBatch([fen]);
-    return batch.get(fen);
-}
-
 /**
- * Batch-read multiple FENs from the cache. If the in-memory mirror is
- * hydrated, returns pure Map lookups (zero IDB overhead). Otherwise
- * falls back to a single IDB transaction.
+ * Look up a single FEN in the masters cache.
+ * Returns the cached result (may be null = no master data),
+ * or undefined on cache miss / not cached.
  */
-export async function getCachedMastersBatch(
-    fens: string[]
-): Promise<Map<string, MastersExplorerResult | null | undefined>> {
-    const results = new Map<string, MastersExplorerResult | null | undefined>();
-    if (fens.length === 0) return results;
-
+export async function getCachedMasters(fen: string): Promise<MastersExplorerResult | null | undefined> {
     // Fast path: memory cache is hydrated
     if (memoryCache !== null) {
-        for (const fen of fens) {
-            results.set(fen, memoryCache.has(fen) ? memoryCache.get(fen)! : undefined);
-        }
-        return results;
+        return memoryCache.has(fen) ? memoryCache.get(fen)! : undefined;
     }
 
-    // Slow path: IDB transaction
+    // Slow path: IDB lookup (only before preload completes)
     try {
         const db = await openDB();
         return await new Promise((resolve, reject) => {
             const tx = db.transaction(STORE_NAME, 'readonly');
             const store = tx.objectStore(STORE_NAME);
-            const now = Date.now();
-            for (const fen of fens) {
-                const req = store.get(fen);
-                req.onsuccess = () => {
-                    const entry = req.result as CachedEntry | undefined;
-                    if (!entry || now - entry.fetchedAt > TTL_MS) {
-                        results.set(fen, undefined);
-                    } else {
-                        results.set(fen, entry.data);
-                    }
-                };
-                req.onerror = () => {
-                    results.set(fen, undefined);
-                };
-            }
-            tx.oncomplete = () => {
-                db.close();
-                resolve(results);
+            const req = store.get(fen);
+            req.onsuccess = () => {
+                const entry = req.result as CachedEntry | undefined;
+                if (!entry || Date.now() - entry.fetchedAt > TTL_MS) {
+                    resolve(undefined);
+                } else {
+                    resolve(entry.data);
+                }
             };
-            tx.onerror = () => {
-                db.close();
-                reject(tx.error);
-            };
-            tx.onabort = () => {
-                db.close();
-                reject(tx.error);
-            };
+            tx.oncomplete = () => db.close();
+            tx.onerror = () => { db.close(); reject(tx.error); };
+            tx.onabort = () => { db.close(); reject(tx.error); };
         });
     } catch {
-        for (const fen of fens) results.set(fen, undefined);
-        return results;
+        return undefined;
     }
 }
 

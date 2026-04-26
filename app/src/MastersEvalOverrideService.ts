@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js';
 import { EvalDrop } from './EvalDropService';
 import { MastersExplorerResult, fetchMastersExplorer } from './LichessMastersService';
-import { getCachedMastersBatch, setCachedMasters } from './MastersCacheService';
+import { getCachedMasters, setCachedMasters } from './MastersCacheService';
 
 /** Minimum share of total games for the top move to suppress a highlight. */
 const MIN_TOP_MOVE_SHARE = 0.90;
@@ -174,34 +174,28 @@ export async function computeMasterOverrides(
 
     // Fetch master data for each unique previous FEN
     const masterDataMap = new Map<string, MastersExplorerResult | null>();
+    let needsThrottle = false;
 
-    // Batch-read all cached entries in a single IndexedDB transaction
-    const cachedResults = await getCachedMastersBatch([...uniqueFens]);
-
-    // Separate cache hits from misses
-    const cacheMisses: string[] = [];
     for (const fen of uniqueFens) {
-        const cached = cachedResults.get(fen);
+        if (signal?.aborted) break;
+
+        // Check cache (instant Map lookup when memory is hydrated)
+        const cached = await getCachedMasters(fen);
         if (cached !== undefined) {
             masterDataMap.set(fen, cached);
             resolved++;
-        } else {
-            cacheMisses.push(fen);
+            if (!signal?.aborted) onProgress({ total, resolved, done: false });
+            continue;
         }
-    }
 
-    // Report cache-hit progress in one update
-    if (resolved > 0 && !signal?.aborted) {
-        onProgress({ total, resolved, done: false });
-    }
-
-    // Fetch remaining from API with throttle (only between API requests)
-    for (let i = 0; i < cacheMisses.length; i++) {
-        const fen = cacheMisses[i];
-        if (signal?.aborted) break;
+        // Throttle between API requests (not before the first one)
+        if (needsThrottle) {
+            await new Promise((r) => setTimeout(r, API_THROTTLE_MS));
+        }
 
         const result = await fetchMastersExplorer(fen, token, fetchFn);
         masterDataMap.set(fen, result);
+        needsThrottle = true;
 
         // Only cache non-null results; null means transient error (429/5xx/network)
         if (result !== null) {
@@ -214,11 +208,6 @@ export async function computeMasterOverrides(
 
         resolved++;
         if (!signal?.aborted) onProgress({ total, resolved, done: false });
-
-        // Throttle between API requests (skip after the last one)
-        if (i < cacheMisses.length - 1) {
-            await new Promise((r) => setTimeout(r, API_THROTTLE_MS));
-        }
     }
 
     // Apply suppression logic
