@@ -145,6 +145,7 @@ export async function computeMasterOverrides(
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch
 ): Promise<Map<string, Set<string>>> {
+    const t0 = performance.now();
     // Collect all flagged moves across all variants
     const allFlagged: { key: string; move: FlaggedMove }[] = [];
     for (const v of variants) {
@@ -165,6 +166,8 @@ export async function computeMasterOverrides(
 
     const total = uniqueFens.size;
     let resolved = 0;
+    let cacheHits = 0;
+    let apiCalls = 0;
     onProgress({ total, resolved, done: false });
 
     if (total === 0) {
@@ -184,6 +187,7 @@ export async function computeMasterOverrides(
         if (cached !== undefined) {
             masterDataMap.set(fen, cached);
             resolved++;
+            cacheHits++;
             if (!signal?.aborted) onProgress({ total, resolved, done: false });
             continue;
         }
@@ -196,6 +200,7 @@ export async function computeMasterOverrides(
         const result = await fetchMastersExplorer(fen, token, fetchFn);
         masterDataMap.set(fen, result);
         needsThrottle = true;
+        apiCalls++;
 
         // Only cache non-null results; null means transient error (429/5xx/network)
         if (result !== null) {
@@ -227,6 +232,13 @@ export async function computeMasterOverrides(
     }
 
     if (!signal?.aborted) onProgress({ total, resolved, done: true });
+    console.log('[Perf]', JSON.stringify({
+        step: 'master-overrides',
+        totalMs: Math.round(performance.now() - t0),
+        fens: total,
+        cacheHits,
+        apiCalls,
+    }));
     return overrides;
 }
 
