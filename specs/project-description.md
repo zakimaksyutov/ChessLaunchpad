@@ -50,6 +50,17 @@ The analysis popover fetches position evaluations from the public Lichess Cloud 
 
 The analysis popover also fetches master-game statistics from the Lichess Opening Explorer (`GET https://explorer.lichess.ovh/masters?fen=…`). The response includes top continuations with game counts, win/draw/loss percentages, and average ratings. Responses are cached in-memory for the session.
 
+#### CLI / Agentic Access
+
+A personal Lichess API token is stored in `.env` at the repo root (git-ignored) as `LICHESS_TOKEN`. Example query:
+
+```sh
+source .env && curl -s \
+  -H "Authorization: Bearer $LICHESS_TOKEN" \
+  "https://explorer.lichess.ovh/masters?fen=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"))')" \
+  | python3 -m json.tool
+```
+
 ### Eval-Drop Highlighting
 
 The Repertoire page highlights moves whose Lichess cloud evaluation drops significantly compared to the previous position. Thresholds (centipawn loss):

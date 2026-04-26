@@ -11,6 +11,7 @@ import PgnControl from './PgnControl';
 import { ExplorerEvals, getExplorerEvals } from './ExplorerEvals';
 import { EvalDrop, computeEvalDrops } from './EvalDropService';
 import { computeMasterOverrides, applyOverrides, MasterOverrideProgress } from './MastersEvalOverrideService';
+import { preloadMastersCacheToMemory } from './MastersCacheService';
 import { useLichessAuth } from './LichessAuthContext';
 import AnalysisPopover from './AnalysisPopover';
 import './RepertoirePage.css';
@@ -29,6 +30,7 @@ interface ParsedVariant {
 }
 
 const FILE_EXTENSION = 'chess';
+
 
 // This page will do the following:
 // - Load repertoire data from the server
@@ -140,15 +142,28 @@ const RepertoirePage: React.FC = () => {
 
     // Lazy-load explorer evals (separate from repertoire data)
     useEffect(() => {
+        const t0 = performance.now();
         getExplorerEvals()
-            .then(setExplorerEvals)
+            .then((ev) => {
+                console.log('[Perf]', JSON.stringify({ step: 'explorer-evals', totalMs: Math.round(performance.now() - t0) }));
+                setExplorerEvals(ev);
+            })
             .catch((e) => console.warn('Failed to load explorer evals:', e))
             .finally(() => setEvalsLoading(false));
+    }, []);
+
+    // Preload IDB masters cache into memory (fire-and-forget, runs in parallel)
+    useEffect(() => {
+        const t0 = performance.now();
+        preloadMastersCacheToMemory().then(() => {
+            console.log('[Perf]', JSON.stringify({ step: 'idb-preload', totalMs: Math.round(performance.now() - t0) }));
+        });
     }, []);
 
     // Pre-compute eval drops for all variants once evals are loaded
     const variantEvalDrops = useMemo(() => {
         if (!explorerEvals) return new Map<string, Map<string, EvalDrop>>();
+        const t0 = performance.now();
         const map = new Map<string, Map<string, EvalDrop>>();
         for (const v of variants) {
             const drops = computeEvalDrops(v.pgn, explorerEvals, v.orientation);
@@ -156,6 +171,12 @@ const RepertoirePage: React.FC = () => {
                 map.set(`${v.orientation}::${v.pgn}`, drops);
             }
         }
+        console.log('[Perf]', JSON.stringify({
+            step: 'eval-drops',
+            totalMs: Math.round(performance.now() - t0),
+            variants: variants.length,
+            withDrops: map.size,
+        }));
         return map;
     }, [variants, explorerEvals]);
 

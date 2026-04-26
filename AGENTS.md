@@ -54,6 +54,7 @@ yarn dev
 - `openings/` — Opening database files and merge scripts
 - `specs/` — Technical specifications
   - `backend-api-contract.md` — Backend REST API contract (copy from backend repo; do not edit here)
+  - `perf-measurements.md` — Performance instrumentation reference
 
 ## Backend API
 

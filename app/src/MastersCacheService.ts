@@ -10,6 +10,13 @@ interface CachedEntry {
     fetchedAt: number;
 }
 
+// Shared in-memory mirror of the IDB store.
+let memoryCache = new Map<string, MastersExplorerResult | null>();
+
+// Promise that resolves once the IDB store has been loaded into memory.
+// null until preloadMastersCacheToMemory() is first called.
+let preloadPromise: Promise<void> | null = null;
+
 function openDB(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -24,40 +31,57 @@ function openDB(): Promise<IDBDatabase> {
     });
 }
 
+/**
+ * Preload the entire IDB masters cache into memory using batch getAll/getAllKeys.
+ * Call early (e.g. on page mount). All cache reads await this promise
+ * before doing synchronous Map lookups.
+ */
+export function preloadMastersCacheToMemory(): Promise<void> {
+    if (preloadPromise) return preloadPromise;
+    preloadPromise = (async () => {
+        try {
+            const db = await openDB();
+            const loaded = await new Promise<Map<string, MastersExplorerResult | null>>((resolve, reject) => {
+                const results = new Map<string, MastersExplorerResult | null>();
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const keysReq = store.getAllKeys();
+                const valuesReq = store.getAll();
+                tx.oncomplete = () => {
+                    db.close();
+                    const keys = keysReq.result as string[];
+                    const values = valuesReq.result as CachedEntry[];
+                    const now = Date.now();
+                    for (let i = 0; i < keys.length; i++) {
+                        const entry = values[i];
+                        if (entry && now - entry.fetchedAt <= TTL_MS) {
+                            results.set(keys[i], entry.data);
+                        }
+                    }
+                    resolve(results);
+                };
+                tx.onerror = () => { db.close(); reject(tx.error); };
+                tx.onabort = () => { db.close(); reject(tx.error); };
+            });
+            memoryCache = loaded;
+        } catch {
+            // IDB unavailable — memoryCache stays empty, all lookups are misses
+        }
+    })();
+    return preloadPromise;
+}
+
+/** Wait for preload, then look up a single FEN. */
 export async function getCachedMasters(fen: string): Promise<MastersExplorerResult | null | undefined> {
-    try {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readonly');
-            const store = tx.objectStore(STORE_NAME);
-            const req = store.get(fen);
-            req.onsuccess = () => {
-                db.close();
-                const entry = req.result as CachedEntry | undefined;
-                if (!entry) {
-                    resolve(undefined); // cache miss
-                    return;
-                }
-                if (Date.now() - entry.fetchedAt > TTL_MS) {
-                    resolve(undefined); // stale
-                    return;
-                }
-                resolve(entry.data); // cache hit (may be null = no master data)
-            };
-            req.onerror = () => {
-                db.close();
-                reject(req.error);
-            };
-        });
-    } catch {
-        return undefined; // IndexedDB unavailable — treat as cache miss
-    }
+    await preloadMastersCacheToMemory();
+    return memoryCache.has(fen) ? memoryCache.get(fen)! : undefined;
 }
 
 export async function setCachedMasters(
     fen: string,
     data: MastersExplorerResult | null
 ): Promise<void> {
+    memoryCache.set(fen, data);
     try {
         const db = await openDB();
         return new Promise((resolve, reject) => {
@@ -80,6 +104,7 @@ export async function setCachedMasters(
 }
 
 export async function clearMastersIDBCache(): Promise<void> {
+    memoryCache.clear();
     try {
         const db = await openDB();
         return new Promise((resolve, reject) => {
@@ -98,6 +123,17 @@ export async function clearMastersIDBCache(): Promise<void> {
     } catch {
         // Silently ignore
     }
+}
+
+export async function getCacheEntryCount(): Promise<number | null> {
+    await preloadMastersCacheToMemory();
+    return memoryCache.size;
+}
+
+/** Reset the in-memory cache (for testing). */
+export function _resetMemoryCache(): void {
+    memoryCache = new Map();
+    preloadPromise = null;
 }
 
 // Exported for testing

@@ -283,6 +283,9 @@
 
 .analysis-popover-move-san {
     font-family: monospace;
+    width: 10ch;
+    flex-shrink: 0;
+    flex-grow: 0;
 }
 
 .analysis-popover-move-eval {
@@ -321,16 +324,18 @@
 
 .masters-move-san {
     font-family: monospace;
-    min-width: 60px;
+    width: 10ch;
     flex-shrink: 0;
+    flex-grow: 0;
 }
 
 .masters-move-games {
     font-size: 11px;
     color: #666;
-    min-width: 36px;
+    width: 56px;
     text-align: right;
     flex-shrink: 0;
+    flex-grow: 0;
 }
 
 .masters-result-bar {
@@ -359,9 +364,10 @@
 .masters-move-rating {
     font-size: 11px;
     color: #888;
-    min-width: 32px;
+    width: 32px;
     text-align: right;
     flex-shrink: 0;
+    flex-grow: 0;
 }
 
 .masters-connect-prompt {
