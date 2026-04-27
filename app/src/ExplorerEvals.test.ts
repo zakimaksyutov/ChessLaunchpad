@@ -19,10 +19,10 @@ describe('toCompactFen', () => {
 });
 
 describe('ExplorerEvals', () => {
-    const testData: Record<string, number> = {
-        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq': 19,
-        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq': 18,
-        'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': 35,
+    const testData: Record<string, [number, number]> = {
+        'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq': [19, 50],
+        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq': [18, 48],
+        'rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq': [35, 42],
     };
 
     it('creates from record and reports correct size', () => {
@@ -50,5 +50,26 @@ describe('ExplorerEvals', () => {
         const evals = ExplorerEvals.fromRecord({});
         expect(evals.size).toBe(0);
         expect(evals.lookup('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq')).toBeNull();
+    });
+
+    it('lookupEntry returns cp and depth', () => {
+        const evals = ExplorerEvals.fromRecord(testData);
+        const entry = evals.lookupEntry('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq');
+        expect(entry).toEqual({ cp: 19, depth: 50 });
+    });
+
+    it('lookupEntry returns null for unknown position', () => {
+        const evals = ExplorerEvals.fromRecord(testData);
+        expect(evals.lookupEntry('8/8/8/8/8/8/8/8 w -')).toBeNull();
+    });
+
+    it('handles legacy plain-number format (depth defaults to 0)', () => {
+        const legacyData: Record<string, number> = {
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq': 19,
+        };
+        const evals = ExplorerEvals.fromRecord(legacyData);
+        expect(evals.lookup('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq')).toBe(19);
+        expect(evals.lookupEntry('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq'))
+            .toEqual({ cp: 19, depth: 0 });
     });
 });
