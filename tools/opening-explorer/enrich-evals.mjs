@@ -13,8 +13,9 @@
  * Streams the .jsonl.zst through zstd, matches positions against the opening
  * tree AND named-opening FENs, and writes the public artifact JSON.
  *
- * Output format: { "<compact FEN>": eval }
- *   - eval: centipawns (integer), or 100000+N for white mate-in-N, -100000-N for black mate-in-N
+ * Output format: { "<compact FEN>": [cp1, cp2] }
+ *   - Array of up to 2 centipawn evals from the 2 deepest Stockfish entries.
+ *   - Evals: centipawns (integer), or 100000+N for white mate-in-N, -100000-N for black mate-in-N.
  */
 import { spawn } from "child_process";
 import { createInterface } from "readline";
@@ -134,29 +135,34 @@ function loadTsvFens(openingsDir) {
   return fens;
 }
 
-// ── Extract best eval from a record ──
-function extractBestEval(evals) {
-  // Find the entry with the highest depth
-  let best = null;
-  for (const entry of evals) {
-    if (!best || entry.depth > best.depth) {
-      best = entry;
+// ── Extract top 2 evals from a record ──
+function extractTopEvals(evals) {
+  // Sort entries by depth descending, take top 2
+  const sorted = evals
+    .filter((e) => e.pvs && e.pvs.length > 0)
+    .sort((a, b) => b.depth - a.depth)
+    .slice(0, 2);
+
+  if (sorted.length === 0) return null;
+
+  const cpValues = [];
+  let maxDepth = 0;
+  for (const entry of sorted) {
+    const pv = entry.pvs[0];
+    let evalScore;
+    if (pv.mate !== undefined) {
+      evalScore = pv.mate > 0 ? 100000 + pv.mate : -100000 + pv.mate;
+    } else if (pv.cp !== undefined) {
+      evalScore = pv.cp;
+    } else {
+      continue;
     }
-  }
-  if (!best || !best.pvs || best.pvs.length === 0) return null;
-
-  const pv = best.pvs[0];
-  let evalScore;
-  if (pv.mate !== undefined) {
-    // Mate encoding: 100000 + N for white, -100000 - N for black
-    evalScore = pv.mate > 0 ? 100000 + pv.mate : -100000 + pv.mate;
-  } else if (pv.cp !== undefined) {
-    evalScore = pv.cp;
-  } else {
-    return null;
+    cpValues.push(evalScore);
+    if (entry.depth > maxDepth) maxDepth = entry.depth;
   }
 
-  return [evalScore, best.depth, pv.line || ""];
+  if (cpValues.length === 0) return null;
+  return { cpValues, maxDepth };
 }
 
 // ── Format helpers ──
@@ -224,11 +230,13 @@ async function main() {
     crlfDelay: Infinity,
   });
 
-  // Track raw evals (eval + depth for dedup)
+  // Track raw evals: { cpValues, maxDepth } per FEN for dedup
   const rawEvals = {};
   let lineCount = 0;
   let matchCount = 0;
   let parseErrors = 0;
+  let twoEvalCount = 0;
+  let oneEvalCount = 0;
   const startTime = Date.now();
   let lastProgressTime = startTime;
 
@@ -268,12 +276,12 @@ async function main() {
     const compactFen = toCompactFen(record.fen);
     if (!lookupKeys.has(compactFen)) continue;
 
-    const evalData = extractBestEval(record.evals);
+    const evalData = extractTopEvals(record.evals);
     if (!evalData) continue;
 
-    // Keep higher depth
+    // Keep the record with higher max depth
     if (rawEvals[compactFen]) {
-      if (evalData[1] <= rawEvals[compactFen][1]) continue;
+      if (evalData.maxDepth <= rawEvals[compactFen].maxDepth) continue;
     }
 
     rawEvals[compactFen] = evalData;
@@ -293,11 +301,17 @@ async function main() {
   if (parseErrors > 0) console.log(`Parse errors: ${parseErrors}`);
   if (zstdExitCode !== 0) console.log(`Warning: zstd exited with code ${zstdExitCode} (possible data corruption in source file)`);
 
-  // Build output: compactFen → [eval, depth]
+  // Build output: compactFen → [cp1, cp2] or [cp]
   const results = {};
-  for (const [fen, [evalScore, depth]] of Object.entries(rawEvals)) {
-    results[fen] = [evalScore, depth];
+  for (const [fen, { cpValues }] of Object.entries(rawEvals)) {
+    results[fen] = cpValues;
+    if (cpValues.length >= 2) twoEvalCount++;
+    else oneEvalCount++;
   }
+
+  console.log(`\nEval coverage:`);
+  console.log(`  Positions with 2 evals: ${twoEvalCount}`);
+  console.log(`  Positions with 1 eval:  ${oneEvalCount}`);
 
   // Write output
   const json = JSON.stringify(results);

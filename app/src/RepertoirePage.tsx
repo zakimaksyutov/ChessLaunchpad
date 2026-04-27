@@ -10,9 +10,6 @@ import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock
 import PgnControl from './PgnControl';
 import { ExplorerEvals, getExplorerEvals } from './ExplorerEvals';
 import { EvalDrop, computeEvalDrops } from './EvalDropService';
-import { computeMasterOverrides, applyOverrides, MasterOverrideProgress } from './MastersEvalOverrideService';
-import { preloadMastersCacheToMemory } from './MastersCacheService';
-import { useLichessAuth } from './LichessAuthContext';
 import AnalysisPopover from './AnalysisPopover';
 import './RepertoirePage.css';
 
@@ -53,12 +50,6 @@ const RepertoirePage: React.FC = () => {
     // Explorer evals — lazy loaded
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
     const [evalsLoading, setEvalsLoading] = useState(true);
-
-    // Master theory override state
-    const { connected: lichessConnected, token: lichessToken } = useLichessAuth();
-    const [masterOverrides, setMasterOverrides] = useState<Map<string, Set<string>>>(new Map());
-    const [masterProgress, setMasterProgress] = useState<MasterOverrideProgress | null>(null);
-    const masterAbortRef = useRef<AbortController | null>(null);
 
     // We'll store the FEN we're previewing (clicked).
     const [hoveredFen, setHoveredFen] = useState<string | null>(null);
@@ -152,14 +143,6 @@ const RepertoirePage: React.FC = () => {
             .finally(() => setEvalsLoading(false));
     }, []);
 
-    // Preload IDB masters cache into memory (fire-and-forget, runs in parallel)
-    useEffect(() => {
-        const t0 = performance.now();
-        preloadMastersCacheToMemory().then(() => {
-            console.log('[Perf]', JSON.stringify({ step: 'idb-preload', totalMs: Math.round(performance.now() - t0) }));
-        });
-    }, []);
-
     // Pre-compute eval drops for all variants once evals are loaded
     const variantEvalDrops = useMemo(() => {
         if (!explorerEvals) return new Map<string, Map<string, EvalDrop>>();
@@ -179,49 +162,6 @@ const RepertoirePage: React.FC = () => {
         }));
         return map;
     }, [variants, explorerEvals]);
-
-    // Merge eval drops with master overrides for display
-    const mergedEvalDrops = useMemo(() => {
-        if (masterOverrides.size === 0) return variantEvalDrops;
-        const merged = new Map<string, Map<string, EvalDrop>>();
-        for (const [key, drops] of variantEvalDrops) {
-            const suppressed = masterOverrides.get(key);
-            merged.set(key, suppressed ? applyOverrides(drops, suppressed) : drops);
-        }
-        return merged;
-    }, [variantEvalDrops, masterOverrides]);
-
-    // Run master theory override when eval drops are ready and Lichess is connected
-    useEffect(() => {
-        if (!lichessToken || variantEvalDrops.size === 0) {
-            setMasterProgress(null);
-            setMasterOverrides(new Map());
-            return;
-        }
-
-        // Abort any previous run
-        masterAbortRef.current?.abort();
-        const abort = new AbortController();
-        masterAbortRef.current = abort;
-
-        setMasterOverrides(new Map());
-        setMasterProgress(null);
-        computeMasterOverrides(
-            variantEvalDrops,
-            variants,
-            lichessToken,
-            (progress) => {
-                if (!abort.signal.aborted) setMasterProgress(progress);
-            },
-            abort.signal
-        ).then((overrides) => {
-            if (!abort.signal.aborted) setMasterOverrides(overrides);
-        }).catch(() => {
-            // Silently ignore — aborted or network error
-        });
-
-        return () => { abort.abort(); };
-    }, [variantEvalDrops, variants, lichessToken]);
 
     const handleExport = () => {
         if (!repData) {
@@ -365,22 +305,6 @@ const RepertoirePage: React.FC = () => {
                         />
                         Internal stats
                     </label>
-                    {/* Master theory status indicator */}
-                    <span className="masters-status">
-                        {!lichessConnected ? (
-                            <span className="masters-status-prompt" onClick={() => navigate('/settings')}>
-                                ♞ Connect Lichess for master theory
-                            </span>
-                        ) : masterProgress && !masterProgress.done ? (
-                            <span className="masters-status-loading">
-                                Checking master theory… ({masterProgress.resolved}/{masterProgress.total})
-                            </span>
-                        ) : masterProgress?.done && masterProgress.total > 0 ? (
-                            <span className="masters-status-done">
-                                ✓ Master theory checked
-                            </span>
-                        ) : null}
-                    </span>
                 </div>
                 {evalsLoading && (
                     <div className="repertoire-evals-loading">
@@ -455,7 +379,7 @@ const RepertoirePage: React.FC = () => {
                                                 onLeavePgn={() => {
                                                     // Popover is dismissed via click-away or Escape
                                                 }}
-                                                evalDrops={mergedEvalDrops.get(`${v.orientation}::${v.pgn}`)}
+                                                evalDrops={variantEvalDrops.get(`${v.orientation}::${v.pgn}`)}
                                             />
                                         </td>
                                         <td className="col-actions">

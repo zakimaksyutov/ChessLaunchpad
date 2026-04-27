@@ -205,7 +205,7 @@ async function main() {
   // ── Serialize (compact format) ──
   // Format: { [fen]: { [san]: [count, white, draw, black, eloSum] } }
   // This saves ~40% vs the verbose { moves: { san: { count, ... } } } format
-  const outPath = path.join(DATA_DIR, "opening-tree.json");
+  const outPath = path.join(DATA_DIR, `opening-tree_${MIN_GAMES}.json`);
   const compact = {};
   for (const [fen, node] of tree) {
     const moves = {};

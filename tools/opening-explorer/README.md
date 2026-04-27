@@ -14,13 +14,13 @@ node mega-download.mjs
 # 2. Extract .7z → .pgn (~682 MB)
 node download.mjs
 
-# 3. Build the opening tree (up to 15 moves deep, ≥12 games per move)
+# 3. Build the opening tree (up to 15 moves deep, ≥3 games per move)
 node build-tree.mjs
 
 # Override min-games threshold:
 MIN_GAMES=20 node build-tree.mjs
 
-# Output: data/opening-tree.json (~9.4 MB)
+# Output: data/opening-tree_3.json (~44 MB at default threshold)
 ```
 
 ### Refreshing the data
@@ -72,14 +72,17 @@ tools/opening-explorer/
 ├── download.mjs       # Extracts .7z if already downloaded
 ├── mega-download.mjs  # Downloads from MEGA
 ├── build-tree.mjs     # Parses PGN, builds position tree, outputs JSON
+├── enrich-evals.mjs   # Enriches tree with Lichess cloud evals
 ├── loader.mjs         # Runtime loader
+├── lookup-fen.mjs     # Diagnostic: look up a FEN in the raw eval DB
 ├── README.md
 ├── package.json
 ├── .gitignore
 └── data/              # (gitignored) PGN + output files
-    ├── elite.7z            # 119 MB (downloaded)
-    ├── *.pgn               # 682 MB (extracted)
-    └── opening-tree.json   # 9.4 MB (output)
+    ├── elite.7z                      # 124 MB (downloaded)
+    ├── *.pgn                         # 682 MB (extracted)
+    ├── opening-tree_N.json           # Opening tree (N = MIN_GAMES threshold)
+    └── opening-explorer-evals.json   # Public artifact (evals)
 ```
 
 ## Design Decisions
@@ -88,5 +91,4 @@ tools/opening-explorer/
 - **Flat map, not a trie**: Simpler to query; positions are independent lookups.
 - **Array values**: `[count, white, draw, black, eloSum]` saves ~40% vs named fields.
 - **eloSum stored, not avgElo**: Allows future merging of trees without losing precision.
-- **Min 12 games threshold**: Keeps output under 10 MB while retaining 96K positions.
-- **No evaluations yet**: The tree currently has stats only. Engine evals (Stockfish) will be added as a separate enrichment step.
+- **Min 3 games default threshold**: Configurable via `MIN_GAMES` env var. Output filename includes the threshold as suffix (`opening-tree_3.json`, etc.).

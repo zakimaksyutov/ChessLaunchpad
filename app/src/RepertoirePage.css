@@ -72,32 +72,6 @@
   user-select: none;
 }
 
-/* ===== Master theory status indicator ===== */
-.masters-status {
-  margin-left: auto;
-  font-size: 0.85rem;
-  white-space: nowrap;
-}
-
-.masters-status-prompt {
-  color: #888;
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-}
-
-.masters-status-prompt:hover {
-  color: rgb(0, 130, 210);
-}
-
-.masters-status-loading {
-  color: #666;
-}
-
-.masters-status-done {
-  color: #4c1;
-}
-
 /* ===== Evals loading banner ===== */
 .repertoire-evals-loading {
   margin-bottom: 0.5rem;
@@ -300,85 +274,5 @@
     font-weight: normal;
     text-transform: none;
     letter-spacing: normal;
-}
-
-/* Masters section */
-.masters-moves {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-
-.masters-move-row {
-    display: flex;
-    align-items: center;
-    padding: 3px 6px;
-    border-radius: 3px;
-    gap: 6px;
-}
-
-.masters-move-row.highlighted {
-    background-color: #d4edda;
-    font-weight: 600;
-}
-
-.masters-move-san {
-    font-family: monospace;
-    width: 10ch;
-    flex-shrink: 0;
-    flex-grow: 0;
-}
-
-.masters-move-games {
-    font-size: 11px;
-    color: #666;
-    width: 56px;
-    text-align: right;
-    flex-shrink: 0;
-    flex-grow: 0;
-}
-
-.masters-result-bar {
-    display: flex;
-    height: 10px;
-    border-radius: 2px;
-    overflow: hidden;
-    flex: 1;
-    min-width: 60px;
-}
-
-.masters-bar-white {
-    background-color: #f0f0f0;
-    border: 1px solid #ccc;
-    border-right: none;
-}
-
-.masters-bar-draw {
-    background-color: #999;
-}
-
-.masters-bar-black {
-    background-color: #333;
-}
-
-.masters-move-rating {
-    font-size: 11px;
-    color: #888;
-    width: 32px;
-    text-align: right;
-    flex-shrink: 0;
-    flex-grow: 0;
-}
-
-.masters-connect-prompt {
-    font-size: 12px;
-    color: #888;
-    padding: 4px 0;
-}
-
-.masters-connect-prompt a {
-    color: rgb(0, 130, 210);
-    text-decoration: underline;
-    cursor: pointer;
 }
   
