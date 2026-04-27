@@ -21,13 +21,6 @@ All evaluations are stored from **White's perspective**. Each position may have 
 
 A **positive** drop ≥ 30 cp triggers highlighting. A **negative** drop means the mover **improved** the position — no highlight.
 
-### Master theory override (`app/src/MastersEvalOverrideService.ts`)
-
-Even if an eval drop exceeds the threshold, the highlight can be **suppressed** when master game data shows the move is standard theory:
-
-1. **High game count**: The move has ≥ 150 master games → auto-suppress.
-2. **Dominant top move**: The move is the #1 continuation by game count, has ≥ 90% share, **and** no alternative with ≥ 5% share has a win-rate edge ≥ 5 percentage points.
-
 ### Key source files
 
 | File | Role |
@@ -35,7 +28,6 @@ Even if an eval drop exceeds the threshold, the highlight can be **suppressed** 
 | `app/public/opening-explorer-evals.json` | Precomputed eval artifact. Maps compact FEN (pieces + side + castling, 3 fields) → array of up to 2 centipawn values from the 2 deepest Stockfish entries. Evals are from White's perspective. |
 | `app/src/ExplorerEvals.ts` | Loads the artifact; `lookup(fen)` returns the primary (deepest) cp, `lookupAll(fen)` returns the full array. Strips FEN to 3 fields before searching. |
 | `app/src/EvalDropService.ts` | `computeEvalDrops(pgn, evals, orientation)` — computes per-move eval drops using conservative multi-value logic. Only evaluates the **user's own moves** (based on `orientation`). |
-| `app/src/MastersEvalOverrideService.ts` | `shouldSuppressHighlight(mastersResult, moveSan, orientation)` — checks master theory suppression. |
 | `app/src/PgnControl.tsx` | Renders PGN on the Repertoire page. Applies eval-drop background colors per move. |
 | `tools/opening-explorer/lookup-fen.mjs` | Looks up raw eval data for a FEN from the Lichess cloud eval DB (compressed JSONL). Shows all depths and PVs from the source data. Useful when the artifact and live API disagree. |
 
@@ -137,30 +129,14 @@ This reveals:
 
 > **Note:** The `.jsonl.zst` database file must be present in `tools/opening-explorer/data/`. It is not checked into git due to size.
 
-### 5. Query Master Theory
-
-Check the Lichess Masters Opening Explorer for the **before** position to see if the move in question appears in master games:
-
-```sh
-source .env 2>/dev/null
-curl -s -H "Authorization: Bearer $LICHESS_TOKEN" \
-  "https://explorer.lichess.ovh/masters?fen=$(python3 -c "import urllib.parse; print(urllib.parse.quote('<FEN_BEFORE>'))")" \
-  | python3 -m json.tool
-```
-
-From the response, check:
-- Is the investigated move listed? How many games?
-- Would `shouldSuppressHighlight` suppress it? (≥ 150 games → auto-suppress; or #1 move with ≥ 90% share and no strong alternative)
-
-### 6. Synthesize the answer
+### 5. Synthesize the answer
 
 Report to the user:
 
 1. **Artifact evals**: before and after centipawn values (including secondary eval if available)
 2. **Eval drop**: computed value and category (ok / inaccuracy / mistake / blunder)
 3. **Live API check**: whether the live evals confirm or differ from the artifact
-5. **Master theory**: game count and whether a highlight would be suppressed
-6. **Conclusion**: why the move is or isn't highlighted, citing the specific threshold or suppression rule
+4. **Conclusion**: why the move is or isn't highlighted, citing the specific threshold
 
 #### Common reasons a move is NOT highlighted
 
@@ -168,9 +144,8 @@ Report to the user:
 - **Drop below 30 cp** — too small to trigger any category.
 - **Missing eval** — one or both positions aren't in the artifact; `computeEvalDrops` silently skips moves with missing data.
 - **Opponent's move** — only the user's own moves (matching `orientation`) are evaluated.
-- **Master theory suppression** — the move has ≥ 150 master games, or is the dominant top move.
 
 #### Common reasons a move IS highlighted
 
-- **Eval drop ≥ 30 cp** — and master theory did not suppress it.
+- **Eval drop ≥ 30 cp** — the drop exceeds the threshold.
 - **Stale artifact eval** — Lichess periodically purges cloud evals when Stockfish is upgraded. The eval at the time the artifact was built may differ from the current live eval. Use `lookup-fen.mjs` to verify.

@@ -4,8 +4,6 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { WeightSettings } from './WeightSettings';
 import { useLichessAuth } from './LichessAuthContext';
-import { getCacheEntryCount, clearMastersIDBCache } from './MastersCacheService';
-import { clearMastersCache } from './LichessMastersService';
 import './SettingsPage.css';
 
 interface CoefficientValues {
@@ -21,11 +19,6 @@ const SettingsPage: React.FC = () => {
     const [saving, setSaving] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [lichessLoading, setLichessLoading] = useState(false);
-    const [cacheCount, setCacheCount] = useState<number | null>(null);
-    const [cacheLoading, setCacheLoading] = useState(true);
-    const [cacheClearing, setCacheClearing] = useState(false);
-    const [cacheCleared, setCacheCleared] = useState(false);
-    const [cacheError, setCacheError] = useState('');
 
     const { connected, login, logout } = useLichessAuth();
     const navigate = useNavigate();
@@ -58,19 +51,6 @@ const SettingsPage: React.FC = () => {
 
         load();
     }, [dal]);
-
-    useEffect(() => {
-        const loadCacheCount = async () => {
-            setCacheLoading(true);
-            try {
-                const count = await getCacheEntryCount();
-                setCacheCount(count);
-            } finally {
-                setCacheLoading(false);
-            }
-        };
-        loadCacheCount();
-    }, []);
 
     const parseCoefficient = (value: string): number | null => {
         const num = Number(value);
@@ -161,23 +141,6 @@ const SettingsPage: React.FC = () => {
             await logout();
         } finally {
             setLichessLoading(false);
-        }
-    };
-
-    const handleClearCache = async () => {
-        setCacheClearing(true);
-        setCacheCleared(false);
-        setCacheError('');
-        try {
-            await clearMastersIDBCache();
-            clearMastersCache();
-            const count = await getCacheEntryCount();
-            setCacheCount(count ?? 0);
-            setCacheCleared(true);
-        } catch {
-            setCacheError('Failed to clear cache.');
-        } finally {
-            setCacheClearing(false);
         }
     };
 
@@ -284,7 +247,7 @@ const SettingsPage: React.FC = () => {
             <div className="settings-card lichess-section">
                 <h1>Lichess Integration</h1>
                 <p className="settings-description">
-                    Connect your Lichess account to see master game statistics in the analysis popover.
+                    Connect your Lichess account to improve API rate limits for position analysis.
                 </p>
                 {connected ? (
                     <div className="lichess-status">
@@ -306,31 +269,6 @@ const SettingsPage: React.FC = () => {
                         {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
                     </button>
                 )}
-            </div>
-
-            <div className="settings-card cache-section">
-                <h1>Data Cache</h1>
-                <p className="settings-description">
-                    Cached master game data stored in your browser (IndexedDB).
-                </p>
-                {cacheError && <div className="settings-error">{cacheError}</div>}
-                {cacheCleared && <div className="cache-success">Cache cleared successfully.</div>}
-                <div className="cache-info">
-                    <span className="cache-count">
-                        {cacheLoading
-                            ? 'Loading…'
-                            : cacheCount === null
-                                ? 'Cache unavailable'
-                                : `Masters cache: ${cacheCount} ${cacheCount === 1 ? 'entry' : 'entries'}`}
-                    </span>
-                    <button
-                        className="secondary"
-                        onClick={handleClearCache}
-                        disabled={cacheClearing || cacheLoading || cacheCount === null || cacheCount === 0}
-                    >
-                        {cacheClearing ? 'Clearing…' : 'Clear Cache'}
-                    </button>
-                </div>
             </div>
         </div>
     );
