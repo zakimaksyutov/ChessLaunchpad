@@ -40,7 +40,7 @@ cd tools/opening-explorer
 npm run produce
 ```
 
-This installs dependencies, builds the opening tree, produces `data/opening-explorer-evals.json`, and copies it to `app/public/opening-explorer-evals.json`.
+This installs dependencies, builds the opening tree, and produces `data/opening-explorer-evals.json`.
 
 ### Downloading source data (first time only)
 
