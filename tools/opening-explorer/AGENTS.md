@@ -40,7 +40,7 @@ cd tools/opening-explorer
 npm run produce
 ```
 
-This installs dependencies, builds the opening tree, and produces `data/opening-explorer-evals.json`.
+This installs dependencies, builds the opening tree, produces `data/opening-explorer-evals.json`, and copies it to `app/public/opening-explorer-evals.json`.
 
 ### Downloading source data (first time only)
 
@@ -92,7 +92,7 @@ Match positions from the opening tree and Lichess named openings against the Lic
 |--------|---------|
 | `mega-download.mjs` | Download .7z from MEGA. Default URL hardcoded as `DEFAULT_URL`. |
 | `download.mjs` | Extract .7z → .pgn. Requires `mega-download.mjs` to run first. |
-| `build-tree.mjs` | Parse PGN → opening tree JSON. `MIN_GAMES` env var controls threshold. |
+| `build-tree.mjs` | Parse PGN → opening tree JSON. `MIN_GAMES` env var controls threshold. Output filename includes threshold suffix (e.g. `opening-tree_3.json`). |
 | `enrich-evals.mjs` | Stream Lichess eval DB → public artifact. Requires `zstd` CLI. |
 | `loader.mjs` | Runtime loader (not used in artifact production). |
 

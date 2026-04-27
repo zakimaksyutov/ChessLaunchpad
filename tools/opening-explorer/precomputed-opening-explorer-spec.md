@@ -57,7 +57,7 @@ tools/opening-explorer/data/opening-tree_12.json  (~21 MB)
 
 All three files are already generated and present on disk.
 
-The `_12` variant (default threshold) contains **96,375 positions** and **132,195 moves** from **838,293 games**.
+The `_3` variant (default threshold) is used by the `produce` pipeline.
 
 The threshold is configurable via `MIN_GAMES` env var; the suffix is always `_<threshold>`.
 
@@ -226,6 +226,5 @@ This avoids the Lichess Cloud Eval API rate limit (~1 req/sec) and provides offl
 
 ## Size Target
 
-The output file should be ≤ 10 MB uncompressed so it can be bundled as a static web asset.
-
+The eval artifact is ~30 MB raw / ~5.8 MB gzipped. Web servers serve the gzipped version.
 

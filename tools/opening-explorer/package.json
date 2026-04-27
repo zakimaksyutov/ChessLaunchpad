@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "produce": "npm install && node build-tree.mjs && node enrich-evals.mjs data/opening-tree_3.json --eval-db data/20260412_lichess_db_eval.jsonl.zst --openings data --output data/opening-explorer-evals.json",
+    "produce": "npm install && node build-tree.mjs && node enrich-evals.mjs data/opening-tree_3.json --eval-db data/20260412_lichess_db_eval.jsonl.zst --openings data --output data/opening-explorer-evals.json && cp data/opening-explorer-evals.json ../../app/public/opening-explorer-evals.json && echo 'Copied artifact to app/public/opening-explorer-evals.json'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
