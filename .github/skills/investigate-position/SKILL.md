@@ -32,8 +32,8 @@ Even if an eval drop exceeds the threshold, the highlight can be **suppressed** 
 
 | File | Role |
 | ---- | ---- |
-| `app/public/opening-explorer-evals.json` | Precomputed eval artifact (~29 MB). Maps compact FEN (pieces + side + castling, 3 fields) → `[centipawns, depth]` tuples. Evals are from White's perspective. Depth is the Stockfish search depth that produced the eval. |
-| `app/src/ExplorerEvals.ts` | Loads the artifact; `lookup(fen)` returns cp, `lookupEntry(fen)` returns `{ cp, depth }`. Strips FEN to 3 fields before searching. |
+| `app/public/opening-explorer-evals.json` | Precomputed eval artifact. Maps compact FEN (pieces + side + castling, 3 fields) → array of up to 2 centipawn values from the 2 deepest Stockfish entries. Evals are from White's perspective. |
+| `app/src/ExplorerEvals.ts` | Loads the artifact; `lookup(fen)` returns the primary (deepest) cp, `lookupAll(fen)` returns the full array. Strips FEN to 3 fields before searching. |
 | `app/src/EvalDropService.ts` | `computeEvalDrops(pgn, evals, orientation)` — computes per-move eval drops. Only evaluates the **user's own moves** (based on `orientation`). |
 | `app/src/MastersEvalOverrideService.ts` | `shouldSuppressHighlight(mastersResult, moveSan, orientation)` — checks master theory suppression. |
 | `app/src/PgnControl.tsx` | Renders PGN on the Repertoire page. Applies eval-drop background colors per move. |
@@ -81,20 +81,21 @@ def compact(fen):
 
 def parse_entry(val):
     if isinstance(val, list):
-        return val[0], val[1]
-    return val, None
+        return val
+    return [val]
 
 fen_before = '<FULL_FEN_BEFORE>'
 fen_after  = '<FULL_FEN_AFTER>'
 
 raw_b = data.get(compact(fen_before))
 raw_a = data.get(compact(fen_after))
-eb, db = parse_entry(raw_b) if raw_b is not None else (None, None)
-ea, da = parse_entry(raw_a) if raw_a is not None else (None, None)
-print(f'Before: {eb} cp (depth {db})')
-print(f'After:  {ea} cp (depth {da})')
+evals_b = parse_entry(raw_b) if raw_b is not None else None
+evals_a = parse_entry(raw_a) if raw_a is not None else None
+print(f'Before: {evals_b[0]} cp (evals: {evals_b})' if evals_b else 'Before: not found')
+print(f'After:  {evals_a[0]} cp (evals: {evals_a})' if evals_a else 'After:  not found')
 
-if eb is not None and ea is not None:
+if evals_b is not None and evals_a is not None:
+    eb, ea = evals_b[0], evals_a[0]
     # Determine whose move it is from the FEN (second field: 'w' or 'b')
     is_white = fen_before.split()[1] == 'w'
     drop = (eb - ea) if is_white else (ea - eb)
@@ -103,8 +104,6 @@ if eb is not None and ea is not None:
     elif drop >= 50: print('Category: MISTAKE')
     elif drop >= 30: print('Category: INACCURACY')
     else: print('Category: ok (no highlight)')
-    if db is not None and da is not None and abs(db - da) > 10:
-        print(f'WARNING: depth mismatch ({db} vs {da}) — eval drop may be unreliable')
 "
 ```
 
@@ -121,11 +120,11 @@ curl -s -H "Authorization: Bearer $LICHESS_TOKEN" \
   | python3 -m json.tool
 ```
 
-Run this for **both** the before and after FENs. Compare the top-line `cp` value with what the artifact has. Note any differences in depth — the artifact and live API may disagree if computed at different depths or multiPv settings.
+Run this for **both** the before and after FENs. Compare the top-line `cp` value with what the artifact has.
 
 ### 4. Deep-dive with raw Lichess eval DB (optional)
 
-If the artifact and live API **disagree** (e.g. different cp at similar depths, or a depth present in the artifact but missing from the live API), use `lookup-fen.mjs` to inspect the raw source data. This streams the compressed Lichess cloud eval JSONL and shows **all** depth/PV entries for a position:
+If the artifact and live API **disagree** (e.g. different cp values), use `lookup-fen.mjs` to inspect the raw source data. This streams the compressed Lichess cloud eval JSONL and shows **all** depth/PV entries for a position:
 
 ```sh
 cd tools/opening-explorer && node lookup-fen.mjs "<FEN>"
@@ -133,7 +132,7 @@ cd tools/opening-explorer && node lookup-fen.mjs "<FEN>"
 
 This reveals:
 - Which depths have been evaluated and their cp values per PV
-- Whether a specific depth (e.g. the one the artifact captured) still exists in the raw DB or was purged
+- Whether the depths the artifact used still exist in the raw DB or were purged
 - Knodes searched at each depth, which can indicate evaluation quality
 
 > **Note:** The `.jsonl.zst` database file must be present in `tools/opening-explorer/data/`. It is not checked into git due to size.
@@ -157,10 +156,9 @@ From the response, check:
 
 Report to the user:
 
-1. **Artifact evals**: before and after centipawn values and depths
+1. **Artifact evals**: before and after centipawn values (including secondary eval if available)
 2. **Eval drop**: computed value and category (ok / inaccuracy / mistake / blunder)
-3. **Depth comparison**: whether the before/after depths are similar (large mismatches may produce unreliable drops)
-4. **Live API check**: whether the live evals confirm or differ from the artifact
+3. **Live API check**: whether the live evals confirm or differ from the artifact
 5. **Master theory**: game count and whether a highlight would be suppressed
 6. **Conclusion**: why the move is or isn't highlighted, citing the specific threshold or suppression rule
 
@@ -175,5 +173,4 @@ Report to the user:
 #### Common reasons a move IS highlighted
 
 - **Eval drop ≥ 30 cp** — and master theory did not suppress it.
-- **Artifact depth disagreement** — the before/after positions were evaluated at different depths, creating an artificial gap.
-- **Stale artifact eval** — Lichess periodically purges cloud evals when Stockfish is upgraded. A depth that existed when the artifact was built may no longer be available, and the current eval at a nearby depth can differ significantly. Use `lookup-fen.mjs` to verify.
+- **Stale artifact eval** — Lichess periodically purges cloud evals when Stockfish is upgraded. The eval at the time the artifact was built may differ from the current live eval. Use `lookup-fen.mjs` to verify.

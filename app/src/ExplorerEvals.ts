@@ -2,22 +2,16 @@
  * ExplorerEvals — lazy-loaded lookup service for precomputed opening evaluations.
  *
  * Evals originate from the Lichess cloud eval database (Stockfish, depth 30–75).
- * The JSON asset maps compact FEN (pieces side castling) → centipawns from White's perspective.
+ * The JSON asset maps compact FEN (pieces side castling) → array of centipawn values
+ * from the 2 deepest Stockfish entries (from White's perspective).
  *
- * The file is ~29 MB raw / ~5.8 MB gzipped — loaded only once per session on demand.
+ * The file is loaded only once per session on demand.
  */
 
-export interface EvalEntry {
-    /** Centipawns from White's perspective. */
-    cp: number;
-    /** Stockfish search depth that produced this eval. */
-    depth: number;
-}
-
 export class ExplorerEvals {
-    private evals: Map<string, EvalEntry>;
+    private evals: Map<string, number[]>;
 
-    private constructor(evals: Map<string, EvalEntry>) {
+    private constructor(evals: Map<string, number[]>) {
         this.evals = evals;
     }
 
@@ -27,26 +21,27 @@ export class ExplorerEvals {
         if (!response.ok) {
             throw new Error(`Failed to load explorer evals: ${response.status}`);
         }
-        const data: Record<string, number | [number, number]> = await response.json();
+        const data: Record<string, number | number[]> = await response.json();
         return new ExplorerEvals(ExplorerEvals.parseEntries(data));
     }
 
     /** Build from an in-memory record (useful for tests). */
-    static fromRecord(data: Record<string, number | [number, number]>): ExplorerEvals {
+    static fromRecord(data: Record<string, number | number[]>): ExplorerEvals {
         return new ExplorerEvals(ExplorerEvals.parseEntries(data));
     }
 
     /**
-     * Parse entries that are either plain numbers (legacy: cp only, depth defaults to 0)
-     * or [cp, depth] tuples.
+     * Parse entries that are either:
+     * - plain numbers (legacy: single cp, wrapped as [n])
+     * - number arrays (current: [cp1, cp2] from 2 deepest entries)
      */
-    private static parseEntries(data: Record<string, number | [number, number]>): Map<string, EvalEntry> {
-        const map = new Map<string, EvalEntry>();
+    private static parseEntries(data: Record<string, number | number[]>): Map<string, number[]> {
+        const map = new Map<string, number[]>();
         for (const [fen, val] of Object.entries(data)) {
             if (Array.isArray(val)) {
-                map.set(fen, { cp: val[0], depth: val[1] });
+                map.set(fen, val);
             } else {
-                map.set(fen, { cp: val, depth: 0 });
+                map.set(fen, [val]);
             }
         }
         return map;
@@ -57,20 +52,21 @@ export class ExplorerEvals {
     }
 
     /**
-     * Look up eval for a position. Accepts any FEN length (3-part compact,
+     * Look up the primary eval for a position. Accepts any FEN length (3-part compact,
      * 4-part normalized, or full 6-part). Extra fields are stripped.
-     * Returns centipawns from White's perspective, or null if not found.
+     * Returns centipawns from White's perspective (deepest entry), or null if not found.
      */
     lookup(fen: string): number | null {
-        const entry = this.lookupEntry(fen);
-        return entry !== null ? entry.cp : null;
+        const compact = toCompactFen(fen);
+        const val = this.evals.get(compact);
+        return val !== undefined ? val[0] : null;
     }
 
     /**
-     * Look up the full eval entry (cp + depth) for a position.
-     * Returns null if not found.
+     * Look up all eval entries for a position.
+     * Returns array of centipawn values (up to 2, deepest first), or null if not found.
      */
-    lookupEntry(fen: string): EvalEntry | null {
+    lookupAll(fen: string): number[] | null {
         const compact = toCompactFen(fen);
         const val = this.evals.get(compact);
         return val !== undefined ? val : null;

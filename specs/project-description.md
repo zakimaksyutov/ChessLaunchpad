@@ -75,7 +75,7 @@ Evaluations are precomputed per-position (see `ExplorerEvals.ts`) and compared p
 
 ### Master Theory Override
 
-Eval-drop highlights can produce false positives when precomputed evaluations at different depths disagree, even though the move is standard opening theory. To suppress these, the Repertoire page cross-references every flagged move against the Lichess Masters Opening Explorer.
+Eval-drop highlights can produce false positives when precomputed evaluations disagree with the true position assessment, even though the move is standard opening theory. To suppress these, the Repertoire page cross-references every flagged move against the Lichess Masters Opening Explorer.
 
 A highlight is suppressed if **any** of the following conditions are met:
 

@@ -63,7 +63,7 @@ The threshold is configurable via `MIN_GAMES` env var; the suffix is always `_<t
 
 ### Current output — engine evaluations
 
-`enrich-evals.mjs` produces an evals file (e.g., `opening-explorer-evals_3.json`) keyed by compact FEN.
+`enrich-evals.mjs` produces an evals file (e.g., `opening-explorer-evals.json`) keyed by compact FEN.
 
 The script collects positions from **two sources**:
 
@@ -118,15 +118,15 @@ Example:
 
 ### Engine evaluations file
 
-`enrich-evals.mjs` produces a public-artifact-format evals file (e.g., `opening-explorer-evals_3.json`) keyed by compact FEN:
+`enrich-evals.mjs` produces a public-artifact-format evals file (e.g., `opening-explorer-evals.json`) keyed by compact FEN:
 
 ```json
 {
-  "<compact FEN>": eval
+  "<compact FEN>": [cp1, cp2]
 }
 ```
 
-- **`eval`** — centipawn score (integer, from white's perspective). For mate positions: `100000 + N` for white mate-in-N, `-100000 - N` for black mate-in-N.
+- **Values** — array of up to 2 centipawn scores (integers, from White's perspective) from the 2 deepest Stockfish entries. Positions with only one eval entry produce `[cp]`. Mate encoding: `100000 + N` for white mate-in-N, `-100000 - N` for black mate-in-N.
 
 Usage:
 
@@ -190,17 +190,16 @@ Each line is a JSON object keyed by FEN (piece placement + active color + castli
 
 ### Eval extraction logic
 
-To get the best evaluation for a position:
+To get evaluations for a position:
 
 1. **`record.fen`** — identifies the position (4-part FEN: pieces + side + castling + EP).
-2. **`record.evals`** — array of eval entries at different Stockfish depths. Pick the entry with the **highest `depth`** (= most accurate).
+2. **`record.evals`** — array of eval entries at different Stockfish depths. Sort by depth descending and take the **top 2** entries.
 3. **`.pvs[0]`** — first PV is the **best line** (strongest continuation).
 4. **`.cp`** — centipawn evaluation from **white's perspective** (positive = white is better, negative = black is better). Mutually exclusive with `.mate`.
 5. **`.mate`** — mate-in-N moves (positive = white delivers mate, negative = black delivers mate). Mutually exclusive with `.cp`.
-6. **`.line`** — principal variation in **UCI** long-algebraic format (e.g., `e7e5 d2d4`), not SAN.
 
 Field notes:
-- `evals` is ordered by number of PVs, **not** by depth — always sort/scan to find the highest-depth entry.
+- `evals` is ordered by number of PVs, **not** by depth — always sort/scan to find the highest-depth entries.
 - `knodes` = thousands of nodes searched (informational, not needed for enrichment).
 - A single record may have multiple eval entries (e.g., depth 46 with 5 PVs and depth 34 with 20 PVs).
 
@@ -218,8 +217,8 @@ The Lichess eval DB uses a **4-part FEN** (pieces + side + castling + EP), while
 3. **Merge** both sets into a single lookup set (union).
 4. **Stream** the compressed JSONL through `zstd -d -c` (pipe to stdout — no need to extract the full ~100+ GB file to disk).
 5. For each line, convert the Lichess 4-part FEN to compact 3-part FEN and check if it exists in the lookup set.
-6. For matching positions, extract the **highest-depth** eval entry's **first PV**: `cp` (or `mate`).
-7. Write output as `{ "compactFEN": eval }` — matching the public artifact format consumed by the app.
+6. For matching positions, extract the **top 2 deepest** eval entries' **first PV** `cp` (or `mate`) values.
+7. Write output as `{ "compactFEN": [cp1, cp2] }` — matching the public artifact format consumed by the app.
 
 This avoids the Lichess Cloud Eval API rate limit (~1 req/sec) and provides offline, instant lookup for all 369M positions.
 
