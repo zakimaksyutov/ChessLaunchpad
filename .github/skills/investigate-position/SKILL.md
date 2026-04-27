@@ -37,6 +37,7 @@ Even if an eval drop exceeds the threshold, the highlight can be **suppressed** 
 | `app/src/EvalDropService.ts` | `computeEvalDrops(pgn, evals, orientation)` — computes per-move eval drops. Only evaluates the **user's own moves** (based on `orientation`). |
 | `app/src/MastersEvalOverrideService.ts` | `shouldSuppressHighlight(mastersResult, moveSan, orientation)` — checks master theory suppression. |
 | `app/src/PgnControl.tsx` | Renders PGN on the Repertoire page. Applies eval-drop background colors per move. |
+| `tools/opening-explorer/lookup-fen.mjs` | Looks up raw eval data for a FEN from the Lichess cloud eval DB (compressed JSONL). Shows all depths and PVs from the source data. Useful when the artifact and live API disagree. |
 
 ---
 
@@ -122,7 +123,22 @@ curl -s -H "Authorization: Bearer $LICHESS_TOKEN" \
 
 Run this for **both** the before and after FENs. Compare the top-line `cp` value with what the artifact has. Note any differences in depth — the artifact and live API may disagree if computed at different depths or multiPv settings.
 
-### 4. Query Master Theory
+### 4. Deep-dive with raw Lichess eval DB (optional)
+
+If the artifact and live API **disagree** (e.g. different cp at similar depths, or a depth present in the artifact but missing from the live API), use `lookup-fen.mjs` to inspect the raw source data. This streams the compressed Lichess cloud eval JSONL and shows **all** depth/PV entries for a position:
+
+```sh
+cd tools/opening-explorer && node lookup-fen.mjs "<FEN>"
+```
+
+This reveals:
+- Which depths have been evaluated and their cp values per PV
+- Whether a specific depth (e.g. the one the artifact captured) still exists in the raw DB or was purged
+- Knodes searched at each depth, which can indicate evaluation quality
+
+> **Note:** The `.jsonl.zst` database file must be present in `tools/opening-explorer/data/`. It is not checked into git due to size.
+
+### 5. Query Master Theory
 
 Check the Lichess Masters Opening Explorer for the **before** position to see if the move in question appears in master games:
 
@@ -137,7 +153,7 @@ From the response, check:
 - Is the investigated move listed? How many games?
 - Would `shouldSuppressHighlight` suppress it? (≥ 150 games → auto-suppress; or #1 move with ≥ 90% share and no strong alternative)
 
-### 5. Synthesize the answer
+### 6. Synthesize the answer
 
 Report to the user:
 
@@ -160,3 +176,4 @@ Report to the user:
 
 - **Eval drop ≥ 30 cp** — and master theory did not suppress it.
 - **Artifact depth disagreement** — the before/after positions were evaluated at different depths, creating an artificial gap.
+- **Stale artifact eval** — Lichess periodically purges cloud evals when Stockfish is upgraded. A depth that existed when the artifact was built may no longer be available, and the current eval at a nearby depth can differ significantly. Use `lookup-fen.mjs` to verify.
