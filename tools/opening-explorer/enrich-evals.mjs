@@ -293,10 +293,10 @@ async function main() {
   if (parseErrors > 0) console.log(`Parse errors: ${parseErrors}`);
   if (zstdExitCode !== 0) console.log(`Warning: zstd exited with code ${zstdExitCode} (possible data corruption in source file)`);
 
-  // Build output: compactFen → eval (centipawns)
+  // Build output: compactFen → [eval, depth]
   const results = {};
-  for (const [fen, [evalScore]] of Object.entries(rawEvals)) {
-    results[fen] = evalScore;
+  for (const [fen, [evalScore, depth]] of Object.entries(rawEvals)) {
+    results[fen] = [evalScore, depth];
   }
 
   // Write output

@@ -37,10 +37,10 @@ describe('computeEvalDrops', () => {
         // White plays e4: eval goes from 19 to 18 → drop = 19-18 = 1 (ok)
         // White plays Nf3: eval goes from 35 to 30 → drop = 35-30 = 5 (ok)
         const evals = ExplorerEvals.fromRecord({
-            [startFen]: 19,
-            [afterE4]: 18,
-            [afterE5]: 35,
-            [afterNf3]: 30,
+            [startFen]: [19, 50],
+            [afterE4]: [18, 48],
+            [afterE5]: [35, 42],
+            [afterNf3]: [30, 45],
         });
 
         const drops = computeEvalDrops('1. e4 e5 2. Nf3', evals, 'white');
@@ -53,8 +53,8 @@ describe('computeEvalDrops', () => {
     it('detects inaccuracy for white', () => {
         // White plays e4: eval drops from 19 to -20 → drop = 19-(-20) = 39 (inaccuracy)
         const evals = ExplorerEvals.fromRecord({
-            [startFen]: 19,
-            [afterE4]: -20,
+            [startFen]: [19, 50],
+            [afterE4]: [-20, 48],
         });
 
         const drops = computeEvalDrops('1. e4', evals, 'white');
@@ -67,8 +67,8 @@ describe('computeEvalDrops', () => {
     it('detects mistake for white', () => {
         // White plays e4: eval drops from 19 to -40 → drop = 59 (mistake)
         const evals = ExplorerEvals.fromRecord({
-            [startFen]: 19,
-            [afterE4]: -40,
+            [startFen]: [19, 50],
+            [afterE4]: [-40, 48],
         });
 
         const drops = computeEvalDrops('1. e4', evals, 'white');
@@ -82,10 +82,10 @@ describe('computeEvalDrops', () => {
         // From Black's perspective: drop = evalAfter - evalBefore = 35 - 18 = 17
         // (positive means position got better for White, worse for Black)
         const evals = ExplorerEvals.fromRecord({
-            [startFen]: 19,
-            [afterE4]: 18,
-            [afterE5]: 35,
-            [afterNf3]: 30,
+            [startFen]: [19, 50],
+            [afterE4]: [18, 48],
+            [afterE5]: [35, 42],
+            [afterNf3]: [30, 45],
         });
 
         const drops = computeEvalDrops('1. e4 e5 2. Nf3', evals, 'black');
@@ -100,8 +100,8 @@ describe('computeEvalDrops', () => {
     it('detects blunder for black', () => {
         // Black plays e5: eval goes from 18 to 100 → drop = 100-18 = 82 (blunder)
         const evals = ExplorerEvals.fromRecord({
-            [afterE4]: 18,
-            [afterE5]: 100,
+            [afterE4]: [18, 48],
+            [afterE5]: [100, 42],
         });
 
         const drops = computeEvalDrops('1. e4 e5', evals, 'black');
@@ -113,7 +113,7 @@ describe('computeEvalDrops', () => {
     it('skips moves where eval data is missing', () => {
         // Only have eval for start position, not after e4
         const evals = ExplorerEvals.fromRecord({
-            [startFen]: 19,
+            [startFen]: [19, 50],
         });
 
         const drops = computeEvalDrops('1. e4 e5 2. Nf3', evals, 'white');
@@ -121,13 +121,13 @@ describe('computeEvalDrops', () => {
     });
 
     it('returns empty map for invalid PGN', () => {
-        const evals = ExplorerEvals.fromRecord({ [startFen]: 19 });
+        const evals = ExplorerEvals.fromRecord({ [startFen]: [19, 50] });
         const drops = computeEvalDrops('invalid pgn garbage', evals, 'white');
         expect(drops.size).toBe(0);
     });
 
     it('returns empty map for empty PGN', () => {
-        const evals = ExplorerEvals.fromRecord({ [startFen]: 19 });
+        const evals = ExplorerEvals.fromRecord({ [startFen]: [19, 50] });
         const drops = computeEvalDrops('', evals, 'white');
         expect(drops.size).toBe(0);
     });

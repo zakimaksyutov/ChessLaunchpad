@@ -85,13 +85,14 @@ Match positions from the opening tree and Lichess named openings against the Lic
 
 ```json
 {
-  "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq": 18,
-  "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq": 27
+  "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq": [18, 50],
+  "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq": [27, 48]
 }
 ```
 
 - Keys: **compact FEN** — piece placement + side to move + castling rights (3 fields, no en-passant or move counters)
-- Values: centipawns from White's perspective; mate encoded as `±(100000 + N)`
+- Values: `[centipawns, depth]` — cp from White's perspective, Stockfish search depth
+- Mate encoding: `±(100000 + N)`
 
 ## Key Scripts
 

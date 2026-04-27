@@ -7,10 +7,17 @@
  * The file is ~29 MB raw / ~5.8 MB gzipped — loaded only once per session on demand.
  */
 
-export class ExplorerEvals {
-    private evals: Map<string, number>;
+export interface EvalEntry {
+    /** Centipawns from White's perspective. */
+    cp: number;
+    /** Stockfish search depth that produced this eval. */
+    depth: number;
+}
 
-    private constructor(evals: Map<string, number>) {
+export class ExplorerEvals {
+    private evals: Map<string, EvalEntry>;
+
+    private constructor(evals: Map<string, EvalEntry>) {
         this.evals = evals;
     }
 
@@ -20,13 +27,29 @@ export class ExplorerEvals {
         if (!response.ok) {
             throw new Error(`Failed to load explorer evals: ${response.status}`);
         }
-        const data: Record<string, number> = await response.json();
-        return new ExplorerEvals(new Map(Object.entries(data)));
+        const data: Record<string, number | [number, number]> = await response.json();
+        return new ExplorerEvals(ExplorerEvals.parseEntries(data));
     }
 
     /** Build from an in-memory record (useful for tests). */
-    static fromRecord(data: Record<string, number>): ExplorerEvals {
-        return new ExplorerEvals(new Map(Object.entries(data)));
+    static fromRecord(data: Record<string, number | [number, number]>): ExplorerEvals {
+        return new ExplorerEvals(ExplorerEvals.parseEntries(data));
+    }
+
+    /**
+     * Parse entries that are either plain numbers (legacy: cp only, depth defaults to 0)
+     * or [cp, depth] tuples.
+     */
+    private static parseEntries(data: Record<string, number | [number, number]>): Map<string, EvalEntry> {
+        const map = new Map<string, EvalEntry>();
+        for (const [fen, val] of Object.entries(data)) {
+            if (Array.isArray(val)) {
+                map.set(fen, { cp: val[0], depth: val[1] });
+            } else {
+                map.set(fen, { cp: val, depth: 0 });
+            }
+        }
+        return map;
     }
 
     get size(): number {
@@ -39,6 +62,15 @@ export class ExplorerEvals {
      * Returns centipawns from White's perspective, or null if not found.
      */
     lookup(fen: string): number | null {
+        const entry = this.lookupEntry(fen);
+        return entry !== null ? entry.cp : null;
+    }
+
+    /**
+     * Look up the full eval entry (cp + depth) for a position.
+     * Returns null if not found.
+     */
+    lookupEntry(fen: string): EvalEntry | null {
         const compact = toCompactFen(fen);
         const val = this.evals.get(compact);
         return val !== undefined ? val : null;
