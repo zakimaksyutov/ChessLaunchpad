@@ -37,25 +37,17 @@ ECO-classified openings from [lichess-org/chess-openings](https://github.com/lic
 
 ```bash
 cd tools/opening-explorer
+npm run produce
+```
+
+This installs dependencies, builds the opening tree, and produces `data/opening-explorer-evals.json`.
+
+### Downloading source data (first time only)
+
+```bash
 npm install
-
-# 1. Download PGN from MEGA (~124 MB .7z)
-node mega-download.mjs
-
-# 2. Extract .7z → .pgn (~682 MB)
-node download.mjs
-
-# 3. Build opening tree (default threshold: 12 games)
-node build-tree.mjs
-# Override threshold:
-MIN_GAMES=3 node build-tree.mjs
-
-# 4. Enrich with evals → produce the public artifact
-node enrich-evals.mjs data/opening-tree_3.json \
-  --eval-db data/20260412_lichess_db_eval.jsonl.zst \
-  --openings data \
-  --output data/opening-explorer-evals.json
-
+node mega-download.mjs    # Download PGN from MEGA (~124 MB .7z)
+node download.mjs         # Extract .7z → .pgn (~682 MB)
 ```
 
 ## Data Files (gitignored)

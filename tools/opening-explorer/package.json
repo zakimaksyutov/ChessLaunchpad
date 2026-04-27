@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "produce": "npm install && node build-tree.mjs && node enrich-evals.mjs data/opening-tree_3.json --eval-db data/20260412_lichess_db_eval.jsonl.zst --openings data --output data/opening-explorer-evals.json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

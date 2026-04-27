@@ -24,7 +24,7 @@ import path from "path";
 import { readdirSync } from "fs";
 
 const MAX_PLY = 30; // 15 moves = 30 half-moves
-const MIN_GAMES = parseInt(process.env.MIN_GAMES || "12");
+const MIN_GAMES = parseInt(process.env.MIN_GAMES || "3");
 const DATA_DIR = path.resolve(import.meta.dirname, "data");
 
 // ── Compact FEN: strip move counters, en-passant when irrelevant ──
@@ -39,8 +39,12 @@ function compactFen(fen) {
 // ── PGN streaming parser ──
 // Parses a multi-game PGN file, yielding { headers, moves } per game.
 async function* parsePgnStream(filePath) {
+  const fileStream = createReadStream(filePath, { encoding: "utf-8", highWaterMark: 256 * 1024 });
+  let bytesRead = 0;
+  fileStream.on("data", (chunk) => { bytesRead += Buffer.byteLength(chunk); });
+
   const rl = createInterface({
-    input: createReadStream(filePath, { encoding: "utf-8", highWaterMark: 256 * 1024 }),
+    input: fileStream,
     crlfDelay: Infinity,
   });
 
@@ -53,7 +57,7 @@ async function* parsePgnStream(filePath) {
 
     if (trimmed.startsWith("[")) {
       if (inMoves && moveText.trim()) {
-        yield { headers, moveText: moveText.trim() };
+        yield { headers, moveText: moveText.trim(), bytesRead };
         headers = {};
         moveText = "";
       }
@@ -72,7 +76,7 @@ async function* parsePgnStream(filePath) {
   }
 
   if (moveText.trim()) {
-    yield { headers, moveText: moveText.trim() };
+    yield { headers, moveText: moveText.trim(), bytesRead };
   }
 }
 
@@ -120,14 +124,15 @@ async function main() {
   let skipped = 0;
   const startTime = Date.now();
 
-  for await (const { headers, moveText } of parsePgnStream(pgnPath)) {
+  for await (const { headers, moveText, bytesRead } of parsePgnStream(pgnPath)) {
     gameCount++;
 
     if (gameCount % 10000 === 0) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       const posCount = tree.size;
+      const pct = ((bytesRead / fileSize) * 100).toFixed(1);
       process.stdout.write(
-        `\r  ${gameCount} games, ${posCount} positions, ${elapsed}s`
+        `\r  ${pct}% | ${gameCount} games, ${posCount} positions, ${elapsed}s`
       );
     }
 
