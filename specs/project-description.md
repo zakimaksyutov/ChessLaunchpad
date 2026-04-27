@@ -71,7 +71,7 @@ The Repertoire page highlights moves whose Lichess cloud evaluation drops signif
 | Mistake    | 50 cp  | Pink   |
 | Blunder    | 70 cp  | Purple |
 
-Evaluations are precomputed per-position (see `ExplorerEvals.ts`) and compared pairwise along each variant's move sequence (`EvalDropService.ts`).
+Evaluations are precomputed per-position (see `ExplorerEvals.ts`) with up to 2 centipawn values from different Stockfish depths. The eval-drop calculation uses all stored values conservatively: it evaluates every before×after pairing and uses the minimum drop to avoid false-positive highlights from eval instability (`EvalDropService.ts`).
 
 ### Master Theory Override
 

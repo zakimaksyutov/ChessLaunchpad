@@ -22,11 +22,42 @@ export function categorizeEvalDrop(drop: number): EvalDropCategory {
 }
 
 /**
+ * Compute the conservative (user-favoring) eval drop from two arrays of
+ * centipawn values. When multiple stored evals exist for a position, the
+ * values may disagree due to Stockfish depth/version differences. Rather
+ * than picking one arbitrarily, we evaluate all before×after pairings and
+ * return the **minimum** mover-perspective drop — i.e., the pairing that
+ * is most favorable to the user.
+ *
+ * All evals are from White's perspective:
+ * - White move: drop = before − after  (positive = White lost eval)
+ * - Black move: drop = after − before  (positive = Black lost eval)
+ */
+export function computeConservativeDrop(
+    beforeVals: number[],
+    afterVals: number[],
+    isWhiteMove: boolean
+): number {
+    let minDrop = Infinity;
+    for (const b of beforeVals) {
+        for (const a of afterVals) {
+            const drop = isWhiteMove ? b - a : a - b;
+            if (drop < minDrop) minDrop = drop;
+        }
+    }
+    return minDrop;
+}
+
+/**
  * Compute eval drops for every half-move in a PGN.
  *
  * Returns a Map keyed by the full FEN *after* each move → EvalDrop.
  * Only moves where both the "before" and "after" positions have evals
  * are included. Moves with missing eval data are silently skipped.
+ *
+ * When multiple eval values are stored per position, the conservative
+ * (minimum) drop across all pairings is used to avoid false-positive
+ * highlights from eval instability.
  *
  * @param pgn       The PGN string (may include comments, which are stripped).
  * @param evals     The ExplorerEvals lookup instance.
@@ -69,17 +100,12 @@ export function computeEvalDrops(
         const afterFen = chess.fen();
 
         if (isUserMove) {
-            const evalBefore = evals.lookup(prevFen);
-            const evalAfter = evals.lookup(afterFen);
+            const beforeVals = evals.lookupAll(prevFen);
+            const afterVals = evals.lookupAll(afterFen);
 
-            if (evalBefore !== null && evalAfter !== null) {
-                // Evals are from White's perspective.
-                // For White: drop = evalBefore - evalAfter (positive = White lost eval)
-                // For Black: drop = evalAfter - evalBefore (positive = Black lost eval,
-                //            i.e. the position got better for White after Black's move)
-                const drop = isWhiteMove
-                    ? evalBefore - evalAfter
-                    : evalAfter - evalBefore;
+            if (beforeVals !== null && afterVals !== null
+                && beforeVals.length > 0 && afterVals.length > 0) {
+                const drop = computeConservativeDrop(beforeVals, afterVals, isWhiteMove);
 
                 result.set(afterFen, {
                     evalDrop: drop,
