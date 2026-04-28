@@ -80,6 +80,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
     const prevRoundIdRef = useRef(roundId);
     const prevOrientationRef = useRef(orientation);
     const moveJustPlayedRef = useRef(false);
+    const suppressNextAnnotationClearRef = useRef(false);
     const userLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>(undefined);
     const computedLastMoveRef = useRef<{ from: CCSquare; to: CCSquare } | undefined>(undefined);
     const fenRef = useRef(fen);
@@ -106,6 +107,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
         prevOrientationRef.current = orientation;
         prevFenRef.current = fen;
         moveJustPlayedRef.current = false;
+        suppressNextAnnotationClearRef.current = false;
         userLastMoveRef.current = undefined;
         computedLastMoveRef.current = undefined;
     } else if (prevFenRef.current !== fen) {
@@ -115,6 +117,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
         } else {
             computedLastMoveRef.current = detectMove(prevFenRef.current, fen);
         }
+        suppressNextAnnotationClearRef.current = false;
         prevFenRef.current = fen;
     }
 
@@ -131,6 +134,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
     );
 
     const handleOnMove = (from: CCSquare, to: CCSquare) => {
+        suppressNextAnnotationClearRef.current = true;
         const valid = movePlayedRef.current(from, to);
         if (valid) {
             moveJustPlayedRef.current = true;
@@ -139,6 +143,10 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
     };
 
     const handleAnnotationsChange = (ccAnns: ChessControlAnnotation[]) => {
+        if (suppressNextAnnotationClearRef.current && ccAnns.length === 0) {
+            suppressNextAnnotationClearRef.current = false;
+            return;
+        }
         if (annotationsChangedRef.current) {
             const internal = convertChessControlAnnotationsToInternal(ccAnns);
             annotationsChangedRef.current(fenRef.current, internal);
