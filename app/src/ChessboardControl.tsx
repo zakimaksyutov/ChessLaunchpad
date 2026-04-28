@@ -164,7 +164,7 @@ const ChessboardControl: React.FC<ChessboardControlProps> = ({ roundId, fen, ori
                 onMove={handleOnMove}
                 annotations={ccAnnotations}
                 onAnnotationsChange={handleAnnotationsChange}
-                clearAnnotationsOnClick={false}
+                clearAnnotationsOnClick={true}
                 drawingMode="lichess"
             />
         </div>
