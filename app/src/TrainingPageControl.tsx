@@ -308,19 +308,20 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         return (orientation === 'white' && nextMoveIsWhite) || (orientation === 'black' && !nextMoveIsWhite);
     }
 
-    const logFsrsMovesAtPosition = (fen: string, autoplay: boolean = false) => {
-        const movesAtPosition = logic.getRepertoireMovesAtPosition(fen);
-        console.log(`[FSRS] Your turn${autoplay ? ' (autoplaying)' : ''} — FEN:`, fen);
-        console.table(movesAtPosition.map(m => ({
-            move: m.san,
-            state: m.cardData ? FSRS_STATE_NAMES[m.cardData.st] : '(none)',
-            stability: m.cardData?.s ?? '—',
-            difficulty: m.cardData?.di ?? '—',
-            reps: m.cardData?.r ?? '—',
-            lapses: m.cardData?.l ?? '—',
-            retrievability: m.retrievability !== null ? m.retrievability.toFixed(4) : '—',
-            autoplay: m.shouldAutoplay ? '✓' : '✗',
-            due: m.cardData?.d ?? '—',
+    const logFsrsLookahead = (fen: string, skipLookahead: boolean, autoplay: boolean = false) => {
+        const entries = logic.getLookaheadEvaluation(fen, skipLookahead);
+        console.log(`[FSRS] Your turn${autoplay ? ' (autoplaying)' : ''}${skipLookahead ? ' (no lookahead)' : ''} — FEN:`, fen);
+        console.table(entries.map(e => ({
+            path: e.path,
+            fen: e.fen,
+            state: e.cardData ? FSRS_STATE_NAMES[e.cardData.st] : '(none)',
+            stability: e.cardData?.s ?? '—',
+            difficulty: e.cardData?.di ?? '—',
+            reps: e.cardData?.r ?? '—',
+            lapses: e.cardData?.l ?? '—',
+            retrievability: e.retrievability !== null ? e.retrievability.toFixed(4) : '—',
+            autoplay: e.shouldAutoplay ? '✓' : '✗',
+            due: e.cardData?.d ?? '—',
         })));
     }
 
@@ -328,18 +329,25 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
         const moveCount = chess.history().length;
         const inAutoplayPrefix = !userHasPlayedManuallyRef.current;
 
+        // Skip lookahead for the first 2 user-turn moves to avoid excessive
+        // tree evaluation at the root where branching factor is highest.
+        const userTurnIndex = orientation === 'white'
+            ? moveCount / 2
+            : (moveCount - 1) / 2;
+        const skipLookahead = userTurnIndex < 2;
+
         if (!isUserTurn(moveCount)) {
             // Opponent's turn → always autoplay
             scheduleToPlayNextMove(chess, inAutoplayPrefix);
-        } else if (inAutoplayPrefix && logic.shouldAutoplayUserMove(chess.fen())) {
+        } else if (inAutoplayPrefix && logic.shouldAutoplayUserMove(chess.fen(), skipLookahead)) {
             // User's turn, still in autoplay prefix, FSRS says autoplay
             setAutoPlayPhase('autoplay');
-            logFsrsMovesAtPosition(chess.fen(), true);
+            logFsrsLookahead(chess.fen(), skipLookahead, true);
             scheduleToPlayNextMove(chess, true);
         } else {
             // User's turn, user must play manually
             setAutoPlayPhase('idle');
-            logFsrsMovesAtPosition(chess.fen());
+            logFsrsLookahead(chess.fen(), skipLookahead);
         }
     }
 
