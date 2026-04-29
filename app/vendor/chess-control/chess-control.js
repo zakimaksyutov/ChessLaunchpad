@@ -267,113 +267,113 @@ var pe = e(function({ square: e, x: t, y: n, size: r, piece: i, isSelected: a, i
 	});
 });
 function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, width: f, drawingMode: p = "lichess", resizable: b = !1, turnColor: ee, legalMoves: x, lastMove: S, check: w, annotations: T, onAnnotationsChange: ne, clearAnnotationsOnClick: E = !0 }) {
-	let D = i(() => g(e), [e]), me = (ee ?? "white") === "white" ? "w" : "b", [O, k] = o(null), [A, j] = o(_), [M, he] = o([]), [N, ge] = o([]), _e = a([]), ve = a([]);
+	let D = i(() => g(e), [e]), me = (ee ?? "white") === "white" ? "w" : "b", [O, k] = o(null), [A, j] = o(_), [he, M] = o([]), [N, P] = o([]), F = a([]), I = a([]);
 	n(() => {
-		_e.current = M;
-	}, [M]), n(() => {
-		ve.current = N;
+		F.current = he;
+	}, [he]), n(() => {
+		I.current = N;
 	}, [N]);
-	let [ye, P] = o(null), F = a(null), [be, xe] = o(null), I = a(null), L = a(null), R = a(null), Se = a(null), z = a(null), B = a(null), V = a(null), H = a(null), U = a(null), W = a(0), Ce = a(() => {}), we = a(u);
+	let [ge, _e] = o(null), L = a(null), [ve, ye] = o(null), R = a(null), be = a(null), z = a(null), xe = a(null), B = a(null), V = a(null), H = a(null), U = a(null), W = a(null), G = a(0), Se = a(() => {}), Ce = a(u);
 	n(() => {
-		we.current = u;
+		Ce.current = u;
 	}, [u]);
-	let Te = a(x);
+	let we = a(x);
 	n(() => {
-		Te.current = x;
+		we.current = x;
 	}, [x]);
-	let Ee = a(ne);
+	let Te = a(ne);
 	n(() => {
-		Ee.current = ne;
+		Te.current = ne;
 	}, [ne]);
-	let De = a(p);
+	let Ee = a(p);
 	n(() => {
-		De.current = p;
+		Ee.current = p;
 	}, [p]);
-	let Oe = a(E);
+	let De = a(E);
 	n(() => {
-		Oe.current = E;
+		De.current = E;
 	}, [E]);
-	let ke = a(null), Ae = a(null), je = a(!1), Me = a(!1), G = a(null), K = a(!1), Ne = a(!1), Pe = a(!1), Fe = a(!1), Ie = a(""), q = a(D), Le = a(null), [Re, ze] = o(void 0), J = Re ?? f, [Be, Ve] = o(J || 0), Y = i(() => re(p), [p]), X = i(() => ie(p), [p]), He = i(() => {
+	let Oe = a(null), ke = a(null), Ae = a(!1), je = a(!1), K = a(null), q = a(!1), Me = a(!1), Ne = a(!1), Pe = a(!1), Fe = a(""), J = a(D), Ie = a(null), [Le, Re] = o(void 0), Y = Le ?? f, [ze, Be] = o(Y || 0), X = i(() => re(p), [p]), Z = i(() => ie(p), [p]), Ve = i(() => {
 		if (!T) return [];
 		let e = p === "chess.com" ? y : v;
 		return T.filter((e) => e.to != null).map((t) => ({
 			from: t.from,
 			to: t.to,
-			color: Y.arrow[e[t.color] ?? 0],
+			color: X.arrow[e[t.color] ?? 0],
 			brush: e[t.color] ?? 0
 		}));
 	}, [
 		T,
 		p,
-		Y
-	]), Ue = i(() => {
+		X
+	]), He = i(() => {
 		if (!T) return [];
 		let e = p === "chess.com" ? y : v;
 		return T.filter((e) => e.to == null).map((t) => ({
 			square: t.from,
-			color: Y.highlight[e[t.color] ?? 0],
+			color: X.highlight[e[t.color] ?? 0],
 			brush: e[t.color] ?? 0
 		}));
 	}, [
 		T,
 		p,
-		Y
+		X
 	]);
 	n(() => {
-		if (!je.current) {
-			je.current = !0;
+		if (!Ae.current) {
+			Ae.current = !0;
 			return;
 		}
-		Ee.current?.(te(M, N, De.current));
-	}, [M, N]), n(() => {
-		if (J) {
-			Ve(J);
+		Te.current?.(te(he, N, Ee.current));
+	}, [he, N]), n(() => {
+		if (Y) {
+			Be(Y);
 			return;
 		}
-		let e = Se.current;
+		let e = xe.current;
 		if (!e) return;
 		let t = new ResizeObserver((e) => {
 			for (let t of e) {
 				let { width: e, height: n } = t.contentRect;
-				Ve(Math.min(e, n));
+				Be(Math.min(e, n));
 			}
 		});
 		t.observe(e);
 		let n = e.getBoundingClientRect();
-		return Ve(Math.min(n.width, n.height)), () => t.disconnect();
-	}, [J]), n(() => {
+		return Be(Math.min(n.width, n.height)), () => t.disconnect();
+	}, [Y]), n(() => {
 		for (let e of h(p)) {
 			let t = new Image();
 			t.src = e;
 		}
 	}, [p]), r(() => {
-		if (Le.current &&= (Le.current.remove(), null), !Fe.current) {
-			Fe.current = !0, Ie.current = S ? `${S.from}${S.to}` : "", q.current = D;
+		if (Ie.current &&= (Ie.current.remove(), null), !Pe.current) {
+			Pe.current = !0, Fe.current = S ? `${S.from}${S.to}` : "", J.current = D;
 			return;
 		}
 		let e = S ? `${S.from}${S.to}` : "";
-		if (e === Ie.current || !S || !R.current) {
-			Ie.current = e, q.current = D;
+		if (e === Fe.current || !S || !z.current) {
+			Fe.current = e, J.current = D;
 			return;
 		}
-		if (Ie.current = e, Pe.current) {
-			Pe.current = !1, q.current = D;
+		if (Fe.current = e, Ne.current) {
+			Ne.current = !1, J.current = D;
 			return;
 		}
-		let t = R.current.querySelector(`[data-square="${S.to}"]`), n = t?.querySelector(".chess-piece");
+		let t = z.current.querySelector(`[data-square="${S.to}"]`), n = t?.querySelector(".chess-piece");
 		if (!t || !n) {
-			q.current = D;
+			J.current = D;
 			return;
 		}
-		let r = Ae.current, i = r(S.from), a = r(S.to), o = i.x - a.x, s = i.y - a.y;
+		let r = ke.current, i = r(S.from), a = r(S.to), o = i.x - a.x, s = i.y - a.y;
 		if (o === 0 && s === 0) {
-			q.current = D;
+			J.current = D;
 			return;
 		}
-		let c = q.current.get(S.to);
-		if (q.current = D, c) {
+		let c = J.current.get(S.to);
+		if (J.current = D, c) {
 			let e = document.createElement("div");
-			e.className = "chess-piece ghost-piece", e.style.backgroundImage = `url("${m(c.color, c.type, De.current)}")`, e.style.opacity = "0.5", e.style.zIndex = "1", e.style.pointerEvents = "none", t.insertBefore(e, t.firstChild), Le.current = e;
+			e.className = "chess-piece ghost-piece", e.style.backgroundImage = `url("${m(c.color, c.type, Ee.current)}")`, e.style.opacity = "0.5", e.style.zIndex = "1", e.style.pointerEvents = "none", t.insertBefore(e, t.firstChild), Ie.current = e;
 		}
 		t.style.contain = "none", n.style.zIndex = "100";
 		let l = {
@@ -381,7 +381,7 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 			easing: "cubic-bezier(0.5, 0, 0.5, 1)"
 		}, u = n.animate([{ transform: `translate(${o}px, ${s}px)` }, { transform: "translate(0, 0)" }], l), d = S.from.charCodeAt(0), f = S.to.charCodeAt(0), p = D.get(S.to), h, g, _;
 		if (p?.type === "k" && Math.abs(f - d) === 2) {
-			let e = S.from[1], t = f > d, n = `${t ? "h" : "a"}${e}`, i = `${t ? "f" : "d"}${e}`, a = R.current.querySelector(`[data-square="${i}"]`), o = a?.querySelector(".chess-piece");
+			let e = S.from[1], t = f > d, n = `${t ? "h" : "a"}${e}`, i = `${t ? "f" : "d"}${e}`, a = z.current.querySelector(`[data-square="${i}"]`), o = a?.querySelector(".chess-piece");
 			if (a && o) {
 				let e = r(n), t = r(i), s = e.x - t.x, c = e.y - t.y;
 				a.style.contain = "none", o.style.zIndex = "100", g = a, _ = o, h = o.animate([{ transform: `translate(${s}px, ${c}px)` }, { transform: "translate(0, 0)" }], l);
@@ -389,8 +389,8 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 		}
 		if (u.onfinish = () => {
 			t.style.contain = "", n.style.zIndex = "", g && (g.style.contain = ""), _ && (_.style.zIndex = "");
-			let e = Le.current;
-			e && e.parentNode && (e.remove(), Le.current = null);
+			let e = Ie.current;
+			e && e.parentNode && (e.remove(), Ie.current = null);
 		}, h && g) {
 			let e = g, t = _;
 			h.onfinish = () => {
@@ -398,46 +398,46 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 			};
 		}
 	}, [S, e]);
-	let Z = Math.floor(Be / 8), Q = Z * 8, We = t((e) => {
-		let t = R.current;
+	let Q = Math.floor(ze / 8), Ue = Q * 8, We = t((e) => {
+		let t = z.current;
 		if (!t) return null;
-		let n = H.current ?? t.getBoundingClientRect(), r = e.clientX - n.left, i = e.clientY - n.top;
+		let n = U.current ?? t.getBoundingClientRect(), r = e.clientX - n.left, i = e.clientY - n.top;
 		if (r < 0 || i < 0 || r >= n.width || i >= n.height) return null;
 		let a = n.width / 8, o = Math.floor(r / a), s = 7 - Math.floor(i / a);
 		return l === "black" && (o = 7 - o, s = 7 - s), o < 0 || o > 7 || s < 0 || s > 7 ? null : ce(o, s);
 	}, [l]), $ = t((e) => {
 		let [t, n] = se(e);
 		return l === "white" ? {
-			x: t * Z,
-			y: (7 - n) * Z
+			x: t * Q,
+			y: (7 - n) * Q
 		} : {
-			x: (7 - t) * Z,
-			y: n * Z
+			x: (7 - t) * Q,
+			y: n * Q
 		};
-	}, [l, Z]);
+	}, [l, Q]);
 	n(() => {
-		ke.current = We;
+		Oe.current = We;
 	}, [We]), n(() => {
-		Ae.current = $;
+		ke.current = $;
 	}, [$]);
 	let Ge = t((e) => {
 		if (!d) return;
-		if (Me.current) {
-			Me.current = !1;
+		if (je.current) {
+			je.current = !1;
 			return;
 		}
-		if (E && (_e.current.length > 0 && he([]), ve.current.length > 0 && ge([])), O) {
+		if (O) {
 			if (O === e) {
-				k(null), j(_);
+				E && (F.current.length > 0 && M([]), I.current.length > 0 && P([])), k(null), j(_);
 				return;
 			}
 			if (A.has(e)) {
-				u?.(O, e), k(null), j(_);
+				u?.(O, e), E && (F.current.length > 0 && M([]), I.current.length > 0 && P([])), k(null), j(_);
 				return;
 			}
 		}
 		let t = D.get(e);
-		t && t.color === me ? (k(e), j(new Set(x?.get(e) ?? []))) : (k(null), j(_));
+		t && t.color === me ? (k(e), j(new Set(x?.get(e) ?? []))) : (E && (F.current.length > 0 && M([]), I.current.length > 0 && P([])), k(null), j(_));
 	}, [
 		d,
 		O,
@@ -449,78 +449,78 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 		E
 	]);
 	n(() => {
-		Ce.current = Ge;
+		Se.current = Ge;
 	}, [Ge]);
-	let Ke = t((e) => Ce.current(e), []), qe = t((e) => {
+	let Ke = t((e) => Se.current(e), []), qe = t((e) => {
 		let t = e.pointerType === "touch";
-		if (U.current !== null && e.pointerId !== U.current) return;
+		if (W.current !== null && e.pointerId !== W.current) return;
 		if (e.button === 2) {
 			if (t) return;
-			if (e.preventDefault(), F.current) {
-				let e = F.current.from;
-				if (F.current = null, H.current = null, G.current = null, K.current = !1, P(null), k(null), j(_), z.current && (z.current.style.display = "none"), R.current) {
-					let t = R.current.querySelector(`[data-square="${e}"] .chess-piece`);
+			if (e.preventDefault(), L.current) {
+				let e = L.current.from;
+				if (L.current = null, U.current = null, K.current = null, q.current = !1, _e(null), k(null), j(_), B.current && (B.current.style.display = "none"), z.current) {
+					let t = z.current.querySelector(`[data-square="${e}"] .chess-piece`);
 					t && (t.style.opacity = "");
 				}
-				if (U.current !== null) {
+				if (W.current !== null) {
 					try {
-						R.current?.releasePointerCapture(U.current);
+						z.current?.releasePointerCapture(W.current);
 					} catch {}
-					U.current = null;
+					W.current = null;
 				}
 				return;
 			}
 			if (O !== null && (k(null), j(_), p === "lichess")) return;
 			let n = We(e);
 			if (n) {
-				I.current = {
+				R.current = {
 					from: n,
 					brush: C(p, e)
-				}, L.current = n, R.current && (H.current = R.current.getBoundingClientRect()), xe(n), U.current = e.pointerId, W.current = e.buttons;
+				}, be.current = n, z.current && (U.current = z.current.getBoundingClientRect()), ye(n), W.current = e.pointerId, G.current = e.buttons;
 				try {
-					R.current?.setPointerCapture(e.pointerId);
+					z.current?.setPointerCapture(e.pointerId);
 				} catch {}
 			}
 			return;
 		}
 		if (e.button !== 0 || !d) return;
-		if (t && (Me.current = !0), I.current && (I.current = null, L.current = null, H.current = null, xe(null), B.current && (B.current.style.display = "none"), V.current && (V.current.style.display = "none"), U.current !== null)) {
+		if (t && (je.current = !0), R.current && (R.current = null, be.current = null, U.current = null, ye(null), V.current && (V.current.style.display = "none"), H.current && (H.current.style.display = "none"), W.current !== null)) {
 			try {
-				R.current?.releasePointerCapture(U.current);
+				z.current?.releasePointerCapture(W.current);
 			} catch {}
-			U.current = null;
+			W.current = null;
 		}
 		let n = We(e);
 		if (!n) return;
 		let r = D.get(n);
 		if (O && A.has(n)) {
-			Oe.current && (_e.current.length > 0 && he([]), ve.current.length > 0 && ge([])), u?.(O, n), k(null), j(_);
+			u?.(O, n), De.current && (F.current.length > 0 && M([]), I.current.length > 0 && P([])), k(null), j(_);
 			return;
 		}
-		if (Oe.current && (_e.current.length > 0 && he([]), ve.current.length > 0 && ge([])), r && r.color === me) {
-			if (Ne.current = t && O === n, F.current = {
+		if (r && r.color === me) {
+			if (Me.current = t && O === n, L.current = {
 				piece: r.type,
 				color: r.color,
 				from: n
-			}, z.current && R.current) {
-				let i = R.current.getBoundingClientRect();
-				H.current = i;
-				let a = e.clientX - i.left - Z / 2, o = e.clientY - i.top - Z / 2;
-				if (z.current.style.transform = `translate(${a}px, ${o}px)`, z.current.style.backgroundImage = `url("${m(r.color, r.type, p)}")`, t) G.current = {
+			}, B.current && z.current) {
+				let i = z.current.getBoundingClientRect();
+				U.current = i;
+				let a = e.clientX - i.left - Q / 2, o = e.clientY - i.top - Q / 2;
+				if (B.current.style.transform = `translate(${a}px, ${o}px)`, B.current.style.backgroundImage = `url("${m(r.color, r.type, p)}")`, t) K.current = {
 					x: e.clientX,
 					y: e.clientY
-				}, K.current = !1;
+				}, q.current = !1;
 				else {
-					z.current.style.display = "block";
-					let e = R.current.querySelector(`[data-square="${n}"] .chess-piece`);
+					B.current.style.display = "block";
+					let e = z.current.querySelector(`[data-square="${n}"] .chess-piece`);
 					e && (e.style.opacity = "0.5");
 				}
 			}
-			t || P(n), k(n), j(new Set(x?.get(n) ?? [])), U.current = e.pointerId, W.current = e.buttons;
+			t || _e(n), k(n), j(new Set(x?.get(n) ?? [])), W.current = e.pointerId, G.current = e.buttons;
 			try {
-				R.current?.setPointerCapture(e.pointerId);
+				z.current?.setPointerCapture(e.pointerId);
 			} catch {}
-		} else t && O && (k(null), j(_));
+		} else t && O && (De.current && (F.current.length > 0 && M([]), I.current.length > 0 && P([])), k(null), j(_));
 	}, [
 		d,
 		D,
@@ -530,88 +530,88 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 		A,
 		u,
 		x,
-		Z,
+		Q,
 		p
 	]);
 	n(() => {
 		let e = (e) => {
-			if (U.current !== null && e.pointerId !== U.current) return;
-			let t = W.current, n = e.buttons;
-			if (W.current = n, F.current && !(t & 2) && n & 2) {
-				let e = F.current.from;
-				if (F.current = null, H.current = null, G.current = null, K.current = !1, P(null), k(null), j(_), z.current && (z.current.style.display = "none"), R.current) {
-					let t = R.current.querySelector(`[data-square="${e}"] .chess-piece`);
+			if (W.current !== null && e.pointerId !== W.current) return;
+			let t = G.current, n = e.buttons;
+			if (G.current = n, L.current && !(t & 2) && n & 2) {
+				let e = L.current.from;
+				if (L.current = null, U.current = null, K.current = null, q.current = !1, _e(null), k(null), j(_), B.current && (B.current.style.display = "none"), z.current) {
+					let t = z.current.querySelector(`[data-square="${e}"] .chess-piece`);
 					t && (t.style.opacity = "");
 				}
-				if (U.current !== null) {
+				if (W.current !== null) {
 					try {
-						R.current?.releasePointerCapture(U.current);
+						z.current?.releasePointerCapture(W.current);
 					} catch {}
-					U.current = null;
+					W.current = null;
 				}
-				W.current = 0;
+				G.current = 0;
 				return;
 			}
-			if (I.current && !(t & 1) && n & 1) {
-				if (I.current = null, L.current = null, H.current = null, xe(null), B.current && (B.current.style.display = "none"), V.current && (V.current.style.display = "none"), U.current !== null) {
+			if (R.current && !(t & 1) && n & 1) {
+				if (R.current = null, be.current = null, U.current = null, ye(null), V.current && (V.current.style.display = "none"), H.current && (H.current.style.display = "none"), W.current !== null) {
 					try {
-						R.current?.releasePointerCapture(U.current);
+						z.current?.releasePointerCapture(W.current);
 					} catch {}
-					U.current = null;
+					W.current = null;
 				}
-				W.current = 0;
+				G.current = 0;
 				return;
 			}
-			if (F.current && z.current) {
-				if (G.current && !K.current) {
-					let t = e.clientX - G.current.x, n = e.clientY - G.current.y;
+			if (L.current && B.current) {
+				if (K.current && !q.current) {
+					let t = e.clientX - K.current.x, n = e.clientY - K.current.y;
 					if (t * t + n * n < 16) return;
-					if (K.current = !0, P(F.current.from), z.current.style.display = "block", R.current) {
-						let e = F.current.from, t = R.current.querySelector(`[data-square="${e}"] .chess-piece`);
+					if (q.current = !0, _e(L.current.from), B.current.style.display = "block", z.current) {
+						let e = L.current.from, t = z.current.querySelector(`[data-square="${e}"] .chess-piece`);
 						t && (t.style.opacity = "0.5");
 					}
 				}
-				let t = H.current;
+				let t = U.current;
 				if (!t) return;
 				let n = t.width / 8, r = e.clientX - t.left - n / 2, i = e.clientY - t.top - n / 2;
-				z.current.style.transform = `translate(${r}px, ${i}px)`;
+				B.current.style.transform = `translate(${r}px, ${i}px)`;
 			}
-			if (I.current) {
-				let t = ke.current(e);
-				L.current = t;
-				let n = !t || t === I.current.from, r = I.current.brush, i = Y.arrow[r], a = Ae.current, o = H.current, s = o ? o.width / 8 : 0, c = a(I.current.from), l = c.x + s / 2, u = c.y + s / 2, d, f;
+			if (R.current) {
+				let t = Oe.current(e);
+				be.current = t;
+				let n = !t || t === R.current.from, r = R.current.brush, i = X.arrow[r], a = ke.current, o = U.current, s = o ? o.width / 8 : 0, c = a(R.current.from), l = c.x + s / 2, u = c.y + s / 2, d, f;
 				if (t && !n) {
 					let e = a(t);
 					d = e.x + s / 2, f = e.y + s / 2;
 				} else d = l, f = u;
-				if (Y.arrowStyle === "line") {
-					if (B.current && (B.current.style.display = n ? "none" : "inline", !n)) {
+				if (X.arrowStyle === "line") {
+					if (V.current && (V.current.style.display = n ? "none" : "inline", !n)) {
 						let e = d - l, t = f - u, n = Math.sqrt(e * e + t * t), r = s * .156, a = n > 0 ? d - e / n * r : d, o = n > 0 ? f - t / n * r : f;
-						B.current.setAttribute("x2", String(a)), B.current.setAttribute("y2", String(o)), B.current.setAttribute("stroke", i);
+						V.current.setAttribute("x2", String(a)), V.current.setAttribute("y2", String(o)), V.current.setAttribute("stroke", i);
 						let c = `arrowhead-${i.replace(/[^a-zA-Z0-9]/g, "")}`;
-						B.current.setAttribute("marker-end", `url(#${c})`);
+						V.current.setAttribute("marker-end", `url(#${c})`);
 					}
-				} else if (V.current) {
-					if (Y.liveArrowOpacity === 0) V.current.style.display = "none";
-					else if (V.current.style.display = n ? "none" : "inline", !n && t) {
-						let e = ue(I.current.from, t) ? fe(l, u, d, f, s) : de(l, u, d, f, s);
-						V.current.setAttribute("points", e), V.current.setAttribute("style", `fill: ${i}; opacity: ${Y.liveArrowOpacity};`);
+				} else if (H.current) {
+					if (X.liveArrowOpacity === 0) H.current.style.display = "none";
+					else if (H.current.style.display = n ? "none" : "inline", !n && t) {
+						let e = ue(R.current.from, t) ? fe(l, u, d, f, s) : de(l, u, d, f, s);
+						H.current.setAttribute("points", e), H.current.setAttribute("style", `fill: ${i}; opacity: ${X.liveArrowOpacity};`);
 					}
 				}
 			}
 		}, t = (e) => {
-			if (!(U.current !== null && e.pointerId !== U.current)) {
-				if (F.current && e.button === 0) {
-					let t = ke.current(e);
-					if (t && t !== F.current.from) {
-						let e = F.current.from;
-						(Te.current?.get(e) ?? []).includes(t) && (Pe.current = !0, we.current?.(e, t)), k(null), j(_);
-					} else Ne.current && !K.current && (k(null), j(_));
-					F.current = null, H.current = null, G.current = null, K.current = !1, P(null), z.current && (z.current.style.display = "none");
+			if (!(W.current !== null && e.pointerId !== W.current)) {
+				if (L.current && e.button === 0) {
+					let t = Oe.current(e);
+					if (t && t !== L.current.from) {
+						let e = L.current.from;
+						(we.current?.get(e) ?? []).includes(t) && (Ne.current = !0, Ce.current?.(e, t), De.current && (F.current.length > 0 && M([]), I.current.length > 0 && P([]))), k(null), j(_);
+					} else Me.current && !q.current && (De.current && (F.current.length > 0 && M([]), I.current.length > 0 && P([])), k(null), j(_));
+					L.current = null, U.current = null, K.current = null, q.current = !1, _e(null), B.current && (B.current.style.display = "none");
 				}
-				if (I.current && e.button === 2) {
-					let t = I.current.from, n = I.current.brush, r = Y.arrow[n], i = Y.highlight[n], a = ke.current(e);
-					a && a !== t ? he((e) => {
+				if (R.current && e.button === 2) {
+					let t = R.current.from, n = R.current.brush, r = X.arrow[n], i = X.highlight[n], a = Oe.current(e);
+					a && a !== t ? M((e) => {
 						let i = e.findIndex((e) => e.from === t && e.to === a);
 						return i >= 0 ? e[i].brush === n ? e.filter((e, t) => t !== i) : e.map((e, t) => t === i ? {
 							...e,
@@ -623,7 +623,7 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 							color: r,
 							brush: n
 						}];
-					}) : a === t && ge((e) => {
+					}) : a === t && P((e) => {
 						let t = e.findIndex((e) => e.square === a);
 						return t >= 0 ? e[t].brush === n ? e.filter((e, n) => n !== t) : e.map((e, r) => r === t ? {
 							...e,
@@ -634,43 +634,43 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 							color: i,
 							brush: n
 						}];
-					}), I.current = null, L.current = null, H.current = null, xe(null), B.current && (B.current.style.display = "none"), V.current && (V.current.style.display = "none");
+					}), R.current = null, be.current = null, U.current = null, ye(null), V.current && (V.current.style.display = "none"), H.current && (H.current.style.display = "none");
 				}
-				if (U.current !== null) {
+				if (W.current !== null) {
 					try {
-						R.current?.releasePointerCapture(U.current);
+						z.current?.releasePointerCapture(W.current);
 					} catch {}
-					U.current = null;
+					W.current = null;
 				}
-				W.current = 0;
+				G.current = 0;
 			}
 		}, n = (e) => {
-			if (!(U.current !== null && e.pointerId !== U.current)) {
-				if (F.current) {
-					let e = F.current.from;
-					if (F.current = null, H.current = null, G.current = null, K.current = !1, P(null), z.current && (z.current.style.display = "none"), R.current) {
-						let t = R.current.querySelector(`[data-square="${e}"] .chess-piece`);
+			if (!(W.current !== null && e.pointerId !== W.current)) {
+				if (L.current) {
+					let e = L.current.from;
+					if (L.current = null, U.current = null, K.current = null, q.current = !1, _e(null), B.current && (B.current.style.display = "none"), z.current) {
+						let t = z.current.querySelector(`[data-square="${e}"] .chess-piece`);
 						t && (t.style.opacity = "");
 					}
 				}
-				I.current && (I.current = null, L.current = null, H.current = null, xe(null), B.current && (B.current.style.display = "none"), V.current && (V.current.style.display = "none")), U.current = null, W.current = 0;
+				R.current && (R.current = null, be.current = null, U.current = null, ye(null), V.current && (V.current.style.display = "none"), H.current && (H.current.style.display = "none")), W.current = null, G.current = 0;
 			}
 		};
 		return window.addEventListener("pointermove", e, { passive: !0 }), window.addEventListener("pointerup", t), window.addEventListener("pointercancel", n), () => {
 			window.removeEventListener("pointermove", e), window.removeEventListener("pointerup", t), window.removeEventListener("pointercancel", n);
 		};
-	}, [Y]);
+	}, [X]);
 	let Je = t((e) => {
 		e.preventDefault();
 	}, []), Ye = i(() => {
 		let e = [];
 		for (let t of oe) for (let n of ae) {
-			let r = `${n}${t}`, i = le(n.charCodeAt(0) - 97, parseInt(t) - 1), a = $(r), o = O === r, c = A.has(r), l = D.get(r) ?? null, u = c && l != null, f = ye === r, m = !!(S && (S.from === r || S.to === r)), h = w === r;
+			let r = `${n}${t}`, i = le(n.charCodeAt(0) - 97, parseInt(t) - 1), a = $(r), o = O === r, c = A.has(r), l = D.get(r) ?? null, u = c && l != null, f = ge === r, m = !!(S && (S.from === r || S.to === r)), h = w === r;
 			e.push(/* @__PURE__ */ s(pe, {
 				square: r,
 				x: a.x,
 				y: a.y,
-				size: Z,
+				size: Q,
 				piece: l,
 				isSelected: o,
 				isDragSource: f,
@@ -687,30 +687,30 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 		return e;
 	}, [
 		D,
-		Z,
+		Q,
 		O,
 		A,
 		S,
 		w,
-		ye,
+		ge,
 		$,
 		Ke,
 		d,
 		p
 	]), Xe = i(() => {
-		let e = [], t = Math.max(10, Math.min(12, Z * .16)), n = l === "white" ? ae : [...ae].reverse(), r = l === "white" ? oe : [...oe].reverse();
+		let e = [], t = Math.max(10, Math.min(12, Q * .16)), n = l === "white" ? ae : [...ae].reverse(), r = l === "white" ? oe : [...oe].reverse();
 		return n.forEach((n, r) => {
 			let i = le(n.charCodeAt(0) - 97, l === "white" ? 0 : 7);
 			e.push(/* @__PURE__ */ s("div", {
 				className: "coord-label coord-file",
 				style: {
 					position: "absolute",
-					left: r * Z + 4,
+					left: r * Q + 4,
 					bottom: 0,
 					top: "auto",
 					fontSize: t,
 					fontWeight: 700,
-					color: i ? X.coordDark : X.coordLight,
+					color: i ? Z.coordDark : Z.coordLight,
 					pointerEvents: "none",
 					zIndex: 4,
 					lineHeight: 1,
@@ -726,10 +726,10 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 					position: "absolute",
 					right: 0,
 					left: "auto",
-					top: r * Z + 1,
+					top: r * Q + 1,
 					fontSize: t,
 					fontWeight: 700,
-					color: a ? X.coordDark : X.coordLight,
+					color: a ? Z.coordDark : Z.coordLight,
 					pointerEvents: "none",
 					zIndex: 4,
 					lineHeight: 1,
@@ -740,30 +740,30 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 		}), e;
 	}, [
 		l,
-		Z,
-		X
+		Q,
+		Z
 	]), Ze = i(() => {
 		let e = (e) => {
 			let t = $(e);
 			return {
-				x: t.x + Z / 2,
-				y: t.y + Z / 2
+				x: t.x + Q / 2,
+				y: t.y + Q / 2
 			};
 		}, t = {
 			x: 0,
 			y: 0
 		};
-		be && (t = e(be));
-		let n = [...M, ...He], r = [...N, ...Ue], i = new Set(n.map((e) => Y.arrow[e.brush] ?? e.color));
-		for (let e of Y.arrow) i.add(e);
-		let a = Y.arrowStyle === "polygon";
+		ve && (t = e(ve));
+		let n = [...he, ...Ve], r = [...N, ...He], i = new Set(n.map((e) => X.arrow[e.brush] ?? e.color));
+		for (let e of X.arrow) i.add(e);
+		let a = X.arrowStyle === "polygon";
 		return /* @__PURE__ */ c("svg", {
 			className: "arrow-layer",
 			style: {
 				position: "absolute",
 				inset: 0,
-				width: Q,
-				height: Q,
+				width: Ue,
+				height: Ue,
 				pointerEvents: "none",
 				zIndex: 10
 			},
@@ -781,8 +781,8 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 						fill: e
 					})
 				}, `marker-${t}`)) }),
-				Y.highlightStyle === "circle" ? r.map((t) => {
-					let n = e(t.square), r = Y.highlight[t.brush] ?? t.color, i = Z * .0625, a = Z / 2 - i / 2;
+				X.highlightStyle === "circle" ? r.map((t) => {
+					let n = e(t.square), r = X.highlight[t.brush] ?? t.color, i = Q * .0625, a = Q / 2 - i / 2;
 					return /* @__PURE__ */ s("circle", {
 						className: "square-highlight",
 						cx: n.x,
@@ -791,72 +791,72 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 						fill: "none",
 						stroke: r,
 						strokeWidth: i,
-						opacity: Y.highlightOpacity
+						opacity: X.highlightOpacity
 					}, `highlight-${t.square}`);
 				}) : null,
 				n.map((t, n) => {
-					let r = e(t.from), i = e(t.to), o = Y.arrow[t.brush] ?? t.color;
+					let r = e(t.from), i = e(t.to), o = X.arrow[t.brush] ?? t.color;
 					if (a) {
-						let e = ue(t.from, t.to) ? fe(r.x, r.y, i.x, i.y, Z) : de(r.x, r.y, i.x, i.y, Z);
+						let e = ue(t.from, t.to) ? fe(r.x, r.y, i.x, i.y, Q) : de(r.x, r.y, i.x, i.y, Q);
 						return /* @__PURE__ */ s("polygon", {
 							className: "arrow",
 							"data-arrow": `${t.from}${t.to}`,
 							points: e,
 							style: {
 								fill: o,
-								opacity: Y.arrowOpacity
+								opacity: X.arrowOpacity
 							}
 						}, `arrow-${n}`);
 					}
-					let c = i.x - r.x, l = i.y - r.y, u = Math.sqrt(c * c + l * l), d = Z * .156, f = i.x - c / u * d, p = i.y - l / u * d, m = `arrowhead-${o.replace(/[^a-zA-Z0-9]/g, "")}`;
+					let c = i.x - r.x, l = i.y - r.y, u = Math.sqrt(c * c + l * l), d = Q * .156, f = i.x - c / u * d, p = i.y - l / u * d, m = `arrowhead-${o.replace(/[^a-zA-Z0-9]/g, "")}`;
 					return /* @__PURE__ */ s("line", {
 						x1: r.x,
 						y1: r.y,
 						x2: f,
 						y2: p,
 						stroke: o,
-						strokeWidth: Z * .15625,
+						strokeWidth: Q * .15625,
 						strokeLinecap: "round",
 						markerEnd: `url(#${m})`,
-						opacity: Y.arrowOpacity
+						opacity: X.arrowOpacity
 					}, `arrow-${n}`);
 				}),
 				!a && /* @__PURE__ */ s("line", {
-					ref: B,
+					ref: V,
 					x1: t.x,
 					y1: t.y,
 					x2: t.x,
 					y2: t.y,
-					stroke: Y.arrow[0],
-					strokeWidth: Z * .15625 * .85,
+					stroke: X.arrow[0],
+					strokeWidth: Q * .15625 * .85,
 					strokeLinecap: "round",
-					markerEnd: `url(#arrowhead-${Y.arrow[0].replace(/[^a-zA-Z0-9]/g, "")})`,
-					opacity: Y.liveArrowOpacity,
+					markerEnd: `url(#arrowhead-${X.arrow[0].replace(/[^a-zA-Z0-9]/g, "")})`,
+					opacity: X.liveArrowOpacity,
 					display: "none"
 				}),
 				a && /* @__PURE__ */ s("polygon", {
-					ref: V,
+					ref: H,
 					points: "",
 					style: {
-						fill: Y.arrow[0],
-						opacity: Y.liveArrowOpacity
+						fill: X.arrow[0],
+						opacity: X.liveArrowOpacity
 					},
 					display: "none"
 				})
 			]
 		});
 	}, [
-		M,
-		He,
-		be,
+		he,
+		Ve,
+		ve,
 		N,
-		Ue,
+		He,
 		$,
-		Z,
 		Q,
-		Y
-	]), Qe = i(() => Y.highlightStyle === "square" ? [...N, ...Ue].map((e) => {
-		let t = $(e.square), n = Y.highlight[e.brush] ?? e.color;
+		Ue,
+		X
+	]), Qe = i(() => X.highlightStyle === "square" ? [...N, ...He].map((e) => {
+		let t = $(e.square), n = X.highlight[e.brush] ?? e.color;
 		return /* @__PURE__ */ s("div", {
 			className: "square-highlight",
 			"data-highlight": e.square,
@@ -864,20 +864,20 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 				position: "absolute",
 				left: t.x,
 				top: t.y,
-				width: Z,
-				height: Z,
+				width: Q,
+				height: Q,
 				backgroundColor: n,
-				opacity: Y.highlightOpacity,
+				opacity: X.highlightOpacity,
 				pointerEvents: "none",
 				zIndex: 9
 			}
 		}, `sq-highlight-${e.square}`);
 	}) : null, [
 		N,
-		Ue,
+		He,
 		$,
-		Z,
-		Y
+		Q,
+		X
 	]), $e = a(null);
 	n(() => () => {
 		$e.current?.abort();
@@ -886,35 +886,35 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 		e.preventDefault(), e.stopPropagation(), $e.current?.abort();
 		let t = new AbortController();
 		$e.current = t;
-		let n = e.clientX, r = e.clientY, i = Be;
+		let n = e.clientX, r = e.clientY, i = ze;
 		window.addEventListener("mousemove", (e) => {
 			let t = e.clientX - n, a = e.clientY - r;
-			ze(Math.max(200, i + Math.max(t, a)));
+			Re(Math.max(200, i + Math.max(t, a)));
 		}, { signal: t.signal }), window.addEventListener("mouseup", () => {
 			t.abort();
 		}, { signal: t.signal });
-	}, [Be]), tt = i(() => ({
+	}, [ze]), tt = i(() => ({
 		position: "relative",
-		width: Q,
-		height: Q,
+		width: Ue,
+		height: Ue,
 		userSelect: "none",
-		"--light-sq": X.lightSquare,
-		"--dark-sq": X.darkSquare,
-		"--last-move-light": X.lastMoveLight,
-		"--last-move-dark": X.lastMoveDark,
-		"--selected-sq": X.selectedLight,
-		"--legal-move-dot": `radial-gradient(${X.legalMoveDot} 19%, rgba(0,0,0,0) calc(20% + 1px))`,
-		"--legal-move-capture": `radial-gradient(transparent 0%, transparent 79%, ${X.legalMoveCapture} calc(80% + 1px))`
-	}), [Q, X]);
+		"--light-sq": Z.lightSquare,
+		"--dark-sq": Z.darkSquare,
+		"--last-move-light": Z.lastMoveLight,
+		"--last-move-dark": Z.lastMoveDark,
+		"--selected-sq": Z.selectedLight,
+		"--legal-move-dot": `radial-gradient(${Z.legalMoveDot} 19%, rgba(0,0,0,0) calc(20% + 1px))`,
+		"--legal-move-capture": `radial-gradient(transparent 0%, transparent 79%, ${Z.legalMoveCapture} calc(80% + 1px))`
+	}), [Ue, Z]);
 	return /* @__PURE__ */ s("div", {
-		ref: Se,
+		ref: xe,
 		className: "chessboard-container",
-		style: J ? {
-			width: J,
-			height: J
+		style: Y ? {
+			width: Y,
+			height: Y
 		} : void 0,
 		children: /* @__PURE__ */ c("div", {
-			ref: R,
+			ref: z,
 			className: "chessboard",
 			"data-testid": "chessboard",
 			"data-drawing-mode": p,
@@ -927,15 +927,15 @@ function D({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 				Qe,
 				Ze,
 				/* @__PURE__ */ s("div", {
-					ref: z,
+					ref: B,
 					className: "dragging-piece",
 					style: {
 						position: "absolute",
 						left: 0,
 						top: 0,
 						display: "none",
-						width: Z,
-						height: Z,
+						width: Q,
+						height: Q,
 						backgroundSize: "cover",
 						pointerEvents: "none",
 						zIndex: 100,

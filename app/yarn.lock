@@ -1587,9 +1587,9 @@ __metadata:
   linkType: hard
 
 "chess-control@file:vendor/chess-control::locator=app%40workspace%3A.":
-  version: 1.0.9
-  resolution: "chess-control@file:vendor/chess-control#vendor/chess-control::hash=805755&locator=app%40workspace%3A."
-  checksum: 10c0/186f7cb386ae69034313999f227155b409a4a042f62d36ef39951ce00885a50df141d506fcb0c034395d244c208e745553eb82c3ce28a57e99c5cb21848ba93f
+  version: 1.0.10
+  resolution: "chess-control@file:vendor/chess-control#vendor/chess-control::hash=d085a0&locator=app%40workspace%3A."
+  checksum: 10c0/6a0187282680edac71a14e1a3083e7ac3964b43890fef7b6be0d4ed350116132d73d8cba2d2995c8cdec9e09925b4087c378a266989f1345326e28b3130248e8
   languageName: node
   linkType: hard
 
