@@ -12,6 +12,14 @@ export interface FSRSMoveInfo {
     retrievability: number | null;
 }
 
+export interface FSRSLookaheadEntry {
+    fen: string;
+    path: string;
+    cardData: FSRSCardData | undefined;
+    shouldAutoplay: boolean;
+    retrievability: number | null;
+}
+
 export class LaunchpadLogic {
 
     private allVariants: OpeningVariant[];
@@ -19,6 +27,10 @@ export class LaunchpadLogic {
 
     private ERROR_EMA_ALPHA = 0.7;
     public static SUCCESS_EMA_ALPHA = 0.6667; // Similar to averaging across three epochs.
+
+    // Lookahead depth for autoplay: check this many user-turn positions ahead.
+    // Depth 2 = current position + 1 future user-turn position.
+    public static AUTOPLAY_LOOKAHEAD_DEPTH = 2;
 
     // Used to properly attribute a game to errorEMA and lastSucceededEpoch
     private hasErrors: boolean = false;
@@ -90,15 +102,28 @@ export class LaunchpadLogic {
     }
 
     /**
-     * Check if all valid user moves at this position can be autoplayed.
-     * Returns true only when every repertoire move has a Review-state card
-     * that is not due and has R >= 0.97.
+     * Check if all valid user moves at this position can be autoplayed,
+     * including a recursive lookahead into future user-turn positions.
+     * When skipLookahead is true, only the current position is checked (depth 1).
      */
-    public shouldAutoplayUserMove(fen: string): boolean {
+    public shouldAutoplayUserMove(fen: string, skipLookahead?: boolean): boolean {
+        const now = new Date();
+        const depth = skipLookahead ? 1 : LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH;
+        return this.isAutoplayableWithLookahead(fen, depth, now, true);
+    }
+
+    /**
+     * Recursive check: every repertoire move at the position must pass FSRS autoplay,
+     * and (if depth > 1) the next user-turn positions must also pass recursively.
+     * isTopLevel differentiates "no repertoire moves = can't autoplay" (top) from
+     * "variant ended = nothing weak ahead" (deeper levels).
+     */
+    private isAutoplayableWithLookahead(fen: string, depth: number, now: Date, isTopLevel: boolean): boolean {
+        if (depth <= 0) return true;
+
         const normalizedFen = normalizeFenResetHalfmoveClock(fen);
         const chess = new Chess(fen);
         const possibleMoves = chess.moves({ verbose: true });
-        const now = new Date();
 
         let hasAnyRepertoireMove = false;
 
@@ -112,10 +137,22 @@ export class LaunchpadLogic {
                 if (!this.fsrsService.shouldAutoplay(normalizedFen, move.san, now)) {
                     return false;
                 }
+
+                if (depth > 1) {
+                    chess.move(move);
+                    const nextUserFens = this.getNextUserTurnFens(chess.fen());
+                    chess.undo();
+
+                    for (const nextFen of nextUserFens) {
+                        if (!this.isAutoplayableWithLookahead(nextFen, depth - 1, now, false)) {
+                            return false;
+                        }
+                    }
+                }
             }
         }
 
-        return hasAnyRepertoireMove;
+        return isTopLevel ? hasAnyRepertoireMove : true;
     }
 
     /**
@@ -160,6 +197,18 @@ export class LaunchpadLogic {
         }
 
         return result;
+    }
+
+    /**
+     * Diagnostic: collect a flat table of all positions evaluated by the lookahead tree.
+     * Each entry includes the SAN path from the current position.
+     */
+    public getLookaheadEvaluation(fen: string, skipLookahead?: boolean): FSRSLookaheadEntry[] {
+        const now = new Date();
+        const depth = skipLookahead ? 1 : LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH;
+        const entries: FSRSLookaheadEntry[] = [];
+        this.collectLookaheadEntries(fen, depth, now, '', entries);
+        return entries;
     }
 
     public getCardDataForMove(fen: string, moveSan: string): FSRSCardData | undefined {
@@ -294,6 +343,82 @@ export class LaunchpadLogic {
             this.fenToVariantMap.set(normalizedFen, []);
         }
         this.fenToVariantMap.get(normalizedFen)?.push(variant);
+    }
+
+    /**
+     * Find all unique next user-turn positions reachable via opponent responses
+     * that stay within the repertoire.
+     */
+    private getNextUserTurnFens(fenAfterUserMove: string): string[] {
+        const chess = new Chess(fenAfterUserMove);
+        const opponentMoves = chess.moves({ verbose: true });
+        const result: string[] = [];
+        const seen = new Set<string>();
+
+        for (const move of opponentMoves) {
+            chess.move(move);
+            const fen = chess.fen();
+            const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+
+            if (this.getVariantsForFen(fen) && !seen.has(normalizedFen)) {
+                seen.add(normalizedFen);
+                result.push(fen);
+            }
+            chess.undo();
+        }
+
+        return result;
+    }
+
+    private collectLookaheadEntries(
+        fen: string,
+        depth: number,
+        now: Date,
+        path: string,
+        entries: FSRSLookaheadEntry[]
+    ): void {
+        if (depth <= 0) return;
+
+        const normalizedFen = normalizeFenResetHalfmoveClock(fen);
+        const chess = new Chess(fen);
+        const possibleMoves = chess.moves({ verbose: true });
+
+        for (const move of possibleMoves) {
+            chess.move(move);
+            const reachable = this.getVariantsForFen(chess.fen());
+            chess.undo();
+
+            if (reachable && reachable.length > 0) {
+                const movePath = path ? `${path} … ${move.san}` : move.san;
+                entries.push({
+                    fen: normalizedFen,
+                    path: movePath,
+                    cardData: this.fsrsService.getCardData(normalizedFen, move.san),
+                    shouldAutoplay: this.fsrsService.shouldAutoplay(normalizedFen, move.san, now),
+                    retrievability: this.fsrsService.getRetrievability(normalizedFen, move.san, now),
+                });
+
+                if (depth > 1) {
+                    chess.move(move);
+                    const opponentMoves = chess.moves({ verbose: true });
+                    const seen = new Set<string>();
+
+                    for (const oppMove of opponentMoves) {
+                        chess.move(oppMove);
+                        const nextFen = chess.fen();
+                        const nextNormalized = normalizeFenResetHalfmoveClock(nextFen);
+
+                        if (this.getVariantsForFen(nextFen) && !seen.has(nextNormalized)) {
+                            seen.add(nextNormalized);
+                            const nextPath = `${movePath} ${oppMove.san}`;
+                            this.collectLookaheadEntries(nextFen, depth - 1, now, nextPath, entries);
+                        }
+                        chess.undo();
+                    }
+                    chess.undo();
+                }
+            }
+        }
     }
 
     private getVariantsForFen(fen: string): OpeningVariant[] | undefined {

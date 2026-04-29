@@ -4,6 +4,7 @@ import { Chess } from 'chess.js';
 import { FSRSCardData } from './FSRSCardData';
 import { FSRSService } from './FSRSService';
 import { createEmptyCard, fsrs, Rating, State } from 'ts-fsrs';
+import { normalizeFenResetHalfmoveClock } from './FenUtils';
 
 function createOpeningVariant(pgn: string): OpeningVariant {
     return new OpeningVariant(pgn, 'white', []);
@@ -382,6 +383,203 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             const fsrsCards: Record<string, FSRSCardData> = {};
             const logic = new LaunchpadLogic([createOpeningVariant('1. e4 e5')], fsrsCards);
             expect(logic.getFsrsCards()).toBe(fsrsCards);
+        });
+    });
+
+    describe('shouldAutoplayUserMove — lookahead', () => {
+
+        // Helper: compute normalized FEN after a sequence of moves
+        function fenAfter(...moves: string[]): string {
+            const chess = new Chess();
+            for (const m of moves) chess.move(m);
+            return normalizeFenResetHalfmoveClock(chess.fen());
+        }
+
+        // Helper: compute raw FEN after a sequence of moves (for passing to shouldAutoplayUserMove)
+        function rawFenAfter(...moves: string[]): string {
+            const chess = new Chess();
+            for (const m of moves) chess.move(m);
+            return chess.fen();
+        }
+
+        it('should autoplay when both user-turn depths have strong cards', () => {
+            // Variant: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6
+            // Depth 2 from starting position checks: e4 at start, Nf3 at position after e5
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter(); // starting position
+            const fenAfterE5 = fenAfter('e4', 'e5');
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+                [`${fenAfterE5}::Nf3`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(true);
+
+            vi.useRealTimers();
+        });
+
+        it('should NOT autoplay when card at next user-turn position is missing', () => {
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            // No card for Nf3 at position after e5
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
+
+            vi.useRealTimers();
+        });
+
+        it('should autoplay when variant ends within lookahead window', () => {
+            // Variant: 1. e4 e5 (only 2 half-moves, variant ends after e5)
+            // After e4 e5, there's no next user-turn position → nothing weak ahead
+            const variant = createOpeningVariant('1. e4 e5');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(true);
+
+            vi.useRealTimers();
+        });
+
+        it('should NOT autoplay when opponent-response branching leads to a weak position', () => {
+            // Two variants diverge at the opponent's response after e4:
+            //   1. e4 e5 2. Nf3 Nc6 3. Bb5 a6
+            //   1. e4 d5 2. exd5 Qxd5
+            // After user plays e4, opponent can play e5 or d5.
+            // Card at position-after-e5 for Nf3 is good, but card at position-after-d5 for exd5 is missing.
+            const variant1 = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const variant2 = createOpeningVariant('1. e4 d5 2. exd5 Qxd5');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            const fenAfterE5 = fenAfter('e4', 'e5');
+            // No card for exd5 at position after d5
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+                [`${fenAfterE5}::Nf3`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant1, variant2], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
+
+            vi.useRealTimers();
+        });
+
+        it('should NOT autoplay when card at next user-turn is in Learning state', () => {
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            const fenAfterE5 = fenAfter('e4', 'e5');
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+                [`${fenAfterE5}::Nf3`]: {
+                    d: '2026-05-01T00:00:00.000Z',
+                    s: 2, di: 5, e: 0, sd: 0, ls: 1, r: 1, l: 0,
+                    st: State.Learning,
+                    lr: '2026-04-01T00:00:00.000Z'
+                },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
+
+            vi.useRealTimers();
+        });
+
+        it('should autoplay with skipLookahead even when next user-turn card is missing', () => {
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            // No card for Nf3 at next user-turn position
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            // With skipLookahead=true, only the current position is checked (depth 1)
+            expect(logic.shouldAutoplayUserMove(new Chess().fen(), true)).toBe(true);
+
+            vi.useRealTimers();
+        });
+
+        it('should respect AUTOPLAY_LOOKAHEAD_DEPTH constant', () => {
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            // No card for Nf3 — would fail at depth 2
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            // Default depth 2 → should fail (missing card at depth 2)
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
+
+            // Override depth to 1 → should pass (only checks current position)
+            const originalDepth = LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH;
+            LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH = 1;
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(true);
+            LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH = originalDepth;
+
+            vi.useRealTimers();
         });
     });
 });
