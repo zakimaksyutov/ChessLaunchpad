@@ -395,13 +395,6 @@ describe('LaunchpadLogic - FSRS Integration', () => {
             return normalizeFenResetHalfmoveClock(chess.fen());
         }
 
-        // Helper: compute raw FEN after a sequence of moves (for passing to shouldAutoplayUserMove)
-        function rawFenAfter(...moves: string[]): string {
-            const chess = new Chess();
-            for (const m of moves) chess.move(m);
-            return chess.fen();
-        }
-
         it('should autoplay when both user-turn depths have strong cards', () => {
             // Variant: 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6
             // Depth 2 from starting position checks: e4 at start, Nf3 at position after e5
@@ -575,9 +568,145 @@ describe('LaunchpadLogic - FSRS Integration', () => {
 
             // Override depth to 1 → should pass (only checks current position)
             const originalDepth = LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH;
-            LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH = 1;
+            try {
+                LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH = 1;
+                expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(true);
+            } finally {
+                LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH = originalDepth;
+            }
+
+            vi.useRealTimers();
+        });
+
+        it('should NOT autoplay when user has multiple moves at depth 2 and one is weak', () => {
+            // Two variants diverge at the user's 2nd move after e4 e5:
+            //   1. e4 e5 2. Nf3 Nc6 3. Bb5 a6
+            //   1. e4 e5 2. Bc4 Bc5
+            // At depth 2, the user must play both Nf3 and Bc4. If Bc4 has no card, autoplay fails.
+            const variant1 = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const variant2 = createOpeningVariant('1. e4 e5 2. Bc4 Bc5');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            const fenAfterE5 = fenAfter('e4', 'e5');
+
+            // Card for e4 at start and Nf3 after e5, but NO card for Bc4 after e5
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+                [`${fenAfterE5}::Nf3`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant1, variant2], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(false);
+
+            vi.useRealTimers();
+        });
+
+        it('should autoplay when opponent transpositions collapse to same user-turn position', () => {
+            // Two variants where different opponent responses lead to the same position:
+            //   1. e4 c5 2. Nf3 e6  3. d4 cxd4 4. Nxd4 Nc6  (Kan → Taimanov transposition)
+            //   1. e4 c5 2. Nf3 Nc6 3. d4 cxd4 4. Nxd4 e6
+            // After 4. Nxd4, opponent plays e6 or Nc6, but both reach same position eventually.
+            // At depth 2 from position after 3... cxd4, user plays Nxd4, then opponent can
+            // play Nc6 or e6 reaching different FENs. We need cards for both resulting positions.
+            const variant1 = createOpeningVariant('1. e4 c5 2. Nf3 e6 3. d4 cxd4 4. Nxd4 Nc6');
+            const variant2 = createOpeningVariant('1. e4 c5 2. Nf3 Nc6 3. d4 cxd4 4. Nxd4 e6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            const fenAfterC5 = fenAfter('e4', 'c5');
+            const fenAfterE6 = fenAfter('e4', 'c5', 'Nf3', 'e6');
+            const fenAfterNc6 = fenAfter('e4', 'c5', 'Nf3', 'Nc6');
+            const fenAfterCxd4 = fenAfter('e4', 'c5', 'Nf3', 'e6', 'd4', 'cxd4');
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+                [`${fenAfterC5}::Nf3`]: { ...cardData },
+                [`${fenAfterE6}::d4`]: { ...cardData },
+                [`${fenAfterNc6}::d4`]: { ...cardData },
+                [`${fenAfterCxd4}::Nxd4`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant1, variant2], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            // From starting position, with all cards strong and dedup working, should autoplay
             expect(logic.shouldAutoplayUserMove(new Chess().fen())).toBe(true);
-            LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH = originalDepth;
+
+            vi.useRealTimers();
+        });
+    });
+
+    describe('getLookaheadEvaluation', () => {
+        // Reuse helper from above
+        function fenAfter(...moves: string[]): string {
+            const chess = new Chess();
+            for (const m of moves) chess.move(m);
+            return normalizeFenResetHalfmoveClock(chess.fen());
+        }
+
+        it('should return entries for both depths in a simple variant', () => {
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+            const fenAfterE5 = fenAfter('e4', 'e5');
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+                [`${fenAfterE5}::Nf3`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            const entries = logic.getLookaheadEvaluation(new Chess().fen());
+
+            // Should have 2 entries: e4 at depth 1, Nf3 at depth 2
+            expect(entries.length).toBe(2);
+            expect(entries[0].path).toBe('e4');
+            expect(entries[0].fen).toBe(startFen);
+            expect(entries[0].shouldAutoplay).toBe(true);
+
+            expect(entries[1].path).toBe('e4 e5 … Nf3');
+            expect(entries[1].fen).toBe(fenAfterE5);
+            expect(entries[1].shouldAutoplay).toBe(true);
+
+            vi.useRealTimers();
+        });
+
+        it('should return single entry with skipLookahead', () => {
+            const variant = createOpeningVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+            const reviewDate = new Date('2026-04-01T00:00:00Z');
+            const cardData = buildReviewCardData(reviewDate);
+
+            const startFen = fenAfter();
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                [`${startFen}::e4`]: { ...cardData },
+            };
+
+            const logic = new LaunchpadLogic([variant], fsrsCards);
+
+            vi.useFakeTimers();
+            vi.setSystemTime(new Date(cardData.lr!).getTime() + 1000);
+
+            const entries = logic.getLookaheadEvaluation(new Chess().fen(), true);
+
+            // With skipLookahead, only depth 1 entries
+            expect(entries.length).toBe(1);
+            expect(entries[0].path).toBe('e4');
 
             vi.useRealTimers();
         });

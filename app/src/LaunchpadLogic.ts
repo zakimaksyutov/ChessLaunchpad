@@ -202,6 +202,10 @@ export class LaunchpadLogic {
     /**
      * Diagnostic: collect a flat table of all positions evaluated by the lookahead tree.
      * Each entry includes the SAN path from the current position.
+     *
+     * Unlike isAutoplayableWithLookahead(), this method does NOT short-circuit on
+     * failure — it always descends into deeper levels to give a complete picture
+     * of card states across the entire lookahead window.
      */
     public getLookaheadEvaluation(fen: string, skipLookahead?: boolean): FSRSLookaheadEntry[] {
         const now = new Date();
