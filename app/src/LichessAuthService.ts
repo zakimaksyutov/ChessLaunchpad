@@ -109,7 +109,8 @@ class LichessAuthServiceImpl {
             }
         }
 
-        // Reset the library's internal state
+        // Clear persisted token from localStorage and reset the library
+        this.oauth.reset();
         this.oauth = this.createOAuthClient();
     }
 
