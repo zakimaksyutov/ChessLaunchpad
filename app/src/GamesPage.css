@@ -1,0 +1,253 @@
+.games-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.games-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+
+.games-header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.sync-button {
+    padding: 0.5rem 1.25rem;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    background-color: rgb(0, 130, 210);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.sync-button:hover:not(:disabled) {
+    background-color: rgb(0, 110, 190);
+}
+
+.sync-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sync-progress {
+    width: 100%;
+    text-align: center;
+    padding: 0.75rem;
+    background: #e8f4fd;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    color: #1a6fa0;
+    font-size: 0.9rem;
+}
+
+.games-error {
+    width: 100%;
+    background-color: #ffe3e3;
+    border: 1px solid #ff9a9a;
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    color: #8a1c1c;
+}
+
+.games-empty {
+    width: 100%;
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+.games-empty p {
+    margin: 0.5rem 0;
+}
+
+.no-accounts-hint {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.no-accounts-hint a {
+    color: rgb(0, 130, 210);
+}
+
+/* Game Row */
+.game-row {
+    width: 100%;
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    margin-bottom: 0.75rem;
+}
+
+.game-mini-board {
+    flex-shrink: 0;
+    width: 120px;
+    height: 120px;
+}
+
+.game-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.game-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+}
+
+.game-opponent {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.game-rating {
+    color: #666;
+}
+
+.game-result {
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+}
+
+.game-result.win {
+    background-color: #e6f4ea;
+    color: #1e7e34;
+}
+
+.game-result.draw {
+    background-color: #f0f0f0;
+    color: #666;
+}
+
+.game-result.loss {
+    background-color: #ffe3e3;
+    color: #8a1c1c;
+}
+
+.game-time-control {
+    color: #666;
+    font-size: 0.8rem;
+}
+
+.game-rated-badge {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.game-opening {
+    color: #555;
+    font-size: 0.82rem;
+    font-style: italic;
+}
+
+.game-date {
+    color: #888;
+    font-size: 0.78rem;
+}
+
+.game-pgn {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin-top: 0.25rem;
+}
+
+/* PGN move highlights */
+.move-token {
+    cursor: default;
+    border-radius: 3px;
+    padding: 1px 2px;
+}
+
+.move-in-repertoire {
+    background-color: #c8f7c5;
+}
+
+.move-deviation-ok {
+    background-color: #fde8d0;
+}
+
+.move-deviation-inaccuracy {
+    background-color: #fff3cd;
+}
+
+.move-deviation-mistake {
+    background-color: #f8d7da;
+}
+
+.move-deviation-blunder {
+    background-color: #e2d4f0;
+}
+
+.move-out-of-theory {
+    background-color: transparent;
+}
+
+.move-opponent {
+    color: #666;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .games-page {
+        padding: 0.75rem;
+    }
+
+    .games-header {
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: stretch;
+    }
+
+    .games-header h1 {
+        font-size: 1.25rem;
+    }
+
+    .sync-button {
+        width: 100%;
+        text-align: center;
+        padding: 0.65rem 1.25rem;
+    }
+
+    .game-row {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .game-mini-board {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        max-width: 200px;
+        align-self: center;
+    }
+
+    .game-pgn {
+        font-size: 0.85rem;
+    }
+}

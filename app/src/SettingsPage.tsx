@@ -4,6 +4,12 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { WeightSettings } from './WeightSettings';
 import { useLichessAuth } from './LichessAuthContext';
+import {
+    getLinkedAccounts,
+    addLinkedAccount,
+    removeLinkedAccount,
+    LinkedAccount,
+} from './LinkedAccountsService';
 import './SettingsPage.css';
 
 interface CoefficientValues {
@@ -19,6 +25,8 @@ const SettingsPage: React.FC = () => {
     const [saving, setSaving] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [lichessLoading, setLichessLoading] = useState(false);
+    const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
+    const [newAccountUsername, setNewAccountUsername] = useState('');
 
     const { connected, login, logout } = useLichessAuth();
     const navigate = useNavigate();
@@ -141,6 +149,25 @@ const SettingsPage: React.FC = () => {
             await logout();
         } finally {
             setLichessLoading(false);
+        }
+    };
+
+    const handleAddAccount = () => {
+        const trimmed = newAccountUsername.trim();
+        if (!trimmed) return;
+        const updated = addLinkedAccount(trimmed);
+        setLinkedAccounts(updated);
+        setNewAccountUsername('');
+    };
+
+    const handleRemoveAccount = (username: string) => {
+        const updated = removeLinkedAccount(username);
+        setLinkedAccounts(updated);
+    };
+
+    const handleAccountKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleAddAccount();
         }
     };
 
@@ -268,6 +295,53 @@ const SettingsPage: React.FC = () => {
                     >
                         {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
                     </button>
+                )}
+            </div>
+
+            <div className="settings-card linked-accounts-section">
+                <h1>Linked Accounts</h1>
+                <p className="settings-description">
+                    Add Lichess usernames to download and analyze your games on the Games page.
+                </p>
+
+                <div className="linked-accounts-add">
+                    <input
+                        type="text"
+                        className="linked-accounts-input"
+                        placeholder="Lichess username"
+                        aria-label="Lichess username"
+                        value={newAccountUsername}
+                        onChange={(e) => setNewAccountUsername(e.target.value)}
+                        onKeyDown={handleAccountKeyDown}
+                    />
+                    <button
+                        className="linked-accounts-add-btn"
+                        type="button"
+                        onClick={handleAddAccount}
+                        disabled={!newAccountUsername.trim()}
+                    >
+                        Add
+                    </button>
+                </div>
+
+                {linkedAccounts.length > 0 && (
+                    <ul className="linked-accounts-list">
+                        {linkedAccounts.map((account) => (
+                            <li key={account.username} className="linked-account-item">
+                                <span className="linked-account-platform">♞</span>
+                                <span className="linked-account-name">{account.username}</span>
+                                <button
+                                    className="linked-account-remove"
+                                    type="button"
+                                    onClick={() => handleRemoveAccount(account.username)}
+                                    aria-label={`Remove ${account.username}`}
+                                    title="Remove account"
+                                >
+                                    ✕
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
                 )}
             </div>
         </div>
