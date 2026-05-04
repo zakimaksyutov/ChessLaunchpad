@@ -107,57 +107,54 @@
     gap: 0.35rem;
 }
 
-.game-meta-row {
+.game-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.game-players {
+    font-size: 0.9rem;
+    line-height: 1.3;
+}
+
+.player-user {
+    font-weight: 600;
+}
+
+.player-opponent {
+    font-weight: 400;
+}
+
+.player-rating {
+    color: #666;
+    font-weight: 400;
+}
+
+.game-vs {
+    color: #999;
+    font-size: 0.82rem;
+}
+
+.game-details-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
-    font-size: 0.85rem;
-}
-
-.game-opponent {
-    font-weight: 600;
-    font-size: 0.95rem;
-}
-
-.game-rating {
+    font-size: 0.82rem;
     color: #666;
 }
 
 .game-result {
-    padding: 0.15rem 0.5rem;
-    border-radius: 3px;
-    font-weight: 600;
     font-size: 0.8rem;
+    color: #888;
     text-transform: uppercase;
-}
-
-.game-result.win {
-    background-color: #e6f4ea;
-    color: #1e7e34;
-}
-
-.game-result.draw {
-    background-color: #f0f0f0;
-    color: #666;
-}
-
-.game-result.loss {
-    background-color: #ffe3e3;
-    color: #8a1c1c;
 }
 
 .game-time-control {
     color: #666;
     font-size: 0.8rem;
-}
-
-.game-rated-badge {
-    font-size: 0.75rem;
-    padding: 0.1rem 0.35rem;
-    border-radius: 3px;
-    background-color: #fff3cd;
-    color: #856404;
 }
 
 .game-opening {
@@ -169,6 +166,8 @@
 .game-date {
     color: #888;
     font-size: 0.78rem;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .game-pgn {

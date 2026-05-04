@@ -9,6 +9,7 @@ import { buildRepertoireFenSets, RepertoireFenSets } from './RepertoireFenSet';
 import {
     annotateGame,
     GameAnnotation,
+    GameMetadata,
     getGameMetadata,
     getUserColor,
     AnnotatedMove,
@@ -37,6 +38,17 @@ function getMoveClassName(move: AnnotatedMove): string {
     }
 }
 
+function formatPlayerLabel(name: string, rating: number | undefined, isUser: boolean): React.ReactNode {
+    return (
+        <span className={isUser ? 'player-user' : 'player-opponent'}>
+            {name}
+            {rating !== undefined && (
+                <span className="player-rating"> ({rating})</span>
+            )}
+        </span>
+    );
+}
+
 interface GameRowProps {
     game: StoredGame;
     annotation: GameAnnotation | null;
@@ -44,7 +56,7 @@ interface GameRowProps {
 }
 
 const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
-    const meta = useMemo(
+    const meta: GameMetadata = useMemo(
         () => getGameMetadata(game.data, username),
         [game.data, username]
     );
@@ -57,6 +69,9 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
             day: 'numeric',
         });
     }, [meta.createdAt]);
+
+    const whiteIsUser = meta.userColor === 'white';
+    const blackIsUser = meta.userColor === 'black';
 
     return (
         <div className="game-row">
@@ -83,27 +98,24 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
 
             {/* Game info */}
             <div className="game-info">
-                <div className="game-meta-row">
-                    <span className="game-opponent">{meta.opponentName}</span>
-                    {meta.opponentRating && (
-                        <span className="game-rating">({meta.opponentRating})</span>
+                <div className="game-header-row">
+                    <div className="game-players">
+                        {formatPlayerLabel(meta.whiteName, meta.whiteRating, whiteIsUser)}
+                        <span className="game-vs"> vs </span>
+                        {formatPlayerLabel(meta.blackName, meta.blackRating, blackIsUser)}
+                    </div>
+                    <span className="game-date">{dateStr}</span>
+                </div>
+
+                <div className="game-details-row">
+                    {meta.openingName && (
+                        <span className="game-opening">{meta.openingName}</span>
                     )}
-                    <span className={`game-result ${meta.result}`}>
-                        {meta.result}
-                    </span>
                     {meta.timeControl && (
                         <span className="game-time-control">⏱ {meta.timeControl}</span>
                     )}
-                    {meta.rated && (
-                        <span className="game-rated-badge">Rated</span>
-                    )}
+                    <span className="game-result">{meta.result}</span>
                 </div>
-
-                {meta.openingName && (
-                    <div className="game-opening">{meta.openingName}</div>
-                )}
-
-                <div className="game-date">{dateStr}</div>
 
                 {/* Annotated PGN */}
                 {annotation && annotation.moves.length > 0 && (

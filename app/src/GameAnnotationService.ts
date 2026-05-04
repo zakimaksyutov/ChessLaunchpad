@@ -235,24 +235,44 @@ export function annotateGame(
     };
 }
 
+interface PlayerInfo {
+    name: string;
+    rating: number | undefined;
+}
+
+function getPlayerInfo(
+    players: Record<string, unknown> | undefined,
+    side: 'white' | 'black'
+): PlayerInfo {
+    const sideData = (players?.[side] as Record<string, unknown>) ?? {};
+    const user = (sideData.user as Record<string, unknown>) ?? {};
+    const name = (user.name as string) || (user.id as string) || 'Unknown';
+    const rating = sideData.rating as number | undefined;
+    return { name, rating };
+}
+
+export interface GameMetadata {
+    whiteName: string;
+    whiteRating: number | undefined;
+    blackName: string;
+    blackRating: number | undefined;
+    result: 'win' | 'draw' | 'loss';
+    timeControl: string;
+    rated: boolean;
+    openingName: string;
+    createdAt: number;
+    userColor: 'white' | 'black' | null;
+}
+
 /**
  * Extract game metadata for display.
  */
-export function getGameMetadata(gameData: Record<string, unknown>, username: string) {
+export function getGameMetadata(gameData: Record<string, unknown>, username: string): GameMetadata {
     const userColor = getUserColor(gameData, username);
     const players = gameData.players as Record<string, unknown> | undefined;
 
-    // Opponent info
-    let opponentName = 'Unknown';
-    let opponentRating: number | undefined;
-
-    if (players && userColor) {
-        const opponentSide = userColor === 'white' ? 'black' : 'white';
-        const opponent = players[opponentSide] as Record<string, unknown> | undefined;
-        const opponentUser = opponent?.user as Record<string, unknown> | undefined;
-        opponentName = (opponentUser?.name as string) || (opponentUser?.id as string) || 'Unknown';
-        opponentRating = opponent?.rating as number | undefined;
-    }
+    const white = getPlayerInfo(players, 'white');
+    const black = getPlayerInfo(players, 'black');
 
     // Result from user's perspective
     const winner = gameData.winner as string | undefined;
@@ -286,8 +306,10 @@ export function getGameMetadata(gameData: Record<string, unknown>, username: str
     const createdAt = gameData.createdAt as number;
 
     return {
-        opponentName,
-        opponentRating,
+        whiteName: white.name,
+        whiteRating: white.rating,
+        blackName: black.name,
+        blackRating: black.rating,
         result,
         timeControl,
         rated,
