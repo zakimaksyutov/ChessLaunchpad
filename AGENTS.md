@@ -4,7 +4,7 @@
 
 ChessLaunchpad is a web application for memorizing chess openings using spaced repetition. It helps players master their opening repertoires through interactive board training with an adaptive algorithm that prioritizes variants based on recency, error rate, frequency, and newness. Deployed at https://zakimaksyutov.github.io/ChessLaunchpad/.
 
-For a deeper understanding of the product (variant selection, FSRS autoplay, pages, data flow), see `specs/project-description.md`.
+For a deeper understanding of the product (variant selection, FSRS autoplay, pages, data flow), see `ARCHITECTURE.md`.
 
 ## Tech Stack
 
@@ -52,28 +52,15 @@ yarn dev
   - `public/` — Static assets
   - `vendor/chess-control/` — Vendored chess-control library (built dist files)
 - `openings/` — Opening database files and merge scripts
-- `specs/` — Technical specifications
-  - `backend-api-contract.md` — Backend REST API contract (copy from backend repo; do not edit here)
-  - `perf-measurements.md` — Performance instrumentation reference
+- `docs/` — Technical specifications
+  - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
+  - `product-specs/FSRS.md` — FSRS autoplay specification
+  - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
 ## Backend API
 
-The backend is a REST API (`https://chess-prod-function.azurewebsites.net/api/user`) that stores user repertoire data as a validated JSON blob. See `specs/backend-api-contract.md` for the full contract. Do not edit that file directly — it is a copy from the backend repository.
+The backend is a REST API (`https://chess-prod-function.azurewebsites.net/api/user`) that stores user repertoire data as a validated JSON blob. See `docs/BACKEND_API_CONTRACT.md` for the full contract. Do not edit that file directly — it is a copy from the backend repository.
 
-If a feature requires backend contract changes, produce a separate spec in `specs/` describing the required changes. This spec will be copied to the backend repository for implementation.
-
-## Updating chess-control
-
-The chess-control library lives in `../ChessControl` and is vendored via `file:` dependency.
-
-```sh
-cd ../ChessControl && yarn build:lib
-cp dist/chess-control.js dist/index.d.ts dist/ChessBoard.d.ts ../ChessLaunchpad/app/vendor/chess-control/
-# Bump version in app/vendor/chess-control/package.json
-cd ../ChessLaunchpad/app && yarn install
-```
-
-**Yarn version note:** The app is pinned to Yarn 4 via `app/package.json`, and CI uses Corepack plus `yarn install --immutable`. `app/.yarnrc.yml` is tracked so Yarn keeps using the `node-modules` linker instead of switching this project to Plug'n'Play. If `yarn` does not resolve to the pinned version on a machine, run `corepack enable` once and retry.
 
 ## Playwright / E2E
 
