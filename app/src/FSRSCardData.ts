@@ -1,6 +1,6 @@
 /**
  * JSON-serializable mirror of the ts-fsrs Card interface using minified keys
- * to match the backend schema. See specs/backend-api-contract.md (FSRS Card Entry).
+ * to match the backend schema. See docs/BACKEND_API_CONTRACT.md (FSRS Card Entry).
  */
 export interface FSRSCardData {
     d: string;              // due — ISO 8601

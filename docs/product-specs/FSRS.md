@@ -148,7 +148,7 @@ Orchestrates autoplay and card rating during a training round:
 
 ## Backend API
 
-The backend schema accepts the optional `fsrsCards` field. See `specs/backend-api-contract.md` (FSRS Card Entry section) for the validated wire format with minified keys.
+The backend schema accepts the optional `fsrsCards` field. See `docs/BACKEND_API_CONTRACT.md` (FSRS Card Entry section) for the validated wire format with minified keys.
 
 ## Backward Compatibility
 

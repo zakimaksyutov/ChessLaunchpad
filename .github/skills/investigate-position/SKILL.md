@@ -103,7 +103,7 @@ If either eval is missing from the artifact, note that — the move won't be hig
 
 ### 3. Cross-check with Lichess Cloud Eval API
 
-Query the live API for both positions to compare with the artifact values. Use `multiPv=3` for richer context. The API endpoint documented in `specs/project-description.md`:
+Query the live API for both positions to compare with the artifact values. Use `multiPv=3` for richer context. The API endpoint documented in `ARCHITECTURE.md`:
 
 ```sh
 source .env 2>/dev/null
