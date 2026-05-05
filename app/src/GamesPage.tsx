@@ -104,17 +104,25 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         <span className="game-vs"> vs </span>
                         {formatPlayerLabel(meta.blackName, meta.blackRating, blackIsUser)}
                     </div>
-                    <span className="game-date">{dateStr}</span>
+                    <span className="game-date">
+                        {meta.timeControl && <>{meta.timeControl} | </>}
+                        {dateStr}
+                    </span>
                 </div>
 
                 <div className="game-details-row">
                     {meta.openingName && (
                         <span className="game-opening">{meta.openingName}</span>
                     )}
-                    {meta.timeControl && (
-                        <span className="game-time-control">⏱ {meta.timeControl}</span>
-                    )}
                     <span className="game-result">{meta.result}</span>
+                    <a
+                        className="game-lichess-link"
+                        href={`https://lichess.org/${game.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        ♞ View on Lichess
+                    </a>
                 </div>
 
                 {/* Annotated PGN */}

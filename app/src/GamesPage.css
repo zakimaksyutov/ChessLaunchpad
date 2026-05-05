@@ -124,7 +124,7 @@
 }
 
 .player-opponent {
-    font-weight: 400;
+    font-weight: 600;
 }
 
 .player-rating {
@@ -152,9 +152,14 @@
     text-transform: uppercase;
 }
 
-.game-time-control {
-    color: #666;
+.game-lichess-link {
+    color: rgb(0, 130, 210);
     font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.game-lichess-link:hover {
+    text-decoration: underline;
 }
 
 .game-opening {

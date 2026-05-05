@@ -97,6 +97,8 @@ function buildPgnFromLichessData(gameData: Record<string, unknown>): string | nu
  * @param evals ExplorerEvals instance for eval-drop computation
  * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
  */
+const debugAnnotation = new URLSearchParams(window.location.search).has('debug');
+
 export function annotateGame(
     gameData: Record<string, unknown>,
     username: string,
@@ -104,22 +106,32 @@ export function annotateGame(
     evals: ExplorerEvals | null,
     maxPlies: number = 30
 ): GameAnnotation | null {
+    const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username);
-    if (!userColor) return null;
+    if (!userColor) {
+        if (debugAnnotation) console.debug(`[annotate ${gameId}] No user color found for ${username}`);
+        return null;
+    }
 
     const pgn = buildPgnFromLichessData(gameData);
-    if (!pgn) return null;
+    if (!pgn) {
+        if (debugAnnotation) console.debug(`[annotate ${gameId}] Could not build PGN`);
+        return null;
+    }
 
     const chess = new Chess();
     try {
         chess.loadPgn(pgn);
     } catch {
+        if (debugAnnotation) console.debug(`[annotate ${gameId}] Failed to parse PGN`);
         return null;
     }
     chess.deleteComments();
 
     const allMoves = chess.history({ verbose: true });
     const temp = new Chess();
+
+    if (debugAnnotation) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}`);
 
     const moves: AnnotatedMove[] = [];
     let stillInTheory = true;
@@ -157,16 +169,19 @@ export function annotateGame(
         // Determine highlighting
         let highlight: MoveHighlight;
         let evalDrop: EvalDrop | undefined;
+        let reason: string;
 
         if (stillInTheory && repertoireFens.has(normalizedFenAfter)) {
             // Position after move is in repertoire → green
             highlight = 'in-repertoire';
             lastInRepertoireFen = fenAfter;
             theoryEndPly = i + 1;
+            reason = 'after-FEN in repertoire';
         } else if (stillInTheory && isUserMove && repertoireFens.has(normalizedFenBefore)) {
             // User deviated from repertoire (before-FEN was in repertoire, after-FEN is not)
             highlight = 'deviation';
             stillInTheory = false;
+            reason = 'before-FEN in repertoire but after-FEN is NOT → user deviated';
 
             if (!firstDeviationFen) {
                 firstDeviationFen = fenAfter;
@@ -181,10 +196,13 @@ export function annotateGame(
                     const drop = computeConservativeDrop(beforeVals, afterVals, isWhiteMove);
                     const category = categorizeEvalDrop(drop);
                     evalDrop = { evalDrop: drop, category };
+                    reason += `, evalDrop=${drop.toFixed(2)} (${category})`;
 
                     if (!firstEvalDropFen && category !== 'ok') {
                         firstEvalDropFen = fenAfter;
                     }
+                } else {
+                    reason += ', no eval data for drop calc';
                 }
             }
         } else if (stillInTheory && !isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
@@ -192,13 +210,20 @@ export function annotateGame(
             highlight = 'out-of-theory';
             stillInTheory = false;
             theoryEndPly = i;
+            reason = 'opponent deviated (before-FEN in repertoire, after-FEN not)';
         } else {
             highlight = 'out-of-theory';
             if (stillInTheory) {
-                // We fell out of theory (starting position not even in repertoire)
+                reason = `theory ended: beforeInRep=${repertoireFens.has(normalizedFenBefore)}, afterInRep=${repertoireFens.has(normalizedFenAfter)}, isUser=${isUserMove}`;
                 stillInTheory = false;
+            } else {
+                reason = 'past theory end';
             }
         }
+
+        if (debugAnnotation) console.debug(
+            `  ply ${i}: ${allMoves[i].san} [${isUserMove ? 'USER' : 'OPP'}] → ${highlight} | ${reason}`
+        );
 
         moves.push({
             text,
@@ -215,6 +240,8 @@ export function annotateGame(
         const effectiveMax = Math.max(maxPlies, theoryEndPly + 4);
         if (i + 1 >= effectiveMax) break;
     }
+
+    if (debugAnnotation) console.groupEnd();
 
     // Determine mini board position (spec §3.3)
     let miniBoardFen: string;

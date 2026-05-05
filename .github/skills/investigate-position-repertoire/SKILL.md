@@ -1,6 +1,6 @@
 ---
-name: investigate-position
-description: Investigate why a move in a chess position is or isn't highlighted on the Repertoire page. Use when asked to check evals, eval drops, or move highlighting for a position.
+name: investigate-position-repertoire
+description: Investigate why a move in a chess position is or isn't highlighted on the **Repertoire page**. Use when asked to check evals, eval drops, or move highlighting for a position on the Repertoire page. Do NOT use this skill for the Games page — the Games page has its own annotation logic in GameAnnotationService.ts.
 parameters:
   - name: position
     type: string
