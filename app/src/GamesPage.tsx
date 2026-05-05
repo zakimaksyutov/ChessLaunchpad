@@ -31,8 +31,11 @@ function getMoveClassName(move: AnnotatedMove): string {
     switch (move.highlight) {
         case 'in-repertoire':
             return 'move-token move-in-repertoire';
-        case 'deviation':
-            return `move-token ${EVAL_DROP_CLASSES[move.evalDrop?.category ?? 'ok']}`;
+        case 'deviation': {
+            const category = move.evalDrop?.category ?? 'ok';
+            if (category === 'ok') return 'move-token move-out-of-theory';
+            return `move-token ${EVAL_DROP_CLASSES[category]}`;
+        }
         case 'out-of-theory':
             return 'move-token move-out-of-theory';
     }
@@ -117,7 +120,7 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                     <span className="game-result">{meta.result}</span>
                     <a
                         className="game-lichess-link"
-                        href={`https://lichess.org/${game.id}`}
+                        href={`https://lichess.org/${game.id}${meta.userColor === 'black' ? '/black' : ''}`}
                         target="_blank"
                         rel="noopener noreferrer"
                     >

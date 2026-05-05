@@ -86,6 +86,8 @@ For each user move in the displayed PGN, apply the following highlights (in prio
 
 2. **Theory deviation with eval drop** — The user deviated from the repertoire (the position before the move is in the repertoire but the move played is not the repertoire move) **and** the deviation caused an eval drop. Use the existing `EvalDropService` + `ExplorerEvals` to compute the eval drop. Apply the same thresholds already used on the Repertoire page (inaccuracy ≥ 30cp, mistake ≥ 50cp, blunder ≥ 70cp). Highlight with the corresponding eval-drop color.
 
+   This also applies when the **opponent** deviates from the repertoire — the user's first response move after the opponent's deviation is evaluated for an eval drop using the same logic. This surfaces whether the user handled the surprise well.
+
    Moves that are in the repertoire are always **green**, even if they have an eval drop — those drops are intentional choices and are already surfaced on the Repertoire page. Only moves that deviate from the repertoire are candidates for eval-drop highlighting.
 
    Deviations without eval data are shown with a subtle orange highlight to remain visible.

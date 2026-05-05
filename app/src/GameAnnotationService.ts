@@ -135,6 +135,7 @@ export function annotateGame(
 
     const moves: AnnotatedMove[] = [];
     let stillInTheory = true;
+    let pendingUserEvalDrop = false;
     let theoryEndPly = 0;
     let moveNumber = 1;
 
@@ -209,8 +210,36 @@ export function annotateGame(
             // Opponent deviated (opponent's move took us out of repertoire)
             highlight = 'out-of-theory';
             stillInTheory = false;
+            pendingUserEvalDrop = true;
             theoryEndPly = i;
             reason = 'opponent deviated (before-FEN in repertoire, after-FEN not)';
+        } else if (pendingUserEvalDrop && isUserMove) {
+            // User's first response after opponent deviation — evaluate for eval drop
+            highlight = 'deviation';
+            pendingUserEvalDrop = false;
+            reason = 'user response after opponent deviation';
+
+            if (!firstDeviationFen) {
+                firstDeviationFen = fenAfter;
+            }
+
+            if (evals) {
+                const beforeVals = evals.lookupAll(fenBefore);
+                const afterVals = evals.lookupAll(fenAfter);
+
+                if (beforeVals && afterVals && beforeVals.length > 0 && afterVals.length > 0) {
+                    const drop = computeConservativeDrop(beforeVals, afterVals, isWhiteMove);
+                    const category = categorizeEvalDrop(drop);
+                    evalDrop = { evalDrop: drop, category };
+                    reason += `, evalDrop=${drop.toFixed(2)} (${category})`;
+
+                    if (!firstEvalDropFen && category !== 'ok') {
+                        firstEvalDropFen = fenAfter;
+                    }
+                } else {
+                    reason += ', no eval data for drop calc';
+                }
+            }
         } else {
             highlight = 'out-of-theory';
             if (stillInTheory) {
