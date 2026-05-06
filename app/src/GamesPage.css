@@ -181,15 +181,35 @@
     margin-top: 0.25rem;
 }
 
-/* PGN move styles */
+/* PGN move highlights */
 .move-token {
     cursor: default;
     border-radius: 3px;
     padding: 1px 2px;
 }
 
-.move-user {
-    color: #333;
+.move-in-repertoire {
+    background-color: #c8f7c5;
+}
+
+.move-deviation-ok {
+    background-color: #fde8d0;
+}
+
+.move-deviation-inaccuracy {
+    background-color: #fff3cd;
+}
+
+.move-deviation-mistake {
+    background-color: #f8d7da;
+}
+
+.move-deviation-blunder {
+    background-color: #e2d4f0;
+}
+
+.move-out-of-theory {
+    background-color: transparent;
 }
 
 .move-opponent {

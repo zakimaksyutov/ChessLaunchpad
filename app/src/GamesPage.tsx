@@ -15,11 +15,30 @@ import {
     AnnotatedMove,
 } from './GameAnnotationService';
 import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
+import { EvalDropCategory } from './EvalDropService';
 import './GamesPage.css';
+
+const EVAL_DROP_CLASSES: Record<EvalDropCategory, string> = {
+    ok: 'move-deviation-ok',
+    inaccuracy: 'move-deviation-inaccuracy',
+    mistake: 'move-deviation-mistake',
+    blunder: 'move-deviation-blunder',
+};
 
 function getMoveClassName(move: AnnotatedMove): string {
     if (!move.isUserMove) return 'move-token move-opponent';
-    return 'move-token move-user';
+
+    switch (move.highlight) {
+        case 'in-repertoire':
+            return 'move-token move-in-repertoire';
+        case 'deviation': {
+            const category = move.evalDrop?.category ?? 'ok';
+            if (category === 'ok') return 'move-token move-out-of-theory';
+            return `move-token ${EVAL_DROP_CLASSES[category]}`;
+        }
+        case 'out-of-theory':
+            return 'move-token move-out-of-theory';
+    }
 }
 
 function formatPlayerLabel(name: string, rating: number | undefined, isUser: boolean): React.ReactNode {
