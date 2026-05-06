@@ -29,11 +29,12 @@ export function addLinkedAccount(username: string): LinkedAccount[] {
 
 export function removeLinkedAccount(username: string): LinkedAccount[] {
     const accounts = getLinkedAccounts();
-    const updated = accounts.filter(a => a.username !== username);
+    const normalized = username.toLowerCase();
+    const updated = accounts.filter(a => a.username !== normalized);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     // Clean up sync watermark for the removed account
-    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${username}`);
+    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${normalized}`);
     // Remove cached games for this account from IndexedDB
-    deleteGamesForUser(username).catch(() => { /* best-effort cleanup */ });
+    deleteGamesForUser(normalized).catch(() => { /* best-effort cleanup */ });
     return updated;
 }

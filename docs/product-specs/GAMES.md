@@ -12,7 +12,8 @@ Users can **list** one or more Lichess usernames (no OAuth token required — ga
 
 - Stored in `localStorage` as a JSON array under key `chesslaunchpad:linkedAccounts`.
 - Managed on the **Settings** page: a "Linked Accounts" section with a text input + "Add" button to add a Lichess username, and a list of existing accounts each with a "Remove" button.
-- Removing an account also clears its sync watermark from `localStorage`.
+- Removing an account also clears its sync watermark from `localStorage` and **deletes** the account's cached games from IndexedDB.
+- **Logout** clears all Games data: IndexedDB game store, linked accounts list, and all per-account sync timestamps.
 
 ```ts
 interface LinkedAccount {
@@ -55,7 +56,7 @@ interface StoredGame {
 
 Download is triggered manually via a **"Sync Games"** button on the Games page. A progress indicator shows "Downloading… N games" while the stream is active.
 
-Only games from currently linked accounts are displayed. Unlinking an account hides its games.
+Only games from currently linked accounts are displayed. Unlinking an account removes its cached games and sync watermark.
 
 ## 3. Games Page
 

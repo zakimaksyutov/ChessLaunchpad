@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
 import { createDataAccessLayer } from './DataAccessLayer';
-import { getLinkedAccounts } from './LinkedAccountsService';
+import { getLinkedAccounts, LinkedAccount } from './LinkedAccountsService';
 import { getAllGames, StoredGame } from './GamesDB';
 import { syncGamesForUser, SyncProgress } from './LichessGamesService';
 import { buildRepertoireFenSets, RepertoireFenSets } from './RepertoireFenSet';
@@ -161,9 +161,14 @@ const GamesPage: React.FC = () => {
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Read linked accounts fresh each render so Settings changes are visible
-    // without a full page reload.
-    const linkedAccounts = getLinkedAccounts();
+    const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
+
+    // Refresh linked accounts when the page gains focus (picks up Settings changes).
+    useEffect(() => {
+        const refresh = () => setLinkedAccounts(getLinkedAccounts());
+        window.addEventListener('focus', refresh);
+        return () => window.removeEventListener('focus', refresh);
+    }, []);
 
     // Cleanup informational timer on unmount
     useEffect(() => {
@@ -287,6 +292,7 @@ const GamesPage: React.FC = () => {
             // Reload games from IndexedDB
             const storedGames = await getAllGames();
             setGames(storedGames);
+            setLinkedAccounts(getLinkedAccounts());
 
             setSyncProgress(null);
             if (failures.length > 0) {
