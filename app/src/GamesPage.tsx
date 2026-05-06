@@ -118,6 +118,11 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         <span className="game-opening">{meta.openingName}</span>
                     )}
                     <span className="game-result">{meta.result}</span>
+                    {meta.rated !== undefined && (
+                        <span className={`game-rated-badge ${meta.rated ? 'rated' : 'casual'}`}>
+                            {meta.rated ? 'Rated' : 'Casual'}
+                        </span>
+                    )}
                     <a
                         className="game-lichess-link"
                         href={`https://lichess.org/${game.id}${meta.userColor === 'black' ? '/black' : ''}`}
@@ -209,13 +214,23 @@ const GamesPage: React.FC = () => {
         load();
     }, []);
 
-    // Filter games to only show those from currently linked accounts
+    // Filter games to only show those from currently linked accounts,
+    // and skip games where the user can't be identified as a player.
     const linkedUsernames = useMemo(
         () => new Set(linkedAccounts.map(a => a.username)),
         [linkedAccounts]
     );
     const filteredGames = useMemo(
-        () => games.filter(g => linkedUsernames.has(g.username)),
+        () => games.filter(g => {
+            if (!linkedUsernames.has(g.username)) return false;
+            if (!getUserColor(g.data, g.username)) {
+                console.warn(
+                    `[GamesPage] Skipping game ${g.id}: user "${g.username}" not found as either player`
+                );
+                return false;
+            }
+            return true;
+        }),
         [games, linkedUsernames]
     );
 
@@ -249,14 +264,24 @@ const GamesPage: React.FC = () => {
         setSyncing(true);
         setError('');
         setSyncProgress(null);
+        if (infoClearTimerRef.current) {
+            clearTimeout(infoClearTimerRef.current);
+            infoClearTimerRef.current = null;
+        }
 
         try {
             let totalGames = 0;
+            const failures: string[] = [];
             for (const account of accounts) {
-                const count = await syncGamesForUser(account.username, (progress) => {
-                    setSyncProgress(progress);
-                });
-                totalGames += count;
+                try {
+                    const count = await syncGamesForUser(account.username, (progress) => {
+                        setSyncProgress(progress);
+                    });
+                    totalGames += count;
+                } catch (err: unknown) {
+                    const msg = err instanceof Error ? err.message : String(err);
+                    failures.push(`${account.username}: ${msg}`);
+                }
             }
 
             // Reload games from IndexedDB
@@ -264,7 +289,9 @@ const GamesPage: React.FC = () => {
             setGames(storedGames);
 
             setSyncProgress(null);
-            if (totalGames === 0) {
+            if (failures.length > 0) {
+                setError(`Sync failed for: ${failures.join('; ')}`);
+            } else if (totalGames === 0) {
                 setError('No new games found.');
                 infoClearTimerRef.current = setTimeout(() => setError(''), 3000);
             }

@@ -1,5 +1,7 @@
 const STORAGE_KEY = 'chesslaunchpad:linkedAccounts';
 
+import { deleteGamesForUser } from './GamesDB';
+
 export interface LinkedAccount {
     platform: 'lichess';
     username: string;
@@ -31,5 +33,7 @@ export function removeLinkedAccount(username: string): LinkedAccount[] {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     // Clean up sync watermark for the removed account
     localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${username}`);
+    // Remove cached games for this account from IndexedDB
+    deleteGamesForUser(username).catch(() => { /* best-effort cleanup */ });
     return updated;
 }

@@ -71,12 +71,13 @@ Each game is rendered as a single row containing:
 |---------|-------------|
 | **Mini board** | Small chessboard (≈120px) showing the position at the first theory gap or end of theory. Board oriented to the user's color. |
 | **Annotated PGN** | Opening portion of the game (see §3.2 for highlighting rules). Approximately the first ~30 plies or until theory ends + a short buffer, whichever is longer. |
-| **Opponent** | Opponent username and rating |
+| **Players** | Both White and Black player names with ratings; the user's name is visually emphasized. |
 | **Result** | Win / Draw / Loss (from the user's perspective) |
 | **Time control** | e.g., "5+3", "10+0" |
 | **Rated** | Badge indicating rated vs casual |
 | **Opening** | Opening name from Lichess data |
 | **Date** | Game date |
+| **View on Lichess** | Link to the game on lichess.org, oriented to the user's color. |
 
 ### 3.2 PGN Annotation & Highlighting
 

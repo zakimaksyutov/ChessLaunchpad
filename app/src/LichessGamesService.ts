@@ -67,23 +67,53 @@ export async function syncGamesForUser(
     const games: StoredGame[] = [];
     let maxTimestamp = lastSync ?? 0;
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+            buffer += decoder.decode(value, { stream: true });
 
-        // Split on newlines, process complete lines
-        const lines = buffer.split('\n');
-        // Keep the last (possibly incomplete) line in the buffer
-        buffer = lines.pop() || '';
+            // Split on newlines, process complete lines
+            const lines = buffer.split('\n');
+            // Keep the last (possibly incomplete) line in the buffer
+            buffer = lines.pop() || '';
 
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
 
+                try {
+                    const gameData = JSON.parse(trimmed);
+                    const createdAt = gameData.createdAt as number;
+                    const gameId = gameData.id as string;
+
+                    games.push({
+                        id: gameId,
+                        createdAt,
+                        username: username.toLowerCase(),
+                        data: gameData,
+                    });
+
+                    if (createdAt > maxTimestamp) {
+                        maxTimestamp = createdAt;
+                    }
+
+                    onProgress?.({
+                        username,
+                        gamesDownloaded: games.length,
+                        done: false,
+                    });
+                } catch {
+                    // Skip malformed lines
+                }
+            }
+        }
+
+        // Process any remaining data in buffer
+        if (buffer.trim()) {
             try {
-                const gameData = JSON.parse(trimmed);
+                const gameData = JSON.parse(buffer.trim());
                 const createdAt = gameData.createdAt as number;
                 const gameId = gameData.id as string;
 
@@ -97,38 +127,12 @@ export async function syncGamesForUser(
                 if (createdAt > maxTimestamp) {
                     maxTimestamp = createdAt;
                 }
-
-                onProgress?.({
-                    username,
-                    gamesDownloaded: games.length,
-                    done: false,
-                });
             } catch {
-                // Skip malformed lines
+                // Skip malformed data
             }
         }
-    }
-
-    // Process any remaining data in buffer
-    if (buffer.trim()) {
-        try {
-            const gameData = JSON.parse(buffer.trim());
-            const createdAt = gameData.createdAt as number;
-            const gameId = gameData.id as string;
-
-            games.push({
-                id: gameId,
-                createdAt,
-                username: username.toLowerCase(),
-                data: gameData,
-            });
-
-            if (createdAt > maxTimestamp) {
-                maxTimestamp = createdAt;
-            }
-        } catch {
-            // Skip malformed data
-        }
+    } finally {
+        reader.cancel().catch(() => { /* best-effort cleanup */ });
     }
 
     // Batched write to IndexedDB

@@ -18,6 +18,10 @@ function getDB(): Promise<IDBPDatabase> {
         dbPromise = openDB(DB_NAME, DB_VERSION, {
             upgrade(db) {
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    // NOTE: Games are keyed solely by Lichess game ID. If two linked accounts
+                    // played each other, the later sync overwrites the earlier entry. This is
+                    // an accepted trade-off for storage simplicity; the affected scenario
+                    // (user links both sides of the same game) is extremely rare.
                     const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
                     store.createIndex('createdAt', 'createdAt');
                     store.createIndex('username', 'username');
@@ -57,4 +61,16 @@ export async function getGameCount(): Promise<number> {
 export async function clearGames(): Promise<void> {
     const db = await getDB();
     await db.clear(STORE_NAME);
+}
+
+export async function deleteGamesForUser(username: string): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const index = tx.store.index('username');
+    let cursor = await index.openCursor(username);
+    while (cursor) {
+        await cursor.delete();
+        cursor = await cursor.continue();
+    }
+    await tx.done;
 }

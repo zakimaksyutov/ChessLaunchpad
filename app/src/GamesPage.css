@@ -162,6 +162,24 @@
     text-decoration: underline;
 }
 
+.game-rated-badge {
+    font-size: 0.72rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.game-rated-badge.rated {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.game-rated-badge.casual {
+    background: #f3f3f3;
+    color: #888;
+}
+
 .game-opening {
     color: #555;
     font-size: 0.82rem;

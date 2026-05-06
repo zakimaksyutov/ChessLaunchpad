@@ -338,9 +338,9 @@ export function getGameMetadata(gameData: Record<string, unknown>, username: str
     // Time control
     const clock = gameData.clock as Record<string, unknown> | undefined;
     let timeControl = '';
-    if (clock) {
-        const initial = (clock.initial as number) / 60; // seconds to minutes
-        const increment = clock.increment as number;
+    if (clock && typeof clock.initial === 'number' && typeof clock.increment === 'number') {
+        const initial = clock.initial / 60; // seconds to minutes
+        const increment = clock.increment;
         timeControl = `${initial}+${increment}`;
     }
 

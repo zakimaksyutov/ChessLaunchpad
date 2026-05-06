@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { clearGames } from './GamesDB';
 import './Header.css';  // Import the CSS file
 
 interface HeaderProps {
@@ -46,6 +47,19 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
     const handleLogoutClick = () => {
         // Close the dropdown (otherwise it would be autoshown after next login)
         setIsDropdownOpen(false);
+
+        // Clear Games data (IndexedDB + linked accounts + sync timestamps)
+        clearGames().catch(() => { /* best-effort */ });
+        const linkedRaw = localStorage.getItem('chesslaunchpad:linkedAccounts');
+        if (linkedRaw) {
+            try {
+                const accounts = JSON.parse(linkedRaw) as { username: string }[];
+                for (const a of accounts) {
+                    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${a.username}`);
+                }
+            } catch { /* ignore malformed */ }
+        }
+        localStorage.removeItem('chesslaunchpad:linkedAccounts');
 
         // Clear localStorage items
         localStorage.removeItem('username');

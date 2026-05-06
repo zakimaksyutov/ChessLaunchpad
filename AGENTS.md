@@ -13,6 +13,7 @@ For a deeper understanding of the product (variant selection, FSRS autoplay, pag
 - Vitest for testing
 - chess.js for game logic and PGN parsing
 - chess-control (in-house) for interactive board rendering, vendored in `app/vendor/chess-control/`
+- idb for IndexedDB access (Games page local storage)
 - React Router for client-side routing
 - Microsoft Application Insights for telemetry
 
@@ -55,6 +56,8 @@ yarn dev
 - `docs/` — Technical specifications
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
   - `product-specs/FSRS.md` — FSRS autoplay specification
+  - `product-specs/GAMES.md` — Games page product specification
+  - `product-specs/GAMES_BACKLOG.md` — Games page backlog items
   - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
 ## Backend API
