@@ -134,7 +134,6 @@ export function annotateGame(
     if (debugAnnotation) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}`);
 
     const moves: AnnotatedMove[] = [];
-    let stillInTheory = true;
     let pendingUserEvalDrop = false;
     let theoryEndPly = 0;
     let moveNumber = 1;
@@ -172,16 +171,16 @@ export function annotateGame(
         let evalDrop: EvalDrop | undefined;
         let reason: string;
 
-        if (stillInTheory && repertoireFens.has(normalizedFenAfter)) {
-            // Position after move is in repertoire → green
+        if (repertoireFens.has(normalizedFenAfter)) {
+            // Position after move is in repertoire → green (handles transpositions back)
             highlight = 'in-repertoire';
             lastInRepertoireFen = fenAfter;
             theoryEndPly = i + 1;
+            pendingUserEvalDrop = false;
             reason = 'after-FEN in repertoire';
-        } else if (stillInTheory && isUserMove && repertoireFens.has(normalizedFenBefore)) {
+        } else if (isUserMove && repertoireFens.has(normalizedFenBefore)) {
             // User deviated from repertoire (before-FEN was in repertoire, after-FEN is not)
             highlight = 'deviation';
-            stillInTheory = false;
             reason = 'before-FEN in repertoire but after-FEN is NOT → user deviated';
 
             if (!firstDeviationFen) {
@@ -206,10 +205,9 @@ export function annotateGame(
                     reason += ', no eval data for drop calc';
                 }
             }
-        } else if (stillInTheory && !isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
+        } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent deviated (opponent's move took us out of repertoire)
             highlight = 'out-of-theory';
-            stillInTheory = false;
             pendingUserEvalDrop = true;
             theoryEndPly = i;
             reason = 'opponent deviated (before-FEN in repertoire, after-FEN not)';
@@ -242,12 +240,7 @@ export function annotateGame(
             }
         } else {
             highlight = 'out-of-theory';
-            if (stillInTheory) {
-                reason = `theory ended: beforeInRep=${repertoireFens.has(normalizedFenBefore)}, afterInRep=${repertoireFens.has(normalizedFenAfter)}, isUser=${isUserMove}`;
-                stillInTheory = false;
-            } else {
-                reason = 'past theory end';
-            }
+            reason = `out of theory: beforeInRep=${repertoireFens.has(normalizedFenBefore)}, afterInRep=${repertoireFens.has(normalizedFenAfter)}, isUser=${isUserMove}`;
         }
 
         if (debugAnnotation) console.debug(
