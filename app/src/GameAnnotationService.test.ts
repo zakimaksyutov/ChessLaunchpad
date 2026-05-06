@@ -170,7 +170,7 @@ describe('annotateGame', () => {
             expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
             expect(moves[3].highlight).toBe('out-of-theory'); // d6 — opponent deviated
             expect(moves[3].isUserMove).toBe(false);
-            expect(moves[4].highlight).toBe('deviation');     // d4 — user's first response
+            expect(moves[4].highlight).toBe('end-of-theory-response');     // d4 — user's first response
             expect(moves[4].isUserMove).toBe(true);
         });
 
@@ -190,7 +190,7 @@ describe('annotateGame', () => {
             const result = annotateGame(gameData, 'user', repertoireFens, evals);
             expect(result).not.toBeNull();
             const userResponse = result!.moves[4]; // d4
-            expect(userResponse.highlight).toBe('deviation');
+            expect(userResponse.highlight).toBe('end-of-theory-response');
             expect(userResponse.evalDrop).toBeDefined();
             expect(userResponse.evalDrop!.evalDrop).toBe(40);
             expect(userResponse.evalDrop!.category).toBe('inaccuracy');
@@ -202,7 +202,7 @@ describe('annotateGame', () => {
 
             expect(result).not.toBeNull();
             const userResponse = result!.moves[4]; // d4
-            expect(userResponse.highlight).toBe('deviation');
+            expect(userResponse.highlight).toBe('end-of-theory-response');
             expect(userResponse.evalDrop).toBeUndefined();
         });
 
@@ -223,7 +223,7 @@ describe('annotateGame', () => {
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
-            expect(moves[4].highlight).toBe('deviation');     // d4 — user response
+            expect(moves[4].highlight).toBe('end-of-theory-response');     // d4 — user response
             expect(moves[5].highlight).toBe('out-of-theory'); // Nf6
             expect(moves[6].highlight).toBe('out-of-theory'); // Nc3
         });
@@ -282,7 +282,7 @@ describe('annotateGame', () => {
             expect(moves[1].highlight).toBe('in-repertoire'); // e5
             expect(moves[2].highlight).toBe('out-of-theory'); // d4 — opponent deviated
             expect(moves[2].isUserMove).toBe(false);
-            expect(moves[3].highlight).toBe('deviation');     // exd4 — user's response
+            expect(moves[3].highlight).toBe('end-of-theory-response');     // exd4 — user's response
             expect(moves[3].isUserMove).toBe(true);
         });
     });
@@ -306,7 +306,7 @@ describe('annotateGame', () => {
 
             expect(moves[0].highlight).toBe('in-repertoire'); // d4
             expect(moves[1].highlight).toBe('out-of-theory'); // e6 — opponent deviated
-            expect(moves[2].highlight).toBe('deviation');     // c4 — user response after opp deviation
+            expect(moves[2].highlight).toBe('end-of-theory-response');     // c4 — user response after opp deviation
             // d5 reaches same position as repertoire after e6 (transposition!)
             expect(moves[3].highlight).toBe('in-repertoire'); // d5 — back in theory!
             expect(moves[4].highlight).toBe('in-repertoire'); // Nc3 — still in theory
@@ -332,7 +332,7 @@ describe('annotateGame', () => {
             expect(moves[1].highlight).toBe('in-repertoire'); // c5
             expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
             expect(moves[3].highlight).toBe('out-of-theory'); // e6 — opponent deviated
-            expect(moves[4].highlight).toBe('deviation');     // d4 — user response
+            expect(moves[4].highlight).toBe('end-of-theory-response');     // d4 — user response
             expect(moves[5].highlight).toBe('out-of-theory'); // cxd4
             expect(moves[6].highlight).toBe('out-of-theory'); // Nxd4
             // Nc6 transposes back! Same position as after 4...e6 in repertoire
@@ -355,7 +355,7 @@ describe('annotateGame', () => {
 
             expect(moves[0].highlight).toBe('in-repertoire'); // d4
             expect(moves[1].highlight).toBe('out-of-theory'); // e6 — opponent deviated
-            expect(moves[2].highlight).toBe('deviation');     // c4 — user response
+            expect(moves[2].highlight).toBe('end-of-theory-response');     // c4 — user response
             expect(moves[3].highlight).toBe('in-repertoire'); // d5 — transposition back!
             expect(moves[4].highlight).toBe('in-repertoire'); // Nc3 — in theory
             expect(moves[5].highlight).toBe('in-repertoire'); // Nf6 — in theory

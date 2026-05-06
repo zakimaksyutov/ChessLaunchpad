@@ -197,6 +197,10 @@
     background-color: #c8f7c5;
 }
 
+.move-deviation-no-eval {
+    background-color: #f8d7da;
+}
+
 .move-deviation-ok {
     background-color: #fde8d0;
 }

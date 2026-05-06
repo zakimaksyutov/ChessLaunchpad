@@ -3,7 +3,7 @@ import { normalizeFenResetHalfmoveClock } from './FenUtils';
 import { ExplorerEvals } from './ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 
-export type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-theory';
+export type MoveHighlight = 'in-repertoire' | 'deviation' | 'end-of-theory-response' | 'out-of-theory';
 
 export interface AnnotatedMove {
     /** Move text, e.g. "1. d4" or "d5" */
@@ -213,7 +213,7 @@ export function annotateGame(
             reason = 'opponent deviated (before-FEN in repertoire, after-FEN not)';
         } else if (pendingUserEvalDrop && isUserMove) {
             // User's first response after opponent deviation — evaluate for eval drop
-            highlight = 'deviation';
+            highlight = 'end-of-theory-response';
             pendingUserEvalDrop = false;
             reason = 'user response after opponent deviation';
 

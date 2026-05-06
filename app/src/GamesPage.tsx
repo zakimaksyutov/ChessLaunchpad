@@ -33,6 +33,11 @@ function getMoveClassName(move: AnnotatedMove): string {
             return 'move-token move-in-repertoire';
         case 'deviation': {
             const category = move.evalDrop?.category ?? 'ok';
+            if (category === 'ok') return 'move-token move-deviation-no-eval';
+            return `move-token ${EVAL_DROP_CLASSES[category]}`;
+        }
+        case 'end-of-theory-response': {
+            const category = move.evalDrop?.category ?? 'ok';
             if (category === 'ok') return 'move-token move-out-of-theory';
             return `move-token ${EVAL_DROP_CLASSES[category]}`;
         }
