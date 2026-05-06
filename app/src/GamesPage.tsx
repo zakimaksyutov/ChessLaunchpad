@@ -73,6 +73,25 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
         });
     }, [meta.createdAt]);
 
+    // Track which move is selected (board shows that position).
+    const [selectedMoveIndex, setSelectedMoveIndex] = useState<number>(-1);
+
+    // Sync initial selection when annotation becomes available (loaded async).
+    useEffect(() => {
+        if (!annotation) return;
+        const idx = annotation.moves.findIndex(m => m.fenAfter === annotation.miniBoardFen);
+        setSelectedMoveIndex(idx);
+    }, [annotation]);
+
+    // Derive the FEN to show on the board
+    const boardFen = useMemo(() => {
+        if (!annotation) return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        if (selectedMoveIndex >= 0 && selectedMoveIndex < annotation.moves.length) {
+            return annotation.moves[selectedMoveIndex].fenAfter;
+        }
+        return annotation.miniBoardFen;
+    }, [annotation, selectedMoveIndex]);
+
     const resultLabel = meta.result.toUpperCase();
     const speedLabel = meta.speed ? meta.speed.charAt(0).toUpperCase() + meta.speed.slice(1) : '';
 
@@ -95,23 +114,13 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
         <div className="game-row">
             {/* Mini board */}
             <div className="game-mini-board">
-                {annotation ? (
-                    <ChessBoard
-                        fen={annotation.miniBoardFen}
-                        orientation={annotation.miniBoardOrientation}
-                        interactive={false}
-                        turnColor="white"
-                        legalMoves={new Map()}
-                    />
-                ) : (
-                    <ChessBoard
-                        fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-                        orientation={meta.userColor || 'white'}
-                        interactive={false}
-                        turnColor="white"
-                        legalMoves={new Map()}
-                    />
-                )}
+                <ChessBoard
+                    fen={boardFen}
+                    orientation={annotation?.miniBoardOrientation ?? meta.userColor ?? 'white'}
+                    interactive={false}
+                    turnColor="white"
+                    legalMoves={new Map()}
+                />
             </div>
 
             {/* Game info */}
@@ -147,7 +156,11 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         {annotation.moves.map((move, idx) => (
                             <span
                                 key={idx}
-                                className={getMoveClassName(move)}
+                                className={
+                                    getMoveClassName(move) +
+                                    (idx === selectedMoveIndex ? ' move-selected' : '')
+                                }
+                                onClick={() => setSelectedMoveIndex(idx)}
                             >
                                 {move.text}{' '}
                             </span>
