@@ -15,30 +15,11 @@ import {
     AnnotatedMove,
 } from './GameAnnotationService';
 import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
-import { EvalDropCategory } from './EvalDropService';
 import './GamesPage.css';
-
-const EVAL_DROP_CLASSES: Record<EvalDropCategory, string> = {
-    ok: 'move-deviation-ok',
-    inaccuracy: 'move-deviation-inaccuracy',
-    mistake: 'move-deviation-mistake',
-    blunder: 'move-deviation-blunder',
-};
 
 function getMoveClassName(move: AnnotatedMove): string {
     if (!move.isUserMove) return 'move-token move-opponent';
-
-    switch (move.highlight) {
-        case 'in-repertoire':
-            return 'move-token move-in-repertoire';
-        case 'deviation': {
-            const category = move.evalDrop?.category ?? 'ok';
-            if (category === 'ok') return 'move-token move-out-of-theory';
-            return `move-token ${EVAL_DROP_CLASSES[category]}`;
-        }
-        case 'out-of-theory':
-            return 'move-token move-out-of-theory';
-    }
+    return 'move-token move-user';
 }
 
 function formatPlayerLabel(name: string, rating: number | undefined, isUser: boolean): React.ReactNode {
@@ -72,6 +53,21 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
             day: 'numeric',
         });
     }, [meta.createdAt]);
+
+    const resultLabel = meta.result.toUpperCase();
+    const speedLabel = meta.speed ? meta.speed.charAt(0).toUpperCase() + meta.speed.slice(1) : '';
+
+    const topRightParts: string[] = [resultLabel];
+    if (meta.rated !== undefined) {
+        topRightParts.push(meta.rated ? 'Rated' : 'Casual');
+    }
+    if (speedLabel) {
+        topRightParts.push(speedLabel);
+    }
+    if (meta.timeControl) {
+        topRightParts.push(meta.timeControl);
+    }
+    topRightParts.push(dateStr);
 
     const whiteIsUser = meta.userColor === 'white';
     const blackIsUser = meta.userColor === 'black';
@@ -107,21 +103,14 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         <span className="game-vs"> vs </span>
                         {formatPlayerLabel(meta.blackName, meta.blackRating, blackIsUser)}
                     </div>
-                    <span className="game-date">
-                        {meta.timeControl && <>{meta.timeControl} | </>}
-                        {dateStr}
+                    <span className="game-meta-right">
+                        {topRightParts.join(' | ')}
                     </span>
                 </div>
 
                 <div className="game-details-row">
                     {meta.openingName && (
                         <span className="game-opening">{meta.openingName}</span>
-                    )}
-                    <span className="game-result">{meta.result}</span>
-                    {meta.rated !== undefined && (
-                        <span className={`game-rated-badge ${meta.rated ? 'rated' : 'casual'}`}>
-                            {meta.rated ? 'Rated' : 'Casual'}
-                        </span>
                     )}
                     <a
                         className="game-lichess-link"

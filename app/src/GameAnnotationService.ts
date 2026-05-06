@@ -307,6 +307,7 @@ export interface GameMetadata {
     blackRating: number | undefined;
     result: 'win' | 'draw' | 'loss';
     timeControl: string;
+    speed: string;
     rated: boolean;
     openingName: string;
     createdAt: number;
@@ -344,6 +345,9 @@ export function getGameMetadata(gameData: Record<string, unknown>, username: str
         timeControl = `${initial}+${increment}`;
     }
 
+    // Speed (game type)
+    const speed = (gameData.speed as string) || '';
+
     // Rated
     const rated = gameData.rated as boolean ?? false;
 
@@ -361,6 +365,7 @@ export function getGameMetadata(gameData: Record<string, unknown>, username: str
         blackRating: black.rating,
         result,
         timeControl,
+        speed,
         rated,
         openingName,
         createdAt,

@@ -162,31 +162,13 @@
     text-decoration: underline;
 }
 
-.game-rated-badge {
-    font-size: 0.72rem;
-    padding: 0.1rem 0.35rem;
-    border-radius: 3px;
-    font-weight: 500;
-    text-transform: uppercase;
-}
-
-.game-rated-badge.rated {
-    background: #e8f5e9;
-    color: #2e7d32;
-}
-
-.game-rated-badge.casual {
-    background: #f3f3f3;
-    color: #888;
-}
-
 .game-opening {
     color: #555;
     font-size: 0.82rem;
     font-style: italic;
 }
 
-.game-date {
+.game-meta-right {
     color: #888;
     font-size: 0.78rem;
     white-space: nowrap;
@@ -199,35 +181,15 @@
     margin-top: 0.25rem;
 }
 
-/* PGN move highlights */
+/* PGN move styles */
 .move-token {
     cursor: default;
     border-radius: 3px;
     padding: 1px 2px;
 }
 
-.move-in-repertoire {
-    background-color: #c8f7c5;
-}
-
-.move-deviation-ok {
-    background-color: #fde8d0;
-}
-
-.move-deviation-inaccuracy {
-    background-color: #fff3cd;
-}
-
-.move-deviation-mistake {
-    background-color: #f8d7da;
-}
-
-.move-deviation-blunder {
-    background-color: #e2d4f0;
-}
-
-.move-out-of-theory {
-    background-color: transparent;
+.move-user {
+    color: #333;
 }
 
 .move-opponent {
