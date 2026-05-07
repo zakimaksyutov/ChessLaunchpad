@@ -4,15 +4,6 @@ Items moved out of `GAMES.md` that are not yet implemented.
 
 ---
 
-## Chess.com Support
-
-Add `chess.com` as a second platform in account linking. Requires:
-
-- Platform selector dropdown next to the username input on Settings page.
-- `LinkedAccount.platform` union: `'lichess' | 'chess.com'`.
-- Different API: `https://api.chess.com/pub/player/{username}/games/{YYYY}/{MM}`.
-- Different game format (PGN-based) and separate download/parsing logic.
-
 ## Opponent Theory Detection
 
 For each game where the user had a theory gap (deviation or eval drop), determine whether the opponent was **more prepared**:

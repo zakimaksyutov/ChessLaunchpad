@@ -2,22 +2,28 @@
 
 ## Overview
 
-A new **Games** page that downloads recent games from linked Lichess accounts, visualizes them as an annotated list, and cross-references each game against the user's repertoire to surface theory coverage and deviation points.
+A new **Games** page that downloads recent games from linked Lichess and Chess.com accounts, visualizes them as an annotated list, and cross-references each game against the user's repertoire to surface theory coverage and deviation points.
 
 ---
 
 ## 1. Account Linking
 
-Users can **list** one or more Lichess usernames (no OAuth token required — games are fetched from the public API).
+Users can **list** one or more usernames across supported platforms (no OAuth token required — games are fetched from public APIs).
+
+Supported platforms:
+- **Lichess** — public NDJSON API
+- **Chess.com** — public archives API
 
 - Stored in `localStorage` as a JSON array under key `chesslaunchpad:linkedAccounts`.
-- Managed on the **Settings** page: a "Linked Accounts" section with a text input + "Add" button to add a Lichess username, and a list of existing accounts each with a "Remove" button.
+- Managed on the **Settings** page: a "Linked Accounts" section with a platform dropdown, text input + "Add" button, and a list of existing accounts each with a "Remove" button.
 - Removing an account also clears its sync watermark from `localStorage` and **deletes** the account's cached games from IndexedDB.
-- **Logout** clears all Games data: IndexedDB game store, linked accounts list, and all per-account sync timestamps.
+- **Logout** clears all Games data: IndexedDB game store, linked accounts list, and all per-account sync timestamps (both legacy and current key formats).
 
 ```ts
+type Platform = 'lichess' | 'chess.com';
+
 interface LinkedAccount {
-  platform: 'lichess';
+  platform: Platform;
   username: string;
 }
 // localStorage key: 'chesslaunchpad:linkedAccounts'
@@ -26,13 +32,29 @@ interface LinkedAccount {
 
 ## 2. Game Download
 
+### 2.1 Lichess
+
 | Parameter | Value |
 |-----------|-------|
 | API | `GET https://lichess.org/api/games/user/{username}` |
 | Format | NDJSON (`Accept: application/x-ndjson`) |
 | Filters | `rated=true`, `perfType=blitz,rapid`, `clocks=true`, `evals=true`, `opening=true` |
 | Batch size | Last **20** games on initial download |
-| Incremental | Track `lastSyncTimestamp` per username in `localStorage`. On subsequent downloads, pass `since={lastSyncTimestamp+1}` with `sort=dateAsc` to fetch all new games. |
+| Incremental | Track `lastSyncTimestamp` per account in `localStorage`. On subsequent downloads, pass `since={lastSyncTimestamp+1}` with `sort=dateAsc` to fetch all new games. |
+
+### 2.2 Chess.com
+
+| Parameter | Value |
+|-----------|-------|
+| Archives API | `GET https://api.chess.com/pub/player/{username}/games/archives` |
+| Monthly API | `GET https://api.chess.com/pub/player/{username}/games/{YYYY}/{MM}` |
+| Format | JSON with `games[]` array; each game includes a `pgn` field |
+| Filters | `rated=true`, `time_class` in `[blitz, rapid]`, `rules=chess` |
+| Batch size | Last **50** eligible games on initial download |
+| Incremental | Track `lastSyncTimestamp` per account. Fetch all archive months from the watermark month onward, skip games older than watermark. |
+| ID format | `chesscom_{uuid}` (prefixed to avoid collision with Lichess IDs) |
+
+### 2.3 Storage
 
 Downloaded games are stored in **IndexedDB** using the `idb` library:
 
@@ -40,7 +62,7 @@ Downloaded games are stored in **IndexedDB** using the `idb` library:
 |----------|-------|
 | DB name | `chesslaunchpad-games-db` |
 | Store | `games` |
-| Key path | `id` (Lichess game ID) |
+| Key path | `id` (platform-specific: Lichess game ID or `chesscom_` + UUID) |
 | Indexes | `createdAt`, `username` |
 
 Each stored record:
@@ -49,12 +71,22 @@ Each stored record:
 interface StoredGame {
   id: string;
   createdAt: number;
-  username: string;        // lowercase Lichess username
-  data: Record<string, unknown>;  // raw Lichess NDJSON object
+  username: string;           // lowercase username
+  platform?: Platform;        // 'lichess' | 'chess.com' (missing = 'lichess' for legacy records)
+  data: Record<string, unknown>;  // raw game object (Lichess NDJSON or Chess.com JSON)
 }
 ```
 
-Download is triggered manually via a **"Sync Games"** button on the Games page. A progress indicator shows "Downloading… N games" while the stream is active.
+### 2.4 Sync Watermarks
+
+Watermarks are stored per account as:
+```
+localStorage key: chesslaunchpad:lastSyncTimestamp:{platform}:{username}
+```
+
+Legacy Lichess keys (`chesslaunchpad:lastSyncTimestamp:{username}`) are read as fallback and migrated on next sync.
+
+Download is triggered manually via a **"Sync Games"** button on the Games page. A progress indicator shows "Downloading… N games" while the stream is active. Sync runs for all linked accounts across both platforms.
 
 Only games from currently linked accounts are displayed. Unlinking an account removes its cached games and sync watermark.
 
@@ -76,9 +108,9 @@ Each game is rendered as a single row containing:
 | **Result** | Win / Draw / Loss (from the user's perspective) |
 | **Time control** | e.g., "5+3", "10+0" |
 | **Rated** | Badge indicating rated vs casual |
-| **Opening** | Opening name from Lichess data |
+| **Opening** | Opening name (from Lichess `opening.name` or Chess.com `ECOUrl` header) |
 | **Date** | Game date |
-| **View on Lichess** | Link to the game on lichess.org, oriented to the user's color. |
+| **View on platform** | Link to the game on the originating platform, oriented to the user's color. Lichess: `https://lichess.org/{id}/{color}`. Chess.com: `https://www.chess.com/game/live/{uuid}`. |
 
 ### 3.2 PGN Annotation & Highlighting
 
