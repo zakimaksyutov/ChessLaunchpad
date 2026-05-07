@@ -8,10 +8,12 @@ import { parseChesscomTimeControl } from './ChesscomGamesService';
 export type MoveHighlight = 'in-repertoire' | 'deviation' | 'end-of-theory-response' | 'out-of-theory';
 
 export interface AnnotatedMove {
-    /** Move text, e.g. "1. d4" or "d5" */
+    /** Move text (SAN only, e.g. "d4" or "d5") */
     text: string;
     /** SAN of the move */
     san: string;
+    /** Move number (set only for white moves, e.g. 1, 2, 3…) */
+    moveNumber?: number;
     /** FEN after the move (full, for display/eval lookup) */
     fenAfter: string;
     /** FEN before the move (full) */
@@ -26,12 +28,24 @@ export interface AnnotatedMove {
     evalDrop?: EvalDrop;
 }
 
+/** Info about the first user deviation from repertoire */
+export interface DeviationInfo {
+    /** FEN of the position before the deviation (after opponent's move) */
+    fen: string;
+    /** The move the user actually played (red arrow) */
+    userMove: { from: string; to: string };
+    /** Moves from this position that stay in repertoire (green arrows) */
+    repertoireMoves: { from: string; to: string }[];
+}
+
 export interface GameAnnotation {
     moves: AnnotatedMove[];
     /** FEN for the mini board display */
     miniBoardFen: string;
     /** Orientation for the mini board */
     miniBoardOrientation: 'white' | 'black';
+    /** Deviation details for arrow display on the mini board */
+    deviation?: DeviationInfo;
 }
 
 /**
@@ -228,6 +242,7 @@ export function annotateGame(
     let firstDeviationFen: string | null = null;
     let firstEvalDropFen: string | null = null;
     let lastInRepertoireFen: string | null = null;
+    let deviation: DeviationInfo | undefined;
 
     for (let i = 0; i < allMoves.length; i++) {
         const isWhiteMove = i % 2 === 0;
@@ -243,12 +258,10 @@ export function annotateGame(
         const fenAfter = temp.fen();
         const normalizedFenAfter = normalizeFenResetHalfmoveClock(fenAfter);
 
-        // Build move text
-        let text: string;
-        if (isWhiteMove) {
-            text = `${moveNumber}.\u00a0${allMoves[i].san}`;
-        } else {
-            text = allMoves[i].san;
+        // Build move text (SAN only; move number stored separately)
+        const text = allMoves[i].san;
+        const currentMoveNumber = isWhiteMove ? moveNumber : undefined;
+        if (!isWhiteMove) {
             moveNumber++;
         }
 
@@ -271,6 +284,23 @@ export function annotateGame(
 
             if (!firstDeviationFen) {
                 firstDeviationFen = fenAfter;
+
+                // Compute deviation info: find repertoire moves from this position
+                const deviationChess = new Chess(fenBefore);
+                const legalMoves = deviationChess.moves({ verbose: true });
+                const repertoireMoves: { from: string; to: string }[] = [];
+                for (const lm of legalMoves) {
+                    const probe = new Chess(fenBefore);
+                    probe.move(lm);
+                    if (repertoireFens.has(normalizeFenResetHalfmoveClock(probe.fen()))) {
+                        repertoireMoves.push({ from: lm.from, to: lm.to });
+                    }
+                }
+                deviation = {
+                    fen: fenBefore,
+                    userMove: { from: allMoves[i].from, to: allMoves[i].to },
+                    repertoireMoves,
+                };
             }
 
             // Compute eval drop for the deviation
@@ -336,6 +366,7 @@ export function annotateGame(
         moves.push({
             text,
             san: allMoves[i].san,
+            moveNumber: currentMoveNumber,
             fenAfter,
             fenBefore,
             isWhiteMove,
@@ -352,8 +383,11 @@ export function annotateGame(
     if (debugAnnotation) console.groupEnd();
 
     // Determine mini board position (spec §3.3)
+    // For user deviations, show the position BEFORE the deviation (with arrows)
     let miniBoardFen: string;
-    if (firstDeviationFen) {
+    if (deviation) {
+        miniBoardFen = deviation.fen;
+    } else if (firstDeviationFen) {
         miniBoardFen = firstDeviationFen;
     } else if (firstEvalDropFen) {
         miniBoardFen = firstEvalDropFen;
@@ -367,6 +401,7 @@ export function annotateGame(
         moves,
         miniBoardFen,
         miniBoardOrientation: userColor,
+        deviation,
     };
 }
 
