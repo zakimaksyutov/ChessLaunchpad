@@ -19,11 +19,11 @@ import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
 import { EvalDropCategory } from './EvalDropService';
 import './GamesPage.css';
 
-const EVAL_DROP_CLASSES: Record<EvalDropCategory, string> = {
-    ok: 'move-deviation-ok',
-    inaccuracy: 'move-deviation-inaccuracy',
-    mistake: 'move-deviation-mistake',
-    blunder: 'move-deviation-blunder',
+const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
+    ok: 'move-out-of-theory',
+    inaccuracy: 'move-eot-inaccuracy',
+    mistake: 'move-eot-mistake',
+    blunder: 'move-eot-blunder',
 };
 
 function getMoveClassName(move: AnnotatedMove): string {
@@ -32,15 +32,11 @@ function getMoveClassName(move: AnnotatedMove): string {
     switch (move.highlight) {
         case 'in-repertoire':
             return 'move-token move-in-repertoire';
-        case 'deviation': {
-            const category = move.evalDrop?.category ?? 'ok';
-            if (category === 'ok') return 'move-token move-deviation-no-eval';
-            return `move-token ${EVAL_DROP_CLASSES[category]}`;
-        }
+        case 'deviation':
+            return 'move-token move-deviation';
         case 'end-of-theory-response': {
             const category = move.evalDrop?.category ?? 'ok';
-            if (category === 'ok') return 'move-token move-out-of-theory';
-            return `move-token ${EVAL_DROP_CLASSES[category]}`;
+            return `move-token ${END_OF_THEORY_CLASSES[category]}`;
         }
         case 'out-of-theory':
             return 'move-token move-out-of-theory';

@@ -197,23 +197,20 @@
     background-color: #c8f7c5;
 }
 
-.move-deviation-no-eval {
-    background-color: #f8d7da;
+.move-deviation {
+    border-bottom: 2px solid #9b59b6;
+    font-weight: 600;
 }
 
-.move-deviation-ok {
-    background-color: #fde8d0;
-}
-
-.move-deviation-inaccuracy {
+.move-eot-inaccuracy {
     background-color: #fff3cd;
 }
 
-.move-deviation-mistake {
+.move-eot-mistake {
     background-color: #f8d7da;
 }
 
-.move-deviation-blunder {
+.move-eot-blunder {
     background-color: #e2d4f0;
 }
 
@@ -222,7 +219,7 @@
 }
 
 .move-opponent {
-    color: #666;
+    color: #999;
 }
 
 /* Mobile responsive */
