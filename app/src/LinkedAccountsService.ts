@@ -1,40 +1,59 @@
 const STORAGE_KEY = 'chesslaunchpad:linkedAccounts';
 
-import { deleteGamesForUser } from './GamesDB';
+import { deleteGamesForAccount } from './GamesDB';
+
+export type Platform = 'lichess' | 'chess.com';
 
 export interface LinkedAccount {
-    platform: 'lichess';
+    platform: Platform;
     username: string;
+}
+
+export function getAccountKey(platform: Platform, username: string): string {
+    return `${platform}:${username.toLowerCase()}`;
+}
+
+export function getSyncTimestampKey(platform: Platform, username: string): string {
+    return `chesslaunchpad:lastSyncTimestamp:${platform}:${username.toLowerCase()}`;
 }
 
 export function getLinkedAccounts(): LinkedAccount[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     try {
-        return JSON.parse(raw) as LinkedAccount[];
+        const accounts = JSON.parse(raw) as LinkedAccount[];
+        // Migrate old records without platform field
+        return accounts.map(a => ({
+            ...a,
+            platform: a.platform || 'lichess',
+        }));
     } catch {
         return [];
     }
 }
 
-export function addLinkedAccount(username: string): LinkedAccount[] {
+export function addLinkedAccount(username: string, platform: Platform): LinkedAccount[] {
     const accounts = getLinkedAccounts();
     const normalized = username.trim().toLowerCase();
     if (!normalized) return accounts;
-    if (accounts.some(a => a.username === normalized)) return accounts;
-    const updated = [...accounts, { platform: 'lichess' as const, username: normalized }];
+    if (accounts.some(a => a.platform === platform && a.username === normalized)) return accounts;
+    const updated = [...accounts, { platform, username: normalized }];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     return updated;
 }
 
-export function removeLinkedAccount(username: string): LinkedAccount[] {
+export function removeLinkedAccount(username: string, platform: Platform): LinkedAccount[] {
     const accounts = getLinkedAccounts();
     const normalized = username.toLowerCase();
-    const updated = accounts.filter(a => a.username !== normalized);
+    const updated = accounts.filter(a => !(a.platform === platform && a.username === normalized));
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    // Clean up sync watermark for the removed account
-    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${normalized}`);
+    // Clean up sync watermark (new key format)
+    localStorage.removeItem(getSyncTimestampKey(platform, normalized));
+    // Also clean up legacy Lichess key format
+    if (platform === 'lichess') {
+        localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${normalized}`);
+    }
     // Remove cached games for this account from IndexedDB
-    deleteGamesForUser(normalized).catch(() => { /* best-effort cleanup */ });
+    deleteGamesForAccount(platform, normalized).catch(() => { /* best-effort cleanup */ });
     return updated;
 }

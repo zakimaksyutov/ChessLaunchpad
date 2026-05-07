@@ -5,6 +5,7 @@ import { createDataAccessLayer } from './DataAccessLayer';
 import { getLinkedAccounts, LinkedAccount } from './LinkedAccountsService';
 import { getAllGames, StoredGame } from './GamesDB';
 import { syncGamesForUser, SyncProgress } from './LichessGamesService';
+import { syncChesscomGamesForUser } from './ChesscomGamesService';
 import { buildRepertoireFenSets, RepertoireFenSets } from './RepertoireFenSet';
 import {
     annotateGame,
@@ -64,9 +65,10 @@ interface GameRowProps {
 }
 
 const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
+    const platform = game.platform ?? 'lichess';
     const meta: GameMetadata = useMemo(
-        () => getGameMetadata(game.data, username),
-        [game.data, username]
+        () => getGameMetadata(game.data, username, platform),
+        [game.data, username, platform]
     );
 
     const dateStr = useMemo(() => {
@@ -147,11 +149,11 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                     )}
                     <a
                         className="game-lichess-link"
-                        href={`https://lichess.org/${game.id}${meta.userColor === 'black' ? '/black' : ''}`}
+                        href={meta.gameUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                     >
-                        ♞ View on Lichess
+                        {platform === 'chess.com' ? '♔ View on Chess.com' : '♞ View on Lichess'}
                     </a>
                 </div>
 
@@ -248,13 +250,15 @@ const GamesPage: React.FC = () => {
     // Filter games to only show those from currently linked accounts,
     // and skip games where the user can't be identified as a player.
     const linkedUsernames = useMemo(
-        () => new Set(linkedAccounts.map(a => a.username)),
+        () => new Set(linkedAccounts.map(a => `${a.platform}:${a.username}`)),
         [linkedAccounts]
     );
     const filteredGames = useMemo(
         () => games.filter(g => {
-            if (!linkedUsernames.has(g.username)) return false;
-            if (!getUserColor(g.data, g.username)) {
+            const gamePlatform = g.platform ?? 'lichess';
+            const accountKey = `${gamePlatform}:${g.username}`;
+            if (!linkedUsernames.has(accountKey)) return false;
+            if (!getUserColor(g.data, g.username, gamePlatform)) {
                 console.warn(
                     `[GamesPage] Skipping game ${g.id}: user "${g.username}" not found as either player`
                 );
@@ -270,7 +274,8 @@ const GamesPage: React.FC = () => {
         if (!fenSets) return new Map<string, GameAnnotation | null>();
         const map = new Map<string, GameAnnotation | null>();
         for (const game of filteredGames) {
-            const userColor = getUserColor(game.data, game.username);
+            const gamePlatform = game.platform ?? 'lichess';
+            const userColor = getUserColor(game.data, game.username, gamePlatform);
 
             const repertoireFens = userColor === 'white' ? fenSets.whiteFens
                 : userColor === 'black' ? fenSets.blackFens
@@ -278,7 +283,7 @@ const GamesPage: React.FC = () => {
 
             map.set(
                 game.id,
-                annotateGame(game.data, game.username, repertoireFens, explorerEvals)
+                annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform)
             );
         }
         return map;
@@ -288,7 +293,7 @@ const GamesPage: React.FC = () => {
         if (syncing) return;
         const accounts = getLinkedAccounts();
         if (accounts.length === 0) {
-            setError('No linked accounts. Add a Lichess username in Settings first.');
+            setError('No linked accounts. Add an account in Settings first.');
             return;
         }
 
@@ -305,13 +310,20 @@ const GamesPage: React.FC = () => {
             const failures: string[] = [];
             for (const account of accounts) {
                 try {
-                    const count = await syncGamesForUser(account.username, (progress) => {
-                        setSyncProgress(progress);
-                    });
+                    let count: number;
+                    if (account.platform === 'chess.com') {
+                        count = await syncChesscomGamesForUser(account.username, (progress) => {
+                            setSyncProgress(progress);
+                        });
+                    } else {
+                        count = await syncGamesForUser(account.username, (progress) => {
+                            setSyncProgress(progress);
+                        });
+                    }
                     totalGames += count;
                 } catch (err: unknown) {
                     const msg = err instanceof Error ? err.message : String(err);
-                    failures.push(`${account.username}: ${msg}`);
+                    failures.push(`${account.username} (${account.platform}): ${msg}`);
                 }
             }
 
@@ -363,7 +375,7 @@ const GamesPage: React.FC = () => {
                     <p>No games downloaded yet.</p>
                     {linkedAccounts.length === 0 ? (
                         <p className="no-accounts-hint">
-                            <Link to="/settings">Add a Lichess account</Link> in Settings first, then click Sync Games.
+                            <Link to="/settings">Add an account</Link> in Settings first, then click Sync Games.
                         </p>
                     ) : (
                         <p className="no-accounts-hint">

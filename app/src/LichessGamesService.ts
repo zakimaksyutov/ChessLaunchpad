@@ -1,15 +1,27 @@
 import { StoredGame, storeGames } from './GamesDB';
+import { getSyncTimestampKey } from './LinkedAccountsService';
 
-const SYNC_TIMESTAMP_PREFIX = 'chesslaunchpad:lastSyncTimestamp:';
+const LEGACY_SYNC_TIMESTAMP_PREFIX = 'chesslaunchpad:lastSyncTimestamp:';
 const BATCH_SIZE = 20;
 
 function getLastSyncTimestamp(username: string): number | null {
-    const raw = localStorage.getItem(SYNC_TIMESTAMP_PREFIX + username);
-    return raw ? parseInt(raw, 10) : null;
+    // Try new key format first
+    const newKey = getSyncTimestampKey('lichess', username);
+    const newRaw = localStorage.getItem(newKey);
+    if (newRaw) return parseInt(newRaw, 10);
+    // Fall back to legacy key
+    const legacyRaw = localStorage.getItem(LEGACY_SYNC_TIMESTAMP_PREFIX + username);
+    return legacyRaw ? parseInt(legacyRaw, 10) : null;
 }
 
 function setLastSyncTimestamp(username: string, timestamp: number): void {
-    localStorage.setItem(SYNC_TIMESTAMP_PREFIX + username, timestamp.toString());
+    const newKey = getSyncTimestampKey('lichess', username);
+    localStorage.setItem(newKey, timestamp.toString());
+    // Remove legacy key if present
+    const legacyKey = LEGACY_SYNC_TIMESTAMP_PREFIX + username;
+    if (localStorage.getItem(legacyKey)) {
+        localStorage.removeItem(legacyKey);
+    }
 }
 
 export interface SyncProgress {
@@ -92,6 +104,7 @@ export async function syncGamesForUser(
                         id: gameId,
                         createdAt,
                         username: username.toLowerCase(),
+                        platform: 'lichess',
                         data: gameData,
                     });
 
@@ -121,6 +134,7 @@ export async function syncGamesForUser(
                     id: gameId,
                     createdAt,
                     username: username.toLowerCase(),
+                    platform: 'lichess',
                     data: gameData,
                 });
 

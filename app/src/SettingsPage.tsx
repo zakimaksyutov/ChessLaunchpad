@@ -9,6 +9,7 @@ import {
     addLinkedAccount,
     removeLinkedAccount,
     LinkedAccount,
+    Platform,
 } from './LinkedAccountsService';
 import './SettingsPage.css';
 
@@ -27,6 +28,7 @@ const SettingsPage: React.FC = () => {
     const [lichessLoading, setLichessLoading] = useState(false);
     const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
     const [newAccountUsername, setNewAccountUsername] = useState('');
+    const [newAccountPlatform, setNewAccountPlatform] = useState<Platform>('lichess');
 
     const { connected, login, logout } = useLichessAuth();
     const navigate = useNavigate();
@@ -155,13 +157,13 @@ const SettingsPage: React.FC = () => {
     const handleAddAccount = () => {
         const trimmed = newAccountUsername.trim();
         if (!trimmed) return;
-        const updated = addLinkedAccount(trimmed);
+        const updated = addLinkedAccount(trimmed, newAccountPlatform);
         setLinkedAccounts(updated);
         setNewAccountUsername('');
     };
 
-    const handleRemoveAccount = (username: string) => {
-        const updated = removeLinkedAccount(username);
+    const handleRemoveAccount = (username: string, platform: Platform) => {
+        const updated = removeLinkedAccount(username, platform);
         setLinkedAccounts(updated);
     };
 
@@ -301,15 +303,24 @@ const SettingsPage: React.FC = () => {
             <div className="settings-card linked-accounts-section">
                 <h1>Linked Accounts</h1>
                 <p className="settings-description">
-                    Add Lichess usernames to download and analyze your games on the Games page.
+                    Add Lichess or Chess.com usernames to download and analyze your games on the Games page.
                 </p>
 
                 <div className="linked-accounts-add">
+                    <select
+                        className="linked-accounts-platform-select"
+                        value={newAccountPlatform}
+                        onChange={(e) => setNewAccountPlatform(e.target.value as Platform)}
+                        aria-label="Platform"
+                    >
+                        <option value="lichess">Lichess</option>
+                        <option value="chess.com">Chess.com</option>
+                    </select>
                     <input
                         type="text"
                         className="linked-accounts-input"
-                        placeholder="Lichess username"
-                        aria-label="Lichess username"
+                        placeholder={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
+                        aria-label={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
                         value={newAccountUsername}
                         onChange={(e) => setNewAccountUsername(e.target.value)}
                         onKeyDown={handleAccountKeyDown}
@@ -327,13 +338,20 @@ const SettingsPage: React.FC = () => {
                 {linkedAccounts.length > 0 && (
                     <ul className="linked-accounts-list">
                         {linkedAccounts.map((account) => (
-                            <li key={account.username} className="linked-account-item">
-                                <span className="linked-account-platform">♞</span>
-                                <span className="linked-account-name">{account.username}</span>
+                            <li key={`${account.platform}:${account.username}`} className="linked-account-item">
+                                <span className="linked-account-platform">
+                                    {account.platform === 'chess.com' ? '♔' : '♞'}
+                                </span>
+                                <span className="linked-account-name">
+                                    {account.username}
+                                    <span className="linked-account-platform-label">
+                                        {account.platform === 'chess.com' ? ' (Chess.com)' : ' (Lichess)'}
+                                    </span>
+                                </span>
                                 <button
                                     className="linked-account-remove"
                                     type="button"
-                                    onClick={() => handleRemoveAccount(account.username)}
+                                    onClick={() => handleRemoveAccount(account.username, account.platform)}
                                     aria-label={`Remove ${account.username}`}
                                     title="Remove account"
                                 >

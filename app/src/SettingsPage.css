@@ -131,6 +131,21 @@
   margin-bottom: 1rem;
 }
 
+.linked-accounts-platform-select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #b7c2d0;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: #fff;
+  cursor: pointer;
+}
+
+.linked-accounts-platform-select:focus {
+  outline: none;
+  border-color: rgb(0, 130, 210);
+  box-shadow: 0 0 0 2px rgba(0, 130, 210, 0.15);
+}
+
 .linked-accounts-input {
   flex: 1;
   padding: 0.5rem 0.75rem;
@@ -190,6 +205,12 @@
 .linked-account-name {
   flex: 1;
   font-size: 0.95rem;
+}
+
+.linked-account-platform-label {
+  color: #888;
+  font-size: 0.8rem;
+  margin-left: 0.25rem;
 }
 
 .linked-account-remove {

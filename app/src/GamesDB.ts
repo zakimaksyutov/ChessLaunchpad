@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
+import type { Platform } from './LinkedAccountsService';
 
 const DB_NAME = 'chesslaunchpad-games-db';
 const DB_VERSION = 1;
@@ -8,6 +9,7 @@ export interface StoredGame {
     id: string;
     createdAt: number;
     username: string;
+    platform?: Platform;
     data: Record<string, unknown>;
 }
 
@@ -18,10 +20,10 @@ function getDB(): Promise<IDBPDatabase> {
         dbPromise = openDB(DB_NAME, DB_VERSION, {
             upgrade(db) {
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    // NOTE: Games are keyed solely by Lichess game ID. If two linked accounts
-                    // played each other, the later sync overwrites the earlier entry. This is
-                    // an accepted trade-off for storage simplicity; the affected scenario
-                    // (user links both sides of the same game) is extremely rare.
+                    // Games are keyed by a platform-specific ID: Lichess game ID for Lichess,
+                    // "chesscom_" + UUID for Chess.com. Collisions across platforms are avoided
+                    // by the prefix. If two linked accounts played each other, the later sync
+                    // overwrites the earlier entry (accepted trade-off for storage simplicity).
                     const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
                     store.createIndex('createdAt', 'createdAt');
                     store.createIndex('username', 'username');
@@ -70,6 +72,21 @@ export async function deleteGamesForUser(username: string): Promise<void> {
     let cursor = await index.openCursor(username);
     while (cursor) {
         await cursor.delete();
+        cursor = await cursor.continue();
+    }
+    await tx.done;
+}
+
+export async function deleteGamesForAccount(platform: Platform, username: string): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const index = tx.store.index('username');
+    let cursor = await index.openCursor(username);
+    while (cursor) {
+        const gamePlatform = (cursor.value as StoredGame).platform ?? 'lichess';
+        if (gamePlatform === platform) {
+            await cursor.delete();
+        }
         cursor = await cursor.continue();
     }
     await tx.done;

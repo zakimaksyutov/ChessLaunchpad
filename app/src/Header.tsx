@@ -53,8 +53,12 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         const linkedRaw = localStorage.getItem('chesslaunchpad:linkedAccounts');
         if (linkedRaw) {
             try {
-                const accounts = JSON.parse(linkedRaw) as { username: string }[];
+                const accounts = JSON.parse(linkedRaw) as { platform?: string; username: string }[];
                 for (const a of accounts) {
+                    const platform = a.platform || 'lichess';
+                    // Remove new-format watermark
+                    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${platform}:${a.username}`);
+                    // Remove legacy-format watermark
                     localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${a.username}`);
                 }
             } catch { /* ignore malformed */ }

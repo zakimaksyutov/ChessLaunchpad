@@ -2,6 +2,8 @@ import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
 import { ExplorerEvals } from './ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
+import type { Platform } from './LinkedAccountsService';
+import { parseChesscomTimeControl } from './ChesscomGamesService';
 
 export type MoveHighlight = 'in-repertoire' | 'deviation' | 'end-of-theory-response' | 'out-of-theory';
 
@@ -34,9 +36,36 @@ export interface GameAnnotation {
 
 /**
  * Determine which color the user played in a game.
- * Lichess NDJSON has players.white.user.id and players.black.user.id.
+ * Supports both Lichess NDJSON format and Chess.com format.
  */
 export function getUserColor(
+    gameData: Record<string, unknown>,
+    username: string,
+    platform?: Platform
+): 'white' | 'black' | null {
+    const effectivePlatform = platform ?? detectPlatform(gameData);
+
+    if (effectivePlatform === 'chess.com') {
+        return getUserColorChesscom(gameData, username);
+    }
+
+    return getUserColorLichess(gameData, username);
+}
+
+/**
+ * Detect platform from game data structure.
+ */
+function detectPlatform(gameData: Record<string, unknown>): Platform {
+    // Chess.com games have a 'uuid' field and white/black as direct objects with 'username'
+    if ('uuid' in gameData || 'time_class' in gameData) return 'chess.com';
+    return 'lichess';
+}
+
+/**
+ * Get user color from Lichess NDJSON format.
+ * Lichess has players.white.user.id and players.black.user.id.
+ */
+function getUserColorLichess(
     gameData: Record<string, unknown>,
     username: string
 ): 'white' | 'black' | null {
@@ -67,6 +96,27 @@ export function getUserColor(
 }
 
 /**
+ * Get user color from Chess.com format.
+ * Chess.com has white.username and black.username at the top level.
+ */
+function getUserColorChesscom(
+    gameData: Record<string, unknown>,
+    username: string
+): 'white' | 'black' | null {
+    const white = gameData.white as Record<string, unknown> | undefined;
+    const black = gameData.black as Record<string, unknown> | undefined;
+    const normalizedUsername = username.toLowerCase();
+
+    const whiteUsername = ((white?.username as string) || '').toLowerCase();
+    const blackUsername = ((black?.username as string) || '').toLowerCase();
+
+    if (whiteUsername === normalizedUsername) return 'white';
+    if (blackUsername === normalizedUsername) return 'black';
+
+    return null;
+}
+
+/**
  * Parse the game's moves from the Lichess NDJSON `moves` field (space-separated SAN).
  * Returns the PGN string.
  */
@@ -89,6 +139,40 @@ function buildPgnFromLichessData(gameData: Record<string, unknown>): string | nu
 }
 
 /**
+ * Parse PGN from Chess.com game data.
+ * Chess.com provides a full PGN string with headers.
+ */
+function buildPgnFromChesscomData(gameData: Record<string, unknown>): string | null {
+    const pgn = gameData.pgn as string | undefined;
+    if (!pgn || typeof pgn !== 'string') return null;
+
+    const chess = new Chess();
+    try {
+        chess.loadPgn(pgn);
+    } catch {
+        // Try stripping comments (Chess.com PGNs often have clock annotations)
+        try {
+            const cleaned = pgn.replace(/\{[^}]*\}/g, '').replace(/\s+/g, ' ');
+            chess.loadPgn(cleaned);
+        } catch {
+            return null;
+        }
+    }
+
+    return chess.pgn();
+}
+
+/**
+ * Build PGN from game data, dispatching based on platform.
+ */
+function buildPgn(gameData: Record<string, unknown>, platform: Platform): string | null {
+    if (platform === 'chess.com') {
+        return buildPgnFromChesscomData(gameData);
+    }
+    return buildPgnFromLichessData(gameData);
+}
+
+/**
  * Annotate a game's moves against the user's repertoire FEN set.
  *
  * @param gameData Raw Lichess NDJSON object
@@ -104,16 +188,18 @@ export function annotateGame(
     username: string,
     repertoireFens: Set<string>,
     evals: ExplorerEvals | null,
-    maxPlies: number = 30
+    maxPlies: number = 30,
+    platform?: Platform
 ): GameAnnotation | null {
     const gameId = gameData.id as string | undefined;
-    const userColor = getUserColor(gameData, username);
+    const effectivePlatform = platform ?? detectPlatform(gameData);
+    const userColor = getUserColor(gameData, username, effectivePlatform);
     if (!userColor) {
         if (debugAnnotation) console.debug(`[annotate ${gameId}] No user color found for ${username}`);
         return null;
     }
 
-    const pgn = buildPgnFromLichessData(gameData);
+    const pgn = buildPgn(gameData, effectivePlatform);
     if (!pgn) {
         if (debugAnnotation) console.debug(`[annotate ${gameId}] Could not build PGN`);
         return null;
@@ -300,6 +386,16 @@ function getPlayerInfo(
     return { name, rating };
 }
 
+function getPlayerInfoChesscom(
+    gameData: Record<string, unknown>,
+    side: 'white' | 'black'
+): PlayerInfo {
+    const sideData = (gameData[side] as Record<string, unknown>) ?? {};
+    const name = (sideData.username as string) || 'Unknown';
+    const rating = sideData.rating as number | undefined;
+    return { name, rating };
+}
+
 export interface GameMetadata {
     whiteName: string;
     whiteRating: number | undefined;
@@ -312,13 +408,40 @@ export interface GameMetadata {
     openingName: string;
     createdAt: number;
     userColor: 'white' | 'black' | null;
+    /** URL to view the game on its platform */
+    gameUrl: string;
+    platform: Platform;
 }
 
+const CHESSCOM_DRAW_RESULTS = new Set([
+    'agreed',
+    'repetition',
+    'stalemate',
+    'insufficient',
+    '50move',
+    'timevsinsufficient',
+    'drawn',
+]);
+
 /**
- * Extract game metadata for display.
+ * Extract game metadata for display. Handles both Lichess and Chess.com formats.
  */
-export function getGameMetadata(gameData: Record<string, unknown>, username: string): GameMetadata {
-    const userColor = getUserColor(gameData, username);
+export function getGameMetadata(
+    gameData: Record<string, unknown>,
+    username: string,
+    platform?: Platform
+): GameMetadata {
+    const effectivePlatform = platform ?? detectPlatform(gameData);
+
+    if (effectivePlatform === 'chess.com') {
+        return getGameMetadataChesscom(gameData, username);
+    }
+
+    return getGameMetadataLichess(gameData, username);
+}
+
+function getGameMetadataLichess(gameData: Record<string, unknown>, username: string): GameMetadata {
+    const userColor = getUserColorLichess(gameData, username);
     const players = gameData.players as Record<string, unknown> | undefined;
 
     const white = getPlayerInfo(players, 'white');
@@ -358,6 +481,10 @@ export function getGameMetadata(gameData: Record<string, unknown>, username: str
     // Date
     const createdAt = gameData.createdAt as number;
 
+    // Game URL
+    const gameId = gameData.id as string || '';
+    const gameUrl = `https://lichess.org/${gameId}${userColor === 'black' ? '/black' : ''}`;
+
     return {
         whiteName: white.name,
         whiteRating: white.rating,
@@ -370,5 +497,78 @@ export function getGameMetadata(gameData: Record<string, unknown>, username: str
         openingName,
         createdAt,
         userColor,
+        gameUrl,
+        platform: 'lichess',
+    };
+}
+
+function getGameMetadataChesscom(gameData: Record<string, unknown>, username: string): GameMetadata {
+    const userColor = getUserColorChesscom(gameData, username);
+
+    const white = getPlayerInfoChesscom(gameData, 'white');
+    const black = getPlayerInfoChesscom(gameData, 'black');
+
+    // Result from user's perspective
+    let result: 'win' | 'draw' | 'loss';
+    if (userColor) {
+        const opponentColor = userColor === 'white' ? 'black' : 'white';
+        const userSide = gameData[userColor] as Record<string, unknown> | undefined;
+        const opponentSide = gameData[opponentColor] as Record<string, unknown> | undefined;
+        const userResult = (userSide?.result as string) || '';
+        const opponentResult = (opponentSide?.result as string) || '';
+
+        if (userResult === 'win') {
+            result = 'win';
+        } else if (opponentResult === 'win') {
+            result = 'loss';
+        } else if (CHESSCOM_DRAW_RESULTS.has(userResult) || CHESSCOM_DRAW_RESULTS.has(opponentResult)) {
+            result = 'draw';
+        } else {
+            result = 'loss';
+        }
+    } else {
+        result = 'draw'; // Fallback when user color can't be determined
+    }
+
+    // Time control
+    const timeControl = parseChesscomTimeControl((gameData.time_control as string) || '');
+
+    // Speed (time class)
+    const speed = (gameData.time_class as string) || '';
+
+    // Rated
+    const rated = gameData.rated as boolean ?? false;
+
+    // Opening - Chess.com doesn't provide opening in the game object,
+    // but the PGN headers may have it
+    let openingName = '';
+    const pgn = gameData.pgn as string | undefined;
+    if (pgn) {
+        const openingMatch = pgn.match(/\[ECOUrl "[^"]*\/([^"]+)"\]/);
+        if (openingMatch) {
+            openingName = openingMatch[1].replace(/-/g, ' ');
+        }
+    }
+
+    // Date
+    const createdAt = (gameData.end_time as number) * 1000;
+
+    // Game URL
+    const gameUrl = (gameData.url as string) || '';
+
+    return {
+        whiteName: white.name,
+        whiteRating: white.rating,
+        blackName: black.name,
+        blackRating: black.rating,
+        result,
+        timeControl,
+        speed,
+        rated,
+        openingName,
+        createdAt,
+        userColor,
+        gameUrl,
+        platform: 'chess.com',
     };
 }
