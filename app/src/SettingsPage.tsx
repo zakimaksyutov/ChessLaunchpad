@@ -10,7 +10,9 @@ import {
     removeLinkedAccount,
     LinkedAccount,
     Platform,
+    getSyncTimestampKey,
 } from './LinkedAccountsService';
+import { clearGames } from './GamesDB';
 import './SettingsPage.css';
 
 interface CoefficientValues {
@@ -29,6 +31,8 @@ const SettingsPage: React.FC = () => {
     const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
     const [newAccountUsername, setNewAccountUsername] = useState('');
     const [newAccountPlatform, setNewAccountPlatform] = useState<Platform>('lichess');
+    const [clearingCache, setClearingCache] = useState(false);
+    const [cacheCleared, setCacheCleared] = useState(false);
 
     const { connected, login, logout } = useLichessAuth();
     const navigate = useNavigate();
@@ -170,6 +174,24 @@ const SettingsPage: React.FC = () => {
     const handleAccountKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
             handleAddAccount();
+        }
+    };
+
+    const handleClearCache = async () => {
+        setClearingCache(true);
+        setCacheCleared(false);
+        try {
+            await clearGames();
+            // Clear sync timestamps so next sync does a fresh initial fetch
+            for (const account of linkedAccounts) {
+                localStorage.removeItem(getSyncTimestampKey(account.platform, account.username));
+            }
+            setCacheCleared(true);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to clear cache: ${msg}`);
+        } finally {
+            setClearingCache(false);
         }
     };
 
@@ -360,6 +382,26 @@ const SettingsPage: React.FC = () => {
                             </li>
                         ))}
                     </ul>
+                )}
+
+                {linkedAccounts.length > 0 && (
+                    <div className="cache-section">
+                        {cacheCleared && (
+                            <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
+                        )}
+                        <div className="cache-info">
+                            <button
+                                className="secondary"
+                                onClick={handleClearCache}
+                                disabled={clearingCache}
+                            >
+                                {clearingCache ? 'Clearing…' : 'Clear Cache'}
+                            </button>
+                            <span className="cache-count">
+                                Remove all downloaded games and sync timestamps.
+                            </span>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

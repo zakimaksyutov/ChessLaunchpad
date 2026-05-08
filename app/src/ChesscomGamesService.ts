@@ -2,7 +2,7 @@ import { StoredGame, storeGames } from './GamesDB';
 import { getSyncTimestampKey } from './LinkedAccountsService';
 import { SyncProgress } from './LichessGamesService';
 
-const BATCH_SIZE = 50; // Max games to store on initial sync
+const BATCH_SIZE = 100; // Max games to store on initial sync
 
 function getLastSyncTimestamp(username: string): number | null {
     const key = getSyncTimestampKey('chess.com', username);

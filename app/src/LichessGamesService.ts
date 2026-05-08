@@ -2,7 +2,7 @@ import { StoredGame, storeGames } from './GamesDB';
 import { getSyncTimestampKey } from './LinkedAccountsService';
 
 const LEGACY_SYNC_TIMESTAMP_PREFIX = 'chesslaunchpad:lastSyncTimestamp:';
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 100;
 
 function getLastSyncTimestamp(username: string): number | null {
     // Try new key format first

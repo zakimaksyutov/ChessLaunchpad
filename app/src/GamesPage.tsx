@@ -309,6 +309,7 @@ const GamesPage: React.FC = () => {
         () => new Set(linkedAccounts.map(a => `${a.platform}:${a.username}`)),
         [linkedAccounts]
     );
+    const MAX_DISPLAY_GAMES = 100;
     const filteredGames = useMemo(
         () => games.filter(g => {
             const gamePlatform = g.platform ?? 'lichess';
@@ -321,7 +322,7 @@ const GamesPage: React.FC = () => {
                 return false;
             }
             return true;
-        }),
+        }).slice(0, MAX_DISPLAY_GAMES),
         [games, linkedUsernames]
     );
 
