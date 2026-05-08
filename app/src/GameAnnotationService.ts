@@ -33,9 +33,9 @@ export interface DeviationInfo {
     /** FEN of the position before the deviation (after opponent's move) */
     fen: string;
     /** The move the user actually played (red arrow) */
-    userMove: { from: string; to: string };
+    userMove: { from: string; to: string; san: string };
     /** Moves from this position that stay in repertoire (green arrows) */
-    repertoireMoves: { from: string; to: string }[];
+    repertoireMoves: { from: string; to: string; san: string }[];
 }
 
 export interface GameAnnotation {
@@ -286,17 +286,17 @@ export function annotateGame(
                 // Compute deviation info: find repertoire moves from this position
                 const deviationChess = new Chess(fenBefore);
                 const legalMoves = deviationChess.moves({ verbose: true });
-                const repertoireMoves: { from: string; to: string }[] = [];
+                const repertoireMoves: { from: string; to: string; san: string }[] = [];
                 for (const lm of legalMoves) {
                     const probe = new Chess(fenBefore);
                     probe.move(lm);
                     if (repertoireFens.has(normalizeFenResetHalfmoveClock(probe.fen()))) {
-                        repertoireMoves.push({ from: lm.from, to: lm.to });
+                        repertoireMoves.push({ from: lm.from, to: lm.to, san: lm.san });
                     }
                 }
                 deviation = {
                     fen: fenBefore,
-                    userMove: { from: allMoves[i].from, to: allMoves[i].to },
+                    userMove: { from: allMoves[i].from, to: allMoves[i].to, san: allMoves[i].san },
                     repertoireMoves,
                 };
             }

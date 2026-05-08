@@ -227,6 +227,20 @@
     color: #999;
 }
 
+.game-deviation-summary {
+    font-size: 0.82rem;
+    color: #333;
+    margin-top: 0.25rem;
+}
+
+.game-deviation-icon {
+    display: inline-block;
+    width: 1.15em;
+    height: 1.15em;
+    margin-right: 0.3em;
+    vertical-align: -0.15em;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     .games-page {
