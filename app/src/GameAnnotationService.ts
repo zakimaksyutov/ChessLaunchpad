@@ -2,6 +2,13 @@ import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
 import { ExplorerEvals } from './ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
+
+/**
+ * If the opponent's eval drop (from their own perspective) exceeds this threshold,
+ * we consider them "out of overall theory" and stop post-theory analysis.
+ * 50 cp = 0.5 pawns.
+ */
+const OPPONENT_DROP_THRESHOLD = 50;
 import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomGamesService';
 
@@ -234,7 +241,7 @@ export function annotateGame(
     if (debugAnnotation) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}`);
 
     const moves: AnnotatedMove[] = [];
-    let pendingUserEvalDrop = false;
+    let postTheoryAnalysis = false;
     let theoryEndPly = 0;
     let moveNumber = 1;
 
@@ -275,7 +282,7 @@ export function annotateGame(
             highlight = 'in-repertoire';
             lastInRepertoireFen = fenAfter;
             theoryEndPly = i + 1;
-            pendingUserEvalDrop = false;
+            postTheoryAnalysis = false;
             reason = 'after-FEN in repertoire';
         } else if (isUserMove && repertoireFens.has(normalizedFenBefore)) {
             // User deviated from repertoire (before-FEN was in repertoire, after-FEN is not)
@@ -326,14 +333,13 @@ export function annotateGame(
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent deviated (opponent's move took us out of repertoire)
             highlight = 'out-of-theory';
-            pendingUserEvalDrop = true;
+            postTheoryAnalysis = true;
             theoryEndPly = i;
             reason = 'opponent deviated (before-FEN in repertoire, after-FEN not)';
-        } else if (pendingUserEvalDrop && isUserMove) {
-            // User's first response after opponent deviation — evaluate for eval drop
+        } else if (postTheoryAnalysis && isUserMove) {
+            // User move in post-theory phase — evaluate for eval drop
             highlight = 'end-of-theory-response';
-            pendingUserEvalDrop = false;
-            reason = 'user response after opponent deviation';
+            reason = 'user move in post-theory analysis';
 
             if (!firstDeviationFen) {
                 firstDeviationFen = fenAfter;
@@ -354,6 +360,27 @@ export function annotateGame(
                     }
                 } else {
                     reason += ', no eval data for drop calc';
+                }
+            }
+        } else if (postTheoryAnalysis && !isUserMove) {
+            // Opponent move in post-theory phase — check if they played badly
+            highlight = 'out-of-theory';
+            reason = 'opponent move in post-theory analysis';
+
+            if (evals) {
+                const beforeVals = evals.lookupAll(fenBefore);
+                const afterVals = evals.lookupAll(fenAfter);
+
+                if (beforeVals && afterVals && beforeVals.length > 0 && afterVals.length > 0) {
+                    const oppDrop = computeConservativeDrop(beforeVals, afterVals, isWhiteMove);
+                    if (oppDrop >= OPPONENT_DROP_THRESHOLD) {
+                        postTheoryAnalysis = false;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OPPONENT_DROP_THRESHOLD} → stop analysis`;
+                    } else {
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OPPONENT_DROP_THRESHOLD} → continue`;
+                    }
+                } else {
+                    reason += ', no eval data for opponent drop check → continue';
                 }
             }
         } else {

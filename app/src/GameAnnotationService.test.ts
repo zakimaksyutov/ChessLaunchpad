@@ -216,7 +216,7 @@ describe('annotateGame', () => {
             expect(result!.miniBoardFen).toBe(fens[5]);
         });
 
-        it('subsequent moves after user response are out-of-theory', () => {
+        it('subsequent moves after user response continue analysis without evals', () => {
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
             const result = annotateGame(gameData, 'user', repertoireFens, null);
 
@@ -224,8 +224,148 @@ describe('annotateGame', () => {
             const moves = result!.moves;
 
             expect(moves[4].highlight).toBe('end-of-theory-response');     // d4 — user response
-            expect(moves[5].highlight).toBe('out-of-theory'); // Nf6
-            expect(moves[6].highlight).toBe('out-of-theory'); // Nc3
+            expect(moves[5].highlight).toBe('out-of-theory'); // Nf6 — opponent (no evals, analysis continues)
+            expect(moves[6].highlight).toBe('end-of-theory-response'); // Nc3 — user still analyzed
+            expect(moves[7].highlight).toBe('out-of-theory'); // Be7 — opponent
+        });
+    });
+
+    describe('extended post-theory analysis', () => {
+        it('detects user inaccuracy on 2nd+ move after opponent deviation', () => {
+            // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5
+            // Game: 1. e4 e5 2. Nf3 d6 3. d4 Nf6 4. Nc3 (user plays Nc3 with a drop)
+            const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
+
+            // FENs: d4 (ply 4) is first response with ok drop, Nc3 (ply 6) has a drop
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
+            const fenBeforeD4 = fens[4];   // after d6
+            const fenAfterD4 = fens[5];    // after d4
+            const fenBeforeNc3 = fens[6];  // after Nf6
+            const fenAfterNc3 = fens[7];   // after Nc3
+
+            // Opponent move Nf6: small drop (under threshold) so analysis continues
+            const fenBeforeNf6 = fens[5];  // after d4
+            const fenAfterNf6 = fens[6];   // after Nf6
+
+            const evals = makeEvals({
+                [compact(fenBeforeD4)]: [50],   // after d6: +0.50
+                [compact(fenAfterD4)]: [45],    // after d4: +0.45 → user drop = 5cp (ok)
+                [compact(fenBeforeNf6)]: [45],  // after d4: +0.45
+                [compact(fenAfterNf6)]: [40],   // after Nf6: +0.40 → opponent drop = 45-40 = 5cp (< 50, continue)
+                [compact(fenBeforeNc3)]: [40],  // after Nf6: +0.40
+                [compact(fenAfterNc3)]: [-30],  // after Nc3: -0.30 → user drop = 40-(-30) = 70cp (blunder!)
+            });
+
+            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            expect(result).not.toBeNull();
+            const moves = result!.moves;
+
+            // d4: first response, ok drop
+            expect(moves[4].highlight).toBe('end-of-theory-response');
+            expect(moves[4].evalDrop?.category).toBe('ok');
+
+            // Nf6: opponent move, analysis continues
+            expect(moves[5].highlight).toBe('out-of-theory');
+
+            // Nc3: 2nd user move, blunder detected
+            expect(moves[6].highlight).toBe('end-of-theory-response');
+            expect(moves[6].evalDrop).toBeDefined();
+            expect(moves[6].evalDrop!.evalDrop).toBe(70);
+            expect(moves[6].evalDrop!.category).toBe('blunder');
+        });
+
+        it('stops analysis when opponent plays a bad move (>= 50cp drop)', () => {
+            // Game: 1. e4 e5 2. Nf3 d6 3. d4 Nf6?? 4. Nc3
+            // Nf6 has a large opponent drop → stop analysis, Nc3 is plain out-of-theory
+            const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
+
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
+            const fenBeforeD4 = fens[4];
+            const fenAfterD4 = fens[5];
+            const fenBeforeNf6 = fens[5];
+            const fenAfterNf6 = fens[6];
+
+            const evals = makeEvals({
+                [compact(fenBeforeD4)]: [50],
+                [compact(fenAfterD4)]: [45],     // user drop = 5cp (ok)
+                [compact(fenBeforeNf6)]: [45],
+                [compact(fenAfterNf6)]: [120],   // after Nf6: +1.20 → opp drop = 120-45 = 75cp (>= 50, stop!)
+            });
+
+            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            expect(result).not.toBeNull();
+            const moves = result!.moves;
+
+            // d4: first response
+            expect(moves[4].highlight).toBe('end-of-theory-response');
+
+            // Nf6: opponent blunder → analysis stops
+            expect(moves[5].highlight).toBe('out-of-theory');
+
+            // Nc3: should be plain out-of-theory (NOT end-of-theory-response)
+            expect(moves[6].highlight).toBe('out-of-theory');
+        });
+
+        it('continues analysis when no eval data for opponent move', () => {
+            // No evals for opponent move Nf6 → benefit of the doubt, keep analyzing
+            const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
+
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
+            const fenBeforeD4 = fens[4];
+            const fenAfterD4 = fens[5];
+            // No evals for Nf6 positions
+            const fenBeforeNc3 = fens[6];
+            const fenAfterNc3 = fens[7];
+
+            const evals = makeEvals({
+                [compact(fenBeforeD4)]: [50],
+                [compact(fenAfterD4)]: [20],    // user drop = 30cp (inaccuracy)
+                [compact(fenBeforeNc3)]: [10],
+                [compact(fenAfterNc3)]: [-40],  // user drop = 10-(-40) = 50cp (mistake)
+            });
+
+            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            expect(result).not.toBeNull();
+            const moves = result!.moves;
+
+            // d4: first response, inaccuracy
+            expect(moves[4].highlight).toBe('end-of-theory-response');
+            expect(moves[4].evalDrop?.category).toBe('inaccuracy');
+
+            // Nc3: still analyzed despite missing opponent evals
+            expect(moves[6].highlight).toBe('end-of-theory-response');
+            expect(moves[6].evalDrop?.category).toBe('mistake');
+        });
+
+        it('transposition back to repertoire resets post-theory analysis', () => {
+            // Repertoire: 1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3
+            const repFens = buildRepertoireFens([
+                ['d4', 'd5', 'c4', 'e6', 'Nc3', 'Nf6', 'Bg5', 'Be7', 'e3'],
+            ]);
+
+            // Game: 1. d4 e6 (opp deviation) 2. c4 d5 (transposes back) 3. Nc3 Nf6 4. Bg5 Be7 5. e3
+            // After transposition, we're back in theory; if user later deviates,
+            // a new post-theory phase should start
+            const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bg5 Be7 Bf4 a6', 'user', 'opp');
+            const result = annotateGame(gameData, 'user', repFens, null);
+
+            expect(result).not.toBeNull();
+            const moves = result!.moves;
+
+            // e6: opponent deviates → post-theory starts
+            expect(moves[1].highlight).toBe('out-of-theory');
+            // c4: user response in post-theory
+            expect(moves[2].highlight).toBe('end-of-theory-response');
+            // d5: transposes back → post-theory resets
+            expect(moves[3].highlight).toBe('in-repertoire');
+            // Nc3, Nf6: in repertoire
+            expect(moves[4].highlight).toBe('in-repertoire');
+            expect(moves[5].highlight).toBe('in-repertoire');
+            // Bg5, Be7: in repertoire
+            expect(moves[6].highlight).toBe('in-repertoire');
+            expect(moves[7].highlight).toBe('in-repertoire');
+            // Bf4: user deviation (not in repertoire for position after Be7)
+            expect(moves[8].highlight).toBe('deviation');
         });
     });
 
@@ -333,8 +473,8 @@ describe('annotateGame', () => {
             expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
             expect(moves[3].highlight).toBe('out-of-theory'); // e6 — opponent deviated
             expect(moves[4].highlight).toBe('end-of-theory-response');     // d4 — user response
-            expect(moves[5].highlight).toBe('out-of-theory'); // cxd4
-            expect(moves[6].highlight).toBe('out-of-theory'); // Nxd4
+            expect(moves[5].highlight).toBe('out-of-theory'); // cxd4 — opponent, post-theory continues
+            expect(moves[6].highlight).toBe('end-of-theory-response'); // Nxd4 — user, still in post-theory analysis
             // Nc6 transposes back! Same position as after 4...e6 in repertoire
             expect(moves[7].highlight).toBe('in-repertoire'); // Nc6 — transposition!
         });
