@@ -413,14 +413,15 @@ describe('annotateGame', () => {
                 ['d4', 'd5', 'c4', 'e6', 'Nc3', 'Nf6', 'Bg5'],
             ]);
 
-            // Game: 1. d4 e6 2. c4 d5 3. Nc3 Nf6 4. Bf4 (second deviation after transposition)
+            // Game: 1. d4 e6 2. c4 d5 3. Nc3 Nf6 4. Bf4 (deviation after transposition back)
             const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bf4 Be7', 'user', 'opp');
             const result = annotateGame(gameData, 'user', repFens, null);
 
             expect(result).not.toBeNull();
-            // Mini board should show first deviation (c4 — user response after opponent's e6)
-            const fens = replayFens(['d4', 'e6', 'c4']);
-            expect(result!.miniBoardFen).toBe(fens[3]); // FEN after c4
+            // Mini board should show position before first real deviation (Bf4),
+            // which ranks higher than the earlier end-of-theory-response (c4)
+            const fens = replayFens(['d4', 'e6', 'c4', 'd5', 'Nc3', 'Nf6']);
+            expect(result!.miniBoardFen).toBe(fens[6]); // FEN before Bf4 (deviation.fen)
         });
     });
 });

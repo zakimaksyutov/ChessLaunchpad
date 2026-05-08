@@ -91,6 +91,11 @@
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     margin-bottom: 0.75rem;
+    border: 2px solid transparent;
+}
+
+.game-row-deviation {
+    border-color: #9b59b6;
 }
 
 .game-mini-board {
@@ -183,7 +188,6 @@
 
 /* PGN move highlights */
 .move-number {
-    color: #666;
     cursor: default;
     user-select: none;
 }
@@ -198,7 +202,8 @@
 }
 
 .move-deviation {
-    border-bottom: 2px solid #9b59b6;
+    border: 2px solid #9b59b6;
+    border-radius: 3px;
     font-weight: 600;
 }
 

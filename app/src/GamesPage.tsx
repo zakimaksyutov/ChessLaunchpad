@@ -108,8 +108,10 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
     const whiteIsUser = meta.userColor === 'white';
     const blackIsUser = meta.userColor === 'black';
 
+    const hasDeviation = annotation?.deviation != null;
+
     return (
-        <div className="game-row">
+        <div className={`game-row${hasDeviation ? ' game-row-deviation' : ''}`}>
             {/* Mini board */}
             <div className="game-mini-board">
                 <ChessBoard

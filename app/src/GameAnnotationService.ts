@@ -282,9 +282,7 @@ export function annotateGame(
             highlight = 'deviation';
             reason = 'before-FEN in repertoire but after-FEN is NOT → user deviated';
 
-            if (!firstDeviationFen) {
-                firstDeviationFen = fenAfter;
-
+            if (!deviation) {
                 // Compute deviation info: find repertoire moves from this position
                 const deviationChess = new Chess(fenBefore);
                 const legalMoves = deviationChess.moves({ verbose: true });
@@ -301,6 +299,10 @@ export function annotateGame(
                     userMove: { from: allMoves[i].from, to: allMoves[i].to },
                     repertoireMoves,
                 };
+            }
+
+            if (!firstDeviationFen) {
+                firstDeviationFen = fenAfter;
             }
 
             // Compute eval drop for the deviation
