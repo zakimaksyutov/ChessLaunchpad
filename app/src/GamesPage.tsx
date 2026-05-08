@@ -27,6 +27,13 @@ const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
     blunder: 'move-eot-blunder',
 };
 
+const EOT_ICON_COLORS: Record<EvalDropCategory, string> = {
+    ok: '#888',
+    inaccuracy: '#b8860b',
+    mistake: '#c0392b',
+    blunder: '#7b3f9e',
+};
+
 function getMoveClassName(move: AnnotatedMove): string {
     if (!move.isUserMove) return 'move-token move-opponent';
 
@@ -90,6 +97,31 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
 
     const boardFen = annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+    // Find first end-of-theory eval drop for summary
+    const eotSummary = useMemo(() => {
+        if (!annotation) return null;
+        const moves = annotation.moves;
+        for (let i = 0; i < moves.length; i++) {
+            if (moves[i].highlight === 'end-of-theory-response' && moves[i].evalDrop && moves[i].evalDrop!.category !== 'ok') {
+                // Find the preceding opponent out-of-theory move
+                let opponentMove: string | null = null;
+                for (let j = i - 1; j >= 0; j--) {
+                    if (!moves[j].isUserMove) {
+                        opponentMove = moves[j].san;
+                        break;
+                    }
+                }
+                return {
+                    userSan: moves[i].san,
+                    opponentSan: opponentMove,
+                    category: moves[i].evalDrop!.category,
+                    drop: moves[i].evalDrop!.evalDrop,
+                };
+            }
+        }
+        return null;
+    }, [annotation]);
+
     const resultLabel = meta.result.toUpperCase();
     const speedLabel = meta.speed ? meta.speed.charAt(0).toUpperCase() + meta.speed.slice(1) : '';
 
@@ -109,9 +141,12 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
     const blackIsUser = meta.userColor === 'black';
 
     const hasDeviation = annotation?.deviation != null;
+    const tileClass = hasDeviation ? ' game-row-deviation'
+        : eotSummary ? ` game-row-eot-${eotSummary.category}`
+        : '';
 
     return (
-        <div className={`game-row${hasDeviation ? ' game-row-deviation' : ''}`}>
+        <div className={`game-row${tileClass}`}>
             {/* Mini board */}
             <div className="game-mini-board">
                 <ChessBoard
@@ -181,6 +216,18 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         </strong>
                         {' '}but you played{' '}
                         <strong>{annotation.deviation.userMove.san}</strong>
+                    </div>
+                )}
+
+                {/* End-of-theory eval drop summary */}
+                {eotSummary && (
+                    <div className="game-eot-summary">
+                        <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
+                            <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
+                        </svg>
+                        Out of theory – you played <strong>{eotSummary.userSan}</strong>
+                        {' '}({eotSummary.category})
                     </div>
                 )}
             </div>

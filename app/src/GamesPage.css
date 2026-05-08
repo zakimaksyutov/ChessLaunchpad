@@ -98,6 +98,18 @@
     border-color: #9b59b6;
 }
 
+.game-row-eot-inaccuracy {
+    border-color: #b8860b;
+}
+
+.game-row-eot-mistake {
+    border-color: #c0392b;
+}
+
+.game-row-eot-blunder {
+    border-color: #7b3f9e;
+}
+
 .game-mini-board {
     flex-shrink: 0;
     width: 120px;
@@ -231,6 +243,12 @@
     font-size: 0.82rem;
     color: #333;
     margin-top: 0.25rem;
+}
+
+.game-eot-summary {
+    font-size: 0.82rem;
+    color: #333;
+    margin-top: 0.15rem;
 }
 
 .game-deviation-icon {
