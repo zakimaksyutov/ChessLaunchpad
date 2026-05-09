@@ -32,6 +32,7 @@ Per-position cards track mastery using the FSRS algorithm (ts-fsrs). Well-known 
 | `/training`         | Interactive board training                      |
 | `/repertoire`       | Browse / manage imported variants               |
 | `/repertoire/variant` | View a single variant's PGN and annotations   |
+| `/games`            | Annotated game history from linked Lichess accounts |
 | `/settings`         | Weight tuning and account settings              |
 
 ## Tech Stack
@@ -76,3 +77,13 @@ Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 ```
 
 The entire repertoire (variants + stats + FSRS cards) is stored as a single JSON blob with ETag-based optimistic concurrency. See `backend-api-contract.md`.
+
+### Games Page Data Flow
+
+The Games page downloads games from the Lichess public API and stores them locally:
+
+- **`LinkedAccountsService`** — Manages linked Lichess usernames in `localStorage`.
+- **`LichessGamesService`** — Streams games via NDJSON from `lichess.org/api/games/user/{username}`, with incremental sync via per-user timestamp watermarks.
+- **`GamesDB`** — IndexedDB storage (via `idb` library) for downloaded games, keyed by Lichess game ID.
+- **`RepertoireFenSet`** — Builds `Set<string>` of normalized FENs from the user's repertoire for cross-referencing.
+- **`GameAnnotationService`** — Replays each game, compares positions against the repertoire FEN set, and computes eval-drop highlights for deviations.

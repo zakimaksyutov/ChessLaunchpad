@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { clearGames } from './GamesDB';
 import './Header.css';  // Import the CSS file
 
 interface HeaderProps {
@@ -34,6 +35,15 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         setIsDropdownOpen((prev) => !prev);
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleDropdown();
+        } else if (e.key === 'Escape') {
+            setIsDropdownOpen(false);
+        }
+    };
+
     const handleLoginClick = () => {
         navigate('/login');
     };
@@ -46,6 +56,23 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
     const handleLogoutClick = () => {
         // Close the dropdown (otherwise it would be autoshown after next login)
         setIsDropdownOpen(false);
+
+        // Clear Games data (IndexedDB + linked accounts + sync timestamps)
+        clearGames().catch(() => { /* best-effort */ });
+        const linkedRaw = localStorage.getItem('chesslaunchpad:linkedAccounts');
+        if (linkedRaw) {
+            try {
+                const accounts = JSON.parse(linkedRaw) as { platform?: string; username: string }[];
+                for (const a of accounts) {
+                    const platform = a.platform || 'lichess';
+                    // Remove new-format watermark
+                    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${platform}:${a.username}`);
+                    // Remove legacy-format watermark
+                    localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${a.username}`);
+                }
+            } catch { /* ignore malformed */ }
+        }
+        localStorage.removeItem('chesslaunchpad:linkedAccounts');
 
         // Clear localStorage items
         localStorage.removeItem('username');
@@ -70,6 +97,7 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
                 <nav className="header-nav">
                     <Link to="/training" className="header-nav-link">Training</Link>
                     <Link to="/repertoire" className="header-nav-link">Repertoire</Link>
+                    <Link to="/games" className="header-nav-link">Games</Link>
                 </nav>
             )}
 
@@ -78,7 +106,15 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
                 {username ? (
                     /* Logged in state */
                     <div className="username-dropdown-container" ref={dropdownRef}>
-                        <span className="username-text" onClick={toggleDropdown}>
+                        <span
+                            className="username-text"
+                            onClick={toggleDropdown}
+                            onKeyDown={handleKeyDown}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isDropdownOpen}
+                            aria-haspopup="true"
+                        >
                             <strong>{username}</strong>
                         </span>
 

@@ -4,6 +4,15 @@ import { IDataAccessLayer, createDataAccessLayer } from './DataAccessLayer';
 import { RepertoireData } from './RepertoireData';
 import { WeightSettings } from './WeightSettings';
 import { useLichessAuth } from './LichessAuthContext';
+import {
+    getLinkedAccounts,
+    addLinkedAccount,
+    removeLinkedAccount,
+    LinkedAccount,
+    Platform,
+    getSyncTimestampKey,
+} from './LinkedAccountsService';
+import { clearGames } from './GamesDB';
 import './SettingsPage.css';
 
 interface CoefficientValues {
@@ -19,6 +28,11 @@ const SettingsPage: React.FC = () => {
     const [saving, setSaving] = useState<boolean>(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
     const [lichessLoading, setLichessLoading] = useState(false);
+    const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
+    const [newAccountUsername, setNewAccountUsername] = useState('');
+    const [newAccountPlatform, setNewAccountPlatform] = useState<Platform>('lichess');
+    const [clearingCache, setClearingCache] = useState(false);
+    const [cacheCleared, setCacheCleared] = useState(false);
 
     const { connected, login, logout } = useLichessAuth();
     const navigate = useNavigate();
@@ -42,8 +56,9 @@ const SettingsPage: React.FC = () => {
                     frequency: settings.frequencyPower.toString(),
                     error: settings.errorPower.toString()
                 });
-            } catch (err: any) {
-                setErrorMessage(`Failed to load settings: ${err?.message ?? 'Unknown error'}`);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                setErrorMessage(`Failed to load settings: ${message}`);
             } finally {
                 setLoading(false);
             }
@@ -119,8 +134,9 @@ const SettingsPage: React.FC = () => {
             await dal.storeRepertoireData(updatedData);
             setRepertoireData(updatedData);
             navigate(-1);
-        } catch (err: any) {
-            setErrorMessage(`Failed to save settings: ${err?.message ?? 'Unknown error'}`);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to save settings: ${message}`);
         } finally {
             setSaving(false);
         }
@@ -141,6 +157,43 @@ const SettingsPage: React.FC = () => {
             await logout();
         } finally {
             setLichessLoading(false);
+        }
+    };
+
+    const handleAddAccount = () => {
+        const trimmed = newAccountUsername.trim();
+        if (!trimmed) return;
+        const updated = addLinkedAccount(trimmed, newAccountPlatform);
+        setLinkedAccounts(updated);
+        setNewAccountUsername('');
+    };
+
+    const handleRemoveAccount = (username: string, platform: Platform) => {
+        const updated = removeLinkedAccount(username, platform);
+        setLinkedAccounts(updated);
+    };
+
+    const handleAccountKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleAddAccount();
+        }
+    };
+
+    const handleClearCache = async () => {
+        setClearingCache(true);
+        setCacheCleared(false);
+        try {
+            await clearGames();
+            // Clear sync timestamps so next sync does a fresh initial fetch
+            for (const account of linkedAccounts) {
+                localStorage.removeItem(getSyncTimestampKey(account.platform, account.username));
+            }
+            setCacheCleared(true);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to clear cache: ${msg}`);
+        } finally {
+            setClearingCache(false);
         }
     };
 
@@ -268,6 +321,89 @@ const SettingsPage: React.FC = () => {
                     >
                         {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
                     </button>
+                )}
+            </div>
+
+            <div className="settings-card linked-accounts-section">
+                <h1>Linked Accounts</h1>
+                <p className="settings-description">
+                    Add Lichess or Chess.com usernames to download and analyze your games on the Games page.
+                </p>
+
+                <div className="linked-accounts-add">
+                    <select
+                        className="linked-accounts-platform-select"
+                        value={newAccountPlatform}
+                        onChange={(e) => setNewAccountPlatform(e.target.value as Platform)}
+                        aria-label="Platform"
+                    >
+                        <option value="lichess">Lichess</option>
+                        <option value="chess.com">Chess.com</option>
+                    </select>
+                    <input
+                        type="text"
+                        className="linked-accounts-input"
+                        placeholder={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
+                        aria-label={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
+                        value={newAccountUsername}
+                        onChange={(e) => setNewAccountUsername(e.target.value)}
+                        onKeyDown={handleAccountKeyDown}
+                    />
+                    <button
+                        className="linked-accounts-add-btn"
+                        type="button"
+                        onClick={handleAddAccount}
+                        disabled={!newAccountUsername.trim()}
+                    >
+                        Add
+                    </button>
+                </div>
+
+                {linkedAccounts.length > 0 && (
+                    <ul className="linked-accounts-list">
+                        {linkedAccounts.map((account) => (
+                            <li key={`${account.platform}:${account.username}`} className="linked-account-item">
+                                <span className="linked-account-platform">
+                                    {account.platform === 'chess.com' ? '♔' : '♞'}
+                                </span>
+                                <span className="linked-account-name">
+                                    {account.username}
+                                    <span className="linked-account-platform-label">
+                                        {account.platform === 'chess.com' ? ' (Chess.com)' : ' (Lichess)'}
+                                    </span>
+                                </span>
+                                <button
+                                    className="linked-account-remove"
+                                    type="button"
+                                    onClick={() => handleRemoveAccount(account.username, account.platform)}
+                                    aria-label={`Remove ${account.username}`}
+                                    title="Remove account"
+                                >
+                                    ✕
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                {linkedAccounts.length > 0 && (
+                    <div className="cache-section">
+                        {cacheCleared && (
+                            <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
+                        )}
+                        <div className="cache-info">
+                            <button
+                                className="secondary"
+                                onClick={handleClearCache}
+                                disabled={clearingCache}
+                            >
+                                {clearingCache ? 'Clearing…' : 'Clear Cache'}
+                            </button>
+                            <span className="cache-count">
+                                Remove all downloaded games and sync timestamps.
+                            </span>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

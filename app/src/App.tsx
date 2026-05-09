@@ -7,6 +7,7 @@ import TrainingPage from './TrainingPage';
 import RepertoirePage from './RepertoirePage';
 import VariantPage from './VariantPage';
 import SettingsPage from './SettingsPage';
+import GamesPage from './GamesPage';
 import ProtectedRoute from './ProtectedRoute';
 import { LichessAuthProvider } from './LichessAuthContext';
 import './App.css';
@@ -59,6 +60,7 @@ const App: React.FC = () => {
             <Route path="/repertoire" element={<ProtectedRoute><RepertoirePage /></ProtectedRoute>} />
             <Route path="/repertoire/variant" element={<ProtectedRoute><VariantPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+            <Route path="/games" element={<ProtectedRoute><GamesPage /></ProtectedRoute>} />
           </Routes>
         </Router>
       </div>
