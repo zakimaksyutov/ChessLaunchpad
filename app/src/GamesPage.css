@@ -61,6 +61,16 @@
     color: #8a1c1c;
 }
 
+.games-info {
+    width: 100%;
+    background-color: #e8f4fd;
+    border: 1px solid #90caf9;
+    border-radius: 4px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    color: #1a6fa0;
+}
+
 .games-empty {
     width: 100%;
     text-align: center;
@@ -141,7 +151,7 @@
 }
 
 .player-opponent {
-    font-weight: 600;
+    font-weight: 400;
 }
 
 .player-rating {
@@ -161,12 +171,6 @@
     flex-wrap: wrap;
     font-size: 0.82rem;
     color: #666;
-}
-
-.game-result {
-    font-size: 0.8rem;
-    color: #888;
-    text-transform: uppercase;
 }
 
 .game-right-column {

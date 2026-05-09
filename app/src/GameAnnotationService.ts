@@ -15,16 +15,10 @@ import { parseChesscomTimeControl } from './ChesscomGamesService';
 export type MoveHighlight = 'in-repertoire' | 'deviation' | 'end-of-theory-response' | 'out-of-theory';
 
 export interface AnnotatedMove {
-    /** Move text (SAN only, e.g. "d4" or "d5") */
-    text: string;
     /** SAN of the move */
     san: string;
     /** Move number (set only for white moves, e.g. 1, 2, 3…) */
     moveNumber?: number;
-    /** FEN after the move (full, for display/eval lookup) */
-    fenAfter: string;
-    /** FEN before the move (full) */
-    fenBefore: string;
     /** Whether this is a white move */
     isWhiteMove: boolean;
     /** Whether this is the user's move (based on game color) */
@@ -62,24 +56,13 @@ export interface GameAnnotation {
 export function getUserColor(
     gameData: Record<string, unknown>,
     username: string,
-    platform?: Platform
+    platform: Platform
 ): 'white' | 'black' | null {
-    const effectivePlatform = platform ?? detectPlatform(gameData);
-
-    if (effectivePlatform === 'chess.com') {
+    if (platform === 'chess.com') {
         return getUserColorChesscom(gameData, username);
     }
 
     return getUserColorLichess(gameData, username);
-}
-
-/**
- * Detect platform from game data structure.
- */
-function detectPlatform(gameData: Record<string, unknown>): Platform {
-    // Chess.com games have a 'uuid' field and white/black as direct objects with 'username'
-    if ('uuid' in gameData || 'time_class' in gameData) return 'chess.com';
-    return 'lichess';
 }
 
 /**
@@ -202,7 +185,10 @@ function buildPgn(gameData: Record<string, unknown>, platform: Platform): string
  * @param evals ExplorerEvals instance for eval-drop computation
  * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
  */
-const debugAnnotation = new URLSearchParams(window.location.search).has('debug');
+function isDebugAnnotation(): boolean {
+    return typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).has('debug');
+}
 
 export function annotateGame(
     gameData: Record<string, unknown>,
@@ -210,19 +196,18 @@ export function annotateGame(
     repertoireFens: Set<string>,
     evals: ExplorerEvals | null,
     maxPlies: number = 30,
-    platform?: Platform
+    platform: Platform
 ): GameAnnotation | null {
     const gameId = gameData.id as string | undefined;
-    const effectivePlatform = platform ?? detectPlatform(gameData);
-    const userColor = getUserColor(gameData, username, effectivePlatform);
+    const userColor = getUserColor(gameData, username, platform);
     if (!userColor) {
-        if (debugAnnotation) console.debug(`[annotate ${gameId}] No user color found for ${username}`);
+        if (isDebugAnnotation()) console.debug(`[annotate ${gameId}] No user color found for ${username}`);
         return null;
     }
 
-    const pgn = buildPgn(gameData, effectivePlatform);
+    const pgn = buildPgn(gameData, platform);
     if (!pgn) {
-        if (debugAnnotation) console.debug(`[annotate ${gameId}] Could not build PGN`);
+        if (isDebugAnnotation()) console.debug(`[annotate ${gameId}] Could not build PGN`);
         return null;
     }
 
@@ -230,7 +215,7 @@ export function annotateGame(
     try {
         chess.loadPgn(pgn);
     } catch {
-        if (debugAnnotation) console.debug(`[annotate ${gameId}] Failed to parse PGN`);
+        if (isDebugAnnotation()) console.debug(`[annotate ${gameId}] Failed to parse PGN`);
         return null;
     }
     chess.deleteComments();
@@ -238,7 +223,7 @@ export function annotateGame(
     const allMoves = chess.history({ verbose: true });
     const temp = new Chess();
 
-    if (debugAnnotation) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}`);
+    if (isDebugAnnotation()) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}`);
 
     const moves: AnnotatedMove[] = [];
     let postTheoryAnalysis = false;
@@ -246,7 +231,7 @@ export function annotateGame(
     let moveNumber = 1;
 
     // Track first notable event for mini board
-    let firstDeviationFen: string | null = null;
+    let firstPostTheoryFen: string | null = null;
     let firstEvalDropFen: string | null = null;
     let lastInRepertoireFen: string | null = null;
     let deviation: DeviationInfo | undefined;
@@ -265,8 +250,7 @@ export function annotateGame(
         const fenAfter = temp.fen();
         const normalizedFenAfter = normalizeFenResetHalfmoveClock(fenAfter);
 
-        // Build move text (SAN only; move number stored separately)
-        const text = allMoves[i].san;
+        // Build move number
         const currentMoveNumber = isWhiteMove ? moveNumber : undefined;
         if (!isWhiteMove) {
             moveNumber++;
@@ -308,8 +292,8 @@ export function annotateGame(
                 };
             }
 
-            if (!firstDeviationFen) {
-                firstDeviationFen = fenAfter;
+            if (!firstPostTheoryFen) {
+                firstPostTheoryFen = fenAfter;
             }
 
             // Compute eval drop for the deviation
@@ -341,8 +325,8 @@ export function annotateGame(
             highlight = 'end-of-theory-response';
             reason = 'user move in post-theory analysis';
 
-            if (!firstDeviationFen) {
-                firstDeviationFen = fenAfter;
+            if (!firstPostTheoryFen) {
+                firstPostTheoryFen = fenAfter;
             }
 
             if (evals) {
@@ -388,16 +372,13 @@ export function annotateGame(
             reason = `out of theory: beforeInRep=${repertoireFens.has(normalizedFenBefore)}, afterInRep=${repertoireFens.has(normalizedFenAfter)}, isUser=${isUserMove}`;
         }
 
-        if (debugAnnotation) console.debug(
+        if (isDebugAnnotation()) console.debug(
             `  ply ${i}: ${allMoves[i].san} [${isUserMove ? 'USER' : 'OPP'}] → ${highlight} | ${reason}`
         );
 
         moves.push({
-            text,
             san: allMoves[i].san,
             moveNumber: currentMoveNumber,
-            fenAfter,
-            fenBefore,
             isWhiteMove,
             isUserMove,
             highlight,
@@ -409,15 +390,15 @@ export function annotateGame(
         if (i + 1 >= effectiveMax) break;
     }
 
-    if (debugAnnotation) console.groupEnd();
+    if (isDebugAnnotation()) console.groupEnd();
 
     // Determine mini board position (spec §3.3)
     // For user deviations, show the position BEFORE the deviation (with arrows)
     let miniBoardFen: string;
     if (deviation) {
         miniBoardFen = deviation.fen;
-    } else if (firstDeviationFen) {
-        miniBoardFen = firstDeviationFen;
+    } else if (firstPostTheoryFen) {
+        miniBoardFen = firstPostTheoryFen;
     } else if (firstEvalDropFen) {
         miniBoardFen = firstEvalDropFen;
     } else if (lastInRepertoireFen) {
@@ -493,11 +474,9 @@ const CHESSCOM_DRAW_RESULTS = new Set([
 export function getGameMetadata(
     gameData: Record<string, unknown>,
     username: string,
-    platform?: Platform
+    platform: Platform
 ): GameMetadata {
-    const effectivePlatform = platform ?? detectPlatform(gameData);
-
-    if (effectivePlatform === 'chess.com') {
+    if (platform === 'chess.com') {
         return getGameMetadataChesscom(gameData, username);
     }
 

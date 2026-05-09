@@ -17,6 +17,7 @@ Supported platforms:
 - Stored in `localStorage` as a JSON array under key `chesslaunchpad:linkedAccounts`.
 - Managed on the **Settings** page: a "Linked Accounts" section with a platform dropdown, text input + "Add" button, and a list of existing accounts each with a "Remove" button.
 - Removing an account also clears its sync watermark from `localStorage` and **deletes** the account's cached games from IndexedDB.
+- **Clear Cache** button (in Settings, visible when accounts are linked) deletes all downloaded games from IndexedDB and resets all sync timestamps so the next sync performs a fresh initial fetch.
 - **Logout** clears all Games data: IndexedDB game store, linked accounts list, and all per-account sync timestamps (both legacy and current key formats).
 
 ```ts
@@ -39,7 +40,7 @@ interface LinkedAccount {
 | API | `GET https://lichess.org/api/games/user/{username}` |
 | Format | NDJSON (`Accept: application/x-ndjson`) |
 | Filters | `rated=true`, `perfType=blitz,rapid`, `clocks=true`, `evals=true`, `opening=true` |
-| Batch size | Last **20** games on initial download |
+| Batch size | Last **100** games on initial download |
 | Incremental | Track `lastSyncTimestamp` per account in `localStorage`. On subsequent downloads, pass `since={lastSyncTimestamp+1}` with `sort=dateAsc` to fetch all new games. |
 
 ### 2.2 Chess.com
@@ -50,7 +51,7 @@ interface LinkedAccount {
 | Monthly API | `GET https://api.chess.com/pub/player/{username}/games/{YYYY}/{MM}` |
 | Format | JSON with `games[]` array; each game includes a `pgn` field |
 | Filters | `rated=true`, `time_class` in `[blitz, rapid]`, `rules=chess` |
-| Batch size | Last **50** eligible games on initial download |
+| Batch size | Last **100** eligible games on initial download |
 | Incremental | Track `lastSyncTimestamp` per account. Fetch all archive months from the watermark month onward, skip games older than watermark. |
 | ID format | `chesscom_{uuid}` (prefixed to avoid collision with Lichess IDs) |
 
@@ -138,6 +139,30 @@ The mini board shows the position at the **first notable event**, chosen in this
 3. The last position that was still in-repertoire (end of theory).
 4. The starting position (if no repertoire overlap at all).
 
+When the user deviated from repertoire, the mini board also shows **arrows**: green arrows for the repertoire moves from that position and a red arrow for the user's actual move.
+
+### 3.4 Deviation & Eval Drop Summaries
+
+Below the PGN, game rows display contextual summaries:
+
+- **Deviation summary** — When the user deviated from repertoire, a text callout shows "Repertoire has **X** but you played **Y**" with a warning icon.
+- **End-of-theory eval drop summary** — When the opponent deviated and the user's response had an eval drop, a summary shows the user's move and its eval-drop category (inaccuracy/mistake/blunder).
+
+### 3.5 Post-Theory Extended Analysis
+
+When the opponent deviates from the repertoire, the system evaluates not just the user's first response but continues analyzing subsequent user moves for eval drops. Analysis stops when the opponent plays a move with an eval drop ≥ 50cp (indicating the opponent left "overall theory"). This surfaces whether the user handled the surprise well across multiple moves.
+
+### 3.6 Game Row Visual Indicators
+
+Game row tiles have a colored left border indicating status:
+- **Purple border** — User deviated from repertoire.
+- **Category-colored border** — End-of-theory eval drop (gold for inaccuracy, red for mistake, purple for blunder).
+- **No border** — Game stayed in repertoire or had no notable events.
+
+### 3.7 Display Limits
+
+The Games page displays at most **100** games. Games are filtered to only those from currently linked accounts and where the user can be identified as a player.
+
 ## 4. Repertoire Cross-Reference
 
 To determine whether a position is "in repertoire," the system:
@@ -188,7 +213,7 @@ Settings Page                  Games Page
 
 | Store | Estimated size |
 |-------|---------------|
-| 20 games × ~5KB each | ~100KB per sync |
+| 100 games × ~5KB each | ~500KB per sync |
 | Repertoire FEN set | ~50KB (computed in memory, not stored) |
 
 IndexedDB storage is effectively unlimited for this volume.

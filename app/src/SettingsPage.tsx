@@ -56,8 +56,9 @@ const SettingsPage: React.FC = () => {
                     frequency: settings.frequencyPower.toString(),
                     error: settings.errorPower.toString()
                 });
-            } catch (err: any) {
-                setErrorMessage(`Failed to load settings: ${err?.message ?? 'Unknown error'}`);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                setErrorMessage(`Failed to load settings: ${message}`);
             } finally {
                 setLoading(false);
             }
@@ -133,8 +134,9 @@ const SettingsPage: React.FC = () => {
             await dal.storeRepertoireData(updatedData);
             setRepertoireData(updatedData);
             navigate(-1);
-        } catch (err: any) {
-            setErrorMessage(`Failed to save settings: ${err?.message ?? 'Unknown error'}`);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to save settings: ${message}`);
         } finally {
             setSaving(false);
         }

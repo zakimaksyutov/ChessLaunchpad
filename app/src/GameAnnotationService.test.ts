@@ -70,23 +70,23 @@ function replayFens(moves: string[]): string[] {
 describe('getUserColor', () => {
     it('returns white when username matches white player', () => {
         const data = makeGameData('e4 e5', 'alice', 'bob');
-        expect(getUserColor(data, 'alice')).toBe('white');
+        expect(getUserColor(data, 'alice', 'lichess')).toBe('white');
     });
 
     it('returns black when username matches black player', () => {
         const data = makeGameData('e4 e5', 'alice', 'bob');
-        expect(getUserColor(data, 'bob')).toBe('black');
+        expect(getUserColor(data, 'bob', 'lichess')).toBe('black');
     });
 
     it('is case-insensitive', () => {
         const data = makeGameData('e4 e5', 'Alice', 'Bob');
-        expect(getUserColor(data, 'alice')).toBe('white');
-        expect(getUserColor(data, 'BOB')).toBe('black');
+        expect(getUserColor(data, 'alice', 'lichess')).toBe('white');
+        expect(getUserColor(data, 'BOB', 'lichess')).toBe('black');
     });
 
     it('returns null for unknown player', () => {
         const data = makeGameData('e4 e5', 'alice', 'bob');
-        expect(getUserColor(data, 'charlie')).toBeNull();
+        expect(getUserColor(data, 'charlie', 'lichess')).toBeNull();
     });
 });
 
@@ -99,7 +99,7 @@ describe('annotateGame', () => {
         it('highlights user moves as in-repertoire while in theory', () => {
             // Game follows the repertoire exactly: 1. e4 e5 2. Nf3 Nc6 3. Bb5
             const gameData = makeGameData('e4 e5 Nf3 Nc6 Bb5 a6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -120,7 +120,7 @@ describe('annotateGame', () => {
             // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5
             // Game: 1. e4 e5 2. Nf3 Nc6 3. Bc4 (user plays Bc4 instead of Bb5)
             const gameData = makeGameData('e4 e5 Nf3 Nc6 Bc4 Nf6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -144,7 +144,7 @@ describe('annotateGame', () => {
                 [compact(fenAfter)]: [-20],  // -20cp for White → drop = 30-(-20) = 50
             });
 
-            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
             expect(result).not.toBeNull();
             const deviationMove = result!.moves[4]; // Bc4
             expect(deviationMove.highlight).toBe('deviation');
@@ -160,7 +160,7 @@ describe('annotateGame', () => {
             // Game: 1. e4 e5 2. Nf3 d6 ... (opponent plays d6 instead of Nc6)
             // User's next move (3. Bb5 or 3. d4, etc.) should be evaluated
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -187,7 +187,7 @@ describe('annotateGame', () => {
                 [compact(fenAfter)]: [10],   // 10cp for White → drop = 50-10 = 40
             });
 
-            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
             expect(result).not.toBeNull();
             const userResponse = result!.moves[4]; // d4
             expect(userResponse.highlight).toBe('end-of-theory-response');
@@ -198,7 +198,7 @@ describe('annotateGame', () => {
 
         it('marks user response as deviation even without eval data', () => {
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const userResponse = result!.moves[4]; // d4
@@ -208,7 +208,7 @@ describe('annotateGame', () => {
 
         it('sets mini board to user response position after opponent deviation', () => {
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             // Mini board should show position after d4 (first deviation fen)
@@ -218,7 +218,7 @@ describe('annotateGame', () => {
 
         it('subsequent moves after user response continue analysis without evals', () => {
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -256,7 +256,7 @@ describe('annotateGame', () => {
                 [compact(fenAfterNc3)]: [-30],  // after Nc3: -0.30 → user drop = 40-(-30) = 70cp (blunder!)
             });
 
-            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
@@ -292,7 +292,7 @@ describe('annotateGame', () => {
                 [compact(fenAfterNf6)]: [120],   // after Nf6: +1.20 → opp drop = 120-45 = 75cp (>= 50, stop!)
             });
 
-            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
@@ -324,7 +324,7 @@ describe('annotateGame', () => {
                 [compact(fenAfterNc3)]: [-40],  // user drop = 10-(-40) = 50cp (mistake)
             });
 
-            const result = annotateGame(gameData, 'user', repertoireFens, evals);
+            const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
@@ -347,7 +347,7 @@ describe('annotateGame', () => {
             // After transposition, we're back in theory; if user later deviates,
             // a new post-theory phase should start
             const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bg5 Be7 Bf4 a6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repFens, null);
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -374,7 +374,7 @@ describe('annotateGame', () => {
             // Use an empty repertoire
             const emptyRep = new Set<string>();
             const gameData = makeGameData('e4 e5 Nf3 Nc6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', emptyRep, null);
+            const result = annotateGame(gameData, 'user', emptyRep, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             for (const move of result!.moves) {
@@ -396,7 +396,7 @@ describe('annotateGame', () => {
 
             // Game: 1. e4 e5 2. Nf3 d5 (user deviates from Nc6 to d5)
             const gameData = makeGameData('e4 e5 Nf3 d5', 'opp', 'user');
-            const result = annotateGame(gameData, 'user', blackRepFens2, null);
+            const result = annotateGame(gameData, 'user', blackRepFens2, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -414,7 +414,7 @@ describe('annotateGame', () => {
 
             // Game: 1. e4 e5 2. d4 exd4 (opponent plays d4 instead of Nf3)
             const gameData = makeGameData('e4 e5 d4 exd4 Nf3', 'opp', 'user');
-            const result = annotateGame(gameData, 'user', blackRepFens, null);
+            const result = annotateGame(gameData, 'user', blackRepFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -439,7 +439,7 @@ describe('annotateGame', () => {
             ]);
 
             const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bg5', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repFens, null);
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -463,7 +463,7 @@ describe('annotateGame', () => {
             ]);
 
             const gameData = makeGameData('e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repFens, null);
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -488,7 +488,7 @@ describe('annotateGame', () => {
             ]);
 
             const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bf4 Be7', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repFens, null);
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -518,7 +518,7 @@ describe('annotateGame', () => {
             repFensCustom.add(fenAfterD4);
 
             const gameData = makeGameData('e4 c5 Nf3 a6 d4 cxd4', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repFensCustom, null);
+            const result = annotateGame(gameData, 'user', repFensCustom, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -535,7 +535,7 @@ describe('annotateGame', () => {
         it('consecutive out-of-theory moves are not marked as deviation', () => {
             // After a deviation, subsequent moves out of theory are just out-of-theory
             const gameData = makeGameData('e4 e5 Nf3 Nc6 Bc4 Nf6 d3 d5 c3', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repertoireFens, null);
+            const result = annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -555,7 +555,7 @@ describe('annotateGame', () => {
 
             // Game: 1. d4 e6 2. c4 d5 3. Nc3 Nf6 4. Bf4 (deviation after transposition back)
             const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bf4 Be7', 'user', 'opp');
-            const result = annotateGame(gameData, 'user', repFens, null);
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
             // Mini board should show position before first real deviation (Bf4),

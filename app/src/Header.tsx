@@ -35,6 +35,15 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         setIsDropdownOpen((prev) => !prev);
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleDropdown();
+        } else if (e.key === 'Escape') {
+            setIsDropdownOpen(false);
+        }
+    };
+
     const handleLoginClick = () => {
         navigate('/login');
     };
@@ -97,7 +106,15 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
                 {username ? (
                     /* Logged in state */
                     <div className="username-dropdown-container" ref={dropdownRef}>
-                        <span className="username-text" onClick={toggleDropdown}>
+                        <span
+                            className="username-text"
+                            onClick={toggleDropdown}
+                            onKeyDown={handleKeyDown}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={isDropdownOpen}
+                            aria-haspopup="true"
+                        >
                             <strong>{username}</strong>
                         </span>
 

@@ -104,10 +104,9 @@ describe('getUserColor (Chess.com)', () => {
         expect(getUserColor(data, 'charlie', 'chess.com')).toBeNull();
     });
 
-    it('auto-detects chess.com platform from data shape', () => {
+    it('works with explicit chess.com platform', () => {
         const data = makeChesscomGameData('', 'Alice', 'Bob');
-        // Without explicit platform - should auto-detect from uuid field
-        expect(getUserColor(data, 'alice')).toBe('white');
+        expect(getUserColor(data, 'alice', 'chess.com')).toBe('white');
     });
 });
 

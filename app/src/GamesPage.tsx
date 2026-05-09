@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
-import type { Annotation as ChessControlAnnotation } from 'chess-control';
+import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { createDataAccessLayer } from './DataAccessLayer';
 import { getLinkedAccounts, LinkedAccount } from './LinkedAccountsService';
 import { getAllGames, StoredGame } from './GamesDB';
@@ -89,9 +89,9 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
         if (!annotation?.deviation) return [];
         const arrows: ChessControlAnnotation[] = [];
         for (const rm of annotation.deviation.repertoireMoves) {
-            arrows.push({ color: 'green', from: rm.from as any, to: rm.to as any });
+            arrows.push({ color: 'green', from: rm.from as Square, to: rm.to as Square });
         }
-        arrows.push({ color: 'red', from: annotation.deviation.userMove.from as any, to: annotation.deviation.userMove.to as any });
+        arrows.push({ color: 'red', from: annotation.deviation.userMove.from as Square, to: annotation.deviation.userMove.to as Square });
         return arrows;
     }, [annotation]);
 
@@ -243,6 +243,7 @@ const GamesPage: React.FC = () => {
     const [syncing, setSyncing] = useState(false);
     const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
     const [error, setError] = useState<string>('');
+    const [info, setInfo] = useState<string>('');
     const [fenSets, setFenSets] = useState<RepertoireFenSets | null>(null);
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -358,6 +359,7 @@ const GamesPage: React.FC = () => {
 
         setSyncing(true);
         setError('');
+        setInfo('');
         setSyncProgress(null);
         if (infoClearTimerRef.current) {
             clearTimeout(infoClearTimerRef.current);
@@ -395,8 +397,8 @@ const GamesPage: React.FC = () => {
             if (failures.length > 0) {
                 setError(`Sync failed for: ${failures.join('; ')}`);
             } else if (totalGames === 0) {
-                setError('No new games found.');
-                infoClearTimerRef.current = setTimeout(() => setError(''), 3000);
+                setInfo('No new games found.');
+                infoClearTimerRef.current = setTimeout(() => setInfo(''), 3000);
             }
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
@@ -426,6 +428,7 @@ const GamesPage: React.FC = () => {
             )}
 
             {error && <div className="games-error">{error}</div>}
+            {info && <div className="games-info">{info}</div>}
 
             {loading ? (
                 <div className="games-empty"><p>Loading games…</p></div>
