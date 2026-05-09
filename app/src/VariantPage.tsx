@@ -6,6 +6,7 @@ import { Chess, Move } from 'chess.js';
 import { Annotation } from './Annotation';
 import { extractAnnotations, serializeAnnotationsAsComment } from './AnnotationUtils';
 import { DatabaseOpeningsUtils } from './DatabaseOpeningsUtils';
+import { parsePgnWithVariations } from './PgnImportUtils';
 import PgnControl from './PgnControl';
 import './VariantPage.css';
 
@@ -66,6 +67,8 @@ const VariantPage: React.FC = () => {
         y: 0,
         moveIndex: -1,
     });
+    const [showPastePgn, setShowPastePgn] = useState(false);
+    const [pastedPgnText, setPastedPgnText] = useState('');
 
     // On mount (or if initialPgn changes in edit mode), load the PGN into chess
     useEffect(() => {
@@ -143,6 +146,44 @@ const VariantPage: React.FC = () => {
 
     const handleFlipBoard = () => {
         setOrientation((o) => (o === 'white' ? 'black' : 'white'));
+    };
+
+    const handleLoadPgn = () => {
+        if (!pastedPgnText.trim()) {
+            return;
+        }
+
+        try {
+            const parsed = parsePgnWithVariations(pastedPgnText);
+
+            if (!parsed.mainLinePgn && pastedPgnText.trim().length > 0) {
+                alert('Could not parse any moves from the pasted PGN.');
+                return;
+            }
+
+            chess.reset();
+            if (parsed.mainLinePgn) {
+                chess.loadPgn(parsed.mainLinePgn);
+            }
+
+            // Convert subvariant arrows to annotations map
+            const newAnnotationsMap: { [fen: string]: Annotation[] } = {};
+            parsed.subvariantArrows.forEach((arrows, fen) => {
+                newAnnotationsMap[fen] = arrows;
+            });
+
+            setPgn(chess.pgn());
+            setAnnotationsMap(newAnnotationsMap);
+            // Explicitly set FEN to handle same-length PGN reloads
+            // where setMoveIndex would be a no-op.
+            setFen(chess.fen());
+            setMoveIndex(chess.history().length);
+            setPastedPgnText('');
+            setShowPastePgn(false);
+        } catch (ex: unknown) {
+            const message = ex instanceof Error ? ex.message : String(ex);
+            alert(`Failed to load PGN: ${message}`);
+        }
     };
 
     const handleSave = async (resetStats: boolean = false) => {
@@ -367,6 +408,36 @@ const VariantPage: React.FC = () => {
                         />
                     </div>
                 </div>
+            </div>
+
+            {/* Paste PGN section */}
+            <div className="paste-pgn-section">
+                <button
+                    className="paste-pgn-toggle"
+                    onClick={() => setShowPastePgn(prev => !prev)}
+                    aria-expanded={showPastePgn}
+                    aria-controls="paste-pgn-content"
+                >
+                    <span aria-hidden="true">{showPastePgn ? '▾' : '▸'}</span> Paste PGN
+                </button>
+                {showPastePgn && (
+                    <div className="paste-pgn-content" id="paste-pgn-content" role="region">
+                        <label htmlFor="paste-pgn-textarea" className="sr-only">
+                            PGN text with optional variations
+                        </label>
+                        <textarea
+                            id="paste-pgn-textarea"
+                            value={pastedPgnText}
+                            onChange={(e) => setPastedPgnText(e.target.value)}
+                            placeholder="Paste PGN here (variations in parentheses become arrows)…"
+                        />
+                        <div className="paste-pgn-actions">
+                            <button onClick={handleLoadPgn} disabled={!pastedPgnText.trim()}>
+                                Load
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {contextMenu.show && (
