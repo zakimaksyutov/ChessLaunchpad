@@ -169,13 +169,21 @@
     text-transform: uppercase;
 }
 
-.game-lichess-link {
+.game-right-column {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+    flex-shrink: 0;
+}
+
+.game-source-link {
     color: rgb(0, 130, 210);
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     text-decoration: none;
 }
 
-.game-lichess-link:hover {
+.game-source-link:hover {
     text-decoration: underline;
 }
 

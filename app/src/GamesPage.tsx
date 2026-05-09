@@ -167,23 +167,25 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         <span className="game-vs"> vs </span>
                         {formatPlayerLabel(meta.blackName, meta.blackRating, blackIsUser)}
                     </div>
-                    <span className="game-meta-right">
-                        {topRightParts.join(' | ')}
-                    </span>
+                    <div className="game-right-column">
+                        <span className="game-meta-right">
+                            {topRightParts.join(' | ')}
+                        </span>
+                        <a
+                            className="game-source-link"
+                            href={meta.gameUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            {platform === 'chess.com' ? '♔ View on Chess.com' : '♞ View on Lichess'}
+                        </a>
+                    </div>
                 </div>
 
                 <div className="game-details-row">
                     {meta.openingName && (
                         <span className="game-opening">{meta.openingName}</span>
                     )}
-                    <a
-                        className="game-lichess-link"
-                        href={meta.gameUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        {platform === 'chess.com' ? '♔ View on Chess.com' : '♞ View on Lichess'}
-                    </a>
                 </div>
 
                 {/* Annotated PGN */}
