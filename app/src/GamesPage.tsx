@@ -153,6 +153,7 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                     fen={boardFen}
                     orientation={annotation?.miniBoardOrientation ?? meta.userColor ?? 'white'}
                     interactive={false}
+                    coordinates={false}
                     turnColor="white"
                     legalMoves={new Map()}
                     annotations={boardAnnotations}
