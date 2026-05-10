@@ -14,6 +14,7 @@ export interface ChessBoardProps {
     width?: number;
     drawingMode?: DrawingMode;
     resizable?: boolean;
+    coordinates?: boolean;
     turnColor?: 'white' | 'black';
     legalMoves?: Map<Square, Square[]>;
     lastMove?: {
@@ -26,4 +27,4 @@ export interface ChessBoardProps {
     onAnnotationsChange?: (annotations: Annotation[]) => void;
     clearAnnotationsOnClick?: boolean;
 }
-export declare function ChessBoard({ fen, orientation, onMove, interactive, width: widthProp, drawingMode, resizable, turnColor, legalMoves: legalMovesProp, lastMove, check, annotations, onAnnotationsChange, clearAnnotationsOnClick, }: ChessBoardProps): import("react/jsx-runtime").JSX.Element;
+export declare function ChessBoard({ fen, orientation, onMove, interactive, width: widthProp, drawingMode, resizable, coordinates: showCoordinates, turnColor, legalMoves: legalMovesProp, lastMove, check, annotations, onAnnotationsChange, clearAnnotationsOnClick, }: ChessBoardProps): import("react/jsx-runtime").JSX.Element;
