@@ -36,31 +36,46 @@ The Games page includes detailed debug logging for its annotation/highlighting l
 
 ## Activation
 
-Add `?debug=true` to the URL:
+Add `?debugGame=<opponentName>` to the URL, where `<opponentName>` is a case-insensitive substring of the opponent's name:
 
 ```
-https://zakimaksyutov.github.io/ChessLaunchpad/?debug=true#/games
+https://zakimaksyutov.github.io/ChessLaunchpad/#/games?debugGame=magnus
 ```
 
 Or in local dev:
 
 ```
-http://localhost:5274/ChessLaunchpad/?debug=true#/games
+http://localhost:5274/ChessLaunchpad/#/games?debugGame=magnus
 ```
+
+Only games where the opponent's name contains the filter string will produce debug output.
 
 ## Output
 
 Logs are emitted to `console.debug` (set the browser console level to **Verbose** to see them). Each game produces a collapsed console group:
 
 ```
-▶ [annotate Dm0P1ZTb] zakima as white, repertoire size=1389, moves=85
+▶ [annotate Dm0P1ZTb] zakima as white vs cantorypoeta, repertoire size=1389, moves=85, hasEmbeddedEvals=true
     ply 0: e4 [USER] → in-repertoire | after-FEN in repertoire
     ply 1: e6 [OPP] → in-repertoire | after-FEN in repertoire
     ply 2: Nf3 [USER] → in-repertoire | after-FEN in repertoire
     ply 3: d6 [OPP] → out-of-theory | opponent deviated (before-FEN in repertoire, after-FEN not)
-    ply 4: d4 [USER] → out-of-theory | past theory end
+    ply 4: d4 [USER] → end-of-theory-response | evalDrop=12.50 (ok) [source: embedded]
     ...
 ```
+
+## Eval Sources
+
+The annotation logic tries eval sources in priority order:
+
+| Priority | Source | Description |
+|----------|--------|-------------|
+| 1 | `explorer` | Pre-computed ExplorerEvals from static JSON (repertoire positions only) |
+| 2 | `embedded` | Per-ply analysis from the Lichess game data (`analysis[]` array, Lichess games only) |
+
+Cloud eval (Lichess Cloud Eval API) is implemented but currently disabled. See `GamesPage.tsx` comment and git history.
+
+When eval data is found, the debug trace shows `[source: explorer]` or `[source: embedded]`. When no source has data, it logs `no eval data for drop calc`.
 
 ## Fields
 
@@ -69,15 +84,17 @@ Logs are emitted to `console.debug` (set the browser console level to **Verbose*
 | `gameId` | Lichess game ID |
 | `username` | The logged-in user |
 | `userColor` | `white` or `black` |
+| `vs` | Opponent name |
 | `repertoire size` | Number of FENs in the user's repertoire for that color |
+| `hasEmbeddedEvals` | Whether the game has embedded Lichess analysis data |
 | `ply N` | Zero-based ply index |
 | `SAN` | Move in standard algebraic notation |
 | `USER/OPP` | Whether this is the user's move or the opponent's |
-| `highlight` | `in-repertoire`, `deviation`, or `out-of-theory` |
+| `highlight` | `in-repertoire`, `deviation`, `end-of-theory-response`, or `out-of-theory` |
 | `reason` | Human-readable explanation of why the highlight was chosen |
 
-For deviation moves, the reason also includes eval-drop data when available (e.g., `evalDrop=-0.45 (inaccuracy)`).
+For deviation and end-of-theory-response moves, the reason includes eval-drop data and source when available (e.g., `evalDrop=-0.45 (inaccuracy) [source: embedded]`).
 
 ## Source
 
-`app/src/GameAnnotationService.ts` — the `debugAnnotation` flag at module scope reads `window.location.search` for the `debug` parameter.
+`app/src/GameAnnotationService.ts` — the `getDebugGameFilter` function reads the `debugGame` parameter from the URL hash query string (supports both HashRouter and regular routing). Only games against the matching opponent produce debug output.

@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js';
+import { openDB, type IDBPDatabase } from 'idb';
 
 export interface CloudEvalPv {
     /** First move in SAN notation (e.g., "e4") */
@@ -96,12 +97,54 @@ export function formatMoveWithNumber(
     }
 }
 
+// ---------------------------------------------------------------------------
+// IndexedDB persistence for cloud eval results
+// ---------------------------------------------------------------------------
+const CLOUD_EVAL_DB_NAME = 'chesslaunchpad-cloud-evals';
+const CLOUD_EVAL_DB_VERSION = 1;
+const CLOUD_EVAL_STORE = 'evals';
+
+let cloudEvalDbPromise: Promise<IDBPDatabase> | null = null;
+
+function getCloudEvalDB(): Promise<IDBPDatabase> {
+    if (!cloudEvalDbPromise) {
+        cloudEvalDbPromise = openDB(CLOUD_EVAL_DB_NAME, CLOUD_EVAL_DB_VERSION, {
+            upgrade(db) {
+                if (!db.objectStoreNames.contains(CLOUD_EVAL_STORE)) {
+                    db.createObjectStore(CLOUD_EVAL_STORE);
+                }
+            },
+        });
+    }
+    return cloudEvalDbPromise;
+}
+
+async function getPersistedCloudEval(key: string): Promise<CloudEvalResult | null> {
+    try {
+        const db = await getCloudEvalDB();
+        const val = await db.get(CLOUD_EVAL_STORE, key);
+        return val ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function persistCloudEval(key: string, result: CloudEvalResult): Promise<void> {
+    try {
+        const db = await getCloudEvalDB();
+        await db.put(CLOUD_EVAL_STORE, result, key);
+    } catch {
+        // Best-effort persistence — don't break the caller
+    }
+}
+
 // In-memory cache for cloud eval responses (keyed by "fen::multiPv")
 const evalCache = new Map<string, Promise<CloudEvalResult | null>>();
 
 /**
  * Fetch cloud eval with deduplication/caching.
- * Repeated calls for the same FEN+multiPv return the same promise.
+ * Checks: in-memory cache → IndexedDB → Lichess API.
+ * Successful results are persisted to IndexedDB for cross-session reuse.
  */
 export function fetchCloudEvalCached(
     fen: string,
@@ -111,13 +154,26 @@ export function fetchCloudEvalCached(
     const key = `${fen}::${multiPv}`;
     const cached = evalCache.get(key);
     if (cached) return cached;
-    const promise = fetchCloudEval(fen, multiPv, fetchFn).then((result) => {
-        // Don't cache failures — only keep successful lookups
+
+    const promise = (async () => {
+        // Check IndexedDB first
+        const persisted = await getPersistedCloudEval(key);
+        if (persisted) return persisted;
+
+        // Fall back to network
+        const result = await fetchCloudEval(fen, multiPv, fetchFn);
+        if (result) {
+            await persistCloudEval(key, result);
+        }
+        return result;
+    })().then((result) => {
+        // Don't keep failures in the in-memory cache
         if (result === null) {
             evalCache.delete(key);
         }
         return result;
     });
+
     evalCache.set(key, promise);
     return promise;
 }

@@ -331,7 +331,7 @@ const GamesPage: React.FC = () => {
     );
 
     // Compute annotations for all displayed games (memoized)
-    const annotations = useMemo(() => {
+    const baseAnnotations = useMemo(() => {
         if (!fenSets) return new Map<string, GameAnnotation | null>();
         const map = new Map<string, GameAnnotation | null>();
         for (const game of filteredGames) {
@@ -349,6 +349,12 @@ const GamesPage: React.FC = () => {
         }
         return map;
     }, [filteredGames, fenSets, explorerEvals]);
+
+    // Cloud eval patching: disabled for now.
+    // When re-enabled, this fetches Lichess cloud evals for positions where
+    // sources 1 (ExplorerEvals) and 2 (embedded game analysis) had no data.
+    // See git history for the full implementation with rate limiting and progress bar.
+    const annotations = baseAnnotations;
 
     const handleSync = async () => {
         if (syncing) return;

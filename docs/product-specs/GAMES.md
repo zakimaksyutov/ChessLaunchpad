@@ -119,7 +119,12 @@ For each user move in the displayed PGN, apply the following highlights (in prio
 
 1. **In-repertoire (positive)** — The position after this move matches a FEN that exists in the user's repertoire data. Highlight with a **green** background. Determined by replaying the game with `chess.js` and checking whether each resulting FEN appears in any variant's move sequence.
 
-2. **Theory deviation with eval drop** — The user deviated from the repertoire (the position before the move is in the repertoire but the move played is not the repertoire move) **and** the deviation caused an eval drop. Use the existing `EvalDropService` + `ExplorerEvals` to compute the eval drop. Apply the same thresholds already used on the Repertoire page (inaccuracy ≥ 30cp, mistake ≥ 50cp, blunder ≥ 70cp). Highlight with the corresponding eval-drop color.
+2. **Theory deviation with eval drop** — The user deviated from the repertoire (the position before the move is in the repertoire but the move played is not the repertoire move) **and** the deviation caused an eval drop. Eval drops are computed using multiple sources in priority order:
+
+   1. **ExplorerEvals** — Pre-computed static evals for repertoire positions (instant, no network).
+   2. **Embedded Lichess analysis** — Per-ply centipawn evals from the Lichess game's `analysis[]` array, already stored in IndexedDB. Only available for Lichess games with server analysis.
+
+   Apply the same thresholds already used on the Repertoire page (inaccuracy ≥ 30cp, mistake ≥ 50cp, blunder ≥ 70cp). Highlight with the corresponding eval-drop color.
 
    This also applies when the **opponent** deviates from the repertoire — the user's first response move after the opponent's deviation is evaluated for an eval drop using the same logic. This surfaces whether the user handled the surprise well.
 
@@ -183,6 +188,18 @@ The FEN sets are computed once (memoized) and shared across all game rows.
 - **`idb`** — Promise wrapper for IndexedDB.
 - **`chess.js`** — Already in the project for PGN replay and FEN generation.
 - **`ExplorerEvals`** / **`EvalDropService`** — Reuse existing services for eval-drop detection.
+- **`LichessCloudEvalService`** — Cloud eval API with IndexedDB persistence (currently disabled for batch annotation; used on-demand by `AnalysisPopover`).
+
+### Eval Sources
+
+The annotation logic tries eval sources in priority order to compute eval drops for post-theory and deviation moves:
+
+| Priority | Source | Scope | Network |
+|----------|--------|-------|---------|
+| 1 | `ExplorerEvals` | Repertoire positions only (static JSON) | No |
+| 2 | Embedded Lichess analysis | Lichess games with server analysis (`analysis[]` in stored game data) | No (already in IndexedDB) |
+
+Embedded evals are single-value (not multi-PV), so `computeConservativeDrop` receives 1-element arrays. Chess.com games do not include embedded evals — only ExplorerEvals applies.
 
 ### Data Flow
 
@@ -193,16 +210,22 @@ Settings Page                  Games Page
                                     │
                               [Sync Games] button
                                     │
-                              Lichess NDJSON API
+                         ┌──────────┴──────────┐
+                    Lichess NDJSON API    Chess.com API
+                    (with evals=true)
+                         └──────────┬──────────┘
                                     │
                               IndexedDB: games store
+                              (includes raw game data
+                               with embedded analysis)
                                     │
                           ┌─────────┴─────────┐
                           │                   │
-                    RepertoireData      ExplorerEvals
-                          │                   │
-                     FEN matching        Eval drops
-                          │                   │
+                    RepertoireData      Eval sources
+                          │            ┌──────┴──────┐
+                     FEN matching   ExplorerEvals  Embedded
+                          │          (static JSON)  analysis
+                          │            └──────┬──────┘
                           └─────────┬─────────┘
                                     │
                               Annotated game rows
