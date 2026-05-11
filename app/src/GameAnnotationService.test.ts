@@ -306,14 +306,13 @@ describe('annotateGame', () => {
             expect(moves[6].highlight).toBe('out-of-theory');
         });
 
-        it('continues analysis when no eval data for opponent move', () => {
+        it('stops analysis after first notable user eval drop', () => {
             // No evals for opponent move Nf6 → benefit of the doubt, keep analyzing
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
 
             const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
             const fenBeforeD4 = fens[4];
             const fenAfterD4 = fens[5];
-            // No evals for Nf6 positions
             const fenBeforeNc3 = fens[6];
             const fenAfterNc3 = fens[7];
 
@@ -321,20 +320,19 @@ describe('annotateGame', () => {
                 [compact(fenBeforeD4)]: [50],
                 [compact(fenAfterD4)]: [20],    // user drop = 30cp (inaccuracy)
                 [compact(fenBeforeNc3)]: [10],
-                [compact(fenAfterNc3)]: [-40],  // user drop = 10-(-40) = 50cp (mistake)
+                [compact(fenAfterNc3)]: [-40],  // would be mistake, but analysis already stopped
             });
 
             const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
-            // d4: first response, inaccuracy
+            // d4: first response, inaccuracy → triggers stop
             expect(moves[4].highlight).toBe('end-of-theory-response');
             expect(moves[4].evalDrop?.category).toBe('inaccuracy');
 
-            // Nc3: still analyzed despite missing opponent evals
-            expect(moves[6].highlight).toBe('end-of-theory-response');
-            expect(moves[6].evalDrop?.category).toBe('mistake');
+            // Nc3: analysis stopped after first notable drop, plain out-of-theory
+            expect(moves[6].highlight).toBe('out-of-theory');
         });
 
         it('transposition back to repertoire resets post-theory analysis', () => {

@@ -452,6 +452,12 @@ export function annotateGame(
                 if (!firstEvalDropFen && category !== 'ok') {
                     firstEvalDropFen = fenAfter;
                 }
+
+                // Stop after first notable eval drop — only the first inaccuracy/mistake/blunder matters
+                if (category !== 'ok') {
+                    postTheoryAnalysis = false;
+                    reason += ' → stop (first notable drop)';
+                }
             } else {
                 reason += ', no eval data for drop calc';
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
