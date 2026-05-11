@@ -6,11 +6,16 @@ import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomGamesService';
 
 /**
- * If the opponent's eval drop (from their own perspective) exceeds this threshold,
- * we consider them "out of overall theory" and stop post-theory analysis.
- * 50 cp = 0.5 pawns.
+ * When the opponent plays a move out of the user's repertoire, we check the
+ * opponent's eval drop to decide whether the position is still "in overall
+ * theory" (a reasonable line worth studying) or "out of theory" (a blunder
+ * that leaves no meaningful theory to analyse).
+ *
+ * If the opponent's drop ≥ this threshold the position is considered out of
+ * theory and we stop highlighting the user's subsequent moves.
+ * 45 cp ≈ 0.45 pawns.
  */
-const OPPONENT_DROP_THRESHOLD = 50;
+const OUT_OF_THEORY_THRESHOLD = 45;
 
 /** Large cp value used when analysis reports a forced mate. */
 const MATE_CP = 10_000;
@@ -427,15 +432,32 @@ export function annotateGame(
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
-            // Opponent deviated (opponent's move took us out of repertoire)
+            // Opponent left the user's repertoire.
+            // Check whether the opponent's move is still "in theory" (reasonable)
+            // or "out of theory" (a blunder we don't need to study).
             highlight = 'out-of-theory';
-            postTheoryAnalysis = true;
             theoryEndPly = i;
-            reason = 'opponent deviated (before-FEN in repertoire, after-FEN not)';
+            reason = 'opponent left repertoire';
+
+            const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
+            if (evalResult) {
+                const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
+                if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
+                    postTheoryAnalysis = false;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
+                } else {
+                    postTheoryAnalysis = true;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory, analyse user moves [source: ${evalResult.source}]`;
+                }
+            } else {
+                // No eval data — benefit of the doubt, analyse user moves
+                postTheoryAnalysis = true;
+                reason += ', no eval data for opponent drop → analyse user moves';
+            }
         } else if (postTheoryAnalysis && isUserMove) {
-            // User move in post-theory phase — evaluate for eval drop
+            // User move after opponent left repertoire but still in theory — evaluate for eval drop
             highlight = 'end-of-theory-response';
-            reason = 'user move in post-theory analysis';
+            reason = 'user move after opponent left repertoire (still in theory)';
 
             if (!firstPostTheoryFen) {
                 firstPostTheoryFen = fenAfter;
@@ -463,21 +485,21 @@ export function annotateGame(
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (postTheoryAnalysis && !isUserMove) {
-            // Opponent move in post-theory phase — check if they played badly
+            // Subsequent opponent move — check if they've now left theory
             highlight = 'out-of-theory';
-            reason = 'opponent move in post-theory analysis';
+            reason = 'opponent move (still in theory)';
 
             const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
-                if (oppDrop >= OPPONENT_DROP_THRESHOLD) {
+                if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
                     postTheoryAnalysis = false;
-                    reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OPPONENT_DROP_THRESHOLD} → stop analysis [source: ${evalResult.source}]`;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
                 } else {
-                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OPPONENT_DROP_THRESHOLD} → continue [source: ${evalResult.source}]`;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory [source: ${evalResult.source}]`;
                 }
             } else {
-                reason += ', no eval data for opponent drop check → continue';
+                reason += ', no eval data for opponent drop → continue';
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else {

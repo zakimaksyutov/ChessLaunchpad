@@ -231,19 +231,19 @@ describe('annotateGame', () => {
     });
 
     describe('extended post-theory analysis', () => {
-        it('detects user inaccuracy on 2nd+ move after opponent deviation', () => {
+        it('detects user inaccuracy on 2nd+ move after opponent leaves repertoire', () => {
             // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5
-            // Game: 1. e4 e5 2. Nf3 d6 3. d4 Nf6 4. Nc3 (user plays Nc3 with a drop)
+            // Game: 1. e4 e5 2. Nf3 d6 3. d4 Nf6 4. Nc3 (user plays Nc3 with a 70cp drop)
+            // Opponent's d6 and Nf6 are small drops (in theory) so user moves are analysed.
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
 
-            // FENs: d4 (ply 4) is first response with ok drop, Nc3 (ply 6) has a drop
             const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
             const fenBeforeD4 = fens[4];   // after d6
             const fenAfterD4 = fens[5];    // after d4
             const fenBeforeNc3 = fens[6];  // after Nf6
             const fenAfterNc3 = fens[7];   // after Nc3
 
-            // Opponent move Nf6: small drop (under threshold) so analysis continues
+            // Opponent move Nf6: small drop (under 45 threshold) so analysis continues
             const fenBeforeNf6 = fens[5];  // after d4
             const fenAfterNf6 = fens[6];   // after Nf6
 
@@ -251,9 +251,9 @@ describe('annotateGame', () => {
                 [compact(fenBeforeD4)]: [50],   // after d6: +0.50
                 [compact(fenAfterD4)]: [45],    // after d4: +0.45 → user drop = 5cp (ok)
                 [compact(fenBeforeNf6)]: [45],  // after d4: +0.45
-                [compact(fenAfterNf6)]: [40],   // after Nf6: +0.40 → opponent drop = 45-40 = 5cp (< 50, continue)
+                [compact(fenAfterNf6)]: [40],   // after Nf6: +0.40 → opponent drop = 5cp (< 45, still in theory)
                 [compact(fenBeforeNc3)]: [40],  // after Nf6: +0.40
-                [compact(fenAfterNc3)]: [-30],  // after Nc3: -0.30 → user drop = 40-(-30) = 70cp (blunder!)
+                [compact(fenAfterNc3)]: [-30],  // after Nc3: -0.30 → user drop = 70cp (blunder!)
             });
 
             const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
@@ -264,19 +264,19 @@ describe('annotateGame', () => {
             expect(moves[4].highlight).toBe('end-of-theory-response');
             expect(moves[4].evalDrop?.category).toBe('ok');
 
-            // Nf6: opponent move, analysis continues
+            // Nf6: opponent move, still in theory
             expect(moves[5].highlight).toBe('out-of-theory');
 
-            // Nc3: 2nd user move, blunder detected
+            // Nc3: 2nd user move, blunder detected (opponent stayed in theory)
             expect(moves[6].highlight).toBe('end-of-theory-response');
             expect(moves[6].evalDrop).toBeDefined();
             expect(moves[6].evalDrop!.evalDrop).toBe(70);
             expect(moves[6].evalDrop!.category).toBe('blunder');
         });
 
-        it('stops analysis when opponent plays a bad move (>= 50cp drop)', () => {
+        it('stops analysis when opponent plays out of theory (>= 45cp drop)', () => {
             // Game: 1. e4 e5 2. Nf3 d6 3. d4 Nf6?? 4. Nc3
-            // Nf6 has a large opponent drop → stop analysis, Nc3 is plain out-of-theory
+            // Nf6 has a large opponent drop → out of theory, Nc3 is plain out-of-theory
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
 
             const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
@@ -289,7 +289,7 @@ describe('annotateGame', () => {
                 [compact(fenBeforeD4)]: [50],
                 [compact(fenAfterD4)]: [45],     // user drop = 5cp (ok)
                 [compact(fenBeforeNf6)]: [45],
-                [compact(fenAfterNf6)]: [120],   // after Nf6: +1.20 → opp drop = 120-45 = 75cp (>= 50, stop!)
+                [compact(fenAfterNf6)]: [120],   // after Nf6: +1.20 → opp drop = 120-45 = 75cp (>= 45, out of theory!)
             });
 
             const result = annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
@@ -299,7 +299,7 @@ describe('annotateGame', () => {
             // d4: first response
             expect(moves[4].highlight).toBe('end-of-theory-response');
 
-            // Nf6: opponent blunder → analysis stops
+            // Nf6: opponent out of theory → analysis stops
             expect(moves[5].highlight).toBe('out-of-theory');
 
             // Nc3: should be plain out-of-theory (NOT end-of-theory-response)

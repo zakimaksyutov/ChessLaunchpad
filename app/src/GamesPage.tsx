@@ -229,7 +229,7 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                             <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
                             <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                         </svg>
-                        Out of theory – you played <strong>{eotSummary.userSan}</strong>
+                        Out of repertoire – you played <strong>{eotSummary.userSan}</strong>
                         {' '}({eotSummary.category})
                     </div>
                 )}
