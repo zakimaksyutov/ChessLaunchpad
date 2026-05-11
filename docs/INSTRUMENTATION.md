@@ -61,8 +61,8 @@ Logs are emitted to `console.debug` (set the browser console level to **Verbose*
     ply 0: e4 [USER] → in-repertoire | after-FEN in repertoire
     ply 1: e6 [OPP] → in-repertoire | after-FEN in repertoire
     ply 2: Nf3 [USER] → in-repertoire | after-FEN in repertoire
-    ply 3: d6 [OPP] → out-of-theory | opponent deviated (before-FEN in repertoire, after-FEN not)
-    ply 4: d4 [USER] → end-of-theory-response | evalDrop=12.50 (ok) [source: embedded]
+    ply 3: d6 [OPP] → out-of-repertoire | opponent deviated (before-FEN in repertoire, after-FEN not)
+    ply 4: d4 [USER] → out-of-repertoire-response | evalDrop=12.50 (ok) [source: embedded]
     ...
 ```
 
@@ -92,10 +92,10 @@ When eval data is found, the debug trace shows `[source: explorer]` or `[source:
 | `ply N` | Zero-based ply index |
 | `SAN` | Move in standard algebraic notation |
 | `USER/OPP` | Whether this is the user's move or the opponent's |
-| `highlight` | `in-repertoire`, `deviation`, `end-of-theory-response`, or `out-of-theory` |
+| `highlight` | `in-repertoire`, `deviation`, `out-of-repertoire-response`, `out-of-repertoire`, or `out-of-theory` |
 | `reason` | Human-readable explanation of why the highlight was chosen |
 
-For deviation and end-of-theory-response moves, the reason includes eval-drop data and source when available (e.g., `evalDrop=-0.45 (inaccuracy) [source: embedded]`).
+For deviation and out-of-repertoire-response moves, the reason includes eval-drop data and source when available (e.g., `evalDrop=-0.45 (inaccuracy) [source: embedded]`).
 
 ## Source
 

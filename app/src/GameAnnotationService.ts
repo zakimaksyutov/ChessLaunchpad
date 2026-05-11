@@ -94,7 +94,7 @@ function lookupEvals(
     return null;
 }
 
-export type MoveHighlight = 'in-repertoire' | 'deviation' | 'end-of-theory-response' | 'out-of-theory';
+export type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-repertoire-response' | 'out-of-repertoire' | 'out-of-theory';
 
 export interface AnnotatedMove {
     /** SAN of the move */
@@ -435,7 +435,6 @@ export function annotateGame(
             // Opponent left the user's repertoire.
             // Check whether the opponent's move is still "in theory" (reasonable)
             // or "out of theory" (a blunder we don't need to study).
-            highlight = 'out-of-theory';
             theoryEndPly = i;
             reason = 'opponent left repertoire';
 
@@ -443,20 +442,23 @@ export function annotateGame(
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
+                    highlight = 'out-of-theory';
                     postTheoryAnalysis = false;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
                 } else {
+                    highlight = 'out-of-repertoire';
                     postTheoryAnalysis = true;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory, analyse user moves [source: ${evalResult.source}]`;
                 }
             } else {
                 // No eval data — benefit of the doubt, analyse user moves
+                highlight = 'out-of-repertoire';
                 postTheoryAnalysis = true;
                 reason += ', no eval data for opponent drop → analyse user moves';
             }
         } else if (postTheoryAnalysis && isUserMove) {
             // User move after opponent left repertoire but still in theory — evaluate for eval drop
-            highlight = 'end-of-theory-response';
+            highlight = 'out-of-repertoire-response';
             reason = 'user move after opponent left repertoire (still in theory)';
 
             if (!firstPostTheoryFen) {
@@ -486,19 +488,21 @@ export function annotateGame(
             }
         } else if (postTheoryAnalysis && !isUserMove) {
             // Subsequent opponent move — check if they've now left theory
-            highlight = 'out-of-theory';
             reason = 'opponent move (still in theory)';
 
             const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
+                    highlight = 'out-of-theory';
                     postTheoryAnalysis = false;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
                 } else {
+                    highlight = 'out-of-repertoire';
                     reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory [source: ${evalResult.source}]`;
                 }
             } else {
+                highlight = 'out-of-repertoire';
                 reason += ', no eval data for opponent drop → continue';
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }

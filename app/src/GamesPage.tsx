@@ -42,10 +42,11 @@ function getMoveClassName(move: AnnotatedMove): string {
             return 'move-token move-in-repertoire';
         case 'deviation':
             return 'move-token move-deviation';
-        case 'end-of-theory-response': {
+        case 'out-of-repertoire-response': {
             const category = move.evalDrop?.category ?? 'ok';
             return `move-token ${END_OF_THEORY_CLASSES[category]}`;
         }
+        case 'out-of-repertoire':
         case 'out-of-theory':
             return 'move-token move-out-of-theory';
     }
@@ -102,8 +103,8 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
         if (!annotation) return null;
         const moves = annotation.moves;
         for (let i = 0; i < moves.length; i++) {
-            if (moves[i].highlight === 'end-of-theory-response' && moves[i].evalDrop && moves[i].evalDrop!.category !== 'ok') {
-                // Find the preceding opponent out-of-theory move
+            if (moves[i].highlight === 'out-of-repertoire-response' && moves[i].evalDrop && moves[i].evalDrop!.category !== 'ok') {
+                // Find the preceding opponent out-of-repertoire move
                 let opponentMove: string | null = null;
                 for (let j = i - 1; j >= 0; j--) {
                     if (!moves[j].isUserMove) {

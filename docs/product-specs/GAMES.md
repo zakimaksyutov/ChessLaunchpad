@@ -132,7 +132,9 @@ For each user move in the displayed PGN, apply the following highlights (in prio
 
    Deviations without eval data are shown with a subtle orange highlight to remain visible.
 
-3. **Out of theory (neutral)** — Moves after theory ends are shown in default styling (no highlight).
+3. **Out of repertoire (neutral)** — Opponent moves that leave the user's repertoire but are still within overall theory (reasonable moves with eval drop below the out-of-theory threshold). These are shown in dimmed opponent styling.
+
+4. **Out of theory (neutral)** — Moves after theory truly ends (opponent blundered out of theory, or all theory connection is lost). Shown in default styling (no highlight).
 
 Opponent moves are displayed in a dimmed style to visually distinguish them from user moves.
 
@@ -151,7 +153,7 @@ When the user deviated from repertoire, the mini board also shows **arrows**: gr
 Below the PGN, game rows display contextual summaries:
 
 - **Deviation summary** — When the user deviated from repertoire, a text callout shows "Repertoire has **X** but you played **Y**" with a warning icon.
-- **End-of-theory eval drop summary** — When the opponent deviated and the user's response had an eval drop, a summary shows the user's move and its eval-drop category (inaccuracy/mistake/blunder).
+- **Out-of-repertoire eval drop summary** — When the opponent deviated and the user's response had an eval drop, a summary shows the user's move and its eval-drop category (inaccuracy/mistake/blunder).
 
 ### 3.5 Post-Theory Extended Analysis
 
@@ -161,7 +163,7 @@ When the opponent deviates from the repertoire, the system evaluates not just th
 
 Game row tiles have a colored left border indicating status:
 - **Purple border** — User deviated from repertoire.
-- **Category-colored border** — End-of-theory eval drop (gold for inaccuracy, red for mistake, purple for blunder).
+- **Category-colored border** — Out-of-repertoire eval drop (gold for inaccuracy, red for mistake, purple for blunder).
 - **No border** — Game stayed in repertoire or had no notable events.
 
 ### 3.7 Display Limits
