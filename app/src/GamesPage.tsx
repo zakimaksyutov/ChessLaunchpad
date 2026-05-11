@@ -229,7 +229,7 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                             <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
                             <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                         </svg>
-                        Out of theory – you played <strong>{eotSummary.userSan}</strong>
+                        Out of repertoire – you played <strong>{eotSummary.userSan}</strong>
                         {' '}({eotSummary.category})
                     </div>
                 )}
@@ -331,7 +331,7 @@ const GamesPage: React.FC = () => {
     );
 
     // Compute annotations for all displayed games (memoized)
-    const annotations = useMemo(() => {
+    const baseAnnotations = useMemo(() => {
         if (!fenSets) return new Map<string, GameAnnotation | null>();
         const map = new Map<string, GameAnnotation | null>();
         for (const game of filteredGames) {
@@ -349,6 +349,12 @@ const GamesPage: React.FC = () => {
         }
         return map;
     }, [filteredGames, fenSets, explorerEvals]);
+
+    // Cloud eval patching: disabled for now.
+    // When re-enabled, this fetches Lichess cloud evals for positions where
+    // sources 1 (ExplorerEvals) and 2 (embedded game analysis) had no data.
+    // See git history for the full implementation with rate limiting and progress bar.
+    const annotations = baseAnnotations;
 
     const handleSync = async () => {
         if (syncing) return;
