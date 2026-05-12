@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { createDataAccessLayer } from './DataAccessLayer';
-import { getLinkedAccounts, LinkedAccount } from './LinkedAccountsService';
-import { getAllGames, StoredGame } from './GamesDB';
+import { getLinkedAccounts, LinkedAccount, advanceSyncWatermark, Platform } from './LinkedAccountsService';
+import { getAllGames, groomGames, StoredGame } from './GamesDB';
 import { syncGamesForUser, SyncProgress } from './LichessGamesService';
 import { syncChesscomGamesForUser } from './ChesscomGamesService';
 import { buildRepertoireFenSets, RepertoireFenSets } from './RepertoireFenSet';
@@ -434,6 +434,15 @@ const GamesPage: React.FC = () => {
                 } catch (err: unknown) {
                     const msg = err instanceof Error ? err.message : String(err);
                     failures.push(`${account.username} (${account.platform}): ${msg}`);
+                }
+            }
+
+            // Groom old games: keep only what's needed for display
+            const groomResult = await groomGames(MAX_DISPLAY_GAMES);
+            if (groomResult.deletedCount > 0) {
+                for (const [accountKey, maxTs] of groomResult.deletedMaxTimestamps) {
+                    const [platform, username] = accountKey.split(':') as [Platform, string];
+                    advanceSyncWatermark(platform, username, maxTs);
                 }
             }
 

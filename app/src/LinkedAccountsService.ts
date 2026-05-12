@@ -42,6 +42,19 @@ export function addLinkedAccount(username: string, platform: Platform): LinkedAc
     return updated;
 }
 
+/**
+ * Advance the sync watermark for an account to at least `timestamp`.
+ * Used after grooming to prevent re-fetching deleted games.
+ */
+export function advanceSyncWatermark(platform: Platform, username: string, timestamp: number): void {
+    const key = getSyncTimestampKey(platform, username.toLowerCase());
+    const raw = localStorage.getItem(key);
+    const current = raw ? parseInt(raw, 10) : 0;
+    if (timestamp > current) {
+        localStorage.setItem(key, timestamp.toString());
+    }
+}
+
 export function removeLinkedAccount(username: string, platform: Platform): LinkedAccount[] {
     const accounts = getLinkedAccounts();
     const normalized = username.toLowerCase();
