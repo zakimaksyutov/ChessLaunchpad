@@ -4,7 +4,13 @@ import { ExplorerEvals } from './ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomGamesService';
-import type { MastersLookup } from './MastersExplorerService';
+import type { MoveStats } from './MastersExplorerService';
+
+/** Duck-typed interface for masters data lookup (satisfied by both MastersLookup and MastersCache). */
+export interface MastersLookupLike {
+    getMoveStats(fen: string, moveSan: string): MoveStats | null;
+    isOutOfTheory(fen: string, moveSan: string): boolean | null;
+}
 
 /**
  * When the opponent plays a move out of the user's repertoire, we check the
@@ -331,7 +337,7 @@ export function annotateGame(
     evals: ExplorerEvals | null,
     maxPlies: number = 30,
     platform: Platform,
-    mastersLookup?: MastersLookup
+    mastersLookup?: MastersLookupLike
 ): GameAnnotation | null {
     const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username, platform);

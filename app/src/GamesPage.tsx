@@ -20,8 +20,7 @@ import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
 import { EvalDropCategory } from './EvalDropService';
 import { useLichessAuth } from './LichessAuthContext';
 import {
-    fetchMastersForPositions,
-    MastersLookup,
+    MastersCache,
     resetMastersPageBudget,
 } from './MastersExplorerService';
 import './GamesPage.css';
@@ -254,9 +253,11 @@ const GamesPage: React.FC = () => {
     const [info, setInfo] = useState<string>('');
     const [fenSets, setFenSets] = useState<RepertoireFenSets | null>(null);
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
-    const [mastersLookup, setMastersLookup] = useState<MastersLookup | undefined>(undefined);
+    const [mastersCache, setMastersCache] = useState<MastersCache | undefined>(undefined);
+    const [mastersCacheVersion, setMastersCacheVersion] = useState(0);
     const [mastersProgress, setMastersProgress] = useState<{ fetched: number; total: number } | null>(null);
     const mastersFetchStartedRef = useRef(false);
+    const purgePendingRef = useRef(false);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const { token: lichessToken } = useLichessAuth();
@@ -301,6 +302,13 @@ const GamesPage: React.FC = () => {
         getExplorerEvals()
             .then(setExplorerEvals)
             .catch(err => console.warn('Failed to load explorer evals:', err));
+    }, []);
+
+    // Load all masters positions from IndexedDB into cache on mount
+    useEffect(() => {
+        MastersCache.loadAll()
+            .then(setMastersCache)
+            .catch(err => console.warn('Failed to load masters cache:', err));
     }, []);
 
     // Load games from IndexedDB
@@ -356,47 +364,76 @@ const GamesPage: React.FC = () => {
 
             map.set(
                 game.id,
-                annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersLookup)
+                annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersCache)
             );
         }
         return map;
-    }, [filteredGames, fenSets, explorerEvals, mastersLookup]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filteredGames, fenSets, explorerEvals, mastersCache, mastersCacheVersion]);
 
     // Masters explorer async patching: fetch masters data for ambiguous opponent moves
-    // (eval drop 15–44 cp) to determine if they're in theory or out of theory.
+    // (eval drop 15–44 cp) that aren't already in the cache.
     // Uses a ref guard (instead of effect cleanup) so the fetch completes even when
     // React StrictMode double-fires effects.
     useEffect(() => {
-        if (!lichessToken) return;
+        if (!lichessToken || !mastersCache) return;
         if (mastersFetchStartedRef.current) return;
 
-        // Collect all ambiguous positions from base annotations
-        const allAmbiguous: { fen: string }[] = [];
+        // Collect ambiguous positions that are NOT already in cache
+        const uncachedAmbiguous: { fen: string }[] = [];
         for (const annotation of baseAnnotations.values()) {
             if (annotation?.ambiguousTheoryPositions) {
                 for (const pos of annotation.ambiguousTheoryPositions) {
-                    allAmbiguous.push({ fen: pos.fenBefore });
+                    if (!mastersCache.has(pos.fenBefore)) {
+                        uncachedAmbiguous.push({ fen: pos.fenBefore });
+                    }
                 }
             }
         }
-        if (allAmbiguous.length === 0) return;
+        if (uncachedAmbiguous.length === 0) return;
 
         mastersFetchStartedRef.current = true;
         resetMastersPageBudget();
 
-        fetchMastersForPositions(allAmbiguous, lichessToken, fetch, (fetched, total) => {
-            setMastersProgress({ fetched, total });
-        }).then(lookup => {
-            setMastersLookup(lookup);
-            setMastersProgress(null);
+        // Deduplicate
+        const seen = new Set<string>();
+        const unique = uncachedAmbiguous.filter(p => {
+            const key = p.fen.split(' ').slice(0, 4).join(' ');
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
         });
-    }, [baseAnnotations, lichessToken]);
+
+        const total = unique.length;
+        let fetched = 0;
+
+        (async () => {
+            for (const pos of unique) {
+                await mastersCache.fetchOrGet(pos.fen, lichessToken);
+                fetched++;
+                setMastersProgress({ fetched, total });
+            }
+            // Bump version to trigger re-render and useMemo recomputation
+            setMastersCacheVersion(v => v + 1);
+            setMastersProgress(null);
+        })();
+    }, [baseAnnotations, lichessToken, mastersCache]);
 
     // Cloud eval patching: disabled for now.
     // When re-enabled, this fetches Lichess cloud evals for positions where
     // sources 1 (ExplorerEvals) and 2 (embedded game analysis) had no data.
     // See git history for the full implementation with rate limiting and progress bar.
     const annotations = baseAnnotations;
+
+    // Purge unused masters positions after Sync Games triggers re-annotation.
+    // The purge is deferred: handleSync sets purgePendingRef=true, then on the next
+    // render cycle baseAnnotations re-computes (incrementing hitCounts), and this
+    // effect fires to delete positions with hitCount=0.
+    useEffect(() => {
+        if (!purgePendingRef.current || !mastersCache) return;
+        purgePendingRef.current = false;
+        mastersCache.purgeUnused();
+    }, [baseAnnotations, mastersCache]);
 
     const handleSync = async () => {
         if (syncing) return;
@@ -444,6 +481,14 @@ const GamesPage: React.FC = () => {
                     const [platform, username] = accountKey.split(':') as [Platform, string];
                     advanceSyncWatermark(platform, username, maxTs);
                 }
+            }
+
+            // Reset masters hit counts before re-annotation so we can detect unused positions.
+            // Allow masters fetches to run again for new ambiguous positions.
+            if (mastersCache) {
+                mastersCache.resetHitCounts();
+                purgePendingRef.current = true;
+                mastersFetchStartedRef.current = false;
             }
 
             // Reload games from IndexedDB
