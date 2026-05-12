@@ -3,6 +3,7 @@ import { annotateGame, getUserColor, extractEmbeddedEvals } from './GameAnnotati
 import { ExplorerEvals } from './ExplorerEvals';
 import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
+import { MastersLookup } from './MastersExplorerService';
 
 /**
  * Helper: build a Lichess-style game data object from a move string and player names.
@@ -746,6 +747,176 @@ describe('annotateGame', () => {
             // Black move: drop = after - before = 35 - 40 = -5 (negative = gained eval)
             expect(d5Move.evalDrop!.evalDrop).toBe(-5);
             expect(d5Move.evalDrop!.category).toBe('ok');
+        });
+    });
+
+    describe('ambiguous theory zone (masters lookup)', () => {
+        // Repertoire: 1. e4 e5 2. Nf3 Nc6
+        // User is White. Opponent is Black.
+        // Opponent plays 2... d6 instead of 2... Nc6 — leaving repertoire.
+        // The embedded evals will give different drops to test the three zones.
+        const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
+
+        function makeGameWithOppDrop(oppDropCp: number) {
+            // Game: 1. e4 e5 2. Nf3 d6 (opponent deviation) 3. d4 d5 (user continues)
+            // User is White. Opponent deviates at ply 3 (d6).
+            // Embedded evals: analysis[i] = eval after ply i (White's perspective).
+            // For d6 at ply 3: before = analysis[2], after = analysis[3]
+            // White move ply 3 → drop = before - after  ... wait, ply 3 is Black's move
+            // Black move: drop = after - before (from mover's perspective)
+            // But computeConservativeDrop for opponent's perspective:
+            //   isWhiteMove = false → drop = after - before
+            // We want oppDrop (positive = opponent lost eval = bad for opponent = good for user)
+            // For a Black move: drop = after - before. If after > before, drop is positive = Black lost eval.
+            // So: set before = 30, after = 30 + oppDropCp
+            const beforeCp = 30;
+            const afterCp = beforeCp + oppDropCp;
+
+            const analysis = [
+                { eval: 20 },       // ply 0: after e4
+                { eval: 15 },       // ply 1: after e5
+                { eval: beforeCp }, // ply 2: after Nf3 (= before d6)
+                { eval: afterCp },  // ply 3: after d6 (= after d6)
+                { eval: afterCp },  // ply 4: after d4
+                { eval: afterCp },  // ply 5: after d5
+            ];
+
+            return {
+                ...makeGameData('e4 e5 Nf3 d6 d4 d5', 'user', 'opp'),
+                analysis,
+            };
+        }
+
+        it('drop < 15 → opponent move is out-of-repertoire (in theory), no ambiguous position', () => {
+            const gameData = makeGameWithOppDrop(10); // 10cp < 15cp threshold
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
+
+            expect(result).not.toBeNull();
+            const d6Move = result!.moves[3]; // ply 3
+            expect(d6Move.san).toBe('d6');
+            expect(d6Move.highlight).toBe('out-of-repertoire');
+            expect(result!.ambiguousTheoryPositions).toBeUndefined();
+        });
+
+        it('drop >= 45 → opponent move is out-of-theory, no ambiguous position', () => {
+            const gameData = makeGameWithOppDrop(50); // 50cp >= 45cp threshold
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
+
+            expect(result).not.toBeNull();
+            const d6Move = result!.moves[3];
+            expect(d6Move.san).toBe('d6');
+            expect(d6Move.highlight).toBe('out-of-theory');
+            expect(result!.ambiguousTheoryPositions).toBeUndefined();
+        });
+
+        it('drop 15-44 without masters data → out-of-repertoire + ambiguous position collected', () => {
+            const gameData = makeGameWithOppDrop(30); // 30cp, in ambiguous zone
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
+
+            expect(result).not.toBeNull();
+            const d6Move = result!.moves[3];
+            expect(d6Move.san).toBe('d6');
+            expect(d6Move.highlight).toBe('out-of-repertoire'); // optimistic default
+            expect(result!.ambiguousTheoryPositions).toBeDefined();
+            expect(result!.ambiguousTheoryPositions!).toHaveLength(1);
+            expect(result!.ambiguousTheoryPositions![0].moveSan).toBe('d6');
+        });
+
+        it('drop 15-44 with masters data showing rare move → out-of-theory', () => {
+            const gameData = makeGameWithOppDrop(30);
+
+            // Masters data: d6 has only 2 games (< 5 threshold)
+            const lookup = new MastersLookup();
+            const fens = replayFens(['e4', 'e5', 'Nf3']);
+            const fenBeforeD6 = fens[fens.length - 1]; // after Nf3, before d6
+            lookup.add(fenBeforeD6, {
+                fen: fenBeforeD6,
+                totalGames: 200,
+                moves: [
+                    { san: 'Nc6', white: 100, draws: 50, black: 48, total: 198 },
+                    { san: 'd6', white: 1, draws: 0, black: 1, total: 2 }, // < 5 games
+                ],
+            });
+
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess', lookup);
+
+            expect(result).not.toBeNull();
+            const d6Move = result!.moves[3];
+            expect(d6Move.highlight).toBe('out-of-theory');
+            expect(result!.ambiguousTheoryPositions).toBeUndefined();
+        });
+
+        it('drop 15-44 with masters data showing low percentage → out-of-theory', () => {
+            const gameData = makeGameWithOppDrop(25);
+
+            const lookup = new MastersLookup();
+            const fens = replayFens(['e4', 'e5', 'Nf3']);
+            const fenBeforeD6 = fens[fens.length - 1];
+            lookup.add(fenBeforeD6, {
+                fen: fenBeforeD6,
+                totalGames: 200,
+                moves: [
+                    { san: 'Nc6', white: 100, draws: 50, black: 42, total: 192 },
+                    { san: 'd6', white: 3, draws: 2, black: 3, total: 8 }, // 8/200 = 4% < 5%
+                ],
+            });
+
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess', lookup);
+
+            expect(result).not.toBeNull();
+            const d6Move = result!.moves[3];
+            expect(d6Move.highlight).toBe('out-of-theory');
+        });
+
+        it('drop 15-44 with masters data showing common move → out-of-repertoire (in theory)', () => {
+            const gameData = makeGameWithOppDrop(25);
+
+            const lookup = new MastersLookup();
+            const fens = replayFens(['e4', 'e5', 'Nf3']);
+            const fenBeforeD6 = fens[fens.length - 1];
+            lookup.add(fenBeforeD6, {
+                fen: fenBeforeD6,
+                totalGames: 200,
+                moves: [
+                    { san: 'Nc6', white: 80, draws: 40, black: 30, total: 150 },
+                    { san: 'd6', white: 20, draws: 15, black: 15, total: 50 }, // 50/200 = 25% > 5%
+                ],
+            });
+
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess', lookup);
+
+            expect(result).not.toBeNull();
+            const d6Move = result!.moves[3];
+            expect(d6Move.highlight).toBe('out-of-repertoire');
+            expect(result!.ambiguousTheoryPositions).toBeUndefined();
+        });
+
+        it('out-of-theory from masters stops post-theory analysis', () => {
+            // Game: 1. e4 e5 2. Nf3 d6 3. d4 d5
+            // If d6 is out-of-theory via masters, then d4 and d5 should also be out-of-theory
+            const gameData = makeGameWithOppDrop(30);
+
+            const lookup = new MastersLookup();
+            const fens = replayFens(['e4', 'e5', 'Nf3']);
+            const fenBeforeD6 = fens[fens.length - 1];
+            lookup.add(fenBeforeD6, {
+                fen: fenBeforeD6,
+                totalGames: 100,
+                moves: [
+                    { san: 'Nc6', white: 50, draws: 30, black: 20, total: 100 },
+                    // d6 not in masters at all → 0 games
+                ],
+            });
+
+            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess', lookup);
+
+            expect(result).not.toBeNull();
+            // d6 → out-of-theory (masters)
+            expect(result!.moves[3].highlight).toBe('out-of-theory');
+            // d4 → out-of-theory (analysis stopped)
+            expect(result!.moves[4].highlight).toBe('out-of-theory');
+            // d5 → out-of-theory (analysis stopped)
+            expect(result!.moves[5].highlight).toBe('out-of-theory');
         });
     });
 });

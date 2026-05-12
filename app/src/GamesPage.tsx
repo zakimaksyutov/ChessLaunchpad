@@ -18,6 +18,12 @@ import {
 } from './GameAnnotationService';
 import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
 import { EvalDropCategory } from './EvalDropService';
+import { useLichessAuth } from './LichessAuthContext';
+import {
+    fetchMastersForPositions,
+    MastersLookup,
+    resetMastersPageBudget,
+} from './MastersExplorerService';
 import './GamesPage.css';
 
 const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
@@ -248,7 +254,12 @@ const GamesPage: React.FC = () => {
     const [info, setInfo] = useState<string>('');
     const [fenSets, setFenSets] = useState<RepertoireFenSets | null>(null);
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
+    const [mastersLookup, setMastersLookup] = useState<MastersLookup | undefined>(undefined);
+    const [mastersProgress, setMastersProgress] = useState<{ fetched: number; total: number } | null>(null);
+    const mastersFetchStartedRef = useRef(false);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const { token: lichessToken } = useLichessAuth();
 
     const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
 
@@ -345,11 +356,41 @@ const GamesPage: React.FC = () => {
 
             map.set(
                 game.id,
-                annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform)
+                annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersLookup)
             );
         }
         return map;
-    }, [filteredGames, fenSets, explorerEvals]);
+    }, [filteredGames, fenSets, explorerEvals, mastersLookup]);
+
+    // Masters explorer async patching: fetch masters data for ambiguous opponent moves
+    // (eval drop 15–44 cp) to determine if they're in theory or out of theory.
+    // Uses a ref guard (instead of effect cleanup) so the fetch completes even when
+    // React StrictMode double-fires effects.
+    useEffect(() => {
+        if (!lichessToken) return;
+        if (mastersFetchStartedRef.current) return;
+
+        // Collect all ambiguous positions from base annotations
+        const allAmbiguous: { fen: string }[] = [];
+        for (const annotation of baseAnnotations.values()) {
+            if (annotation?.ambiguousTheoryPositions) {
+                for (const pos of annotation.ambiguousTheoryPositions) {
+                    allAmbiguous.push({ fen: pos.fenBefore });
+                }
+            }
+        }
+        if (allAmbiguous.length === 0) return;
+
+        mastersFetchStartedRef.current = true;
+        resetMastersPageBudget();
+
+        fetchMastersForPositions(allAmbiguous, lichessToken, fetch, (fetched, total) => {
+            setMastersProgress({ fetched, total });
+        }).then(lookup => {
+            setMastersLookup(lookup);
+            setMastersProgress(null);
+        });
+    }, [baseAnnotations, lichessToken]);
 
     // Cloud eval patching: disabled for now.
     // When re-enabled, this fetches Lichess cloud evals for positions where
@@ -432,6 +473,12 @@ const GamesPage: React.FC = () => {
             {syncProgress && !syncProgress.done && (
                 <div className="sync-progress">
                     Downloading… {syncProgress.gamesDownloaded} games from {syncProgress.username}
+                </div>
+            )}
+
+            {mastersProgress && (
+                <div className="sync-progress">
+                    Checking master games… {mastersProgress.fetched}/{mastersProgress.total}
                 </div>
             )}
 

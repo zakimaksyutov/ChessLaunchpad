@@ -4,6 +4,7 @@ import { ExplorerEvals } from './ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomGamesService';
+import type { MastersLookup } from './MastersExplorerService';
 
 /**
  * When the opponent plays a move out of the user's repertoire, we check the
@@ -16,6 +17,13 @@ import { parseChesscomTimeControl } from './ChesscomGamesService';
  * 45 cp ≈ 0.45 pawns.
  */
 const OUT_OF_THEORY_THRESHOLD = 45;
+
+/**
+ * Opponent moves with eval drops below this threshold are considered clearly
+ * reasonable ("in theory") and don't need a masters database check.
+ * 15 cp ≈ 0.15 pawns.
+ */
+const AMBIGUOUS_THEORY_THRESHOLD = 15;
 
 /** Large cp value used when analysis reports a forced mate. */
 const MATE_CP = 10_000;
@@ -133,6 +141,18 @@ export interface MissingEvalPosition {
     isWhiteMove: boolean;
 }
 
+/** Opponent move in the ambiguous eval-drop zone (15–44 cp) needing masters DB check. */
+export interface AmbiguousTheoryPosition {
+    /** Index into the moves[] array */
+    moveIndex: number;
+    /** Ply index (0-based) */
+    plyIndex: number;
+    /** FEN before the opponent's move (position to query masters API) */
+    fenBefore: string;
+    /** The opponent's move in SAN */
+    moveSan: string;
+}
+
 export interface GameAnnotation {
     moves: AnnotatedMove[];
     /** FEN for the mini board display */
@@ -143,6 +163,8 @@ export interface GameAnnotation {
     deviation?: DeviationInfo;
     /** Positions where eval data was needed but unavailable from sources 1+2 */
     missingEvalPositions?: MissingEvalPosition[];
+    /** Opponent moves in the ambiguous zone (15–44 cp) that need masters DB verification */
+    ambiguousTheoryPositions?: AmbiguousTheoryPosition[];
 }
 
 /**
@@ -308,7 +330,8 @@ export function annotateGame(
     repertoireFens: Set<string>,
     evals: ExplorerEvals | null,
     maxPlies: number = 30,
-    platform: Platform
+    platform: Platform,
+    mastersLookup?: MastersLookup
 ): GameAnnotation | null {
     const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username, platform);
@@ -344,6 +367,7 @@ export function annotateGame(
 
     const moves: AnnotatedMove[] = [];
     const missingEvalPositions: MissingEvalPosition[] = [];
+    const ambiguousTheoryPositions: AmbiguousTheoryPosition[] = [];
     let postTheoryAnalysis = false;
     let theoryEndPly = 0;
     let moveNumber = 1;
@@ -433,8 +457,10 @@ export function annotateGame(
             }
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent left the user's repertoire.
-            // Check whether the opponent's move is still "in theory" (reasonable)
-            // or "out of theory" (a blunder we don't need to study).
+            // Three-zone classification:
+            //   ≥ 45 cp → out of theory
+            //   15–44 cp → ambiguous, check masters DB
+            //   < 15 cp → in theory
             theoryEndPly = i;
             reason = 'opponent left repertoire';
 
@@ -445,10 +471,30 @@ export function annotateGame(
                     highlight = 'out-of-theory';
                     postTheoryAnalysis = false;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
-                } else {
+                } else if (oppDrop < AMBIGUOUS_THEORY_THRESHOLD) {
                     highlight = 'out-of-repertoire';
                     postTheoryAnalysis = true;
-                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory, analyse user moves [source: ${evalResult.source}]`;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${AMBIGUOUS_THEORY_THRESHOLD} → clearly in theory, analyse user moves [source: ${evalResult.source}]`;
+                } else {
+                    // Ambiguous zone: 15 ≤ drop < 45 — check masters DB
+                    const mastersVerdict = mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
+                    if (mastersVerdict === true) {
+                        highlight = 'out-of-theory';
+                        postTheoryAnalysis = false;
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → out of theory [source: ${evalResult.source}+masters]`;
+                    } else if (mastersVerdict === false) {
+                        highlight = 'out-of-repertoire';
+                        postTheoryAnalysis = true;
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → in theory [source: ${evalResult.source}+masters]`;
+                    } else {
+                        // No masters data — optimistic default, collect for async patching
+                        highlight = 'out-of-repertoire';
+                        postTheoryAnalysis = true;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous, ${AMBIGUOUS_THEORY_THRESHOLD}–${OUT_OF_THEORY_THRESHOLD}), no masters data → default in theory [source: ${evalResult.source}]`;
+                        ambiguousTheoryPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, moveSan: allMoves[i].san });
+                    }
                 }
             } else {
                 // No eval data — benefit of the doubt, analyse user moves
@@ -487,7 +533,7 @@ export function annotateGame(
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (postTheoryAnalysis && !isUserMove) {
-            // Subsequent opponent move — check if they've now left theory
+            // Subsequent opponent move — three-zone check
             reason = 'opponent move (still in theory)';
 
             const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
@@ -497,9 +543,26 @@ export function annotateGame(
                     highlight = 'out-of-theory';
                     postTheoryAnalysis = false;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
-                } else {
+                } else if (oppDrop < AMBIGUOUS_THEORY_THRESHOLD) {
                     highlight = 'out-of-repertoire';
-                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory [source: ${evalResult.source}]`;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${AMBIGUOUS_THEORY_THRESHOLD} → clearly in theory [source: ${evalResult.source}]`;
+                } else {
+                    // Ambiguous zone: check masters DB
+                    const mastersVerdict = mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
+                    if (mastersVerdict === true) {
+                        highlight = 'out-of-theory';
+                        postTheoryAnalysis = false;
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → out of theory [source: ${evalResult.source}+masters]`;
+                    } else if (mastersVerdict === false) {
+                        highlight = 'out-of-repertoire';
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → in theory [source: ${evalResult.source}+masters]`;
+                    } else {
+                        highlight = 'out-of-repertoire';
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous, ${AMBIGUOUS_THEORY_THRESHOLD}–${OUT_OF_THEORY_THRESHOLD}), no masters data → default in theory [source: ${evalResult.source}]`;
+                        ambiguousTheoryPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, moveSan: allMoves[i].san });
+                    }
                 }
             } else {
                 highlight = 'out-of-repertoire';
@@ -553,6 +616,7 @@ export function annotateGame(
         miniBoardOrientation: userColor,
         deviation,
         missingEvalPositions: missingEvalPositions.length > 0 ? missingEvalPositions : undefined,
+        ambiguousTheoryPositions: ambiguousTheoryPositions.length > 0 ? ambiguousTheoryPositions : undefined,
     };
 }
 

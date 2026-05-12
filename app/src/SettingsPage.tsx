@@ -13,6 +13,7 @@ import {
     getSyncTimestampKey,
 } from './LinkedAccountsService';
 import { clearGames } from './GamesDB';
+import { clearMastersCache } from './MastersExplorerService';
 import './SettingsPage.css';
 
 interface CoefficientValues {
@@ -184,6 +185,7 @@ const SettingsPage: React.FC = () => {
         setCacheCleared(false);
         try {
             await clearGames();
+            await clearMastersCache();
             // Clear sync timestamps so next sync does a fresh initial fetch
             for (const account of linkedAccounts) {
                 localStorage.removeItem(getSyncTimestampKey(account.platform, account.username));

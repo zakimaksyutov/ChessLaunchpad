@@ -74,10 +74,27 @@ The annotation logic tries eval sources in priority order:
 |----------|--------|-------------|
 | 1 | `explorer` | Pre-computed ExplorerEvals from static JSON (repertoire positions only) |
 | 2 | `embedded` | Per-ply analysis from the Lichess game data (`analysis[]` array, Lichess games only) |
+| 3 | `masters` | Lichess Masters Explorer API — used for opponent moves in the ambiguous eval-drop zone (15–44 cp) to determine if the move is real theory or out of theory |
 
 Cloud eval (Lichess Cloud Eval API) is implemented but currently disabled. See `GamesPage.tsx` comment and git history.
 
-When eval data is found, the debug trace shows `[source: explorer]` or `[source: embedded]`. When no source has data, it logs `no eval data for drop calc`.
+When eval data is found, the debug trace shows `[source: explorer]`, `[source: embedded]`, or `[source: embedded+masters]` (when masters data supplements the eval-drop decision). When no source has data, it logs `no eval data for drop calc`.
+
+## Opponent Out-of-Repertoire Classification
+
+When the opponent plays a move that leaves the user's repertoire, the eval drop determines the classification:
+
+| Eval drop range | Classification | Masters check? |
+|---|---|---|
+| ≥ 45 cp | `out-of-theory` — stop analysis | No |
+| 15–44 cp | Ambiguous — needs masters verification | Yes (if Lichess connected) |
+| < 15 cp | `out-of-repertoire` — clearly in theory, continue | No |
+
+For ambiguous moves, the masters API checks if the move is played by masters:
+- If < 5 absolute master games OR < 5% of position's total games → `out-of-theory`
+- Otherwise → `out-of-repertoire` (in theory, continue analysis)
+
+Masters data is fetched asynchronously (rate-limited to 1 req/sec, max 20 per page load) and cached in IndexedDB (`chesslaunchpad-masters-explorer`). The first annotation pass marks ambiguous positions optimistically as `out-of-repertoire`; once masters data arrives, affected games are re-annotated.
 
 ## Fields
 
@@ -100,3 +117,5 @@ For deviation and out-of-repertoire-response moves, the reason includes eval-dro
 ## Source
 
 `app/src/GameAnnotationService.ts` — the `getDebugGameFilter` function reads the `debugGame` parameter from the URL hash query string (supports both HashRouter and regular routing). Only games against the matching opponent produce debug output.
+
+`app/src/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.
