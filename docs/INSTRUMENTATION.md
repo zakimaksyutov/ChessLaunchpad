@@ -91,6 +91,7 @@ When the opponent plays a move that leaves the user's repertoire, the eval drop 
 | < 15 cp | `out-of-repertoire` — clearly in theory, continue | No |
 
 For ambiguous moves, the masters API checks if the move is played by masters:
+- If ≥ 50 absolute master games → `out-of-repertoire` (in theory — high absolute count overrides percentage)
 - If < 5 absolute master games OR < 5% of position's total games → `out-of-theory`
 - Otherwise → `out-of-repertoire` (in theory, continue analysis)
 

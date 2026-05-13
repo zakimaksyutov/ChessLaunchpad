@@ -31,6 +31,13 @@ export interface MoveStats {
 /** Minimum absolute master games for a specific move to be considered theory. */
 export const MIN_MASTER_GAMES = 5;
 
+/**
+ * Absolute game-count override: if a move has been played at least this many
+ * times in master games it is always considered theory, regardless of its
+ * percentage share of the position.
+ */
+export const MIN_MASTER_GAMES_ABSOLUTE = 50;
+
 /** Minimum percentage of position's total games for a move to be theory. */
 export const MIN_MOVE_PERCENTAGE = 5;
 
@@ -273,6 +280,7 @@ export class MastersLookup {
         const stats = this.getMoveStats(fen, moveSan);
         if (stats === null) return null;
 
+        if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
         return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
     }
 }
@@ -380,6 +388,7 @@ export class MastersCache {
         const stats = this.getMoveStats(fen, moveSan);
         if (stats === null) return null;
 
+        if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
         return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
     }
 

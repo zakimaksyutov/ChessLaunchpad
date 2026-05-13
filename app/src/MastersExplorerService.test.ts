@@ -184,6 +184,36 @@ describe('MastersLookup', () => {
 
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'c3')).toBe(false);
         });
+
+        it('returns false when move has >= MIN_MASTER_GAMES_ABSOLUTE games even with low percentage', () => {
+            const lookup = new MastersLookup();
+            lookup.add('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
+                fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                totalGames: 10000,
+                moves: [
+                    { san: 'e4', white: 5000, draws: 2000, black: 2900, total: 9900 },
+                    { san: 'd6', white: 30, draws: 10, black: 10, total: 50 }, // 50 games, 0.5%
+                ],
+            });
+
+            // 50 games >= MIN_MASTER_GAMES_ABSOLUTE → in theory despite 0.5% share
+            expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'd6')).toBe(false);
+        });
+
+        it('returns true when move has 49 games with low percentage (just below absolute threshold)', () => {
+            const lookup = new MastersLookup();
+            lookup.add('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
+                fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                totalGames: 10000,
+                moves: [
+                    { san: 'e4', white: 5000, draws: 2000, black: 2951, total: 9951 },
+                    { san: 'a3', white: 20, draws: 15, black: 14, total: 49 }, // 49 games, 0.49%
+                ],
+            });
+
+            // 49 games < MIN_MASTER_GAMES_ABSOLUTE and 0.49% < MIN_MOVE_PERCENTAGE → out of theory
+            expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'a3')).toBe(true);
+        });
     });
 });
 
@@ -353,6 +383,21 @@ describe('MastersCache', () => {
 
             const cache = await MastersCache.loadAll();
             expect(cache.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'h3')).toBe(true);
+        });
+
+        it('returns false when move has >= MIN_MASTER_GAMES_ABSOLUTE games despite low percentage', async () => {
+            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
+            mockStore[key] = {
+                fen: key,
+                totalGames: 10000,
+                moves: [
+                    { san: 'e4', white: 5000, draws: 2000, black: 2950, total: 9950 },
+                    { san: 'd6', white: 20, draws: 15, black: 15, total: 50 }, // 50 games, 0.5%
+                ],
+            };
+
+            const cache = await MastersCache.loadAll();
+            expect(cache.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'd6')).toBe(false);
         });
     });
 

@@ -352,7 +352,7 @@ export function annotateGame(
 
     const pgn = buildPgn(gameData, platform);
     if (!pgn) {
-        if (debugThis) console.debug(`[annotate ${gameId}] Could not build PGN`);
+        if (debugThis) console.log(`[annotate ${gameId}] Could not build PGN`);
         return null;
     }
 
@@ -360,7 +360,7 @@ export function annotateGame(
     try {
         chess.loadPgn(pgn);
     } catch {
-        if (debugThis) console.debug(`[annotate ${gameId}] Failed to parse PGN`);
+        if (debugThis) console.log(`[annotate ${gameId}] Failed to parse PGN`);
         return null;
     }
     chess.deleteComments();
@@ -580,7 +580,7 @@ export function annotateGame(
             reason = `out of theory: beforeInRep=${repertoireFens.has(normalizedFenBefore)}, afterInRep=${repertoireFens.has(normalizedFenAfter)}, isUser=${isUserMove}`;
         }
 
-        if (debugThis) console.debug(
+        if (debugThis) console.log(
             `  ply ${i}: ${allMoves[i].san} [${isUserMove ? 'USER' : 'OPP'}] → ${highlight} | ${reason}`
         );
 
