@@ -58,19 +58,17 @@ The Games page includes detailed debug logging for its annotation/highlighting l
 
 ## Activation
 
-Add `?debugGame=<opponentName>` to the URL **before the `#` fragment**, where `<opponentName>` is a case-insensitive substring of the opponent's name:
+Add `?debugGame=<opponentName>` to the URL hash, where `<opponentName>` is a case-insensitive substring of the opponent's name:
 
 ```
-https://zakimaksyutov.github.io/ChessLaunchpad/?debugGame=magnus#/games
+https://zakimaksyutov.github.io/ChessLaunchpad/#/games?debugGame=magnus
 ```
 
 Or in local dev:
 
 ```
-http://localhost:5274/ChessLaunchpad/?debugGame=magnus#/games
+http://localhost:5274/ChessLaunchpad/#/games?debugGame=magnus
 ```
-
-> **Note:** The parameter also works when placed after the hash (`#/games?debugGame=magnus`), but placing it before the `#` is more reliable because browsers natively parse the `?search` portion of the URL.
 
 Only games where the opponent's name contains the filter string will produce debug output.
 
