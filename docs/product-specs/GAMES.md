@@ -132,7 +132,9 @@ For each user move in the displayed PGN, apply the following highlights (in prio
 
    Deviations without eval data are shown with a subtle orange highlight to remain visible.
 
-3. **Out of theory (neutral)** — Moves after theory ends are shown in default styling (no highlight).
+3. **Out of repertoire (neutral)** — Opponent moves that leave the user's repertoire but are still within overall theory (reasonable moves with eval drop below the out-of-theory threshold). These are shown in dimmed opponent styling.
+
+4. **Out of theory (neutral)** — Moves after theory truly ends (opponent blundered out of theory, or all theory connection is lost). Shown in default styling (no highlight).
 
 Opponent moves are displayed in a dimmed style to visually distinguish them from user moves.
 
@@ -151,7 +153,7 @@ When the user deviated from repertoire, the mini board also shows **arrows**: gr
 Below the PGN, game rows display contextual summaries:
 
 - **Deviation summary** — When the user deviated from repertoire, a text callout shows "Repertoire has **X** but you played **Y**" with a warning icon.
-- **End-of-theory eval drop summary** — When the opponent deviated and the user's response had an eval drop, a summary shows the user's move and its eval-drop category (inaccuracy/mistake/blunder).
+- **Out-of-repertoire eval drop summary** — When the opponent deviated and the user's response had an eval drop, a summary shows the user's move and its eval-drop category (inaccuracy/mistake/blunder).
 
 ### 3.5 Post-Theory Extended Analysis
 
@@ -161,12 +163,68 @@ When the opponent deviates from the repertoire, the system evaluates not just th
 
 Game row tiles have a colored left border indicating status:
 - **Purple border** — User deviated from repertoire.
-- **Category-colored border** — End-of-theory eval drop (gold for inaccuracy, red for mistake, purple for blunder).
+- **Category-colored border** — Out-of-repertoire eval drop (gold for inaccuracy, red for mistake, purple for blunder).
 - **No border** — Game stayed in repertoire or had no notable events.
 
 ### 3.7 Display Limits
 
 The Games page displays at most **100** games. Games are filtered to only those from currently linked accounts and where the user can be identified as a player.
+
+### 3.8 Opponent Theory Detection
+
+When a game has an out-of-repertoire eval-drop summary (the opponent deviated from repertoire and the user's response was an inaccuracy, mistake, or blunder), the row's **⋯** overflow menu shows an **"Analyze opponent games"** action.
+
+| State | Behavior |
+|-------|----------|
+| Eligible game | Overflow menu shows **"Analyze opponent games"** |
+| Saved analysis present | Overflow menu shows **"Opponent analysis ✓"** and the item is disabled |
+| Another row is already analyzing | Other rows' analyze actions are disabled until the active analysis completes or is aborted |
+
+Selecting **"Analyze opponent games"** downloads up to **1,000** of the opponent's most recent public games from the same platform as the source game:
+
+- **Lichess** — NDJSON streaming API
+- **Chess.com** — archives API
+- **Excluded** — bullet games
+- **Auth** — no authentication required; only public APIs are used
+
+The analysis replays each downloaded game with `chess.js` only up to the target ply (the ply of the user's bad move). It normalizes FENs and checks whether the game reached either of these critical positions:
+
+- **`fenBefore`** — the position after the opponent's out-of-repertoire move
+- **`fenAfter`** — the position after the user's inaccurate / mistaken / blunder response
+
+While the download and scan are running, the game row shows a progress indicator below the out-of-repertoire eval-drop summary:
+
+- Text: **"Analyzing opponent's games… N"**
+- A percentage progress bar reflecting download / analysis completion
+
+When analysis completes, the row shows:
+
+- A color-coded status icon
+- Summary text in the form **"Opponent has N games after {oppSan} and K after {userSan} (of M analyzed)"**
+- A threat-level label based on how often the opponent previously reached **`fenBefore`**
+- Links to the opponent's **5 most recent** games that reached those critical positions, labeled by date
+
+Threat levels use the following thresholds:
+
+| `fenBefore` count | Visual treatment | Label |
+|-------------------|------------------|-------|
+| 0-2 | Green info icon | **Opponent likely unfamiliar with this position** |
+| 3-9 | Gold warning icon | **Opponent has some experience here** |
+| 10-24 | Red warning icon | **Opponent knows this position well** |
+| 25+ | Purple exclamation icon | **Opponent is very experienced here** |
+
+Opponent-analysis results are persisted separately from downloaded Games data:
+
+| Property | Value |
+|----------|-------|
+| IndexedDB DB name | `chesslaunchpad-opponent-analysis` |
+| Lifetime | Loaded when the Games page mounts and survives page reloads |
+| Scope | Stores saved opponent-analysis results per analyzed game |
+
+Cache invalidation rules:
+
+- **Re-annotate** clears the game's saved opponent-analysis result and aborts any in-flight analysis for that game.
+- Saved analysis remains visible until re-annotation occurs.
 
 ## 4. Repertoire Cross-Reference
 

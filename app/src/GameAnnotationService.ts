@@ -4,6 +4,13 @@ import { ExplorerEvals } from './ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomGamesService';
+import type { MoveStats } from './MastersExplorerService';
+
+/** Duck-typed interface for masters data lookup (satisfied by both MastersLookup and MastersCache). */
+export interface MastersLookupLike {
+    getMoveStats(fen: string, moveSan: string): MoveStats | null;
+    isOutOfTheory(fen: string, moveSan: string): boolean | null;
+}
 
 /**
  * When the opponent plays a move out of the user's repertoire, we check the
@@ -16,6 +23,13 @@ import { parseChesscomTimeControl } from './ChesscomGamesService';
  * 45 cp ≈ 0.45 pawns.
  */
 const OUT_OF_THEORY_THRESHOLD = 45;
+
+/**
+ * Opponent moves with eval drops below this threshold are considered clearly
+ * reasonable ("in theory") and don't need a masters database check.
+ * 15 cp ≈ 0.15 pawns.
+ */
+const AMBIGUOUS_THEORY_THRESHOLD = 15;
 
 /** Large cp value used when analysis reports a forced mate. */
 const MATE_CP = 10_000;
@@ -94,7 +108,7 @@ function lookupEvals(
     return null;
 }
 
-export type MoveHighlight = 'in-repertoire' | 'deviation' | 'end-of-theory-response' | 'out-of-theory';
+export type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-repertoire-response' | 'out-of-repertoire' | 'out-of-theory';
 
 export interface AnnotatedMove {
     /** SAN of the move */
@@ -133,6 +147,18 @@ export interface MissingEvalPosition {
     isWhiteMove: boolean;
 }
 
+/** Opponent move in the ambiguous eval-drop zone (15–44 cp) needing masters DB check. */
+export interface AmbiguousTheoryPosition {
+    /** Index into the moves[] array */
+    moveIndex: number;
+    /** Ply index (0-based) */
+    plyIndex: number;
+    /** FEN before the opponent's move (position to query masters API) */
+    fenBefore: string;
+    /** The opponent's move in SAN */
+    moveSan: string;
+}
+
 export interface GameAnnotation {
     moves: AnnotatedMove[];
     /** FEN for the mini board display */
@@ -143,6 +169,8 @@ export interface GameAnnotation {
     deviation?: DeviationInfo;
     /** Positions where eval data was needed but unavailable from sources 1+2 */
     missingEvalPositions?: MissingEvalPosition[];
+    /** Opponent moves in the ambiguous zone (15–44 cp) that need masters DB verification */
+    ambiguousTheoryPositions?: AmbiguousTheoryPosition[];
 }
 
 /**
@@ -246,13 +274,14 @@ function buildPgnFromChesscomData(gameData: Record<string, unknown>): string | n
     const pgn = gameData.pgn as string | undefined;
     if (!pgn || typeof pgn !== 'string') return null;
 
-    const chess = new Chess();
+    let chess = new Chess();
     try {
         chess.loadPgn(pgn);
     } catch {
         // Try stripping comments (Chess.com PGNs often have clock annotations)
         try {
             const cleaned = pgn.replace(/\{[^}]*\}/g, '').replace(/\s+/g, ' ');
+            chess = new Chess();
             chess.loadPgn(cleaned);
         } catch {
             return null;
@@ -265,7 +294,7 @@ function buildPgnFromChesscomData(gameData: Record<string, unknown>): string | n
 /**
  * Build PGN from game data, dispatching based on platform.
  */
-function buildPgn(gameData: Record<string, unknown>, platform: Platform): string | null {
+export function buildPgn(gameData: Record<string, unknown>, platform: Platform): string | null {
     if (platform === 'chess.com') {
         return buildPgnFromChesscomData(gameData);
     }
@@ -281,15 +310,7 @@ function buildPgn(gameData: Record<string, unknown>, platform: Platform): string
  * @param evals ExplorerEvals instance for eval-drop computation
  * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
  */
-function getDebugGameFilter(): string | null {
-    if (typeof window === 'undefined') return null;
-    // Support both regular and hash-based routing (HashRouter puts params in the hash fragment)
-    const hashQuery = window.location.hash.split('?')[1];
-    const search = hashQuery || window.location.search;
-    return new URLSearchParams(search).get('debugGame');
-}
-
-function getOpponentName(
+export function getOpponentName(
     gameData: Record<string, unknown>,
     userColor: 'white' | 'black',
     platform: Platform
@@ -308,7 +329,9 @@ export function annotateGame(
     repertoireFens: Set<string>,
     evals: ExplorerEvals | null,
     maxPlies: number = 30,
-    platform: Platform
+    platform: Platform,
+    mastersLookup?: MastersLookupLike,
+    debug?: boolean
 ): GameAnnotation | null {
     const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username, platform);
@@ -316,14 +339,12 @@ export function annotateGame(
         return null;
     }
 
-    const debugFilter = getDebugGameFilter();
     const opponentName = getOpponentName(gameData, userColor, platform);
-    const debugThis = debugFilter !== null &&
-        opponentName.toLowerCase().includes(debugFilter.toLowerCase());
+    const debugThis = debug === true;
 
     const pgn = buildPgn(gameData, platform);
     if (!pgn) {
-        if (debugThis) console.debug(`[annotate ${gameId}] Could not build PGN`);
+        if (debugThis) console.log(`[annotate ${gameId}] Could not build PGN`);
         return null;
     }
 
@@ -331,7 +352,7 @@ export function annotateGame(
     try {
         chess.loadPgn(pgn);
     } catch {
-        if (debugThis) console.debug(`[annotate ${gameId}] Failed to parse PGN`);
+        if (debugThis) console.log(`[annotate ${gameId}] Failed to parse PGN`);
         return null;
     }
     chess.deleteComments();
@@ -344,6 +365,7 @@ export function annotateGame(
 
     const moves: AnnotatedMove[] = [];
     const missingEvalPositions: MissingEvalPosition[] = [];
+    const ambiguousTheoryPositions: AmbiguousTheoryPosition[] = [];
     let postTheoryAnalysis = false;
     let theoryEndPly = 0;
     let moveNumber = 1;
@@ -433,9 +455,10 @@ export function annotateGame(
             }
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent left the user's repertoire.
-            // Check whether the opponent's move is still "in theory" (reasonable)
-            // or "out of theory" (a blunder we don't need to study).
-            highlight = 'out-of-theory';
+            // Three-zone classification:
+            //   ≥ 45 cp → out of theory
+            //   15–44 cp → ambiguous, check masters DB
+            //   < 15 cp → in theory
             theoryEndPly = i;
             reason = 'opponent left repertoire';
 
@@ -443,20 +466,43 @@ export function annotateGame(
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
+                    highlight = 'out-of-theory';
                     postTheoryAnalysis = false;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
-                } else {
+                } else if (oppDrop < AMBIGUOUS_THEORY_THRESHOLD) {
+                    highlight = 'out-of-repertoire';
                     postTheoryAnalysis = true;
-                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory, analyse user moves [source: ${evalResult.source}]`;
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${AMBIGUOUS_THEORY_THRESHOLD} → clearly in theory, analyse user moves [source: ${evalResult.source}]`;
+                } else {
+                    // Ambiguous zone: 15 ≤ drop < 45 — check masters DB
+                    const mastersVerdict = mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
+                    if (mastersVerdict === true) {
+                        highlight = 'out-of-theory';
+                        postTheoryAnalysis = false;
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → out of theory [source: ${evalResult.source}+masters]`;
+                    } else if (mastersVerdict === false) {
+                        highlight = 'out-of-repertoire';
+                        postTheoryAnalysis = true;
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → in theory [source: ${evalResult.source}+masters]`;
+                    } else {
+                        // No masters data — optimistic default, collect for async patching
+                        highlight = 'out-of-repertoire';
+                        postTheoryAnalysis = true;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous, ${AMBIGUOUS_THEORY_THRESHOLD}–${OUT_OF_THEORY_THRESHOLD}), no masters data → default in theory [source: ${evalResult.source}]`;
+                        ambiguousTheoryPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, moveSan: allMoves[i].san });
+                    }
                 }
             } else {
                 // No eval data — benefit of the doubt, analyse user moves
+                highlight = 'out-of-repertoire';
                 postTheoryAnalysis = true;
                 reason += ', no eval data for opponent drop → analyse user moves';
             }
         } else if (postTheoryAnalysis && isUserMove) {
             // User move after opponent left repertoire but still in theory — evaluate for eval drop
-            highlight = 'end-of-theory-response';
+            highlight = 'out-of-repertoire-response';
             reason = 'user move after opponent left repertoire (still in theory)';
 
             if (!firstPostTheoryFen) {
@@ -485,20 +531,39 @@ export function annotateGame(
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (postTheoryAnalysis && !isUserMove) {
-            // Subsequent opponent move — check if they've now left theory
-            highlight = 'out-of-theory';
+            // Subsequent opponent move — three-zone check
             reason = 'opponent move (still in theory)';
 
             const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
+                    highlight = 'out-of-theory';
                     postTheoryAnalysis = false;
                     reason += `, opponent drop=${oppDrop.toFixed(2)} >= ${OUT_OF_THEORY_THRESHOLD} → out of theory, stop [source: ${evalResult.source}]`;
+                } else if (oppDrop < AMBIGUOUS_THEORY_THRESHOLD) {
+                    highlight = 'out-of-repertoire';
+                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${AMBIGUOUS_THEORY_THRESHOLD} → clearly in theory [source: ${evalResult.source}]`;
                 } else {
-                    reason += `, opponent drop=${oppDrop.toFixed(2)} < ${OUT_OF_THEORY_THRESHOLD} → still in theory [source: ${evalResult.source}]`;
+                    // Ambiguous zone: check masters DB
+                    const mastersVerdict = mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
+                    if (mastersVerdict === true) {
+                        highlight = 'out-of-theory';
+                        postTheoryAnalysis = false;
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → out of theory [source: ${evalResult.source}+masters]`;
+                    } else if (mastersVerdict === false) {
+                        highlight = 'out-of-repertoire';
+                        const stats = mastersLookup!.getMoveStats(fenBefore, allMoves[i].san)!;
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous), masters: ${stats.moveGames} games (${stats.percentage.toFixed(1)}%) → in theory [source: ${evalResult.source}+masters]`;
+                    } else {
+                        highlight = 'out-of-repertoire';
+                        reason += `, opponent drop=${oppDrop.toFixed(2)} (ambiguous, ${AMBIGUOUS_THEORY_THRESHOLD}–${OUT_OF_THEORY_THRESHOLD}), no masters data → default in theory [source: ${evalResult.source}]`;
+                        ambiguousTheoryPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, moveSan: allMoves[i].san });
+                    }
                 }
             } else {
+                highlight = 'out-of-repertoire';
                 reason += ', no eval data for opponent drop → continue';
                 missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
@@ -507,7 +572,7 @@ export function annotateGame(
             reason = `out of theory: beforeInRep=${repertoireFens.has(normalizedFenBefore)}, afterInRep=${repertoireFens.has(normalizedFenAfter)}, isUser=${isUserMove}`;
         }
 
-        if (debugThis) console.debug(
+        if (debugThis) console.log(
             `  ply ${i}: ${allMoves[i].san} [${isUserMove ? 'USER' : 'OPP'}] → ${highlight} | ${reason}`
         );
 
@@ -549,6 +614,7 @@ export function annotateGame(
         miniBoardOrientation: userColor,
         deviation,
         missingEvalPositions: missingEvalPositions.length > 0 ? missingEvalPositions : undefined,
+        ambiguousTheoryPositions: ambiguousTheoryPositions.length > 0 ? ambiguousTheoryPositions : undefined,
     };
 }
 
@@ -750,5 +816,95 @@ function getGameMetadataChesscom(gameData: Record<string, unknown>, username: st
         userColor,
         gameUrl,
         platform: 'chess.com',
+    };
+}
+
+// ---------------------------------------------------------------------------
+// End-of-theory position derivation (for opponent analysis)
+// ---------------------------------------------------------------------------
+
+export interface EotPositions {
+    /** Normalized FEN of position before the user's bad move (after opponent's move) */
+    fenBefore: string;
+    /** Normalized FEN of position after the user's bad move */
+    fenAfter: string;
+    /** SAN of the preceding opponent move (e.g., "Nxe4") */
+    opponentSan: string;
+    /** SAN of the user's bad move (e.g., "exd6") */
+    userSan: string;
+    /** Eval drop category of the user's bad move */
+    userMoveCategory: EvalDropCategory;
+    /** Index of the user's bad move in annotation.moves[] */
+    moveIndex: number;
+    /** Ply index (0-based) of the user's bad move — used to cap replay depth */
+    targetPly: number;
+}
+
+/**
+ * Derive the critical FENs for the first out-of-repertoire eval-drop move.
+ *
+ * This is used by the opponent analysis feature: it replays the game PGN
+ * to extract the positions before and after the user's bad move so we can
+ * search the opponent's game history for matching positions.
+ */
+export function deriveEotPositions(
+    gameData: Record<string, unknown>,
+    annotation: GameAnnotation,
+    username: string,
+    platform: Platform
+): EotPositions | null {
+    // Find the first out-of-repertoire-response with a non-ok eval drop
+    let eotIndex = -1;
+    for (let i = 0; i < annotation.moves.length; i++) {
+        const m = annotation.moves[i];
+        if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
+            eotIndex = i;
+            break;
+        }
+    }
+    if (eotIndex < 0) return null;
+
+    // Find the preceding opponent move
+    let opponentSan: string | null = null;
+    for (let j = eotIndex - 1; j >= 0; j--) {
+        if (!annotation.moves[j].isUserMove) {
+            opponentSan = annotation.moves[j].san;
+            break;
+        }
+    }
+    if (!opponentSan) return null;
+
+    // Replay PGN to extract FENs at the eotIndex position
+    const pgn = buildPgn(gameData, platform);
+    if (!pgn) return null;
+
+    const chess = new Chess();
+    try {
+        chess.loadPgn(pgn);
+    } catch {
+        return null;
+    }
+    chess.deleteComments();
+
+    const allMoves = chess.history({ verbose: true });
+    if (eotIndex >= allMoves.length) return null;
+
+    const replay = new Chess();
+    for (let i = 0; i < eotIndex; i++) {
+        replay.move(allMoves[i]);
+    }
+
+    const fenBefore = normalizeFenResetHalfmoveClock(replay.fen());
+    replay.move(allMoves[eotIndex]);
+    const fenAfter = normalizeFenResetHalfmoveClock(replay.fen());
+
+    return {
+        fenBefore,
+        fenAfter,
+        opponentSan,
+        userSan: annotation.moves[eotIndex].san,
+        userMoveCategory: annotation.moves[eotIndex].evalDrop!.category,
+        moveIndex: eotIndex,
+        targetPly: eotIndex,
     };
 }

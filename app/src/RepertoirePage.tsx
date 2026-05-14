@@ -10,6 +10,7 @@ import { buildNormalizedFensFromPgn, isLikelyFen, normalizeFenResetHalfmoveClock
 import PgnControl from './PgnControl';
 import { ExplorerEvals, getExplorerEvals } from './ExplorerEvals';
 import { EvalDrop, computeEvalDrops } from './EvalDropService';
+import { getMeasurePerf } from './PerfUtils';
 import AnalysisPopover from './AnalysisPopover';
 import './RepertoirePage.css';
 
@@ -39,6 +40,7 @@ const FILE_EXTENSION = 'chess';
 // - At the top there is a menu bar with New, Export, and Import buttons
 const RepertoirePage: React.FC = () => {
     const navigate = useNavigate();
+    const measurePerf = useMemo(() => getMeasurePerf(), []);
 
     const [repData, setRepData] = useState<RepertoireData | null>(null);
     const [variants, setVariants] = useState<ParsedVariant[]>([]);
@@ -136,7 +138,7 @@ const RepertoirePage: React.FC = () => {
         const t0 = performance.now();
         getExplorerEvals()
             .then((ev) => {
-                console.log('[Perf]', JSON.stringify({ step: 'explorer-evals', totalMs: Math.round(performance.now() - t0) }));
+                if (measurePerf) console.log('[Perf]', JSON.stringify({ step: 'explorer-evals', totalMs: Math.round(performance.now() - t0) }));
                 setExplorerEvals(ev);
             })
             .catch((e) => console.warn('Failed to load explorer evals:', e))
@@ -154,7 +156,7 @@ const RepertoirePage: React.FC = () => {
                 map.set(`${v.orientation}::${v.pgn}`, drops);
             }
         }
-        console.log('[Perf]', JSON.stringify({
+        if (measurePerf) console.log('[Perf]', JSON.stringify({
             step: 'eval-drops',
             totalMs: Math.round(performance.now() - t0),
             variants: variants.length,
