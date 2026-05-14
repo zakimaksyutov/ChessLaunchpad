@@ -24,6 +24,7 @@ import { getMeasurePerf } from './PerfUtils';
 import { useLichessAuth } from './LichessAuthContext';
 import {
     MastersCache,
+    toMastersCacheKey,
 } from './MastersExplorerService';
 import {
     getAllOpponentAnalyses,
@@ -626,7 +627,7 @@ const GamesPage: React.FC = () => {
         // Deduplicate
         const seen = new Set<string>();
         const unique = uncachedAmbiguous.filter(p => {
-            const key = p.fen.split(' ').slice(0, 4).join(' ');
+            const key = toMastersCacheKey(p.fen);
             if (seen.has(key)) return false;
             seen.add(key);
             return true;

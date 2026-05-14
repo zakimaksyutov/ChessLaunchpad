@@ -223,9 +223,8 @@ Opponent-analysis results are persisted separately from downloaded Games data:
 
 Cache invalidation rules:
 
-- **Re-annotate** clears all saved opponent-analysis results and aborts any in-flight analysis.
-- **Sync Games** clears all saved opponent-analysis results and aborts any in-flight analysis.
-- Saved analysis remains visible until one of the above invalidation events occurs.
+- **Re-annotate** clears the game's saved opponent-analysis result and aborts any in-flight analysis for that game.
+- Saved analysis remains visible until re-annotation occurs.
 
 ## 4. Repertoire Cross-Reference
 

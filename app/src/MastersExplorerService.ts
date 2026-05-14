@@ -73,7 +73,7 @@ function getMastersDB(): Promise<IDBPDatabase> {
  * Compact FEN key: piece placement + side + castling + en passant.
  * Strips halfmove clock and fullmove number so transpositions cache-hit.
  */
-function toCompactFen(fen: string): string {
+export function toMastersCacheKey(fen: string): string {
     return fen.split(' ').slice(0, 4).join(' ');
 }
 
@@ -192,7 +192,7 @@ export async function fetchMastersPosition(
     token: string,
     fetchFn: typeof fetch = fetch
 ): Promise<MastersPositionResult | null> {
-    const key = toCompactFen(fen);
+    const key = toMastersCacheKey(fen);
 
     // Check in-memory cache
     const memCached = memoryCache.get(key);
@@ -237,7 +237,7 @@ export class MastersLookup {
 
     /** Add a fetched result to the lookup. */
     add(fen: string, result: MastersPositionResult): void {
-        this.results.set(toCompactFen(fen), result);
+        this.results.set(toMastersCacheKey(fen), result);
     }
 
     /**
@@ -245,7 +245,7 @@ export class MastersLookup {
      * Returns null if the position hasn't been fetched.
      */
     getMoveStats(fen: string, moveSan: string): MoveStats | null {
-        const key = toCompactFen(fen);
+        const key = toMastersCacheKey(fen);
         const posResult = this.results.get(key);
         if (!posResult) return null;
 
@@ -268,46 +268,6 @@ export class MastersLookup {
         if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
         return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
     }
-}
-
-/**
- * Fetch masters data for a batch of positions.
- * Checks caches first, then fetches uncached positions rate-limited.
- * Returns a populated MastersLookup.
- *
- * @param onProgress Optional callback invoked after each position is processed
- *                   with (fetched, total) counts.
- */
-export async function fetchMastersForPositions(
-    positions: { fen: string }[],
-    token: string,
-    fetchFn: typeof fetch = fetch,
-    onProgress?: (fetched: number, total: number) => void,
-): Promise<MastersLookup> {
-    const lookup = new MastersLookup();
-
-    // Deduplicate by compact FEN
-    const uniqueFens = new Map<string, string>();
-    for (const pos of positions) {
-        const key = toCompactFen(pos.fen);
-        if (!uniqueFens.has(key)) {
-            uniqueFens.set(key, pos.fen);
-        }
-    }
-
-    const total = uniqueFens.size;
-    let fetched = 0;
-
-    for (const [, fen] of uniqueFens) {
-        const result = await fetchMastersPosition(fen, token, fetchFn);
-        if (result) {
-            lookup.add(fen, result);
-        }
-        fetched++;
-        onProgress?.(fetched, total);
-    }
-
-    return lookup;
 }
 
 // ---------------------------------------------------------------------------
@@ -350,7 +310,7 @@ export class MastersCache {
      * Returns null if the position isn't cached.
      */
     getMoveStats(fen: string, moveSan: string): MoveStats | null {
-        const key = toCompactFen(fen);
+        const key = toMastersCacheKey(fen);
         const entry = this.entries.get(key);
         if (!entry) return null;
 
@@ -379,7 +339,7 @@ export class MastersCache {
 
     /** Check whether a position is cached (does NOT increment hitCount). */
     has(fen: string): boolean {
-        return this.entries.has(toCompactFen(fen));
+        return this.entries.has(toMastersCacheKey(fen));
     }
 
     /**
@@ -393,7 +353,7 @@ export class MastersCache {
         token: string,
         fetchFn: typeof fetch = fetch
     ): Promise<MastersPositionResult | null> {
-        const key = toCompactFen(fen);
+        const key = toMastersCacheKey(fen);
         const entry = this.entries.get(key);
         if (entry) {
             entry.hitCount++;
