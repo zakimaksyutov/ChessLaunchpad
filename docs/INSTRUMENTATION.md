@@ -52,7 +52,7 @@ yarn preview          # serves on http://localhost:4274/ChessLaunchpad/
 [Perf] {"step":"eval-drops","totalMs":218,"variants":132,"withDrops":132}
 ```
 
-# Games Page — Annotation Debug Logging
+# Games Page — Tracing a Game
 
 The Games page includes detailed debug logging for its annotation/highlighting logic. This logging is **disabled by default** and is activated per-game through the UI.
 
@@ -61,6 +61,8 @@ The Games page includes detailed debug logging for its annotation/highlighting l
 Click the **⋯** menu on any game row, then click **Re-annotate**. The game's annotation is recomputed and a detailed ply-by-ply trace is written to the browser console.
 
 No URL parameters are needed. Debug logs are **not** produced during regular annotation (sync, initial page load, or masters-triggered re-annotation) — only when the user explicitly re-annotates a game.
+
+**Automated (Playwright):** use the existing Playwright MCP — do not install Playwright separately. Log in, navigate to the Games page, find the target game row, open its **⋯** menu, click **Re-annotate**, and collect the console output.
 
 ## Output
 
