@@ -14,7 +14,9 @@ import {
     GameMetadata,
     getGameMetadata,
     getUserColor,
+    getOpponentName,
     AnnotatedMove,
+    deriveEotPositions,
 } from './GameAnnotationService';
 import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
 import { EvalDropCategory } from './EvalDropService';
@@ -23,6 +25,16 @@ import { useLichessAuth } from './LichessAuthContext';
 import {
     MastersCache,
 } from './MastersExplorerService';
+import {
+    getAllOpponentAnalyses,
+    saveOpponentAnalysis,
+    deleteOpponentAnalysis,
+    OpponentAnalysisResult,
+} from './OpponentAnalysisDB';
+import {
+    analyzeOpponentGames,
+    OpponentAnalysisProgress,
+} from './OpponentAnalysisService';
 import './GamesPage.css';
 
 const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
@@ -37,6 +49,20 @@ const EOT_ICON_COLORS: Record<EvalDropCategory, string> = {
     inaccuracy: '#b8860b',
     mistake: '#c0392b',
     blunder: '#7b3f9e',
+};
+
+const THREAT_LEVEL_COLORS: Record<string, string> = {
+    'low': '#27ae60',
+    'moderate': '#b8860b',
+    'high': '#c0392b',
+    'very-high': '#7b3f9e',
+};
+
+const THREAT_LEVEL_LABELS: Record<string, string> = {
+    'low': 'Opponent likely unfamiliar with this position',
+    'moderate': 'Opponent has some experience here',
+    'high': 'Opponent knows this position well',
+    'very-high': 'Opponent is very experienced here',
 };
 
 function getMoveClassName(move: AnnotatedMove): string {
@@ -68,14 +94,83 @@ function formatPlayerLabel(name: string, rating: number | undefined, isUser: boo
     );
 }
 
+function formatDateShort(timestamp: number): string {
+    const d = new Date(timestamp);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+const OpponentAnalysisDisplay: React.FC<{ analysis: OpponentAnalysisResult }> = ({ analysis }) => {
+    const color = THREAT_LEVEL_COLORS[analysis.threatLevel];
+    const label = THREAT_LEVEL_LABELS[analysis.threatLevel];
+    const isLow = analysis.threatLevel === 'low';
+
+    // Pick the most relevant recent games to show (prefer after-position, fall back to before)
+    const recentGames = analysis.recentAfterGames.length > 0
+        ? analysis.recentAfterGames
+        : analysis.recentBeforeGames;
+
+    return (
+        <div className={`opponent-analysis-result opp-threat-${analysis.threatLevel}`}>
+            <div className="opponent-analysis-header">
+                <svg className="opponent-analysis-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {isLow ? (
+                        // Info circle icon for "low"
+                        <>
+                            <circle cx="12" cy="12" r="10" fill={color} />
+                            <text x="12" y="17" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">i</text>
+                        </>
+                    ) : (
+                        // Warning triangle for moderate/high/very-high
+                        <>
+                            <path d="M12 2L1 21h22L12 2z" fill={color} />
+                            <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
+                        </>
+                    )}
+                </svg>
+                <span className="opponent-analysis-text">
+                    Opponent has <strong>{analysis.positionBeforeCount}</strong> game{analysis.positionBeforeCount !== 1 ? 's' : ''} after{' '}
+                    <strong>{analysis.opponentMoveSan}</strong> and{' '}
+                    <strong>{analysis.positionAfterCount}</strong> after{' '}
+                    <strong>{analysis.userMoveSan}</strong>
+                    <span className="opponent-analysis-total"> (of {analysis.gamesAnalyzed} analyzed)</span>
+                </span>
+            </div>
+            <div className="opponent-analysis-label" style={{ color }}>{label}</div>
+            {recentGames.length > 0 && (
+                <div className="opponent-analysis-dates">
+                    Recent:{' '}
+                    {recentGames.map((ref, i) => (
+                        <React.Fragment key={i}>
+                            {i > 0 && ' · '}
+                            <a
+                                className="opponent-game-link"
+                                href={ref.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                {formatDateShort(ref.date)}
+                            </a>
+                        </React.Fragment>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 interface GameRowProps {
     game: StoredGame;
     annotation: GameAnnotation | null;
     username: string;
     onReannotate: (gameId: string) => void;
+    opponentAnalysis: OpponentAnalysisResult | null;
+    onAnalyzeOpponent: (gameId: string) => void;
+    analyzeProgress: OpponentAnalysisProgress | null;
+    /** True when any game is being analyzed (disables the action on other rows) */
+    analyzeDisabled: boolean;
 }
 
-const GameRow: React.FC<GameRowProps> = ({ game, annotation, username, onReannotate }) => {
+const GameRow: React.FC<GameRowProps> = ({ game, annotation, username, onReannotate, opponentAnalysis, onAnalyzeOpponent, analyzeProgress, analyzeDisabled }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const platform = game.platform ?? 'lichess';
@@ -213,6 +308,11 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username, onReannot
                                         <button onClick={() => { setMenuOpen(false); onReannotate(game.id); }}>
                                             Re-annotate
                                         </button>
+                                        {opponentAnalysis && (
+                                            <button disabled className="game-overflow-done">
+                                                Opponent analysis ✓
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -268,7 +368,37 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username, onReannot
                         </svg>
                         Out of repertoire – you played <strong>{eotSummary.userSan}</strong>
                         {' '}({eotSummary.category})
+                        {!opponentAnalysis && !analyzeProgress && (
+                            <a
+                                className="analyze-opponent-link"
+                                role="button"
+                                onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(game.id)}
+                                aria-disabled={analyzeDisabled}
+                            >
+                                Analyze opponent
+                            </a>
+                        )}
                     </div>
+                )}
+
+                {/* Opponent analysis progress */}
+                {analyzeProgress && analyzeProgress.phase === 'downloading' && (
+                    <div className="opponent-analysis-progress">
+                        <span className="opponent-analysis-progress-text">
+                            Analyzing opponent&apos;s games… {analyzeProgress.gamesDownloaded}
+                        </span>
+                        <div className="opponent-analysis-progress-bar">
+                            <div
+                                className="opponent-analysis-progress-fill"
+                                style={{ width: `${Math.min(100, (analyzeProgress.gamesDownloaded / 1000) * 100)}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* Opponent analysis result */}
+                {opponentAnalysis && (
+                    <OpponentAnalysisDisplay analysis={opponentAnalysis} />
                 )}
             </div>
         </div>
@@ -291,6 +421,10 @@ const GamesPage: React.FC = () => {
     const purgePendingRef = useRef(false);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const debugGameIdsRef = useRef<Set<string>>(new Set());
+    const [opponentAnalyses, setOpponentAnalyses] = useState<Map<string, OpponentAnalysisResult>>(new Map());
+    const [analyzingGameId, setAnalyzingGameId] = useState<string | null>(null);
+    const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
+    const analyzeAbortRef = useRef<AbortController | null>(null);
 
     const measurePerf = useMemo(() => getMeasurePerf(), []);
     const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
@@ -306,11 +440,22 @@ const GamesPage: React.FC = () => {
         return () => window.removeEventListener('focus', refresh);
     }, []);
 
-    // Cleanup informational timer on unmount
+    // Cleanup informational timer and abort controller on unmount
     useEffect(() => {
         return () => {
             if (infoClearTimerRef.current) clearTimeout(infoClearTimerRef.current);
+            analyzeAbortRef.current?.abort();
         };
+    }, []);
+
+    // Load saved opponent analyses from IndexedDB on mount
+    useEffect(() => {
+        getAllOpponentAnalyses()
+            .then(analyses => {
+                const map = new Map(analyses.map(a => [a.gameId, a]));
+                setOpponentAnalyses(map);
+            })
+            .catch(err => console.warn('Failed to load opponent analyses:', err));
     }, []);
 
     // Load repertoire data and build FEN sets
@@ -526,10 +671,31 @@ const GamesPage: React.FC = () => {
         mastersCache.purgeUnused();
     }, [baseAnnotations, mastersCache]);
 
-    // Re-annotate a single game: clear its cached annotation and let the useMemo recompute
+    // Cancel any in-flight opponent analysis (used by re-annotate and sync)
+    const cancelInFlightAnalysis = () => {
+        if (analyzeAbortRef.current) {
+            analyzeAbortRef.current.abort();
+            analyzeAbortRef.current = null;
+            setAnalyzingGameId(null);
+            setAnalyzeProgress(null);
+        }
+    };
+
+    // Re-annotate a single game: clear its cached annotation and let the useMemo recompute.
+    // Also clear any saved opponent analysis since the EOT position may have shifted.
     const handleReannotate = async (gameId: string) => {
+        // If this game's analysis is in flight, abort it
+        if (analyzingGameId === gameId) {
+            cancelInFlightAnalysis();
+        }
         debugGameIdsRef.current.add(gameId);
         await clearAnnotation(gameId);
+        await deleteOpponentAnalysis(gameId).catch(() => {});
+        setOpponentAnalyses(prev => {
+            const next = new Map(prev);
+            next.delete(gameId);
+            return next;
+        });
         setGames(prev => prev.map(g => {
             if (g.id !== gameId) return g;
             const updated = { ...g };
@@ -540,6 +706,62 @@ const GamesPage: React.FC = () => {
         mastersFetchStartedRef.current = false;
     };
 
+    // Analyze opponent games for a specific game
+    const handleAnalyzeOpponent = async (gameId: string) => {
+        if (analyzingGameId) return; // Only one analysis at a time
+
+        const game = filteredGames.find(g => g.id === gameId);
+        const annotation = annotations.get(gameId);
+        if (!game || !annotation) return;
+
+        const platform = game.platform ?? 'lichess';
+        const userColor = getUserColor(game.data, game.username, platform);
+        if (!userColor) return;
+
+        const eotPos = deriveEotPositions(game.data, annotation, game.username, platform);
+        if (!eotPos) return;
+
+        const opponentName = getOpponentName(game.data, userColor, platform);
+        const meta = getGameMetadata(game.data, game.username, platform);
+
+        const abortController = new AbortController();
+        analyzeAbortRef.current = abortController;
+        setAnalyzingGameId(gameId);
+        setAnalyzeProgress({ gamesDownloaded: 0, phase: 'downloading' });
+
+        try {
+            const result = await analyzeOpponentGames(
+                {
+                    gameId,
+                    opponentUsername: opponentName,
+                    platform,
+                    fenBefore: eotPos.fenBefore,
+                    fenAfter: eotPos.fenAfter,
+                    opponentMoveSan: eotPos.opponentSan,
+                    userMoveSan: eotPos.userSan,
+                    targetPly: eotPos.targetPly,
+                    excludeGameUrl: meta.gameUrl,
+                },
+                (progress) => setAnalyzeProgress(progress),
+                abortController.signal
+            );
+
+            // Show result in UI immediately, persist in background
+            setOpponentAnalyses(prev => new Map(prev).set(gameId, result));
+            saveOpponentAnalysis(result).catch(dbErr =>
+                console.warn('Failed to persist opponent analysis:', dbErr)
+            );
+        } catch (err) {
+            if ((err as Error).name !== 'AbortError') {
+                console.error('Failed to analyze opponent:', err);
+            }
+        } finally {
+            setAnalyzingGameId(null);
+            setAnalyzeProgress(null);
+            analyzeAbortRef.current = null;
+        }
+    };
+
     const handleSync = async () => {
         if (syncing) return;
         const accounts = getLinkedAccounts();
@@ -547,6 +769,9 @@ const GamesPage: React.FC = () => {
             setError('No linked accounts. Add an account in Settings first.');
             return;
         }
+
+        // Cancel any in-flight opponent analysis — sync may change annotations
+        cancelInFlightAnalysis();
 
         setSyncing(true);
         setError('');
@@ -667,6 +892,10 @@ const GamesPage: React.FC = () => {
                         annotation={annotations.get(game.id) ?? null}
                         username={game.username}
                         onReannotate={handleReannotate}
+                        opponentAnalysis={opponentAnalyses.get(game.id) ?? null}
+                        onAnalyzeOpponent={handleAnalyzeOpponent}
+                        analyzeProgress={analyzingGameId === game.id ? analyzeProgress : null}
+                        analyzeDisabled={analyzingGameId !== null}
                     />
                 ))
             )}

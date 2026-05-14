@@ -274,13 +274,14 @@ function buildPgnFromChesscomData(gameData: Record<string, unknown>): string | n
     const pgn = gameData.pgn as string | undefined;
     if (!pgn || typeof pgn !== 'string') return null;
 
-    const chess = new Chess();
+    let chess = new Chess();
     try {
         chess.loadPgn(pgn);
     } catch {
         // Try stripping comments (Chess.com PGNs often have clock annotations)
         try {
             const cleaned = pgn.replace(/\{[^}]*\}/g, '').replace(/\s+/g, ' ');
+            chess = new Chess();
             chess.loadPgn(cleaned);
         } catch {
             return null;
@@ -293,7 +294,7 @@ function buildPgnFromChesscomData(gameData: Record<string, unknown>): string | n
 /**
  * Build PGN from game data, dispatching based on platform.
  */
-function buildPgn(gameData: Record<string, unknown>, platform: Platform): string | null {
+export function buildPgn(gameData: Record<string, unknown>, platform: Platform): string | null {
     if (platform === 'chess.com') {
         return buildPgnFromChesscomData(gameData);
     }
@@ -309,7 +310,7 @@ function buildPgn(gameData: Record<string, unknown>, platform: Platform): string
  * @param evals ExplorerEvals instance for eval-drop computation
  * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
  */
-function getOpponentName(
+export function getOpponentName(
     gameData: Record<string, unknown>,
     userColor: 'white' | 'black',
     platform: Platform
@@ -815,5 +816,95 @@ function getGameMetadataChesscom(gameData: Record<string, unknown>, username: st
         userColor,
         gameUrl,
         platform: 'chess.com',
+    };
+}
+
+// ---------------------------------------------------------------------------
+// End-of-theory position derivation (for opponent analysis)
+// ---------------------------------------------------------------------------
+
+export interface EotPositions {
+    /** Normalized FEN of position before the user's bad move (after opponent's move) */
+    fenBefore: string;
+    /** Normalized FEN of position after the user's bad move */
+    fenAfter: string;
+    /** SAN of the preceding opponent move (e.g., "Nxe4") */
+    opponentSan: string;
+    /** SAN of the user's bad move (e.g., "exd6") */
+    userSan: string;
+    /** Eval drop category of the user's bad move */
+    userMoveCategory: EvalDropCategory;
+    /** Index of the user's bad move in annotation.moves[] */
+    moveIndex: number;
+    /** Ply index (0-based) of the user's bad move — used to cap replay depth */
+    targetPly: number;
+}
+
+/**
+ * Derive the critical FENs for the first out-of-repertoire eval-drop move.
+ *
+ * This is used by the opponent analysis feature: it replays the game PGN
+ * to extract the positions before and after the user's bad move so we can
+ * search the opponent's game history for matching positions.
+ */
+export function deriveEotPositions(
+    gameData: Record<string, unknown>,
+    annotation: GameAnnotation,
+    username: string,
+    platform: Platform
+): EotPositions | null {
+    // Find the first out-of-repertoire-response with a non-ok eval drop
+    let eotIndex = -1;
+    for (let i = 0; i < annotation.moves.length; i++) {
+        const m = annotation.moves[i];
+        if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
+            eotIndex = i;
+            break;
+        }
+    }
+    if (eotIndex < 0) return null;
+
+    // Find the preceding opponent move
+    let opponentSan: string | null = null;
+    for (let j = eotIndex - 1; j >= 0; j--) {
+        if (!annotation.moves[j].isUserMove) {
+            opponentSan = annotation.moves[j].san;
+            break;
+        }
+    }
+    if (!opponentSan) return null;
+
+    // Replay PGN to extract FENs at the eotIndex position
+    const pgn = buildPgn(gameData, platform);
+    if (!pgn) return null;
+
+    const chess = new Chess();
+    try {
+        chess.loadPgn(pgn);
+    } catch {
+        return null;
+    }
+    chess.deleteComments();
+
+    const allMoves = chess.history({ verbose: true });
+    if (eotIndex >= allMoves.length) return null;
+
+    const replay = new Chess();
+    for (let i = 0; i < eotIndex; i++) {
+        replay.move(allMoves[i]);
+    }
+
+    const fenBefore = normalizeFenResetHalfmoveClock(replay.fen());
+    replay.move(allMoves[eotIndex]);
+    const fenAfter = normalizeFenResetHalfmoveClock(replay.fen());
+
+    return {
+        fenBefore,
+        fenAfter,
+        opponentSan,
+        userSan: annotation.moves[eotIndex].san,
+        userMoveCategory: annotation.moves[eotIndex].evalDrop!.category,
+        moveIndex: eotIndex,
+        targetPly: eotIndex,
     };
 }

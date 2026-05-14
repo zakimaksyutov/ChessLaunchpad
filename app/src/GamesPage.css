@@ -320,6 +320,129 @@
     margin-top: 0.15rem;
 }
 
+/* Opponent analysis */
+.opponent-analysis-progress {
+    font-size: 0.8rem;
+    color: #1a6fa0;
+    margin-top: 0.35rem;
+}
+
+.opponent-analysis-progress-text {
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.opponent-analysis-progress-bar {
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.opponent-analysis-progress-fill {
+    height: 100%;
+    background: #1a6fa0;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.opponent-analysis-result {
+    font-size: 0.8rem;
+    margin-top: 0.35rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    background: #f9f9f9;
+    border-left: 3px solid transparent;
+}
+
+.opp-threat-low {
+    border-left-color: #27ae60;
+}
+
+.opp-threat-moderate {
+    border-left-color: #b8860b;
+}
+
+.opp-threat-high {
+    border-left-color: #c0392b;
+}
+
+.opp-threat-very-high {
+    border-left-color: #7b3f9e;
+}
+
+.opponent-analysis-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.3em;
+}
+
+.opponent-analysis-icon {
+    display: inline-block;
+    width: 1.15em;
+    height: 1.15em;
+    flex-shrink: 0;
+    margin-top: 0.1em;
+}
+
+.opponent-analysis-text {
+    color: #333;
+    line-height: 1.4;
+}
+
+.opponent-analysis-total {
+    color: #888;
+    font-size: 0.75rem;
+}
+
+.opponent-analysis-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-top: 0.15rem;
+    margin-left: 1.45em;
+}
+
+.opponent-analysis-dates {
+    font-size: 0.75rem;
+    color: #666;
+    margin-top: 0.15rem;
+    margin-left: 1.45em;
+}
+
+.opponent-game-link {
+    color: rgb(0, 130, 210);
+    text-decoration: none;
+}
+
+.opponent-game-link:hover {
+    text-decoration: underline;
+}
+
+.game-overflow-done {
+    color: #888 !important;
+    cursor: default !important;
+}
+
+/* Analyze opponent inline link */
+.analyze-opponent-link {
+    color: rgb(0, 130, 210);
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-decoration: none;
+    margin-left: 0.5em;
+    white-space: nowrap;
+}
+
+.analyze-opponent-link:hover {
+    text-decoration: underline;
+}
+
+.analyze-opponent-link[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .game-deviation-icon {
     display: inline-block;
     width: 1.15em;
