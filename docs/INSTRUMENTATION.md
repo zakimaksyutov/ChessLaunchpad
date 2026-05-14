@@ -23,6 +23,19 @@ yarn preview          # serves on http://localhost:4274/ChessLaunchpad/
 
 Then open the Repertoire page in the browser and check `[Perf]` logs in the console.
 
+### Automated Performance Measurement with Playwright
+
+Use the existing Playwright MCP — do not install Playwright separately.
+
+1. Build the app: `cd app && yarn build`
+2. Serve with `yarn preview` (port 4274)
+3. Open `http://localhost:4274/ChessLaunchpad/#/` in Playwright
+4. On the home page, set up a `PerformanceObserver` for `longtask` entries and record `performance.now()` as the baseline
+5. Navigate to the target UX that needs performance measurement
+6. Wait for all data loading to complete
+7. Collect: long task count, total blocking ms, biggest single task, individual long task timeline, DOM node count, network API calls (group by domain)
+8. Report findings
+
 ## Example Output
 
 ```
@@ -95,7 +108,7 @@ For ambiguous moves, the masters API checks if the move is played by masters:
 - If < 5 absolute master games OR < 5% of position's total games → `out-of-theory`
 - Otherwise → `out-of-repertoire` (in theory, continue analysis)
 
-Masters data is fetched asynchronously (rate-limited to 1 req/sec, max 20 per page load) and cached in IndexedDB (`chesslaunchpad-masters-explorer`). The first annotation pass marks ambiguous positions optimistically as `out-of-repertoire`; once masters data arrives, affected games are re-annotated.
+Masters data is fetched asynchronously (rate-limited to 1 req/sec) and cached in IndexedDB (`chesslaunchpad-masters-explorer`). The first annotation pass marks ambiguous positions optimistically as `out-of-repertoire`; once masters data arrives, affected games are re-annotated.
 
 ## Fields
 
