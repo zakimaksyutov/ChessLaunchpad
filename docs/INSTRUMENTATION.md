@@ -1,6 +1,11 @@
 # Performance Instrumentation
 
-All logs are emitted to `console.log` with prefix `[Perf]` followed by a JSON object.
+All logs are emitted to `console.log` with prefix `[Perf]` followed by a JSON object. Logging is **disabled by default**. Activate it by adding `?measurePerf=true` to the URL hash:
+
+```
+http://localhost:4274/ChessLaunchpad/#/repertoire?measurePerf=true
+http://localhost:4274/ChessLaunchpad/#/games?measurePerf=true
+```
 
 ## Repertoire Page Steps
 
@@ -9,11 +14,19 @@ All logs are emitted to `console.log` with prefix `[Perf]` followed by a JSON ob
 | `explorer-evals` | `RepertoirePage.tsx` | `totalMs` | Load explorer eval data from static JSON |
 | `eval-drops` | `RepertoirePage.tsx` | `totalMs`, `variants`, `withDrops` | Compute eval drops per variant |
 
+## Games Page Steps
+
+| Step | File | Fields | Description |
+|------|------|--------|-------------|
+| `games-loaded` | `GamesPage.tsx` | `totalMs`, `games`, `withCachedAnnotation` | Load games from IndexedDB |
+| `mastersCache-ready` | `GamesPage.tsx` | `totalMs`, `positions` | Load masters positions from IndexedDB |
+| `fenSets-ready` | `GamesPage.tsx` | `totalMs`, `whiteFens`, `blackFens` | Load repertoire data from backend API and build FEN sets |
+| `explorerEvals-ready` | `GamesPage.tsx` | `totalMs` | Load explorer eval data from static JSON |
+| `annotations-ready` | `GamesPage.tsx` | `totalMs`, `computeMs`, `fromCache`, `computed`, `total` | Produce annotation map (from IndexedDB cache or `annotateGame()`) |
+
 ## Measuring Against a Production Build
 
 Always measure performance against the **production build** (`yarn build` + `yarn preview`), not the dev server. The dev server includes React StrictMode double-rendering and unminified code, which inflates timings.
-
-### Steps
 
 ```sh
 cd app
@@ -21,20 +34,16 @@ yarn build            # produces minified bundle in build/
 yarn preview          # serves on http://localhost:4274/ChessLaunchpad/
 ```
 
-Then open the Repertoire page in the browser and check `[Perf]` logs in the console.
+**Manual:** open the target page with `?measurePerf=true` in the URL hash and check `[Perf]` logs in the console.
 
-### Automated Performance Measurement with Playwright
+**Automated (Playwright):** use the existing Playwright MCP — do not install Playwright separately.
 
-Use the existing Playwright MCP — do not install Playwright separately.
-
-1. Build the app: `cd app && yarn build`
-2. Serve with `yarn preview` (port 4274)
-3. Open `http://localhost:4274/ChessLaunchpad/#/` in Playwright
-4. On the home page, set up a `PerformanceObserver` for `longtask` entries and record `performance.now()` as the baseline
-5. Navigate to the target UX that needs performance measurement
-6. Wait for all data loading to complete
-7. Collect: long task count, total blocking ms, biggest single task, individual long task timeline, DOM node count, network API calls (group by domain)
-8. Report findings
+1. Open `http://localhost:4274/ChessLaunchpad/#/` in Playwright
+2. On the home page, set up a `PerformanceObserver` for `longtask` entries and record `performance.now()` as the baseline
+3. Navigate to the target page (append `?measurePerf=true` to the hash)
+4. Wait for all data loading to complete
+5. Collect: `[Perf]` console logs, long task count, total blocking ms, biggest single task, individual long task timeline, DOM node count, network API calls (group by domain)
+6. Report findings
 
 ## Example Output
 

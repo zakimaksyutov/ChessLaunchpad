@@ -18,6 +18,7 @@ import {
 } from './GameAnnotationService';
 import { getExplorerEvals, ExplorerEvals } from './ExplorerEvals';
 import { EvalDropCategory } from './EvalDropService';
+import { getMeasurePerf } from './PerfUtils';
 import { useLichessAuth } from './LichessAuthContext';
 import {
     MastersCache,
@@ -290,6 +291,9 @@ const GamesPage: React.FC = () => {
     const purgePendingRef = useRef(false);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    const measurePerf = useMemo(() => getMeasurePerf(), []);
+    const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
+
     const { token: lichessToken } = useLichessAuth();
 
     const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
@@ -319,26 +323,36 @@ const GamesPage: React.FC = () => {
                 const dal = createDataAccessLayer(username, hashedPassword);
                 const repertoireData = await dal.retrieveRepertoireData();
                 const sets = buildRepertoireFenSets(repertoireData.data);
+                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "fenSets-ready", totalMs: Math.round(performance.now() - perfT0Ref.current), whiteFens: sets.whiteFens.size, blackFens: sets.blackFens.size })}`);
                 setFenSets(sets);
             } catch (err) {
                 console.warn('Failed to load repertoire data for game annotation:', err);
             }
         };
         load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Load explorer evals
     useEffect(() => {
         getExplorerEvals()
-            .then(setExplorerEvals)
+            .then(ev => {
+                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "explorerEvals-ready", totalMs: Math.round(performance.now() - perfT0Ref.current) })}`);
+                setExplorerEvals(ev);
+            })
             .catch(err => console.warn('Failed to load explorer evals:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Load all masters positions from IndexedDB into cache on mount
     useEffect(() => {
         MastersCache.loadAll()
-            .then(setMastersCache)
+            .then(mc => {
+                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "mastersCache-ready", totalMs: Math.round(performance.now() - perfT0Ref.current), positions: mc.size })}`);
+                setMastersCache(mc);
+            })
             .catch(err => console.warn('Failed to load masters cache:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Load games from IndexedDB
@@ -347,6 +361,8 @@ const GamesPage: React.FC = () => {
             setLoading(true);
             try {
                 const storedGames = await getAllGames();
+                const cachedCount = storedGames.filter(g => 'annotation' in g).length;
+                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "games-loaded", totalMs: Math.round(performance.now() - perfT0Ref.current), games: storedGames.length, withCachedAnnotation: cachedCount })}`);
                 setGames(storedGames);
             } catch (err) {
                 setError(`Failed to load games: ${err}`);
@@ -355,6 +371,7 @@ const GamesPage: React.FC = () => {
             }
         };
         load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Filter games to only show those from currently linked accounts,
@@ -387,12 +404,16 @@ const GamesPage: React.FC = () => {
     const { annotationMap: baseAnnotations, pendingWrites } = useMemo(() => {
         const empty = { annotationMap: new Map<string, GameAnnotation | null>(), pendingWrites: [] as { id: string; annotation: GameAnnotation | null }[] };
         if (!fenSets || !explorerEvals || mastersCache === undefined) return empty;
+        const t0 = measurePerf ? performance.now() : 0;
         const map = new Map<string, GameAnnotation | null>();
         const writes: { id: string; annotation: GameAnnotation | null }[] = [];
+        let fromCache = 0;
+        let computed = 0;
         for (const game of filteredGames) {
             // Use cached annotation if present
             if ('annotation' in game) {
                 map.set(game.id, game.annotation ?? null);
+                fromCache++;
                 continue;
             }
             const gamePlatform = game.platform ?? 'lichess';
@@ -405,7 +426,9 @@ const GamesPage: React.FC = () => {
             const result = annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersCache);
             map.set(game.id, result);
             writes.push({ id: game.id, annotation: result });
+            computed++;
         }
+        if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "annotations-ready", totalMs: Math.round(performance.now() - perfT0Ref.current), computeMs: Math.round(performance.now() - t0), fromCache, computed, total: map.size })}`);
         return { annotationMap: map, pendingWrites: writes };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filteredGames, fenSets, explorerEvals, mastersCache, mastersCacheVersion]);
