@@ -4,7 +4,7 @@ import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { createDataAccessLayer } from './DataAccessLayer';
 import { getLinkedAccounts, LinkedAccount, advanceSyncWatermark, Platform } from './LinkedAccountsService';
-import { getAllGames, groomGames, StoredGame } from './GamesDB';
+import { getAllGames, groomGames, updateAnnotations, clearAnnotation, StoredGame } from './GamesDB';
 import { syncGamesForUser, SyncProgress } from './LichessGamesService';
 import { syncChesscomGamesForUser } from './ChesscomGamesService';
 import { buildRepertoireFenSets, RepertoireFenSets } from './RepertoireFenSet';
@@ -21,7 +21,6 @@ import { EvalDropCategory } from './EvalDropService';
 import { useLichessAuth } from './LichessAuthContext';
 import {
     MastersCache,
-    resetMastersPageBudget,
 } from './MastersExplorerService';
 import './GamesPage.css';
 
@@ -72,9 +71,12 @@ interface GameRowProps {
     game: StoredGame;
     annotation: GameAnnotation | null;
     username: string;
+    onReannotate: (gameId: string) => void;
 }
 
-const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
+const GameRow: React.FC<GameRowProps> = ({ game, annotation, username, onReannotate }) => {
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
     const platform = game.platform ?? 'lichess';
     const meta: GameMetadata = useMemo(
         () => getGameMetadata(game.data, username, platform),
@@ -151,6 +153,18 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
         : eotSummary ? ` game-row-eot-${eotSummary.category}`
         : '';
 
+    // Close overflow menu on outside click
+    useEffect(() => {
+        if (!menuOpen) return;
+        const handleClick = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [menuOpen]);
+
     return (
         <div className={`game-row${tileClass}`}>
             {/* Mini board */}
@@ -178,14 +192,30 @@ const GameRow: React.FC<GameRowProps> = ({ game, annotation, username }) => {
                         <span className="game-meta-right">
                             {topRightParts.join(' | ')}
                         </span>
-                        <a
-                            className="game-source-link"
-                            href={meta.gameUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            {platform === 'chess.com' ? '♔ View on Chess.com' : '♞ View on Lichess'}
-                        </a>
+                        <span className="game-source-row">
+                            <a
+                                className="game-source-link"
+                                href={meta.gameUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                {platform === 'chess.com' ? '♔ View on Chess.com' : '♞ View on Lichess'}
+                            </a>
+                            <div className="game-overflow-menu" ref={menuRef}>
+                                <button
+                                    className="game-overflow-button"
+                                    onClick={() => setMenuOpen(prev => !prev)}
+                                    aria-label="Game options"
+                                >⋯</button>
+                                {menuOpen && (
+                                    <div className="game-overflow-dropdown">
+                                        <button onClick={() => { setMenuOpen(false); onReannotate(game.id); }}>
+                                            Re-annotate
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </span>
                     </div>
                 </div>
 
@@ -350,11 +380,21 @@ const GamesPage: React.FC = () => {
         [games, linkedUsernames]
     );
 
-    // Compute annotations for all displayed games (memoized)
-    const baseAnnotations = useMemo(() => {
-        if (!fenSets) return new Map<string, GameAnnotation | null>();
+    // Compute annotations for displayed games, using cached annotations when available.
+    // This useMemo is kept pure — persistence happens in a separate useEffect.
+    // Wait for all annotation inputs before computing — otherwise incomplete annotations
+    // would be cached permanently.
+    const { annotationMap: baseAnnotations, pendingWrites } = useMemo(() => {
+        const empty = { annotationMap: new Map<string, GameAnnotation | null>(), pendingWrites: [] as { id: string; annotation: GameAnnotation | null }[] };
+        if (!fenSets || !explorerEvals || mastersCache === undefined) return empty;
         const map = new Map<string, GameAnnotation | null>();
+        const writes: { id: string; annotation: GameAnnotation | null }[] = [];
         for (const game of filteredGames) {
+            // Use cached annotation if present
+            if ('annotation' in game) {
+                map.set(game.id, game.annotation ?? null);
+                continue;
+            }
             const gamePlatform = game.platform ?? 'lichess';
             const userColor = getUserColor(game.data, game.username, gamePlatform);
 
@@ -362,14 +402,27 @@ const GamesPage: React.FC = () => {
                 : userColor === 'black' ? fenSets.blackFens
                     : new Set<string>();
 
-            map.set(
-                game.id,
-                annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersCache)
-            );
+            const result = annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersCache);
+            map.set(game.id, result);
+            writes.push({ id: game.id, annotation: result });
         }
-        return map;
+        return { annotationMap: map, pendingWrites: writes };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filteredGames, fenSets, explorerEvals, mastersCache, mastersCacheVersion]);
+
+    // Persist newly computed annotations to IndexedDB and update local state
+    useEffect(() => {
+        if (pendingWrites.length === 0) return;
+        updateAnnotations(pendingWrites).catch(err =>
+            console.warn('Failed to persist annotations:', err)
+        );
+        // Update local games state so the cache is warm for future renders
+        setGames(prev => {
+            const writeMap = new Map(pendingWrites.map(w => [w.id, w.annotation]));
+            return prev.map(g => writeMap.has(g.id) ? { ...g, annotation: writeMap.get(g.id) } : g);
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pendingWrites]);
 
     // Masters explorer async patching: fetch masters data for ambiguous opponent moves
     // (eval drop 15–44 cp) that aren't already in the cache.
@@ -380,12 +433,15 @@ const GamesPage: React.FC = () => {
         if (mastersFetchStartedRef.current) return;
 
         // Collect ambiguous positions that are NOT already in cache
+        // Track which game IDs need re-annotation after masters data arrives
         const uncachedAmbiguous: { fen: string }[] = [];
-        for (const annotation of baseAnnotations.values()) {
+        const gamesNeedingPatch = new Set<string>();
+        for (const [gameId, annotation] of baseAnnotations.entries()) {
             if (annotation?.ambiguousTheoryPositions) {
                 for (const pos of annotation.ambiguousTheoryPositions) {
                     if (!mastersCache.has(pos.fenBefore)) {
                         uncachedAmbiguous.push({ fen: pos.fenBefore });
+                        gamesNeedingPatch.add(gameId);
                     }
                 }
             }
@@ -393,7 +449,9 @@ const GamesPage: React.FC = () => {
         if (uncachedAmbiguous.length === 0) return;
 
         mastersFetchStartedRef.current = true;
-        resetMastersPageBudget();
+        // Capture the patch set locally so the async callback uses the correct set
+        // even if a new masters fetch starts before this one completes.
+        const patchGameIds = gamesNeedingPatch;
 
         // Deduplicate
         const seen = new Set<string>();
@@ -413,7 +471,15 @@ const GamesPage: React.FC = () => {
                 fetched++;
                 setMastersProgress({ fetched, total });
             }
-            // Bump version to trigger re-render and useMemo recomputation
+            // Clear cached annotations in IndexedDB for games that had ambiguous positions
+            await Promise.all([...patchGameIds].map(id => clearAnnotation(id)));
+            // Clear in React state, then bump version to trigger re-annotation with masters data
+            setGames(prev => prev.map(g => {
+                if (!patchGameIds.has(g.id)) return g;
+                const updated = { ...g };
+                delete updated.annotation;
+                return updated;
+            }));
             setMastersCacheVersion(v => v + 1);
             setMastersProgress(null);
         })();
@@ -434,6 +500,19 @@ const GamesPage: React.FC = () => {
         purgePendingRef.current = false;
         mastersCache.purgeUnused();
     }, [baseAnnotations, mastersCache]);
+
+    // Re-annotate a single game: clear its cached annotation and let the useMemo recompute
+    const handleReannotate = async (gameId: string) => {
+        await clearAnnotation(gameId);
+        setGames(prev => prev.map(g => {
+            if (g.id !== gameId) return g;
+            const updated = { ...g };
+            delete updated.annotation;
+            return updated;
+        }));
+        // Allow masters fetches for newly discovered ambiguous positions
+        mastersFetchStartedRef.current = false;
+    };
 
     const handleSync = async () => {
         if (syncing) return;
@@ -561,6 +640,7 @@ const GamesPage: React.FC = () => {
                         game={game}
                         annotation={annotations.get(game.id) ?? null}
                         username={game.username}
+                        onReannotate={handleReannotate}
                     />
                 ))
             )}

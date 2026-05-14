@@ -44,9 +44,6 @@ export const MIN_MOVE_PERCENTAGE = 5;
 /** Delay between API requests in milliseconds. */
 const MASTERS_RATE_LIMIT_MS = 1000;
 
-/** Maximum number of uncached API calls per page load. */
-const MASTERS_PAGE_BUDGET = 20;
-
 const MASTERS_API_URL = 'https://explorer.lichess.org/masters';
 
 // ---------------------------------------------------------------------------
@@ -141,13 +138,7 @@ const memoryCache = new Map<string, MastersPositionResult>();
 // Rate-limited fetch queue
 // ---------------------------------------------------------------------------
 
-let pageLoadApiCalls = 0;
 let lastRequestTime = 0;
-
-/** Reset page-load budget (call when the page mounts). */
-export function resetMastersPageBudget(): void {
-    pageLoadApiCalls = 0;
-}
 
 /** Clear both in-memory and IndexedDB masters caches. */
 export async function clearMastersCache(): Promise<void> {
@@ -194,7 +185,7 @@ function parseApiResponse(data: Record<string, unknown>, fen: string): MastersPo
 
 /**
  * Fetch masters data for a single position from the Lichess API.
- * Returns null on error or if budget is exhausted.
+ * Returns null on error.
  */
 export async function fetchMastersPosition(
     fen: string,
@@ -214,14 +205,8 @@ export async function fetchMastersPosition(
         return persisted;
     }
 
-    // Check page budget
-    if (pageLoadApiCalls >= MASTERS_PAGE_BUDGET) {
-        return null;
-    }
-
     // Rate-limited API call
     await rateLimitedDelay();
-    pageLoadApiCalls++;
 
     try {
         const url = `${MASTERS_API_URL}?fen=${encodeURIComponent(fen)}`;
@@ -401,7 +386,7 @@ export class MastersCache {
      * Fetch a position from cache or API. If cached, increments hitCount and returns.
      * If not cached, fetches from the Lichess API (rate-limited), stores in
      * IndexedDB and memory with hitCount=1.
-     * Returns null if budget exhausted or API error.
+     * Returns null on API error.
      */
     async fetchOrGet(
         fen: string,

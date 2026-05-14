@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { groomGames, storeGames, getAllGames, clearGames, StoredGame } from './GamesDB';
+import { groomGames, storeGames, getAllGames, clearGames, updateAnnotations, clearAnnotation, StoredGame } from './GamesDB';
 
 // Mock idb with a simple in-memory store
 let store: Map<string, StoredGame>;
@@ -17,6 +17,9 @@ vi.mock('idb', () => {
                 put: vi.fn((value: StoredGame) => {
                     store.set(value.id, value);
                     return Promise.resolve();
+                }),
+                get: vi.fn((id: string) => {
+                    return Promise.resolve(store.get(id));
                 }),
                 delete: vi.fn((id: string) => {
                     store.delete(id);
@@ -152,5 +155,81 @@ describe('groomGames', () => {
         expect(result.deletedCount).toBe(1);
         // g1 has no platform field, defaults to 'lichess'
         expect(result.deletedMaxTimestamps.get('lichess:alice')).toBe(1000);
+    });
+});
+
+const mockAnnotation = {
+    moves: [{ san: 'e4', isWhiteMove: true, isUserMove: true, highlight: 'in-repertoire' as const }],
+    miniBoardFen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+    miniBoardOrientation: 'white' as const,
+};
+
+describe('updateAnnotations', () => {
+    beforeEach(() => {
+        store = new Map();
+    });
+
+    it('patches annotation on existing games', async () => {
+        await storeGames([makeGame('g1', 1000, 'alice'), makeGame('g2', 2000, 'bob')]);
+
+        await updateAnnotations([
+            { id: 'g1', annotation: mockAnnotation },
+        ]);
+
+        const games = await getAllGames();
+        const g1 = games.find(g => g.id === 'g1')!;
+        const g2 = games.find(g => g.id === 'g2')!;
+
+        expect(g1.annotation).toEqual(mockAnnotation);
+        expect('annotation' in g2).toBe(false);
+    });
+
+    it('handles empty updates array', async () => {
+        await storeGames([makeGame('g1', 1000, 'alice')]);
+        await updateAnnotations([]);
+
+        const games = await getAllGames();
+        expect('annotation' in games[0]).toBe(false);
+    });
+
+    it('skips non-existent game IDs', async () => {
+        await storeGames([makeGame('g1', 1000, 'alice')]);
+        await updateAnnotations([{ id: 'nonexistent', annotation: mockAnnotation }]);
+
+        const games = await getAllGames();
+        expect(games).toHaveLength(1);
+        expect('annotation' in games[0]).toBe(false);
+    });
+
+    it('can store null annotation', async () => {
+        await storeGames([makeGame('g1', 1000, 'alice')]);
+        await updateAnnotations([{ id: 'g1', annotation: null }]);
+
+        const games = await getAllGames();
+        expect(games[0].annotation).toBeNull();
+        expect('annotation' in games[0]).toBe(true);
+    });
+});
+
+describe('clearAnnotation', () => {
+    beforeEach(() => {
+        store = new Map();
+    });
+
+    it('removes annotation from a game', async () => {
+        const game = makeGame('g1', 1000, 'alice');
+        game.annotation = mockAnnotation;
+        await storeGames([game]);
+
+        const result = await clearAnnotation('g1');
+        expect(result).toBe(true);
+
+        const games = await getAllGames();
+        expect('annotation' in games[0]).toBe(false);
+    });
+
+    it('returns false for non-existent game', async () => {
+        const result = await clearAnnotation('nonexistent');
+        expect(result).toBe(false);
     });
 });

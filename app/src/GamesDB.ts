@@ -1,5 +1,6 @@
 import { openDB, type IDBPDatabase } from 'idb';
 import type { Platform } from './LinkedAccountsService';
+import type { GameAnnotation } from './GameAnnotationService';
 
 const DB_NAME = 'chesslaunchpad-games-db';
 const DB_VERSION = 1;
@@ -11,6 +12,8 @@ export interface StoredGame {
     username: string;
     platform?: Platform;
     data: Record<string, unknown>;
+    /** Cached annotation result. Present (even if null) means annotation was computed. */
+    annotation?: GameAnnotation | null;
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -130,4 +133,47 @@ export async function groomGames(maxKeep: number): Promise<GroomResult> {
     await tx.done;
 
     return { deletedCount: toDelete.length, deletedMaxTimestamps };
+}
+
+// ---------------------------------------------------------------------------
+// Annotation caching
+// ---------------------------------------------------------------------------
+
+/**
+ * Batch-update cached annotations on existing game records.
+ * Reads each game, patches its annotation field, and writes it back
+ * in a single readwrite transaction.
+ */
+export async function updateAnnotations(
+    updates: { id: string; annotation: GameAnnotation | null }[]
+): Promise<void> {
+    if (updates.length === 0) return;
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    for (const { id, annotation } of updates) {
+        const game = await tx.store.get(id) as StoredGame | undefined;
+        if (game) {
+            game.annotation = annotation;
+            await tx.store.put(game);
+        }
+    }
+    await tx.done;
+}
+
+/**
+ * Clear the cached annotation for a single game.
+ * Returns true if the game was found and updated.
+ */
+export async function clearAnnotation(gameId: string): Promise<boolean> {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const game = await tx.store.get(gameId) as StoredGame | undefined;
+    if (game) {
+        delete game.annotation;
+        await tx.store.put(game);
+        await tx.done;
+        return true;
+    }
+    await tx.done;
+    return false;
 }

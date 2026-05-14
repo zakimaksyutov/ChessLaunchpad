@@ -3,7 +3,6 @@ import {
     MastersLookup,
     MastersCache,
     fetchMastersPosition,
-    resetMastersPageBudget,
     MIN_MASTER_GAMES,
     MIN_MOVE_PERCENTAGE,
 } from './MastersExplorerService';
@@ -220,7 +219,6 @@ describe('MastersLookup', () => {
 describe('fetchMastersPosition', () => {
     beforeEach(() => {
         mockStore = {};
-        resetMastersPageBudget();
     });
 
     it('parses API response correctly', async () => {
@@ -316,7 +314,6 @@ describe('constants', () => {
 describe('MastersCache', () => {
     beforeEach(() => {
         mockStore = {};
-        resetMastersPageBudget();
     });
 
     describe('loadAll', () => {
