@@ -290,6 +290,7 @@ const GamesPage: React.FC = () => {
     const mastersFetchStartedRef = useRef(false);
     const purgePendingRef = useRef(false);
     const infoClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const debugGameIdsRef = useRef<Set<string>>(new Set());
 
     const measurePerf = useMemo(() => getMeasurePerf(), []);
     const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
@@ -423,11 +424,12 @@ const GamesPage: React.FC = () => {
                 : userColor === 'black' ? fenSets.blackFens
                     : new Set<string>();
 
-            const result = annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersCache);
+            const result = annotateGame(game.data, game.username, repertoireFens, explorerEvals, 30, gamePlatform, mastersCache, debugGameIdsRef.current.has(game.id));
             map.set(game.id, result);
             writes.push({ id: game.id, annotation: result });
             computed++;
         }
+        debugGameIdsRef.current.clear();
         if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "annotations-ready", totalMs: Math.round(performance.now() - perfT0Ref.current), computeMs: Math.round(performance.now() - t0), fromCache, computed, total: map.size })}`);
         return { annotationMap: map, pendingWrites: writes };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -526,6 +528,7 @@ const GamesPage: React.FC = () => {
 
     // Re-annotate a single game: clear its cached annotation and let the useMemo recompute
     const handleReannotate = async (gameId: string) => {
+        debugGameIdsRef.current.add(gameId);
         await clearAnnotation(gameId);
         setGames(prev => prev.map(g => {
             if (g.id !== gameId) return g;

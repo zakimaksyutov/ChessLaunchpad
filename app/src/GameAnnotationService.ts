@@ -309,14 +309,6 @@ function buildPgn(gameData: Record<string, unknown>, platform: Platform): string
  * @param evals ExplorerEvals instance for eval-drop computation
  * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
  */
-function getDebugGameFilter(): string | null {
-    if (typeof window === 'undefined') return null;
-    // Support both regular and hash-based routing (HashRouter puts params in the hash fragment)
-    const hashQuery = window.location.hash.split('?')[1];
-    const search = hashQuery || window.location.search;
-    return new URLSearchParams(search).get('debugGame');
-}
-
 function getOpponentName(
     gameData: Record<string, unknown>,
     userColor: 'white' | 'black',
@@ -337,7 +329,8 @@ export function annotateGame(
     evals: ExplorerEvals | null,
     maxPlies: number = 30,
     platform: Platform,
-    mastersLookup?: MastersLookupLike
+    mastersLookup?: MastersLookupLike,
+    debug?: boolean
 ): GameAnnotation | null {
     const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username, platform);
@@ -345,10 +338,8 @@ export function annotateGame(
         return null;
     }
 
-    const debugFilter = getDebugGameFilter();
     const opponentName = getOpponentName(gameData, userColor, platform);
-    const debugThis = debugFilter !== null &&
-        opponentName.toLowerCase().includes(debugFilter.toLowerCase());
+    const debugThis = debug === true;
 
     const pgn = buildPgn(gameData, platform);
     if (!pgn) {

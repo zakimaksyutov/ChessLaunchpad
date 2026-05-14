@@ -54,27 +54,17 @@ yarn preview          # serves on http://localhost:4274/ChessLaunchpad/
 
 # Games Page — Annotation Debug Logging
 
-The Games page includes detailed debug logging for its annotation/highlighting logic. This logging is **disabled by default** and must be activated with a query parameter.
+The Games page includes detailed debug logging for its annotation/highlighting logic. This logging is **disabled by default** and is activated per-game through the UI.
 
 ## Activation
 
-Add `?debugGame=<opponentName>` to the URL hash, where `<opponentName>` is a case-insensitive substring of the opponent's name:
+Click the **⋯** menu on any game row, then click **Re-annotate**. The game's annotation is recomputed and a detailed ply-by-ply trace is written to the browser console.
 
-```
-https://zakimaksyutov.github.io/ChessLaunchpad/#/games?debugGame=magnus
-```
-
-Or in local dev:
-
-```
-http://localhost:5274/ChessLaunchpad/#/games?debugGame=magnus
-```
-
-Only games where the opponent's name contains the filter string will produce debug output.
+No URL parameters are needed. Debug logs are **not** produced during regular annotation (sync, initial page load, or masters-triggered re-annotation) — only when the user explicitly re-annotates a game.
 
 ## Output
 
-Logs are emitted to `console.debug` (set the browser console level to **Verbose** to see them). Each game produces a collapsed console group:
+Logs are emitted to `console.log` inside a collapsed `console.groupCollapsed` group. Each re-annotated game produces output like:
 
 ```
 ▶ [annotate Dm0P1ZTb] zakima as white vs cantorypoeta, repertoire size=1389, moves=85, hasEmbeddedEvals=true
@@ -137,6 +127,8 @@ For deviation and out-of-repertoire-response moves, the reason includes eval-dro
 
 ## Source
 
-`app/src/GameAnnotationService.ts` — the `getDebugGameFilter` function reads the `debugGame` parameter from the URL hash query string (supports both HashRouter and regular routing). Only games against the matching opponent produce debug output.
+`app/src/GameAnnotationService.ts` — the `annotateGame` function accepts an optional `debug` parameter. When `true`, it emits a ply-by-ply console trace.
+
+`app/src/GamesPage.tsx` — the `handleReannotate` callback adds the game ID to `debugGameIdsRef`; the annotation `useMemo` passes `debug: true` for those games.
 
 `app/src/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.
