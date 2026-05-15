@@ -430,7 +430,7 @@ const GamesPage: React.FC = () => {
     const measurePerf = useMemo(() => getMeasurePerf(), []);
     const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
 
-    const { token: lichessToken } = useLichessAuth();
+    const { ready: lichessAuthReady, connected: lichessConnected, token: lichessToken } = useLichessAuth();
 
     const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
 
@@ -845,7 +845,28 @@ const GamesPage: React.FC = () => {
     return (
         <div className="games-page">
             <div className="games-header">
-                <h1>Games</h1>
+                <div className="linked-accounts-header">
+                    <h1 className="games-title">Games</h1>
+                    {linkedAccounts.length > 0 ? (
+                        <ul className="header-accounts-list">
+                            {linkedAccounts.map((account) => (
+                                <li key={`${account.platform}:${account.username}`}>
+                                    <span className="header-account-icon" aria-hidden="true">
+                                        {account.platform === 'chess.com' ? '♔' : '♞'}
+                                    </span>
+                                    <span className="header-account-name">{account.username}</span>
+                                    <span className="header-account-platform">
+                                        {account.platform === 'chess.com' ? 'Chess.com' : 'Lichess'}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <Link to="/settings" className="configure-accounts-link">
+                            Configure linked accounts
+                        </Link>
+                    )}
+                </div>
                 <button
                     className="sync-button"
                     onClick={handleSync}
@@ -854,6 +875,13 @@ const GamesPage: React.FC = () => {
                     {syncing ? 'Syncing…' : '↻ Sync Games'}
                 </button>
             </div>
+
+            {lichessAuthReady && !lichessConnected && (
+                <div className="lichess-warning">
+                    To analyze games with the Lichess Opening Explorer,{' '}
+                    <Link to="/settings">connect your Lichess account</Link> in Settings.
+                </div>
+            )}
 
             {syncProgress && !syncProgress.done && (
                 <div className="sync-progress">
