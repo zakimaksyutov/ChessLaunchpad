@@ -57,7 +57,6 @@ yarn dev
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
   - `product-specs/FSRS.md` — FSRS autoplay specification
   - `product-specs/GAMES.md` — Games page product specification
-  - `product-specs/GAMES_BACKLOG.md` — Games page backlog items
   - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
 ## Backend API
