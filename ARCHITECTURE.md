@@ -68,7 +68,7 @@ The Repertoire page highlights moves whose Lichess cloud evaluation drops signif
 | Mistake    | 50 cp  | Pink   |
 | Blunder    | 70 cp  | Purple |
 
-Evaluations are precomputed per-position (see `ExplorerEvals.ts`) with up to 2 centipawn values from different Stockfish depths. The eval-drop calculation uses all stored values conservatively: it evaluates every before×after pairing and uses the minimum drop to avoid false-positive highlights from eval instability (`EvalDropService.ts`).
+Evaluations are precomputed per-position (see `models/ExplorerEvals.ts`) with up to 2 centipawn values from different Stockfish depths. The eval-drop calculation uses all stored values conservatively: it evaluates every before×after pairing and uses the minimum drop to avoid false-positive highlights from eval instability (`services/EvalDropService.ts`).
 
 ## Data Flow
 
@@ -76,7 +76,7 @@ Evaluations are precomputed per-position (see `ExplorerEvals.ts`) with up to 2 c
 Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 ```
 
-The entire repertoire (variants + stats + FSRS cards) is stored as a single JSON blob with ETag-based optimistic concurrency. See `backend-api-contract.md`.
+The entire repertoire (variants + stats + FSRS cards) is stored as a single JSON blob with ETag-based optimistic concurrency. See `docs/BACKEND_API_CONTRACT.md`.
 
 ### Games Page Data Flow
 
