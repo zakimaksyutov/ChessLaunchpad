@@ -49,7 +49,13 @@ yarn dev
 ## Project Structure
 
 - `app/` — React application source and configuration
-  - `src/` — TypeScript source files (components, logic, tests)
+  - `src/` — TypeScript source files
+    - `pages/` — Route-level page components and their CSS
+    - `components/` — Reusable UI components and their CSS
+    - `services/` — Business logic and API clients
+    - `models/` — TypeScript interfaces and data types
+    - `utils/` — Helper and utility functions
+    - `data/` — Database and storage layer
   - `public/` — Static assets
   - `vendor/chess-control/` — Vendored chess-control library (built dist files)
 - `openings/` — Opening database files and merge scripts
