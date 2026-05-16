@@ -65,7 +65,7 @@ export interface RepertoireData {
 
 ### FSRSCardData
 
-A JSON-serializable mirror of the `ts-fsrs` `Card` interface, using **minified keys** to match the backend schema. Defined in `FSRSCardData.ts`:
+A JSON-serializable mirror of the `ts-fsrs` `Card` interface, using **minified keys** to match the backend schema. Defined in `models/FSRSCardData.ts`:
 
 ```typescript
 export interface FSRSCardData {
@@ -111,7 +111,7 @@ These are not user-configurable.
 
 ## Architecture
 
-### FSRSService (`FSRSService.ts`)
+### FSRSService (`services/FSRSService.ts`)
 
 Wraps ts-fsrs and owns card lifecycle:
 - `shouldAutoplay(fen, san, now)` — checks card state, due date, and retrievability against threshold (`R ≥ 0.97`).
@@ -119,7 +119,7 @@ Wraps ts-fsrs and owns card lifecycle:
 - `getCards()` — returns the shared cards map (same object reference passed to constructor).
 - `getRetrievability(fen, san, now)` — returns current retrievability for a card in Review state, or `null`.
 
-### LaunchpadLogic (`LaunchpadLogic.ts`)
+### LaunchpadLogic (`utils/LaunchpadLogic.ts`)
 
 Integrates FSRS with game traversal:
 - `shouldAutoplayUserMove(fen, skipLookahead?)` — applies the full autoplay policy with recursive lookahead via `isAutoplayableWithLookahead()`.
@@ -129,7 +129,7 @@ Integrates FSRS with game traversal:
 - `getLookaheadEvaluation(fen, skipLookahead?)` — diagnostic: collects a flat table of all positions evaluated by the lookahead tree (used for debug console logging).
 - `getRepertoireMovesAtPosition(fen)` / `getCardDataForMove(fen, san)` — query helpers for card state at a position.
 
-### TrainingPageControl (`TrainingPageControl.tsx`)
+### TrainingPageControl (`components/TrainingPageControl.tsx`)
 
 Orchestrates autoplay and card rating during a training round:
 - `decideNextAction(chess)` — on each user turn, checks whether to autoplay (FSRS prefix) or wait for user input. Computes `skipLookahead` for the first 2 user-turn moves.
@@ -138,7 +138,7 @@ Orchestrates autoplay and card rating during a training round:
 
 ### Persistence
 
-- On round completion (`handleCompletion` in `TrainingPage.tsx`), the already-mutated `fsrsCards` from `repertoireData` is included in the `RepertoireData` written to the server. The `fsrsCards` object is shared by reference between `RepertoireData` and `FSRSService`, following the same mutation pattern used for variant stats (`errorEMA`, `successEMA`, etc.).
+- On round completion (`handleCompletion` in `pages/TrainingPage.tsx`), the already-mutated `fsrsCards` from `repertoireData` is included in the `RepertoireData` written to the server. The `fsrsCards` object is shared by reference between `RepertoireData` and `FSRSService`, following the same mutation pattern used for variant stats (`errorEMA`, `successEMA`, etc.).
 - On load (`retrieveRepertoireData`), `fsrsCards` is stored as-is with minified keys. ISO date strings are converted to `Date` objects lazily by `FSRSService` when cards are accessed, not upfront during normalization.
 - Missing/undefined `fsrsCards` field means no FSRS data yet (backward compatible).
 
@@ -158,19 +158,19 @@ The backend schema accepts the optional `fsrsCards` field. See `docs/BACKEND_API
 
 ## Test Coverage
 
-Tests in `FSRSService.test.ts`:
+Tests in `services/FSRSService.test.ts`:
 - Card key generation from (FEN, move).
 - Autoplay decision logic: card state, due date, retrievability threshold.
 - Rating mapping: correct → Good, error → Again.
 - Hydration/serialization round-trip of FSRSCardData, including optional `last_review`.
 
-Tests in `LaunchpadLogic.test.ts` (FSRS Integration section):
+Tests in `utils/LaunchpadLogic.test.ts` (FSRS Integration section):
 - `shouldAutoplayUserMove`: no cards (backward compat), well-known cards, non-Review state, branch points with missing cards.
 - Lookahead: strong cards at depth 2, missing depth-2 card, Learning state at depth 2, variant ends within window, opponent-response branching, `AUTOPLAY_LOOKAHEAD_DEPTH` constant override, `skipLookahead` behavior.
 - `rateUserMove`: Good rating, Again rating after error, error-state clearing for repeated FENs.
 - `getFsrsCards`: shared reference verification.
 
-Tests in `RepertoireDataUtils.test.ts`:
+Tests in `utils/RepertoireDataUtils.test.ts`:
 - `fsrsCards` preserved during normalization, defaulted to `{}` when missing.
 - `convertToRepertoireData` includes/defaults `fsrsCards`.
 

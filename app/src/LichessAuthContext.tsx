@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useSyncExternalStore, useCallback } from 'react';
-import { lichessAuth } from './LichessAuthService';
+import { lichessAuth } from './services/LichessAuthService';
 
 interface LichessAuthState {
     /** Whether the auth service has finished initializing. */

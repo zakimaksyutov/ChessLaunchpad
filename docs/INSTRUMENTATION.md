@@ -11,18 +11,18 @@ http://localhost:4274/ChessLaunchpad/#/games?measurePerf=true
 
 | Step | File | Fields | Description |
 |------|------|--------|-------------|
-| `explorer-evals` | `RepertoirePage.tsx` | `totalMs` | Load explorer eval data from static JSON |
-| `eval-drops` | `RepertoirePage.tsx` | `totalMs`, `variants`, `withDrops` | Compute eval drops per variant |
+| `explorer-evals` | `pages/RepertoirePage.tsx` | `totalMs` | Load explorer eval data from static JSON |
+| `eval-drops` | `pages/RepertoirePage.tsx` | `totalMs`, `variants`, `withDrops` | Compute eval drops per variant |
 
 ## Games Page Steps
 
 | Step | File | Fields | Description |
 |------|------|--------|-------------|
-| `games-loaded` | `GamesPage.tsx` | `totalMs`, `games`, `withCachedAnnotation` | Load games from IndexedDB |
-| `mastersCache-ready` | `GamesPage.tsx` | `totalMs`, `positions` | Load masters positions from IndexedDB |
-| `fenSets-ready` | `GamesPage.tsx` | `totalMs`, `whiteFens`, `blackFens` | Load repertoire data from backend API and build FEN sets |
-| `explorerEvals-ready` | `GamesPage.tsx` | `totalMs` | Load explorer eval data from static JSON |
-| `annotations-ready` | `GamesPage.tsx` | `totalMs`, `computeMs`, `fromCache`, `computed`, `total` | Produce annotation map (from IndexedDB cache or `annotateGame()`) |
+| `games-loaded` | `pages/GamesPage.tsx` | `totalMs`, `games`, `withCachedAnnotation` | Load games from IndexedDB |
+| `mastersCache-ready` | `pages/GamesPage.tsx` | `totalMs`, `positions` | Load masters positions from IndexedDB |
+| `fenSets-ready` | `pages/GamesPage.tsx` | `totalMs`, `whiteFens`, `blackFens` | Load repertoire data from backend API and build FEN sets |
+| `explorerEvals-ready` | `pages/GamesPage.tsx` | `totalMs` | Load explorer eval data from static JSON |
+| `annotations-ready` | `pages/GamesPage.tsx` | `totalMs`, `computeMs`, `fromCache`, `computed`, `total` | Produce annotation map (from IndexedDB cache or `annotateGame()`) |
 
 ## Measuring Against a Production Build
 
@@ -88,7 +88,7 @@ The annotation logic tries eval sources in priority order:
 | 2 | `embedded` | Per-ply analysis from the Lichess game data (`analysis[]` array, Lichess games only) |
 | 3 | `masters` | Lichess Masters Explorer API — used for opponent moves in the ambiguous eval-drop zone (15–44 cp) to determine if the move is real theory or out of theory |
 
-Cloud eval (Lichess Cloud Eval API) is implemented but currently disabled. See `GamesPage.tsx` comment and git history.
+Cloud eval (Lichess Cloud Eval API) is implemented but currently disabled. See `pages/GamesPage.tsx` comment and git history.
 
 When eval data is found, the debug trace shows `[source: explorer]`, `[source: embedded]`, or `[source: embedded+masters]` (when masters data supplements the eval-drop decision). When no source has data, it logs `no eval data for drop calc`.
 
@@ -129,8 +129,8 @@ For deviation and out-of-repertoire-response moves, the reason includes eval-dro
 
 ## Source
 
-`app/src/GameAnnotationService.ts` — the `annotateGame` function accepts an optional `debug` parameter. When `true`, it emits a ply-by-ply console trace.
+`app/src/services/GameAnnotationService.ts` — the `annotateGame` function accepts an optional `debug` parameter. When `true`, it emits a ply-by-ply console trace.
 
-`app/src/GamesPage.tsx` — the `handleReannotate` callback adds the game ID to `debugGameIdsRef`; the annotation `useMemo` passes `debug: true` for those games.
+`app/src/pages/GamesPage.tsx` — the `handleReannotate` callback adds the game ID to `debugGameIdsRef`; the annotation `useMemo` passes `debug: true` for those games.
 
-`app/src/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.
+`app/src/services/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.

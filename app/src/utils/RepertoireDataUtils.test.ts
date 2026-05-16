@@ -1,0 +1,317 @@
+import { RepertoireDataUtils } from "./RepertoireDataUtils";
+import { RepertoireData, OpeningVariantData } from "../models/RepertoireData";
+import { OpeningVariant } from "../models/OpeningVariant";
+import { WeightSettings } from "../models/WeightSettings";
+import { FSRSCardData } from "../models/FSRSCardData";
+
+// --- Mocks ---
+vi.mock('./LaunchpadLogic', () => ({
+    LaunchpadLogic: {
+        SUCCESS_EMA_ALPHA: 0.5
+    }
+}));
+
+describe('RepertoireDataUtils', () => {
+    beforeEach(() => {
+        vi.resetAllMocks();
+
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2025-01-23T17:08:34.159Z').getTime());
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+    });
+
+    describe('normalize', () => {
+        it('should not add any variants', () => {
+            // Prepare
+            const repertoireData: Partial<RepertoireData> = {};
+
+            // Act
+            RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+            // Assert
+            expect(repertoireData.data).toBeDefined();
+            expect(repertoireData.data).toHaveLength(0);
+            expect(repertoireData.weightSettings).toBeDefined();
+            expect(repertoireData.weightSettings?.recencyPower).toBe(WeightSettings.DEFAULT_RECENCY_POWER);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(WeightSettings.DEFAULT_FREQUENCY_POWER);
+            expect(repertoireData.weightSettings?.errorPower).toBe(WeightSettings.DEFAULT_ERROR_POWER);
+            expect(repertoireData.fsrsCards).toEqual({});
+        });
+
+        it('should set default fields if they are missing', () => {
+            // Prepare
+            const repertoireData: Partial<RepertoireData> = {
+                data: [
+                    { pgn: '1. e4 e5', orientation: 'white' } as unknown as OpeningVariantData
+                ]
+            };
+
+            // Act
+            RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+            // Assert
+            expect(repertoireData.data).toBeDefined();
+            expect(repertoireData.data).toHaveLength(1);
+            expect(repertoireData.data![0].errorEMA).toBe(0);
+            expect(repertoireData.data![0].successEMA).toBe(0);
+            expect(repertoireData.data![0].lastSucceededEpoch).toBe(0);
+            expect(repertoireData.data![0].numberOfTimesPlayed).toBe(0);
+            expect(repertoireData.data![0].pgn).toBe('1. e4 e5');
+            expect(repertoireData.data![0].orientation).toBe('white');
+            expect(repertoireData.currentEpoch).toBe(1);
+            expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
+            expect(repertoireData.weightSettings?.recencyPower).toBe(WeightSettings.DEFAULT_RECENCY_POWER);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(WeightSettings.DEFAULT_FREQUENCY_POWER);
+            expect(repertoireData.weightSettings?.errorPower).toBe(WeightSettings.DEFAULT_ERROR_POWER);
+        });
+
+        it('should increment epoch and adjust success EMA if current date > lastPlayedDate (next day)', () => {
+            // Prepare
+            const yesterday = RepertoireDataUtils.getCurrentDateOnly();
+            yesterday.setDate(yesterday.getDate() - 1); // set to "yesterday"
+
+            const repertoireData: RepertoireData = {
+                data: [
+                    {
+                        pgn: '1. e4 e5',
+                        orientation: 'white',
+                        classifications: [],
+                        errorEMA: 1,
+                        numberOfTimesPlayed: 1,
+                        lastSucceededEpoch: 0,
+                        successEMA: 10
+                    }
+                ],
+                currentEpoch: 5,
+                lastPlayedDate: yesterday,
+                dailyPlayCount: 5, // pretend we've played 5 times "yesterday"
+                weightSettings: new WeightSettings(1.2, 2.3, 3.4)
+            };
+
+            // Act
+            RepertoireDataUtils.normalize(repertoireData);
+
+            // Assert
+            expect(repertoireData.currentEpoch).toBe(6);
+
+            // Also check that lastPlayedDate has been updated to today's date only
+            expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
+
+            // Validate that successEMA has been adjusted
+            expect(repertoireData.data[0].successEMA).toBe(10 * 0.5);
+
+            // Check dailyPlayCount gets reset on new day
+            expect(repertoireData.dailyPlayCount).toBe(0);
+            expect(repertoireData.weightSettings?.recencyPower).toBe(1.2);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(2.3);
+            expect(repertoireData.weightSettings?.errorPower).toBe(3.4);
+        });
+
+        it('should NOT increment epoch and adjust success EMA if current date has not changed', () => {
+            // Prepare
+            const yesterday = RepertoireDataUtils.getCurrentDateOnly();
+            yesterday.setDate(yesterday.getDate() - 1); // set to "yesterday"
+
+            const repertoireData: RepertoireData = {
+                data: [
+                    {
+                        pgn: '1. e4 e5',
+                        orientation: 'white',
+                        classifications: [],
+                        errorEMA: 1,
+                        numberOfTimesPlayed: 1,
+                        lastSucceededEpoch: 0,
+                        successEMA: 10
+                    }
+                ],
+                currentEpoch: 5,
+                lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
+                dailyPlayCount: 5,
+                weightSettings: new WeightSettings(1.4, 2.2, 3.8)
+            };
+
+            // Act
+            RepertoireDataUtils.normalize(repertoireData);
+
+            // Assert
+            expect(repertoireData.currentEpoch).toBe(5);
+
+            // Also check that lastPlayedDate has been updated to today's date only
+            expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
+
+            // Validate that successEMA has NOT been adjusted
+            expect(repertoireData.data[0].successEMA).toBe(10);
+
+            // Confirm dailyPlayCount remains unchanged if the day hasn't changed
+            expect(repertoireData.dailyPlayCount).toBe(5);
+            expect(repertoireData.weightSettings?.recencyPower).toBe(1.4);
+            expect(repertoireData.weightSettings?.frequencyPower).toBe(2.2);
+            expect(repertoireData.weightSettings?.errorPower).toBe(3.8);
+        });
+
+        it('should preserve existing fsrsCards during normalization', () => {
+            const cards: Record<string, FSRSCardData> = {
+                'fen1::e4': { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 }
+            };
+            const repertoireData: RepertoireData = {
+                data: [],
+                currentEpoch: 5,
+                lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
+                dailyPlayCount: 0,
+                fsrsCards: cards
+            };
+
+            RepertoireDataUtils.normalize(repertoireData);
+
+            expect(repertoireData.fsrsCards).toBe(cards);
+            expect(Object.keys(repertoireData.fsrsCards!)).toHaveLength(1);
+        });
+    });
+
+    describe('convertToVariantData', () => {
+        it('should convert RepertoireData to an array of OpeningVariant objects', () => {
+            // Prepare
+            const repertoireData: RepertoireData = {
+                data: [
+                    {
+                        pgn: '1. e4 e5',
+                        orientation: 'white',
+                        classifications: [],
+                        errorEMA: 2,
+                        numberOfTimesPlayed: 5,
+                        lastSucceededEpoch: 3,
+                        successEMA: 1.5
+                    },
+                    {
+                        pgn: '1. d4 d5',
+                        orientation: 'white',
+                        classifications: [],
+                        errorEMA: 0,
+                        numberOfTimesPlayed: 10,
+                        lastSucceededEpoch: 2,
+                        successEMA: 2
+                    },
+                ],
+                currentEpoch: 10,
+                lastPlayedDate: new Date(),
+                dailyPlayCount: 0,
+                weightSettings: new WeightSettings(1.5, 2.5, 3.5)
+            };
+
+            // Act
+            const variants = RepertoireDataUtils.convertToVariantData(repertoireData);
+
+            // Assert
+            expect(variants).toHaveLength(2);
+
+            // Sort order is by pgn.localeCompare => "1. d4 d5" < "1. e4 e5"
+            expect(variants[0].pgn).toBe('1. d4 d5');
+            expect(variants[1].pgn).toBe('1. e4 e5');
+
+            // Check properties
+            expect(variants[0].errorEMA).toBe(0);
+            expect(variants[0].numberOfTimesPlayed).toBe(10);
+            expect(variants[0].lastSucceededEpoch).toBe(2);
+            expect(variants[0].successEMA).toBe(2);
+            expect(variants[0].currentEpoch).toBe(10);
+
+            expect(variants[1].errorEMA).toBe(2);
+            expect(variants[1].numberOfTimesPlayed).toBe(5);
+            expect(variants[1].lastSucceededEpoch).toBe(3);
+            expect(variants[1].successEMA).toBe(1.5);
+            expect(variants[1].currentEpoch).toBe(10);
+            expect(variants[0].weightSettings.recencyPower).toBe(1.5);
+            expect(variants[0].weightSettings.frequencyPower).toBe(2.5);
+            expect(variants[0].weightSettings.errorPower).toBe(3.5);
+            expect(variants[1].weightSettings.recencyPower).toBe(1.5);
+        });
+    });
+
+    describe('convertToRepertoireData', () => {
+        it('should convert an array of OpeningVariant objects into RepertoireData', () => {
+            // Prepare
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', []),
+                new OpeningVariant('1. d4 d5', 'white', [])
+            ];
+
+            // Modify some fields
+            variants[0].errorEMA = 3;
+            variants[0].successEMA = 5;
+            variants[0].lastSucceededEpoch = 2;
+            variants[0].numberOfTimesPlayed = 10;
+            variants[0].currentEpoch = 7;
+
+            variants[1].errorEMA = 1;
+            variants[1].successEMA = 2;
+            variants[1].lastSucceededEpoch = 5;
+            variants[1].numberOfTimesPlayed = 20;
+            variants[1].currentEpoch = 9; // bigger than first
+
+            const customSettings = new WeightSettings(2.1, 3.2, 4.3);
+
+            // Act
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3, customSettings);
+
+            // Assert
+            expect(result.data).toHaveLength(2);
+
+            // Data should be in the same order as variants array
+            expect(result.data[0].pgn).toBe('1. e4 e5');
+            expect(result.data[0].errorEMA).toBe(3);
+            expect(result.data[0].successEMA).toBe(5);
+            expect(result.data[0].lastSucceededEpoch).toBe(2);
+            expect(result.data[0].numberOfTimesPlayed).toBe(10);
+
+            expect(result.data[1].pgn).toBe('1. d4 d5');
+            expect(result.data[1].errorEMA).toBe(1);
+            expect(result.data[1].successEMA).toBe(2);
+            expect(result.data[1].lastSucceededEpoch).toBe(5);
+            expect(result.data[1].numberOfTimesPlayed).toBe(20);
+
+            // currentEpoch should be the max among the variants
+            expect(result.currentEpoch).toBe(9);
+            expect(result.dailyPlayCount).toBe(3);
+
+            // lastPlayedDate should be "today"
+            const today = RepertoireDataUtils.getCurrentDateOnly();
+            expect(result.lastPlayedDate.getFullYear()).toBe(today.getFullYear());
+            expect(result.lastPlayedDate.getMonth()).toBe(today.getMonth());
+            expect(result.lastPlayedDate.getDate()).toBe(today.getDate());
+            expect(result.weightSettings).not.toBe(customSettings);
+            expect(result.weightSettings?.recencyPower).toBe(2.1);
+            expect(result.weightSettings?.frequencyPower).toBe(3.2);
+            expect(result.weightSettings?.errorPower).toBe(4.3);
+        });
+
+        it('should include fsrsCards when provided', () => {
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', [])
+            ];
+            variants[0].currentEpoch = 1;
+
+            const fsrsCards: Record<string, FSRSCardData> = {
+                'fen1::e4': { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 }
+            };
+
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 1, undefined, fsrsCards);
+
+            expect(result.fsrsCards).toBe(fsrsCards);
+        });
+
+        it('should default fsrsCards to empty object when not provided', () => {
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', [])
+            ];
+            variants[0].currentEpoch = 1;
+
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 1);
+
+            expect(result.fsrsCards).toEqual({});
+        });
+    });
+});

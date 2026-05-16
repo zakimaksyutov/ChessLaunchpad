@@ -49,7 +49,13 @@ yarn dev
 ## Project Structure
 
 - `app/` — React application source and configuration
-  - `src/` — TypeScript source files (components, logic, tests)
+  - `src/` — TypeScript source files
+    - `pages/` — Route-level page components and their CSS
+    - `components/` — Reusable UI components and their CSS
+    - `services/` — Business logic and API clients
+    - `models/` — TypeScript interfaces and data types
+    - `utils/` — Helper and utility functions
+    - `data/` — Database and storage layer
   - `public/` — Static assets
   - `vendor/chess-control/` — Vendored chess-control library (built dist files)
 - `openings/` — Opening database files and merge scripts
@@ -57,7 +63,6 @@ yarn dev
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
   - `product-specs/FSRS.md` — FSRS autoplay specification
   - `product-specs/GAMES.md` — Games page product specification
-  - `product-specs/GAMES_BACKLOG.md` — Games page backlog items
   - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
 ## Backend API
