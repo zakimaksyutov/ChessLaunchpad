@@ -12,7 +12,7 @@ parameters:
 
 The Repertoire page highlights moves whose Lichess cloud evaluation drops significantly compared to the previous position. This skill walks through the full investigation pipeline to explain why a given move **is** or **isn't** highlighted.
 
-### Eval-drop formula (`app/src/EvalDropService.ts`)
+### Eval-drop formula (`app/src/services/EvalDropService.ts`)
 
 All evaluations are stored from **White's perspective**. Each position may have up to 2 stored centipawn values (from the 2 deepest Stockfish entries). When multiple values exist, the drop is computed for **all before×after pairings** and the **minimum** (most user-favoring) drop is used. This avoids false-positive highlights when stored evals are unstable due to depth or Stockfish version differences.
 
@@ -26,9 +26,9 @@ A **positive** drop ≥ 30 cp triggers highlighting. A **negative** drop means t
 | File | Role |
 | ---- | ---- |
 | `app/public/opening-explorer-evals.json` | Precomputed eval artifact. Maps compact FEN (pieces + side + castling, 3 fields) → array of up to 2 centipawn values from the 2 deepest Stockfish entries. Evals are from White's perspective. |
-| `app/src/ExplorerEvals.ts` | Loads the artifact; `lookup(fen)` returns the primary (deepest) cp, `lookupAll(fen)` returns the full array. Strips FEN to 3 fields before searching. |
-| `app/src/EvalDropService.ts` | `computeEvalDrops(pgn, evals, orientation)` — computes per-move eval drops using conservative multi-value logic. Only evaluates the **user's own moves** (based on `orientation`). |
-| `app/src/PgnControl.tsx` | Renders PGN on the Repertoire page. Applies eval-drop background colors per move. |
+| `app/src/models/ExplorerEvals.ts` | Loads the artifact; `lookup(fen)` returns the primary (deepest) cp, `lookupAll(fen)` returns the full array. Strips FEN to 3 fields before searching. |
+| `app/src/services/EvalDropService.ts` | `computeEvalDrops(pgn, evals, orientation)` — computes per-move eval drops using conservative multi-value logic. Only evaluates the **user's own moves** (based on `orientation`). |
+| `app/src/components/PgnControl.tsx` | Renders PGN on the Repertoire page. Applies eval-drop background colors per move. |
 | `tools/opening-explorer/lookup-fen.mjs` | Looks up raw eval data for a FEN from the Lichess cloud eval DB (compressed JSONL). Shows all depths and PVs from the source data. Useful when the artifact and live API disagree. |
 
 ---

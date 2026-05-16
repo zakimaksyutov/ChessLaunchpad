@@ -129,8 +129,8 @@ For deviation and out-of-repertoire-response moves, the reason includes eval-dro
 
 ## Source
 
-`app/src/GameAnnotationService.ts` — the `annotateGame` function accepts an optional `debug` parameter. When `true`, it emits a ply-by-ply console trace.
+`app/src/services/GameAnnotationService.ts` — the `annotateGame` function accepts an optional `debug` parameter. When `true`, it emits a ply-by-ply console trace.
 
-`app/src/GamesPage.tsx` — the `handleReannotate` callback adds the game ID to `debugGameIdsRef`; the annotation `useMemo` passes `debug: true` for those games.
+`app/src/pages/GamesPage.tsx` — the `handleReannotate` callback adds the game ID to `debugGameIdsRef`; the annotation `useMemo` passes `debug: true` for those games.
 
-`app/src/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.
+`app/src/services/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.
