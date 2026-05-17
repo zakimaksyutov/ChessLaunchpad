@@ -16,14 +16,14 @@ PGN lines remain the import/storage format. At runtime, they are flattened into 
 
 ### Review Queue
 
-At session start, collect all due and new cards into a priority queue:
+At session start, collect all due and new cards (both white and black) into a priority queue:
 
 1. **Relearning** — failed recently, short-term schedule
 2. **Due Review** — overdue, sorted by overdueness
 3. **Learning** — still in initial learning steps
 4. **New** — unseen cards
 
-Session ends when the queue is empty or the user stops.
+Session ends when the queue is empty or the user stops. The `?filter=` parameter is not supported — all repertoire cards are included.
 
 ### Path Planning
 
@@ -73,11 +73,34 @@ After the drill, individual cards enter Learning with tight intervals. Subsequen
 ### Rating
 
 - Correct on first attempt → `Good`
-- Any error → `Again`
+- Any error → `Again` (rated once when the correct move is finally played, regardless of how many wrong attempts)
 - Teaching encounter (guided) → **not rated**
 - Line drill recall pass → `Again` (immediate recall after teaching is not real learning)
 
-Card is rated immediately after the user responds.
+Card is rated immediately after the user responds correctly.
+
+### Error Handling
+
+Wrong moves play an error sound and are rejected (move reverts). The user keeps trying until they play the correct move. Multiple wrong attempts at the same position count as a single `Again` — no repeated ratings.
+
+A **"give me hint"** option is available: shows the correct move on the board. The user must still play it. The card is rated `Again`.
+
+### Context Depth Edge Cases
+
+- **Due card near root** (not enough room for full warm-up): start from root, user plays all available moves leading to the target.
+- **Adjacent due cards** (warm-up/cool-down zones overlap): merge into continuous user-play — no autoplay gap between them.
+
+### Progress Display
+
+Show cards reviewed and cards remaining in the queue. When the queue empties and ahead-of-schedule mode activates, the progress display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
+
+### Annotations
+
+PGN annotations carry over into v2 traversals. They are displayed on the board and affect autoplay timing, same as current behavior.
+
+### Between Traversals
+
+No auto-load countdown. The next traversal starts immediately after the previous one completes.
 
 ## What Changes
 
@@ -87,9 +110,14 @@ Card is rated immediately after the user responds.
 | Selection | Weighted random by variant stats | Priority queue of due/new cards |
 | Navigation | Root → leaf, one variant per round | Autoplay path to target card |
 | Round definition | 1 variant traversal | N card reviews |
+| Orientation | White or black per session | Mixed — both in one session |
 | New material | Implicit (newness weight) | All new cards introduced as they appear |
-| "Done" signal | Never | Queue empty |
+| "Done" signal | Never | Queue empty → ahead-of-schedule mode |
 | Variant-level stats | `errorEMA`, `successEMA`, `lastSucceededEpoch`, `WeightSettings` | Removed |
+| Filter | `?filter=` by classification/FEN | Not supported |
+| Between rounds | Auto-load countdown | Immediate |
+| Debug table | Variant weights/probability | Removed |
+| `dailyPlayCount` | Per variant round | Per traversal |
 
 ## What Stays
 
@@ -145,3 +173,5 @@ Autoplay to the target position uses the current animation speed — no instant 
 ## Backlog (Not v1)
 
 - Expose `Hard`/`Easy` ratings via UI gestures for finer FSRS granularity.
+- `?filter=` support for training by classification or FEN.
+- Debug table showing FSRS card state (retrievability, state, due date).
