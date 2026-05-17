@@ -110,9 +110,16 @@ This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` 
 
 ## Migration
 
+- No backend API changes required. The `fsrsCards` format is unchanged — only the number of entries grows.
 - Existing `fsrsCards` data carries over as-is.
 - Variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `numberOfTimesPlayed`) become ignored. Keep in storage for rollback safety; remove in a later cleanup.
 - `WeightSettings` UI (recency/frequency/error power sliders) removed — no new settings added.
+
+## Persistence
+
+Save to backend after each **traversal** (one root → leaf path). Cards are rated during the traversal; the save happens when the path completes. This matches the current save-per-variant-completion frequency.
+
+Line drills save after the recall pass completes.
 
 ## Ahead-of-Schedule Mode
 
