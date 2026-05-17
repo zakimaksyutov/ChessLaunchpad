@@ -27,11 +27,15 @@ Session ends when the queue is empty or the user stops.
 
 ### Path Planning
 
-To test a due card at position P:
-- Compute path from root to P
-- Autoplay the entire path (both sides)
-- Stop at P — user plays the card
-- If more due cards exist deeper on the same branch, continue forward
+The full traversal is pre-computed before the first move:
+
+1. Pull the highest-priority due card from the review queue
+2. Compute path from root to that card, choosing opponent branches that lead toward more due cards
+3. Mark each user-turn position in the path: **autoplay**, **warm-up** (N moves before target), **target** (due card), or **cool-down** (N moves after target). N = context depth setting (default: 2).
+4. If more due cards exist deeper on the chosen path, extend the plan with another autoplay/warm-up/target/cool-down zone
+5. Execute the pre-computed plan move-by-move
+
+All user-played moves (warm-up, target, cool-down) are rated normally. The plan is fully determined before the first move — no mid-traversal queue consultation.
 
 Group due cards sharing a path prefix into a single traversal to avoid redundant replaying of opening moves.
 
@@ -90,7 +94,7 @@ Card is rated immediately after the user responds.
 
 ## Scope
 
-Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power). No changes to `/repertoire` or `/games`.
+Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power) and gains a **context depth** setting (number of user-turn moves to play before and after a due card; default: 2). No changes to `/repertoire` or `/games`.
 
 ## New Components
 
@@ -113,7 +117,7 @@ This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` 
 - No backend API changes required. The `fsrsCards` format is unchanged — only the number of entries grows.
 - Existing `fsrsCards` data carries over as-is.
 - Variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `numberOfTimesPlayed`) become ignored. Keep in storage for rollback safety; remove in a later cleanup.
-- `WeightSettings` UI (recency/frequency/error power sliders) removed — no new settings added.
+- `WeightSettings` UI (recency/frequency/error power sliders) replaced with context depth setting.
 
 ## Persistence
 
