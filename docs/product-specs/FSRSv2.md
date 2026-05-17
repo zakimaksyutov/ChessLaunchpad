@@ -21,7 +21,7 @@ At session start, collect all due and new cards into a priority queue:
 1. **Relearning** — failed recently, short-term schedule
 2. **Due Review** — overdue, sorted by overdueness
 3. **Learning** — still in initial learning steps
-4. **New** — unseen cards, capped at a configurable daily limit (default: 10)
+4. **New** — unseen cards
 
 Session ends when the queue is empty or the user stops.
 
@@ -57,8 +57,6 @@ After the drill, individual cards enter Learning with tight intervals. Subsequen
 
 **Trigger:** 2+ New cards on the same branch with no non-New cards between them. Single isolated new cards use the individual teaching flow.
 
-**Daily limit:** Line drills consume from the daily new-card limit. A 5-move drill uses 5 of the user's allowance.
-
 ### Rating
 
 - Correct on first attempt → `Good`
@@ -76,12 +74,13 @@ Card is rated immediately after the user responds.
 | Selection | Weighted random by variant stats | Priority queue of due/new cards |
 | Navigation | Root → leaf, one variant per round | Autoplay path to target card |
 | Round definition | 1 variant traversal | N card reviews |
-| New material | Implicit (newness weight) | Explicit daily new-card limit |
+| New material | Implicit (newness weight) | All new cards introduced as they appear |
 | "Done" signal | Never | Queue empty |
 | Variant-level stats | `errorEMA`, `successEMA`, `lastSucceededEpoch`, `WeightSettings` | Removed |
 
 ## What Stays
 
+- `/repertoire` and `/games` pages — unchanged
 - PGN as import/storage format
 - `fsrsCards` storage (`Record<string, FSRSCardData>`)
 - FSRS config (request_retention 0.9, max_interval 365, fuzz, short_term)
@@ -89,10 +88,14 @@ Card is rated immediately after the user responds.
 - `ts-fsrs` library
 - Backend API contract (additive — variant-level stats become vestigial)
 
+## Scope
+
+Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power). No changes to `/repertoire` or `/games`.
+
 ## New Components
 
 - **RepertoireGraph** — DAG built from PGN variants. Positions + edges. Forward and backward traversal.
-- **ReviewQueue** — priority queue over FSRS card states. Configurable new-card-per-day limit.
+- **ReviewQueue** — priority queue over FSRS card states.
 - **PathPlanner** — root-to-card path computation. Batches nearby due cards into single traversals.
 
 ## Card Initialization
@@ -109,7 +112,7 @@ This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` 
 
 - Existing `fsrsCards` data carries over as-is.
 - Variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `numberOfTimesPlayed`) become ignored. Keep in storage for rollback safety; remove in a later cleanup.
-- `WeightSettings` UI (recency/frequency/error power sliders) replaced with new-card-per-day setting.
+- `WeightSettings` UI (recency/frequency/error power sliders) removed — no new settings added.
 
 ## Ahead-of-Schedule Mode
 
