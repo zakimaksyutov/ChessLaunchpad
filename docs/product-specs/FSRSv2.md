@@ -95,9 +95,19 @@ Card is rated immediately after the user responds.
 - **ReviewQueue** — priority queue over FSRS card states. Configurable new-card-per-day limit.
 - **PathPlanner** — root-to-card path computation. Batches nearby due cards into single traversals.
 
+## Card Initialization
+
+On every repertoire load, reconcile `fsrsCards` with the RepertoireGraph:
+
+- **New positions** (in graph, no card) → create card with state=New
+- **Removed positions** (card exists, not in graph) → delete card
+- **Existing positions** → untouched
+
+This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` as the complete source of truth — the ReviewQueue iterates over cards directly without cross-referencing the graph.
+
 ## Migration
 
-- Existing `fsrsCards` data carries over as-is — no migration needed.
+- Existing `fsrsCards` data carries over as-is.
 - Variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `numberOfTimesPlayed`) become ignored. Keep in storage for rollback safety; remove in a later cleanup.
 - `WeightSettings` UI (recency/frequency/error power sliders) replaced with new-card-per-day setting.
 
