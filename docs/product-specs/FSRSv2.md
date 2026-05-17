@@ -35,11 +35,36 @@ To test a due card at position P:
 
 Group due cards sharing a path prefix into a single traversal to avoid redundant replaying of opening moves.
 
+### New Card Teaching
+
+New cards (never seen) use a two-phase introduction:
+
+1. **Teaching encounter:** Show the correct move on the board (arrow/highlight). User must physically play it. Card is **not rated** — it stays in New state. This is pure introduction, not a test.
+2. **First real review:** The card appears again (within the same session) with no hint. User must recall the move. Rated normally (`Good`/`Again`). Card transitions to Learning.
+
+New cards are introduced in **tree order** — shallow positions before deep ones. A card at depth N is not introduced until cards at depth N−1 on the same branch have left New state.
+
+New cards are interleaved with reviews, not front-loaded.
+
+### Line Drill
+
+When a user adds a new variant, the new moves form a contiguous path. These are grouped into a **line drill** rather than introduced individually:
+
+1. **Teaching pass:** Walk the line root → leaf. Mastered prefix is autoplayed. At each new position, show the correct move (arrow/highlight), user plays it (guided). No rating.
+2. **Recall pass:** Immediately replay the same line. No hints. User must recall each move. Rate each card `Again` — immediate recall after teaching is not real learning.
+
+After the drill, individual cards enter Learning with tight intervals. Subsequent reviews are unguided and rated normally (`Good`/`Again`).
+
+**Trigger:** 2+ New cards on the same branch with no non-New cards between them. Single isolated new cards use the individual teaching flow.
+
+**Daily limit:** Line drills consume from the daily new-card limit. A 5-move drill uses 5 of the user's allowance.
+
 ### Rating
 
-Same as v1:
 - Correct on first attempt → `Good`
 - Any error → `Again`
+- Teaching encounter (guided) → **not rated**
+- Line drill recall pass → `Again` (immediate recall after teaching is not real learning)
 
 Card is rated immediately after the user responds.
 
@@ -76,8 +101,14 @@ Card is rated immediately after the user responds.
 - Variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `numberOfTimesPlayed`) become ignored. Keep in storage for rollback safety; remove in a later cleanup.
 - `WeightSettings` UI (recency/frequency/error power sliders) replaced with new-card-per-day setting.
 
-## Open Questions
+## Ahead-of-Schedule Mode
 
-- Should the autoplay path show moves at real speed or instant-jump to the target position?
-- Should "ahead of schedule" mode exist when queue is empty (drill lowest-retrievability cards)?
-- Should we expose `Hard`/`Easy` ratings via UI gestures?
+When the review queue is empty, offer an "ahead of schedule" practice mode. Select cards with the lowest retrievability (weakest memories that aren't yet due) and drill them. Standard `Good`/`Again` rating still applies.
+
+## Autoplay Path Speed
+
+Autoplay to the target position uses the current animation speed — no instant jumps.
+
+## Backlog (Not v1)
+
+- Expose `Hard`/`Easy` ratings via UI gestures for finer FSRS granularity.
