@@ -39,6 +39,15 @@ All user-played moves (warm-up, target, cool-down) are rated normally. The plan 
 
 Group due cards sharing a path prefix into a single traversal to avoid redundant replaying of opening moves.
 
+### Branch Points
+
+At positions where multiple repertoire moves exist, the user may play a valid move that's not on the planned path. In this case:
+
+- Show "Correct, but there are more options" and ask the user to try another move
+- Rate the unplanned valid move's card as `Good` (the user demonstrated recall)
+- Repeat until the user plays the planned move
+- Then rate the planned move normally
+
 ### New Card Teaching
 
 New cards (never seen) use a two-phase introduction:
