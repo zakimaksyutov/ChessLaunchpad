@@ -16,14 +16,18 @@ PGN lines remain the import/storage format. At runtime, they are flattened into 
 
 ### Review Queue
 
-At session start, collect all due and new cards (both white and black) into a priority queue:
+The review queue is **rebuilt before each traversal** — there is no session concept. Each traversal is independent. The queue collects all currently due and new cards (both white and black):
 
 1. **Relearning** — failed recently, short-term schedule
 2. **Due Review** — overdue, sorted by overdueness
 3. **Learning** — still in initial learning steps
 4. **New** — unseen cards
 
-Session ends when the queue is empty or the user stops. The `?filter=` parameter is not supported — all repertoire cards are included.
+Cards rated `Again` during a traversal re-enter the queue with short intervals. They become due again naturally (e.g., 1 minute later) and will be picked up by a subsequent traversal.
+
+Training continues until the queue is empty or the user navigates away. The `?filter=` parameter is not supported — all repertoire cards are included.
+
+Line drills are detected during queue building: if 2+ New cards form a contiguous branch with no non-New cards between them, they are grouped into a line drill.
 
 ### Path Planning
 
@@ -52,7 +56,7 @@ At positions where multiple repertoire moves exist, the user may play a valid mo
 
 New cards (never seen) use a two-phase introduction:
 
-1. **Teaching encounter:** Show the correct move on the board (arrow/highlight). User must physically play it. Card is **not rated** — it stays in New state. This is pure introduction, not a test.
+1. **Teaching encounter:** Show the correct move on the board (arrow/highlight). User must physically play it. Card is **not rated** — it stays in New state. This is pure introduction, not a test. If the user plays a wrong move, reject it with an error sound (no rating).
 2. **First real review:** The card appears again (within the same session) with no hint. User must recall the move. Rated normally (`Good`/`Again`). Card transitions to Learning.
 
 New cards are introduced in **tree order** — shallow positions before deep ones. A card at depth N is not introduced until cards at depth N−1 on the same branch have left New state.
@@ -68,7 +72,7 @@ When a user adds a new variant, the new moves form a contiguous path. These are 
 
 After the drill, individual cards enter Learning with tight intervals. Subsequent reviews are unguided and rated normally (`Good`/`Again`).
 
-**Trigger:** 2+ New cards on the same branch with no non-New cards between them. Single isolated new cards use the individual teaching flow.
+**Trigger:** Detected during queue building — 2+ New cards on the same branch with no non-New cards between them. Single isolated new cards use the individual teaching flow.
 
 ### Rating
 
@@ -92,7 +96,9 @@ A **"give me hint"** option is available: shows the correct move on the board. T
 
 ### Progress Display
 
-Show cards reviewed and cards remaining in the queue. When the queue empties and ahead-of-schedule mode activates, the progress display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
+Replace the current BadgeRow with minimal relevant badges: **cards due**, **cards reviewed today**, and **total cards**. Show queue status — when the queue empties and ahead-of-schedule mode activates, the display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
+
+Remove badges that no longer apply (oldest, 80th percentile, variant-level errors).
 
 ### Annotations
 
@@ -100,7 +106,11 @@ PGN annotations carry over into v2 traversals. They are displayed on the board a
 
 ### Between Traversals
 
-No auto-load countdown. The next traversal starts immediately after the previous one completes.
+No auto-load countdown. The next traversal starts immediately after the previous one completes. The user stops training by navigating away.
+
+### Traversal End
+
+A traversal ends after the cool-down of the last due card on the path. It does not necessarily reach a leaf node.
 
 ## What Changes
 
@@ -110,7 +120,7 @@ No auto-load countdown. The next traversal starts immediately after the previous
 | Selection | Weighted random by variant stats | Priority queue of due/new cards |
 | Navigation | Root → leaf, one variant per round | Autoplay path to target card |
 | Round definition | 1 variant traversal | N card reviews |
-| Orientation | White or black per session | Mixed — both in one session |
+| Orientation | Per variant (random) | Per traversal (determined by target card) |
 | New material | Implicit (newness weight) | All new cards introduced as they appear |
 | "Done" signal | Never | Queue empty → ahead-of-schedule mode |
 | Variant-level stats | `errorEMA`, `successEMA`, `lastSucceededEpoch`, `WeightSettings` | Removed |
@@ -158,7 +168,7 @@ This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` 
 
 ## Persistence
 
-Save to backend after each **traversal** (one root → leaf path). Cards are rated during the traversal; the save happens when the path completes. This matches the current save-per-variant-completion frequency.
+Save to backend after each **traversal**. Cards are rated during the traversal; the save happens when the traversal completes. This matches the current save-per-variant-completion frequency.
 
 Line drills save after the recall pass completes.
 
