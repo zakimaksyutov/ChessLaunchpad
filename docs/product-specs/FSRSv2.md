@@ -63,8 +63,6 @@ After the recall pass, individual cards enter Learning with tight intervals. Sub
 
 When multiple consecutive new cards exist on the same branch, they are taught and recalled as a group in a single teach-then-recall cycle.
 
-New cards are introduced in **tree order** — shallow positions before deep ones. A card at depth N is not introduced until cards at depth N−1 on the same branch have left New state.
-
 New cards are interleaved with reviews, not front-loaded.
 
 **Detection:** During queue building, identify New cards and group consecutive ones on the same branch.
