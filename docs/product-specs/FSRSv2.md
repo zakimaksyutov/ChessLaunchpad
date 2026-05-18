@@ -23,7 +23,7 @@ The review queue is **rebuilt before each traversal** — there is no session co
 3. **Learning** — still in initial learning steps
 4. **New** — unseen cards
 
-Cards rated `Again` during a traversal re-enter the queue with short intervals. They become due again naturally (e.g., 1 minute later) and will be picked up by a subsequent traversal.
+Cards rated `Again` during a traversal become due again naturally (e.g., 1 minute later) and will be picked up by the next traversal's queue build.
 
 Training continues until the queue is empty or the user navigates away. The `?filter=` parameter is not supported — all repertoire cards are included.
 
@@ -34,14 +34,12 @@ When the queue's highest-priority item is a **New card**, a teach-then-recall fl
 The full traversal is pre-computed before the first move:
 
 1. Pull the highest-priority due card from the review queue
-2. Compute path from root to that card, choosing opponent branches that lead toward more due cards
+2. Compute path from root to that card, choosing opponent branches that lead toward more due cards. When opponent branches have equal due-card density, choose randomly. When transpositions offer multiple paths to the same card, prefer the shortest path (fewest moves from root); break ties by the path with the most due cards, then randomly.
 3. Mark each user-turn position in the path: **autoplay**, **warm-up** (N moves before target), **target** (due card), or **cool-down** (N moves after target). N = context depth setting (default: 2).
 4. If more due cards exist deeper on the chosen path, extend the plan with another autoplay/warm-up/target/cool-down zone
 5. Execute the pre-computed plan move-by-move
 
 All user-played moves (warm-up, target, cool-down) are rated normally. The plan is fully determined before the first move — no mid-traversal queue consultation.
-
-Group due cards sharing a path prefix into a single traversal to avoid redundant replaying of opening moves.
 
 ### Branch Points
 
@@ -50,14 +48,16 @@ At positions where multiple repertoire moves exist, the user may play a valid mo
 - Show "Correct, but there are more options" and ask the user to try another move
 - Rate the unplanned valid move's card as `Good` (the user demonstrated recall)
 - Repeat until the user plays the planned move
-- Then rate the planned move normally
+- Then rate the planned move normally (each card is rated independently — playing unplanned valid moves does not affect the planned move's first-attempt assessment)
+
+Incidentally reviewed cards (rated `Good` at branch points) are fully reviewed — their FSRS state updates, they count toward daily progress, and they leave the queue until due again.
 
 ### New Card Introduction
 
 New cards use a two-phase teach-then-recall flow:
 
 1. **Teaching pass:** Autoplay path to the new card(s). At each new position, show the correct move on the board (arrow/highlight). User must physically play it. If the user plays a wrong move, reject it with an error sound. Cards are **not rated** — they stay in New state.
-2. **Recall pass:** Immediately replay the same path. No hints. User must recall each move. Rate each card `Again` — immediate recall after teaching is not real learning.
+2. **Recall pass:** Immediately replay the same path. User must recall each move. Rate each card `Again` — immediate recall after teaching is not real learning. The **"give me hint"** option is available; using it still results in an `Again` rating (same as the default recall rating).
 
 After the recall pass, individual cards enter Learning with tight intervals. Subsequent reviews are unguided and rated normally (`Good`/`Again`).
 
@@ -78,7 +78,7 @@ Card is rated immediately after the user responds correctly.
 
 Wrong moves play an error sound and are rejected (move reverts). The user keeps trying until they play the correct move. Multiple wrong attempts at the same position count as a single `Again` — no repeated ratings.
 
-A **"give me hint"** option is available: shows the correct move on the board. The user must still play it. The card is rated `Again`.
+A **"give me hint"** option is always available (including during the recall pass): shows the correct move on the board. The user must still play it. The card is rated `Again`.
 
 ### Context Depth Edge Cases
 
@@ -87,13 +87,13 @@ A **"give me hint"** option is available: shows the correct move on the board. T
 
 ### Progress Display
 
-Replace the current BadgeRow with minimal relevant badges: **cards due**, **cards reviewed today**, and **total cards**. Show queue status — when the queue empties and ahead-of-schedule mode activates, the display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
+Replace the current BadgeRow with minimal relevant badges: **cards due**, **cards reviewed today** (`dailyPlayCount`, incremented per card rated), and **total cards**. Show queue status — when the queue empties and ahead-of-schedule mode activates, the display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
 
 Remove badges that no longer apply (oldest, 80th percentile, variant-level errors).
 
 ### Annotations
 
-PGN annotations carry over into v2 traversals. They are displayed on the board and affect autoplay timing, same as current behavior.
+PGN annotations carry over into v2 traversals. Annotations are **not** displayed during autoplay segments. During user-play segments (warm-up, target, cool-down), annotations are displayed on the board with the same extra delay as the current system.
 
 ### Between Traversals
 
@@ -117,7 +117,7 @@ A traversal ends after the cool-down of the last due card on the path. It does n
 | Filter | `?filter=` by classification/FEN | Not supported |
 | Between traversals | Auto-load countdown | Immediate |
 | Debug table | Variant weights/probability | Removed |
-| `dailyPlayCount` | Per variant round | Per traversal |
+| `dailyPlayCount` | Per variant round | Per card reviewed |
 
 ## What Stays
 
@@ -131,7 +131,7 @@ A traversal ends after the cool-down of the last due card on the path. It does n
 
 ## Scope
 
-Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power) and gains a **context depth** setting (number of user-turn moves to play before and after a due card; default: 2). No changes to `/repertoire` or `/games`.
+Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power) and gains a **context depth** setting (number of user-turn moves to play before and after a due card; default: 2). Context depth is stored locally (not synced to backend). No changes to `/repertoire` or `/games`.
 
 ## New Components
 
@@ -154,6 +154,7 @@ This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` 
 - No backend API changes required. The `fsrsCards` format is unchanged — only the number of entries grows.
 - Existing `fsrsCards` data carries over as-is.
 - Variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `numberOfTimesPlayed`) become ignored. Keep in storage for rollback safety; remove in a later cleanup.
+- `currentEpoch` is no longer incremented. It remains in storage for rollback safety.
 - `WeightSettings` UI (recency/frequency/error power sliders) replaced with context depth setting.
 
 ## Persistence
@@ -162,7 +163,7 @@ Save to backend after each **traversal**. Cards are rated during the traversal; 
 
 ## Ahead-of-Schedule Mode
 
-When the review queue is empty, offer an "ahead of schedule" practice mode. Select cards with the lowest retrievability (weakest memories that aren't yet due) and drill them. Standard `Good`/`Again` rating still applies.
+When the review queue is empty, offer an "ahead of schedule" practice mode. Select cards with the lowest retrievability (weakest memories that aren't yet due) and drill them using the same path-planning flow (autoplay → warm-up → target → cool-down). Standard `Good`/`Again` rating still applies.
 
 ## Autoplay Path Speed
 
