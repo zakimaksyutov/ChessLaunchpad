@@ -52,34 +52,29 @@ At positions where multiple repertoire moves exist, the user may play a valid mo
 - Repeat until the user plays the planned move
 - Then rate the planned move normally
 
-### New Card Teaching
+### New Card Introduction
 
-New cards (never seen) use a two-phase introduction:
+New cards use a two-phase teach-then-recall flow:
 
-1. **Teaching encounter:** Show the correct move on the board (arrow/highlight). User must physically play it. Card is **not rated** — it stays in New state. This is pure introduction, not a test. If the user plays a wrong move, reject it with an error sound (no rating).
-2. **First real review:** The card appears again (within the same session) with no hint. User must recall the move. Rated normally (`Good`/`Again`). Card transitions to Learning.
+1. **Teaching pass:** Autoplay path to the new card(s). At each new position, show the correct move on the board (arrow/highlight). User must physically play it. If the user plays a wrong move, reject it with an error sound. Cards are **not rated** — they stay in New state.
+2. **Recall pass:** Immediately replay the same path. No hints. User must recall each move. Rate each card `Again` — immediate recall after teaching is not real learning.
+
+After the recall pass, individual cards enter Learning with tight intervals. Subsequent reviews are unguided and rated normally (`Good`/`Again`).
+
+When multiple consecutive new cards exist on the same branch, they are taught and recalled as a group in a single teach-then-recall cycle.
 
 New cards are introduced in **tree order** — shallow positions before deep ones. A card at depth N is not introduced until cards at depth N−1 on the same branch have left New state.
 
 New cards are interleaved with reviews, not front-loaded.
 
-### Line Drill
-
-When a user adds a new variant, the new moves form a contiguous path. These are grouped into a **line drill** rather than introduced individually:
-
-1. **Teaching pass:** Walk the line root → leaf. Mastered prefix is autoplayed. At each new position, show the correct move (arrow/highlight), user plays it (guided). No rating.
-2. **Recall pass:** Immediately replay the same line. No hints. User must recall each move. Rate each card `Again` — immediate recall after teaching is not real learning.
-
-After the drill, individual cards enter Learning with tight intervals. Subsequent reviews are unguided and rated normally (`Good`/`Again`).
-
-**Trigger:** Detected during queue building — 2+ New cards on the same branch with no non-New cards between them. Single isolated new cards use the individual teaching flow.
+**Detection:** During queue building, identify New cards and group consecutive ones on the same branch.
 
 ### Rating
 
 - Correct on first attempt → `Good`
 - Any error → `Again` (rated once when the correct move is finally played, regardless of how many wrong attempts)
-- Teaching encounter (guided) → **not rated**
-- Line drill recall pass → `Again` (immediate recall after teaching is not real learning)
+- Teaching pass (guided) → **not rated**
+- Recall pass (immediate recall after teaching) → `Again`
 
 Card is rated immediately after the user responds correctly.
 
