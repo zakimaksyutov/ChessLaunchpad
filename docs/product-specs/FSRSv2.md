@@ -2,7 +2,7 @@
 
 ## Overview
 
-Replace the custom weight-based variant selection system with FSRS-driven, position-level scheduling. Training sessions become review queues of due cards rather than weighted-random variant picks. The repertoire is treated as a move tree (DAG), not a list of PGN lines.
+Replace the custom weight-based variant selection system with FSRS-driven, position-level scheduling. Training is driven by a review queue of due cards rebuilt before each traversal. The repertoire is treated as a move tree (DAG), not a list of PGN lines.
 
 ## Core Concepts
 
@@ -27,7 +27,7 @@ Cards rated `Again` during a traversal re-enter the queue with short intervals. 
 
 Training continues until the queue is empty or the user navigates away. The `?filter=` parameter is not supported — all repertoire cards are included.
 
-Line drills are detected during queue building: if 2+ New cards form a contiguous branch with no non-New cards between them, they are grouped into a line drill.
+When the queue's highest-priority item is a **New card**, a teach-then-recall flow is triggered instead of a regular traversal (see New Card Introduction). Otherwise, a regular traversal is planned.
 
 ### Path Planning
 
@@ -63,9 +63,7 @@ After the recall pass, individual cards enter Learning with tight intervals. Sub
 
 When multiple consecutive new cards exist on the same branch, they are taught and recalled as a group in a single teach-then-recall cycle.
 
-New cards are interleaved with reviews, not front-loaded.
-
-**Detection:** During queue building, identify New cards and group consecutive ones on the same branch.
+**Detection:** During queue building, identify New cards and group consecutive ones on the same branch. New card introductions are interleaved with regular traversals naturally via queue priority — New cards only come up when nothing more urgent (Relearning, Due Review, Learning) is due.
 
 ### Rating
 
@@ -109,16 +107,15 @@ A traversal ends after the cool-down of the last due card on the path. It does n
 
 | Area | Before (v1) | After (v2) |
 |---|---|---|
-| Session unit | Variant (full line) | Card (single position) |
+| Unit of work | Variant (full line) | Traversal (path to due cards) |
 | Selection | Weighted random by variant stats | Priority queue of due/new cards |
 | Navigation | Root → leaf, one variant per round | Autoplay path to target card |
-| Round definition | 1 variant traversal | N card reviews |
 | Orientation | Per variant (random) | Per traversal (determined by target card) |
-| New material | Implicit (newness weight) | All new cards introduced as they appear |
+| New material | Implicit (newness weight) | Teach-then-recall flow |
 | "Done" signal | Never | Queue empty → ahead-of-schedule mode |
 | Variant-level stats | `errorEMA`, `successEMA`, `lastSucceededEpoch`, `WeightSettings` | Removed |
 | Filter | `?filter=` by classification/FEN | Not supported |
-| Between rounds | Auto-load countdown | Immediate |
+| Between traversals | Auto-load countdown | Immediate |
 | Debug table | Variant weights/probability | Removed |
 | `dailyPlayCount` | Per variant round | Per traversal |
 
@@ -161,9 +158,7 @@ This runs on every load and after any PGN add/edit/delete. It keeps `fsrsCards` 
 
 ## Persistence
 
-Save to backend after each **traversal**. Cards are rated during the traversal; the save happens when the traversal completes. This matches the current save-per-variant-completion frequency.
-
-Line drills save after the recall pass completes.
+Save to backend after each **traversal**. Cards are rated during the traversal; the save happens when the traversal completes. Teach-then-recall cycles save after the recall pass completes. This matches the current save-per-variant-completion frequency.
 
 ## Ahead-of-Schedule Mode
 
