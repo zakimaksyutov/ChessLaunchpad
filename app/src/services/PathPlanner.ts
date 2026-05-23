@@ -4,7 +4,8 @@ import { FSRSService } from './FSRSService';
 export type StepRole = 'autoplay' | 'warm-up' | 'target' | 'cool-down';
 
 export interface TraversalStep {
-    fen: string;          // normalized FEN at this position
+    fen: string;          // normalized FEN at this position (before the move)
+    destFen: string;      // normalized FEN after the move (for annotation lookup)
     expectedMove: string; // SAN of the expected move
     cardKey: string;      // FSRS card key for this edge
     role: StepRole;       // how this step should be treated
@@ -88,6 +89,7 @@ export class PathPlanner {
             if (isNew) newCardKeysInPlan.push(edge.cardKey);
             return {
                 fen: edge.from,
+                destFen: edge.to,
                 expectedMove: edge.san,
                 cardKey: edge.cardKey,
                 role: 'target' as StepRole, // all user-turn steps in teach plan are targets
@@ -214,6 +216,7 @@ export class PathPlanner {
     private assignRoles(path: GraphEdge[], dueCardKeys: Set<string>): TraversalStep[] {
         const steps: TraversalStep[] = path.map(edge => ({
             fen: edge.from,
+            destFen: edge.to,
             expectedMove: edge.san,
             cardKey: edge.cardKey,
             role: 'autoplay' as StepRole,

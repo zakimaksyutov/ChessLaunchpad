@@ -328,10 +328,11 @@ export class TrainingEngine {
         const step = this.getCurrentStep();
         // Compute hint without side effects (requestHint sets hintRequested flag)
         const hint = this.hintRequested && step ? this.getHintForStep(step) : undefined;
-        const fen = step?.fen ?? '';
+        // Annotations are keyed by destFen (position after the move, matching PGN comment FENs)
+        const annotationFen = step?.destFen ?? '';
         const anns = (this.phase === 'autoplay' || this._isTeachingPass)
             ? []
-            : (this.annotations.get(fen) ?? []);
+            : (this.annotations.get(annotationFen) ?? []);
 
         return {
             phase: this.phase,
