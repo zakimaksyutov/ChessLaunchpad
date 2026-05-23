@@ -62,14 +62,15 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.data![0].numberOfTimesPlayed).toBe(0);
             expect(repertoireData.data![0].pgn).toBe('1. e4 e5');
             expect(repertoireData.data![0].orientation).toBe('white');
-            expect(repertoireData.currentEpoch).toBe(1);
+            // currentEpoch is no longer incremented in FSRSv2 (kept for rollback safety)
+            expect(repertoireData.currentEpoch).toBe(0);
             expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
             expect(repertoireData.weightSettings?.recencyPower).toBe(WeightSettings.DEFAULT_RECENCY_POWER);
             expect(repertoireData.weightSettings?.frequencyPower).toBe(WeightSettings.DEFAULT_FREQUENCY_POWER);
             expect(repertoireData.weightSettings?.errorPower).toBe(WeightSettings.DEFAULT_ERROR_POWER);
         });
 
-        it('should increment epoch and adjust success EMA if current date > lastPlayedDate (next day)', () => {
+        it('should reset dailyPlayCount on new day without incrementing epoch', () => {
             // Prepare
             const yesterday = RepertoireDataUtils.getCurrentDateOnly();
             yesterday.setDate(yesterday.getDate() - 1); // set to "yesterday"
@@ -95,14 +96,14 @@ describe('RepertoireDataUtils', () => {
             // Act
             RepertoireDataUtils.normalize(repertoireData);
 
-            // Assert
-            expect(repertoireData.currentEpoch).toBe(6);
+            // Assert — currentEpoch NOT incremented (FSRSv2)
+            expect(repertoireData.currentEpoch).toBe(5);
 
-            // Also check that lastPlayedDate has been updated to today's date only
+            // lastPlayedDate updated to today
             expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
 
-            // Validate that successEMA has been adjusted
-            expect(repertoireData.data[0].successEMA).toBe(10 * 0.5);
+            // successEMA NOT decayed in FSRSv2 (kept as-is for rollback safety)
+            expect(repertoireData.data[0].successEMA).toBe(10);
 
             // Check dailyPlayCount gets reset on new day
             expect(repertoireData.dailyPlayCount).toBe(0);
@@ -153,7 +154,7 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.weightSettings?.errorPower).toBe(3.8);
         });
 
-        it('should preserve existing fsrsCards during normalization', () => {
+        it('should reconcile fsrsCards during normalization (remove stale, keep valid)', () => {
             const cards: Record<string, FSRSCardData> = {
                 'fen1::e4': { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 }
             };
@@ -167,8 +168,9 @@ describe('RepertoireDataUtils', () => {
 
             RepertoireDataUtils.normalize(repertoireData);
 
-            expect(repertoireData.fsrsCards).toBe(cards);
-            expect(Object.keys(repertoireData.fsrsCards!)).toHaveLength(1);
+            // With no variants, the stale card should be removed by reconciliation
+            expect(repertoireData.fsrsCards).toBeDefined();
+            expect(Object.keys(repertoireData.fsrsCards!)).toHaveLength(0);
         });
     });
 

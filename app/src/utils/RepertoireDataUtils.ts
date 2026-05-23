@@ -1,8 +1,9 @@
 import { OpeningVariant } from "../models/OpeningVariant";
 import { RepertoireData, OpeningVariantData } from "../models/RepertoireData";
-import { LaunchpadLogic } from "./LaunchpadLogic";
 import { WeightSettings } from "../models/WeightSettings";
 import { FSRSCardData } from "../models/FSRSCardData";
+import { RepertoireGraph } from "../services/RepertoireGraph";
+import { FSRSService } from "../services/FSRSService";
 
 export class RepertoireDataUtils {
 
@@ -48,25 +49,16 @@ export class RepertoireDataUtils {
             repertoireData.fsrsCards = {};
         }
 
-        // Check whether we started a new epoch (a new day).
-        // Note, if a player hasn't played for N days, then the epoch will be incremented only once and not N times.
-        var newEpoch: boolean = false;
+        // Reconcile FSRS cards with current repertoire positions
+        RepertoireDataUtils.reconcileCards(repertoireData);
 
+        // Check whether we started a new day — reset daily counter.
+        // Note: currentEpoch is no longer incremented (FSRSv2) but kept for rollback safety.
         const currentDate = RepertoireDataUtils.getCurrentDateOnly();
         if (currentDate > repertoireData.lastPlayedDate) {
-            repertoireData.currentEpoch++;
             repertoireData.lastPlayedDate = currentDate;
-            newEpoch = true;
-        }
-
-        // If a new epoch has started, adjust successEMA.
-        if (newEpoch) {
-            // Reset daily counter on new epoch
+            // Reset daily counter on new day
             repertoireData.dailyPlayCount = 0;
-        
-            for (const variant of repertoireData.data) {
-                variant.successEMA = LaunchpadLogic.SUCCESS_EMA_ALPHA * variant.successEMA;
-            }
         }
     }
 
@@ -118,6 +110,37 @@ export class RepertoireDataUtils {
             weightSettings: settings,
             fsrsCards: fsrsCards ?? {}
         };
+    }
+
+    /**
+     * Reconcile fsrsCards with the repertoire graph.
+     * - New positions (in graph, no card) → create card with state=New
+     * - Removed positions (card exists, not in graph) → delete card
+     * - Existing positions → untouched
+     */
+    public static reconcileCards(repertoireData: RepertoireData): void {
+        const cards = repertoireData.fsrsCards ?? {};
+        repertoireData.fsrsCards = cards;
+
+        const pgns = repertoireData.data.map(v => ({
+            pgn: v.pgn,
+            orientation: v.orientation,
+        }));
+        const graph = new RepertoireGraph(pgns);
+        const graphKeys = new Set(graph.getCardKeys());
+        const fsrsService = new FSRSService(cards);
+
+        // Create new cards for positions in graph but not in cards
+        for (const key of graphKeys) {
+            fsrsService.ensureCard(key);
+        }
+
+        // Delete cards for positions not in graph
+        for (const key of fsrsService.getAllCardKeys()) {
+            if (!graphKeys.has(key)) {
+                fsrsService.deleteCard(key);
+            }
+        }
     }
 
     public static getCurrentDateOnly(): Date {
