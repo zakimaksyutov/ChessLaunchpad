@@ -203,6 +203,8 @@ export class TrainingEngine {
             if (isEnd) {
                 return this.finishTeachingPass();
             }
+            // Update phase for next step (e.g. transition to autoplay for opponent)
+            this.advanceToNextAction();
             return { accepted: true, isEndOfTraversal: false };
         }
 
@@ -226,6 +228,10 @@ export class TrainingEngine {
             }
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
+            if (!isEnd) {
+                // Update phase for next step (e.g. transition to autoplay for opponent)
+                this.advanceToNextAction();
+            }
             return {
                 accepted: true,
                 isEndOfTraversal: isEnd,
@@ -249,6 +255,10 @@ export class TrainingEngine {
 
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
+            if (!isEnd) {
+                // Update phase for next step (e.g. transition to autoplay for opponent)
+                this.advanceToNextAction();
+            }
             return {
                 accepted: true,
                 isEndOfTraversal: isEnd,
