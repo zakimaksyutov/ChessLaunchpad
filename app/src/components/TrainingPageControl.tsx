@@ -271,7 +271,20 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         if (result.isEndOfTraversal) {
             playSound(soundSuccess);
-            handleTraversalComplete(eng);
+
+            // Show end-of-line annotations before transitioning
+            const endAnnotations = eng.getEndOfTraversalAnnotations();
+            setPgnAnnotations(endAnnotations);
+            const delay = getAnnotationDelayMs(endAnnotations);
+
+            if (delay > 0) {
+                timeoutRef.current = setTimeout(() => {
+                    timeoutRef.current = null;
+                    handleTraversalComplete(eng);
+                }, delay);
+            } else {
+                handleTraversalComplete(eng);
+            }
             return true;
         }
 

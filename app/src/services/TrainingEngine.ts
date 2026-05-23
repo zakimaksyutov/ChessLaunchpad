@@ -359,6 +359,15 @@ export class TrainingEngine {
     }
 
     /**
+     * Get annotations for the final position of the current traversal.
+     */
+    getEndOfTraversalAnnotations(): Annotation[] {
+        if (!this.plan || this.plan.steps.length === 0) return [];
+        const lastStep = this.plan.steps[this.plan.steps.length - 1];
+        return this.annotations.get(lastStep.destFen) ?? [];
+    }
+
+    /**
      * Get queue statistics for badge display.
      */
     getQueueStats(): { dueCount: number; newCount: number; totalCards: number } {
