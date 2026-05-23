@@ -82,6 +82,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [variants]);
 
+    useEffect(() => {
+        engineRef.current = engine;
+    }, [engine]);
+
     // Start traversal on mount / engine change
     const startNewTraversal = useCallback(() => {
         const eng = engineRef.current;
@@ -119,7 +123,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     }, []);
 
     useEffect(() => {
-        engineRef.current = engine;
         startNewTraversal();
 
         return () => {
