@@ -269,7 +269,12 @@ export class TrainingEngine {
 
         // Check if it's a valid repertoire move but not the planned one (branch point)
         const edge = this.graph.getEdge(currentFen, playedSan);
-        if (edge && edge.isUserTurn) {
+        const fenParts = currentFen.split(' ');
+        const activeColor = fenParts.length > 1 ? fenParts[1] : 'w';
+        const isWhiteToMove = activeColor === 'w';
+        const isUserTurnHere = (this.plan!.orientation === 'white' && isWhiteToMove) ||
+                               (this.plan!.orientation === 'black' && !isWhiteToMove);
+        if (edge && isUserTurnHere) {
             // Valid repertoire move at a branch point
             if (!this.branchAlternativesPlayed.has(edge.cardKey)) {
                 // Rate this unplanned move as Good

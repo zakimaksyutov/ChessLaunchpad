@@ -159,7 +159,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             if (!step) return;
 
             setHintAnnotations([]);
-            // Show annotations before opponent moves (old behavior: arrows visible during wait)
             setPgnAnnotations(status.annotations);
 
             const annotations = status.annotations;
@@ -173,7 +172,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         }
 
         if (status.phase === 'teaching') {
-            // Show the correct move as a hint arrow; hide PGN annotations during teaching
             setPgnAnnotations([]);
             if (status.hintMove) {
                 setHintAnnotations([{
@@ -187,7 +185,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         if (status.phase === 'recalling' || status.phase === 'awaiting_user' || status.phase === 'ahead_of_schedule') {
             setHintAnnotations([]);
-            // Show PGN annotations if available
             setPgnAnnotations(status.annotations);
             return;
         }

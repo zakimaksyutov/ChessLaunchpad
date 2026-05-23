@@ -49,10 +49,10 @@ export class PathPlanner {
         let path = paths[0];
 
         // Extend path beyond target if there are more due cards deeper
-        path = this.extendPath(path, dueCardKeys);
+        path = this.extendPath(path, dueCardKeys, orientation);
 
         // Build traversal steps with role assignments
-        const steps = this.assignRoles(path, dueCardKeys);
+        const steps = this.assignRoles(path, dueCardKeys, orientation);
 
         const targetKeys = steps
             .filter(s => s.role === 'target')
@@ -80,12 +80,13 @@ export class PathPlanner {
         let path = paths[0];
 
         // Extend to include consecutive new cards deeper on the same branch
-        path = this.extendForNewCards(path, allNewCardKeys);
+        path = this.extendForNewCards(path, allNewCardKeys, orientation);
 
         // All steps are autoplay (system shows the move, user plays it)
         const newCardKeysInPlan: string[] = [];
         const steps: TraversalStep[] = path.map(edge => {
-            const isNew = edge.isUserTurn && allNewCardKeys.has(edge.cardKey);
+            const isUser = PathPlanner.isUserTurnForOrientation(edge.from, orientation);
+            const isNew = isUser && allNewCardKeys.has(edge.cardKey);
             if (isNew) newCardKeysInPlan.push(edge.cardKey);
             return {
                 fen: edge.from,
@@ -93,7 +94,7 @@ export class PathPlanner {
                 expectedMove: edge.san,
                 cardKey: edge.cardKey,
                 role: 'target' as StepRole, // all user-turn steps in teach plan are targets
-                isUserTurn: edge.isUserTurn,
+                isUserTurn: isUser,
             };
         });
 
@@ -111,7 +112,7 @@ export class PathPlanner {
     /**
      * Extend the path beyond the last edge if there are more due cards deeper.
      */
-    private extendPath(path: GraphEdge[], dueCardKeys: Set<string>): GraphEdge[] {
+    private extendPath(path: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): GraphEdge[] {
         const extended = [...path];
         let currentFen = path[path.length - 1].to;
         const visited = new Set<string>(path.map(e => e.from));
@@ -122,12 +123,13 @@ export class PathPlanner {
             if (edges.length === 0) break;
 
             // For opponent turns, pick the branch with the most due descendants
-            const opponentEdges = edges.filter(e => !e.isUserTurn);
-            const userEdges = edges.filter(e => e.isUserTurn);
+            const isUserTurnHere = PathPlanner.isUserTurnForOrientation(currentFen, orientation);
+            const opponentEdges = isUserTurnHere ? [] : edges;
+            const userEdges = isUserTurnHere ? edges : [];
 
-            if (opponentEdges.length > 0) {
+            if (!isUserTurnHere && edges.length > 0) {
                 // Opponent move: pick branch with most due cards
-                const bestOpponent = this.pickBranchWithMostDue(opponentEdges, dueCardKeys);
+                const bestOpponent = this.pickBranchWithMostDue(edges, dueCardKeys);
                 if (!bestOpponent || visited.has(bestOpponent.to)) break;
                 visited.add(bestOpponent.from);
                 extended.push(bestOpponent);
@@ -135,9 +137,9 @@ export class PathPlanner {
                 continue;
             }
 
-            if (userEdges.length > 0) {
+            if (isUserTurnHere && edges.length > 0) {
                 // Find any due card among user edges
-                const dueEdge = userEdges.find(e => dueCardKeys.has(e.cardKey));
+                const dueEdge = edges.find(e => dueCardKeys.has(e.cardKey));
                 if (dueEdge && !visited.has(dueEdge.to)) {
                     visited.add(dueEdge.from);
                     extended.push(dueEdge);
@@ -146,16 +148,16 @@ export class PathPlanner {
                 }
 
                 // No more due cards, but add cool-down edges
-                const anyEdge = userEdges[0];
+                const anyEdge = edges[0];
                 if (!visited.has(anyEdge.to)) {
                     visited.add(anyEdge.from);
                     extended.push(anyEdge);
                     currentFen = anyEdge.to;
 
                     // Check if we've gone far enough past the last due card (user-turn edges only)
-                    const lastDueIndex = this.findLastDueIndex(extended, dueCardKeys);
+                    const lastDueIndex = this.findLastDueIndex(extended, dueCardKeys, orientation);
                     const userStepsAfterDue = extended.slice(lastDueIndex + 1)
-                        .filter(e => e.isUserTurn).length;
+                        .filter(e => PathPlanner.isUserTurnForOrientation(e.from, orientation)).length;
                     if (userStepsAfterDue >= this.contextDepth) break;
                     continue;
                 }
@@ -170,7 +172,7 @@ export class PathPlanner {
     /**
      * Extend path to include consecutive new cards deeper on the same branch.
      */
-    private extendForNewCards(path: GraphEdge[], newCardKeys: Set<string>): GraphEdge[] {
+    private extendForNewCards(path: GraphEdge[], newCardKeys: Set<string>, orientation: 'white' | 'black'): GraphEdge[] {
         const extended = [...path];
         let currentFen = path[path.length - 1].to;
 
@@ -178,12 +180,11 @@ export class PathPlanner {
             const edges = this.graph.getEdges(currentFen);
             if (edges.length === 0) break;
 
-            const opponentEdges = edges.filter(e => !e.isUserTurn);
-            const userEdges = edges.filter(e => e.isUserTurn);
+            const isUserTurnHere = PathPlanner.isUserTurnForOrientation(currentFen, orientation);
 
-            if (opponentEdges.length > 0) {
-                // For opponent turns during new card teach, pick any branch with new cards
-                const branchWithNew = opponentEdges.find(e => {
+            if (!isUserTurnHere && edges.length > 0) {
+                // Opponent turn: pick any branch with new cards
+                const branchWithNew = edges.find(e => {
                     const descendants = this.graph.getDescendantCardKeys(e.to);
                     return descendants.some(k => newCardKeys.has(k));
                 });
@@ -195,8 +196,8 @@ export class PathPlanner {
                 break;
             }
 
-            if (userEdges.length > 0) {
-                const newEdge = userEdges.find(e => newCardKeys.has(e.cardKey));
+            if (isUserTurnHere && edges.length > 0) {
+                const newEdge = edges.find(e => newCardKeys.has(e.cardKey));
                 if (newEdge) {
                     extended.push(newEdge);
                     currentFen = newEdge.to;
@@ -211,16 +212,27 @@ export class PathPlanner {
     }
 
     /**
+     * Determine if a step is a user turn based on the FEN's active color and plan orientation.
+     * This is authoritative — graph edges may have stale isUserTurn from a different orientation.
+     */
+    private static isUserTurnForOrientation(fen: string, orientation: 'white' | 'black'): boolean {
+        const parts = fen.split(' ');
+        const activeColor = parts.length > 1 ? parts[1] : 'w';
+        const isWhiteToMove = activeColor === 'w';
+        return (orientation === 'white' && isWhiteToMove) || (orientation === 'black' && !isWhiteToMove);
+    }
+
+    /**
      * Assign roles to path edges based on target positions and context depth.
      */
-    private assignRoles(path: GraphEdge[], dueCardKeys: Set<string>): TraversalStep[] {
+    private assignRoles(path: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): TraversalStep[] {
         const steps: TraversalStep[] = path.map(edge => ({
             fen: edge.from,
             destFen: edge.to,
             expectedMove: edge.san,
             cardKey: edge.cardKey,
             role: 'autoplay' as StepRole,
-            isUserTurn: edge.isUserTurn,
+            isUserTurn: PathPlanner.isUserTurnForOrientation(edge.from, orientation),
         }));
 
         // Find all target indices (user-turn edges with due cards)
@@ -303,9 +315,9 @@ export class PathPlanner {
         return best;
     }
 
-    private findLastDueIndex(path: GraphEdge[], dueCardKeys: Set<string>): number {
+    private findLastDueIndex(path: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): number {
         for (let i = path.length - 1; i >= 0; i--) {
-            if (path[i].isUserTurn && dueCardKeys.has(path[i].cardKey)) {
+            if (PathPlanner.isUserTurnForOrientation(path[i].from, orientation) && dueCardKeys.has(path[i].cardKey)) {
                 return i;
             }
         }
