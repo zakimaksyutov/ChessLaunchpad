@@ -328,9 +328,11 @@ export class TrainingEngine {
         const step = this.getCurrentStep();
         // Compute hint without side effects (requestHint sets hintRequested flag)
         const hint = this.hintRequested && step ? this.getHintForStep(step) : undefined;
-        // Annotations are keyed by destFen (position after the move, matching PGN comment FENs)
-        const annotationFen = step?.destFen ?? '';
-        const anns = (this.phase === 'autoplay' || this._isTeachingPass)
+        // During autoplay, show annotations for the current board position (step.fen)
+        // so the user sees them before the opponent moves.
+        // During user turns, show annotations for the position after their last move (destFen of prev step = step.fen).
+        const annotationFen = step?.fen ?? '';
+        const anns = this._isTeachingPass
             ? []
             : (this.annotations.get(annotationFen) ?? []);
 

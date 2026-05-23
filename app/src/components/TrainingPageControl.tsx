@@ -158,9 +158,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             const step = eng.getCurrentStep();
             if (!step) return;
 
-            // Clear annotations during autoplay (spec: hide annotations during autoplay)
             setHintAnnotations([]);
-            setPgnAnnotations([]);
+            // Show annotations before opponent moves (old behavior: arrows visible during wait)
+            setPgnAnnotations(status.annotations);
 
             const annotations = status.annotations;
             const delay = AUTOPLAY_MOVE_DELAY_MS + getAnnotationDelayMs(annotations);
