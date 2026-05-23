@@ -233,7 +233,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 // Valid repertoire move at branch point — rate it but revert board
                 setStatusMessage(result.branchPointMessage);
                 playSound(soundMove);
-                if (result.ratingWasCorrect) {
+                if (result.ratingWasCorrect && result.isTargetCard) {
                     correctCardsCountRef.current++;
                     onCardRatedRef.current();
                 }
@@ -264,7 +264,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             return false;
         }
 
-        if (result.ratingWasCorrect) {
+        if (result.ratingWasCorrect && result.isTargetCard) {
             correctCardsCountRef.current++;
             onCardRatedRef.current();
         }

@@ -25,6 +25,7 @@ export interface MoveResult {
     branchPointMessage?: string; // "Correct, but there are more options"
     ratedCardKey?: string;
     ratingWasCorrect?: boolean;
+    isTargetCard?: boolean;
 }
 
 export interface EngineStatus {
@@ -264,6 +265,7 @@ export class TrainingEngine {
                 isEndOfTraversal: isEnd,
                 ratedCardKey: step.cardKey,
                 ratingWasCorrect: isCorrect,
+                isTargetCard: step.role === 'target',
             };
         }
 
@@ -290,6 +292,7 @@ export class TrainingEngine {
                 branchPointMessage: 'Correct, but there are more options. Try another move.',
                 ratedCardKey: edge.cardKey,
                 ratingWasCorrect: true,
+                isTargetCard: false,
             };
         }
 
