@@ -382,6 +382,35 @@ export class TrainingEngine {
 
     // ─── Private ───────────────────────────────────────────────────────
 
+    private logPlan(plan: TraversalPlan, mode: 'regular' | 'teach'): void {
+        const roleTag: Record<string, string> = {
+            'warm-up': '🔶',
+            'target': '🎯',
+            'cool-down': '🔷',
+            'autoplay': '',
+        };
+
+        // Build PGN-like string with move numbers
+        let moveNum = 1;
+        let isWhite = plan.orientation === 'white'; // first move is white's for white orientation
+        const parts: string[] = [];
+
+        for (const step of plan.steps) {
+            const tag = roleTag[step.role] ?? '';
+            if (isWhite) {
+                parts.push(`${moveNum}.${tag}${step.expectedMove}`);
+            } else {
+                if (parts.length === 0) parts.push(`${moveNum}...`);
+                parts.push(`${tag}${step.expectedMove}`);
+                moveNum++;
+            }
+            isWhite = !isWhite;
+        }
+
+        const legend = `[${mode}|${plan.orientation}]`;
+        console.info(`${legend} ${parts.join(' ')}`);
+    }
+
     private startRegularTraversal(targetCardKey: string): EngineStatus | null {
         const dueKeys = new Set<string>();
         for (const entry of this.queue.getEntries()) {
@@ -398,6 +427,7 @@ export class TrainingEngine {
                 this.plan = plan;
                 this.stepIndex = 0;
                 this._isTeachingPass = false;
+                this.logPlan(plan, 'regular');
                 return this.advanceToNextAction();
             }
 
@@ -435,6 +465,7 @@ export class TrainingEngine {
                 this._recallPlan = plan; // save for recall pass
                 this.stepIndex = 0;
                 this.phase = 'teaching';
+                this.logPlan(plan, 'teach');
                 return this.advanceToNextAction();
             }
 

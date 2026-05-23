@@ -42,7 +42,8 @@ export class PathPlanner {
         const paths = this.graph.getPathsToEdge(
             targetFen,
             targetSan,
-            (key) => dueCardKeys.has(key)
+            (key) => dueCardKeys.has(key),
+            orientation
         );
 
         if (paths.length === 0) return null;
@@ -75,7 +76,7 @@ export class PathPlanner {
         const { fen: targetFen, san: targetSan } = FSRSService.parseCardKey(newCardKey);
         const orientation = this.graph.getOrientationForCard(newCardKey);
 
-        const paths = this.graph.getPathsToEdge(targetFen, targetSan);
+        const paths = this.graph.getPathsToEdge(targetFen, targetSan, undefined, orientation);
         if (paths.length === 0) return null;
         let path = paths[0];
 
@@ -119,17 +120,15 @@ export class PathPlanner {
 
         // Keep extending while there are due cards ahead
         for (let safety = 0; safety < 200; safety++) {
-            const edges = this.graph.getEdges(currentFen);
+            const edges = this.graph.getEdges(currentFen, orientation);
             if (edges.length === 0) break;
 
             // For opponent turns, pick the branch with the most due descendants
             const isUserTurnHere = PathPlanner.isUserTurnForOrientation(currentFen, orientation);
-            const opponentEdges = isUserTurnHere ? [] : edges;
-            const userEdges = isUserTurnHere ? edges : [];
 
             if (!isUserTurnHere && edges.length > 0) {
                 // Opponent move: pick branch with most due cards
-                const bestOpponent = this.pickBranchWithMostDue(edges, dueCardKeys);
+                const bestOpponent = this.pickBranchWithMostDue(edges, dueCardKeys, orientation);
                 if (!bestOpponent || visited.has(bestOpponent.to)) break;
                 visited.add(bestOpponent.from);
                 extended.push(bestOpponent);
@@ -177,7 +176,7 @@ export class PathPlanner {
         let currentFen = path[path.length - 1].to;
 
         for (let safety = 0; safety < 200; safety++) {
-            const edges = this.graph.getEdges(currentFen);
+            const edges = this.graph.getEdges(currentFen, orientation);
             if (edges.length === 0) break;
 
             const isUserTurnHere = PathPlanner.isUserTurnForOrientation(currentFen, orientation);
@@ -185,7 +184,7 @@ export class PathPlanner {
             if (!isUserTurnHere && edges.length > 0) {
                 // Opponent turn: pick any branch with new cards
                 const branchWithNew = edges.find(e => {
-                    const descendants = this.graph.getDescendantCardKeys(e.to);
+                    const descendants = this.graph.getDescendantCardKeys(e.to, orientation);
                     return descendants.some(k => newCardKeys.has(k));
                 });
                 if (branchWithNew) {
@@ -297,14 +296,14 @@ export class PathPlanner {
         return steps;
     }
 
-    private pickBranchWithMostDue(edges: GraphEdge[], dueCardKeys: Set<string>): GraphEdge | null {
+    private pickBranchWithMostDue(edges: GraphEdge[], dueCardKeys: Set<string>, orientation?: 'white' | 'black'): GraphEdge | null {
         if (edges.length === 0) return null;
 
         let best: GraphEdge | null = null;
         let bestCount = -1;
 
         for (const edge of edges) {
-            const descendants = this.graph.getDescendantCardKeys(edge.to);
+            const descendants = this.graph.getDescendantCardKeys(edge.to, orientation);
             const count = descendants.filter(k => dueCardKeys.has(k)).length;
             if (count > bestCount || (count === bestCount && Math.random() < 0.5)) {
                 best = edge;

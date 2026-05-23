@@ -8,6 +8,7 @@ export interface GraphEdge {
     san: string;        // SAN notation of the move
     isUserTurn: boolean;
     cardKey: string;    // FSRSService.makeCardKey(from, san) — only meaningful for user-turn edges
+    orientations: Set<'white' | 'black'>; // which repertoire orientations include this edge
 }
 
 export interface GraphNode {
@@ -66,10 +67,14 @@ export class RepertoireGraph {
 
     /**
      * Returns all outgoing edges from the given position.
+     * If orientation is provided, only returns edges that belong to that orientation's repertoire.
      */
-    getEdges(fen: string): GraphEdge[] {
+    getEdges(fen: string, orientation?: 'white' | 'black'): GraphEdge[] {
         const node = this.nodes.get(fen);
         if (!node) return [];
+        if (orientation) {
+            return node.edges.filter(e => e.orientations.has(orientation));
+        }
         return node.edges;
     }
 
@@ -99,14 +104,16 @@ export class RepertoireGraph {
      * Find all paths from root to a specific edge (fen, move).
      * Returns paths sorted by: shortest first, then most due cards, then random.
      * Each path is an array of edges from root to target.
+     * If orientation is provided, only follows edges belonging to that orientation.
      */
     getPathsToEdge(
         targetFen: string,
         targetSan: string,
-        isDueCheck?: (cardKey: string) => boolean
+        isDueCheck?: (cardKey: string) => boolean,
+        orientation?: 'white' | 'black'
     ): GraphEdge[][] {
         const results: GraphEdge[][] = [];
-        this.dfsPathsToEdge(this.rootFen, targetFen, targetSan, [], new Set(), results);
+        this.dfsPathsToEdge(this.rootFen, targetFen, targetSan, [], new Set(), results, orientation);
 
         if (isDueCheck) {
             results.sort((a, b) => {
@@ -145,11 +152,12 @@ export class RepertoireGraph {
     /**
      * Returns all user-turn card keys that are descendants of a given position,
      * useful for determining opponent branch density of due cards.
+     * If orientation is provided, only follows edges belonging to that orientation.
      */
-    getDescendantCardKeys(fen: string): string[] {
+    getDescendantCardKeys(fen: string, orientation?: 'white' | 'black'): string[] {
         const keys: string[] = [];
         const visited = new Set<string>();
-        this.collectDescendantCardKeys(fen, visited, keys);
+        this.collectDescendantCardKeys(fen, visited, keys, orientation);
         return keys;
     }
 
@@ -190,15 +198,19 @@ export class RepertoireGraph {
 
             const cardKey = FSRSService.makeCardKey(beforeFen, move.san);
 
-            // Only add edge if it doesn't already exist
+            // Only add edge if it doesn't already exist; otherwise merge orientation
             const node = this.nodes.get(beforeFen)!;
-            if (!node.edges.some(e => e.san === move.san && e.to === afterFen)) {
+            const existing = node.edges.find(e => e.san === move.san && e.to === afterFen);
+            if (existing) {
+                existing.orientations.add(orientation);
+            } else {
                 const edge: GraphEdge = {
                     from: beforeFen,
                     to: afterFen,
                     san: move.san,
                     isUserTurn,
                     cardKey,
+                    orientations: new Set([orientation]),
                 };
                 node.edges.push(edge);
 
@@ -227,7 +239,8 @@ export class RepertoireGraph {
         targetSan: string,
         path: GraphEdge[],
         visited: Set<string>,
-        results: GraphEdge[][]
+        results: GraphEdge[][],
+        orientation?: 'white' | 'black'
     ): void {
         if (results.length >= 10) return; // limit path enumeration
         if (visited.has(currentFen)) return;
@@ -236,7 +249,11 @@ export class RepertoireGraph {
         const node = this.nodes.get(currentFen);
         if (!node) { visited.delete(currentFen); return; }
 
-        for (const edge of node.edges) {
+        const edges = orientation
+            ? node.edges.filter(e => e.orientations.has(orientation))
+            : node.edges;
+
+        for (const edge of edges) {
             if (results.length >= 10) break;
             const newPath = [...path, edge];
 
@@ -245,24 +262,28 @@ export class RepertoireGraph {
             }
 
             // Continue searching deeper (the target could be further along)
-            this.dfsPathsToEdge(edge.to, targetFen, targetSan, newPath, visited, results);
+            this.dfsPathsToEdge(edge.to, targetFen, targetSan, newPath, visited, results, orientation);
         }
 
         visited.delete(currentFen);
     }
 
-    private collectDescendantCardKeys(fen: string, visited: Set<string>, keys: string[]): void {
+    private collectDescendantCardKeys(fen: string, visited: Set<string>, keys: string[], orientation?: 'white' | 'black'): void {
         if (visited.has(fen)) return;
         visited.add(fen);
 
         const node = this.nodes.get(fen);
         if (!node) return;
 
-        for (const edge of node.edges) {
+        const edges = orientation
+            ? node.edges.filter(e => e.orientations.has(orientation))
+            : node.edges;
+
+        for (const edge of edges) {
             if (edge.isUserTurn) {
                 keys.push(edge.cardKey);
             }
-            this.collectDescendantCardKeys(edge.to, visited, keys);
+            this.collectDescendantCardKeys(edge.to, visited, keys, orientation);
         }
     }
 }
