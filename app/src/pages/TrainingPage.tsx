@@ -70,12 +70,12 @@ const TrainingPage: React.FC = () => {
     }, [repertoireData]);
 
     // Handle traversal completion: save updated FSRS cards + dailyPlayCount
-    const handleTraversalComplete = useCallback(async (cardsRated: number, updatedCards: Record<string, FSRSCardData>) => {
+    const handleTraversalComplete = useCallback(async (correctCardsRated: number, updatedCards: Record<string, FSRSCardData>) => {
         const currentData = repertoireDataRef.current;
         if (!currentData || !dal) return;
 
         try {
-            const newDailyCount = currentData.dailyPlayCount + cardsRated;
+            const newDailyCount = currentData.dailyPlayCount + correctCardsRated;
             const settings = currentData.weightSettings ?? WeightSettings.createDefault();
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 RepertoireDataUtils.convertToVariantData(currentData),
@@ -86,10 +86,11 @@ const TrainingPage: React.FC = () => {
 
             // Update ref immediately but don't trigger engine recreation via setRepertoireData
             repertoireDataRef.current = newData;
+            // Reconcile UI with persisted value (should match live count)
             setReviewedToday(newDailyCount);
             await dal.storeRepertoireData(newData);
 
-            console.log(`DAL: Saved. dailyPlayCount: ${newDailyCount} (+${cardsRated})`);
+            console.log(`DAL: Saved. dailyPlayCount: ${newDailyCount} (+${correctCardsRated})`);
         } catch (e: any) {
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);
@@ -99,6 +100,10 @@ const TrainingPage: React.FC = () => {
 
     const handleQueueStats = useCallback((stats: { dueCount: number; newCount: number; totalCards: number }) => {
         setQueueStats(stats);
+    }, []);
+
+    const handleCardRated = useCallback(() => {
+        setReviewedToday(prev => prev + 1);
     }, []);
 
     if (loading) {
@@ -133,6 +138,7 @@ const TrainingPage: React.FC = () => {
                 fsrsCards={repertoireData.fsrsCards ?? {}}
                 onTraversalComplete={handleTraversalComplete}
                 onQueueStats={handleQueueStats}
+                onCardRated={handleCardRated}
             />
         </div>
     );

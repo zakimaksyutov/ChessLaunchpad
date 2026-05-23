@@ -26,6 +26,7 @@ interface TrainingPageControlProps {
     fsrsCards: Record<string, FSRSCardData>;
     onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>) => Promise<void>;
     onQueueStats: (stats: { dueCount: number; newCount: number; totalCards: number }) => void;
+    onCardRated: () => void;
 }
 
 const AUTOPLAY_MOVE_DELAY_MS = 250;
@@ -37,6 +38,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     fsrsCards,
     onTraversalComplete,
     onQueueStats,
+    onCardRated,
 }) => {
     const [fen, setFen] = useState<string>(() => new Chess().fen());
     const [pgn, setPgn] = useState<string>('');
@@ -52,9 +54,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const engineRef = useRef<TrainingEngine | null>(null);
     const onTraversalCompleteRef = useRef(onTraversalComplete);
     const onQueueStatsRef = useRef(onQueueStats);
+    const onCardRatedRef = useRef(onCardRated);
+    const correctCardsCountRef = useRef(0);
 
     useEffect(() => { onTraversalCompleteRef.current = onTraversalComplete; }, [onTraversalComplete]);
     useEffect(() => { onQueueStatsRef.current = onQueueStats; }, [onQueueStats]);
+    useEffect(() => { onCardRatedRef.current = onCardRated; }, [onCardRated]);
 
     // Build engine once on mount or when variants change (not when fsrsCards changes from saves)
     const initialFsrsCardsRef = useRef(fsrsCards);
@@ -91,6 +96,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         const eng = engineRef.current;
         if (!eng) return;
 
+        correctCardsCountRef.current = 0;
         chessRef.current = new Chess();
         setFen(chessRef.current.fen());
         setPgn('');
@@ -227,6 +233,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 // Valid repertoire move at branch point — rate it but revert board
                 setStatusMessage(result.branchPointMessage);
                 playSound(soundMove);
+                if (result.ratingWasCorrect) {
+                    correctCardsCountRef.current++;
+                    onCardRatedRef.current();
+                }
                 onQueueStatsRef.current(eng.getQueueStats());
                 return false; // ChessboardControl will revert the move
             }
@@ -254,6 +264,11 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             return false;
         }
 
+        if (result.ratingWasCorrect) {
+            correctCardsCountRef.current++;
+            onCardRatedRef.current();
+        }
+
         if (result.isEndOfTraversal) {
             playSound(soundSuccess);
             handleTraversalComplete(eng);
@@ -275,11 +290,11 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             timeoutRef.current = null;
         }
 
-        const rated = eng.getCardsRated();
+        const correctCount = correctCardsCountRef.current;
         const updatedCards = eng.getFsrsCards();
 
         // Await save completion before starting next traversal (prevents ETag race)
-        await onTraversalCompleteRef.current(rated, updatedCards);
+        await onTraversalCompleteRef.current(correctCount, updatedCards);
 
         // Start next traversal after save completes (tracked timeout for cleanup)
         timeoutRef.current = setTimeout(() => {
