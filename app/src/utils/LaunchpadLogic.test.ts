@@ -219,8 +219,8 @@ describe('LaunchpadLogic - FSRS Integration', () => {
     // Helper: build a Review-state card with high stability
     function buildReviewCardData(reviewDate: Date): FSRSCardData {
         const scheduler = fsrs({
-            request_retention: 0.9,
-            maximum_interval: 365,
+            request_retention: 0.97,
+            maximum_interval: 90,
             enable_fuzz: false,
             enable_short_term: true
         });

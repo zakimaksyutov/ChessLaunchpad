@@ -11,10 +11,13 @@ import {
 import { clearGames } from '../data/GamesDB';
 import { clearMastersCache } from '../services/MastersExplorerService';
 import { TrainingEngine } from '../services/TrainingEngine';
+import { FSRSService } from '../services/FSRSService';
 import './SettingsPage.css';
 
 const SettingsPage: React.FC = () => {
     const [contextDepth, setContextDepth] = useState<number>(() => TrainingEngine.getContextDepth());
+    const [retention, setRetention] = useState<number>(() => FSRSService.getRetention());
+    const [maxInterval, setMaxInterval] = useState<number>(() => FSRSService.getMaxInterval());
     const [lichessLoading, setLichessLoading] = useState(false);
     const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
     const [newAccountUsername, setNewAccountUsername] = useState('');
@@ -29,6 +32,17 @@ const SettingsPage: React.FC = () => {
         const clamped = Math.max(0, Math.min(10, Math.round(newDepth)));
         setContextDepth(clamped);
         TrainingEngine.setContextDepth(clamped);
+    };
+
+    const handleRetentionChange = (value: number) => {
+        setRetention(value);
+        FSRSService.setRetention(value);
+    };
+
+    const handleMaxIntervalChange = (value: number) => {
+        const clamped = Math.max(7, Math.min(365, Math.round(value)));
+        setMaxInterval(clamped);
+        FSRSService.setMaxInterval(clamped);
     };
 
     const handleLichessConnect = async () => {
@@ -115,6 +129,49 @@ const SettingsPage: React.FC = () => {
                 <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
                     Number of your moves shown as warm-up/cool-down around each target position.
                     Higher values provide more context but longer traversals.
+                </p>
+
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.2rem 0' }} />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                    <label htmlFor="retention" style={{ fontWeight: 500 }}>Target Retention:</label>
+                    <input
+                        id="retention"
+                        type="range"
+                        min="0.80"
+                        max="0.99"
+                        step="0.01"
+                        value={retention}
+                        onChange={(e) => handleRetentionChange(parseFloat(e.target.value))}
+                        style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+                        {Math.round(retention * 100)}%
+                    </span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                    Desired probability of recalling a move at review time.
+                    Higher values mean shorter intervals and more frequent reviews.
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                    <label htmlFor="max-interval" style={{ fontWeight: 500 }}>Max Interval:</label>
+                    <input
+                        id="max-interval"
+                        type="range"
+                        min="7"
+                        max="365"
+                        step="1"
+                        value={maxInterval}
+                        onChange={(e) => handleMaxIntervalChange(parseInt(e.target.value, 10))}
+                        style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+                        {maxInterval}d
+                    </span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                    Maximum number of days before a card is reviewed again.
                 </p>
             </div>
 

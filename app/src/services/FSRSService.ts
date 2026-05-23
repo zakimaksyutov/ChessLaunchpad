@@ -1,7 +1,14 @@
-import { createEmptyCard, fsrs, Rating, State, FSRS, Card } from 'ts-fsrs';
+import { createEmptyCard, fsrs, Rating, State, FSRS, Card, FSRS5_DEFAULT_DECAY, computeDecayFactor } from 'ts-fsrs';
 import { FSRSCardData } from '../models/FSRSCardData';
 
 const AUTOPLAY_RETRIEVABILITY_THRESHOLD = 0.97;
+
+const { decay: DECAY, factor: FACTOR } = computeDecayFactor(FSRS5_DEFAULT_DECAY);
+
+const RETENTION_KEY = 'chesslaunchpad_fsrs_retention';
+const MAX_INTERVAL_KEY = 'chesslaunchpad_fsrs_max_interval';
+const DEFAULT_RETENTION = 0.97;
+const DEFAULT_MAX_INTERVAL = 90;
 
 export class FSRSService {
     private scheduler: FSRS;
@@ -9,8 +16,8 @@ export class FSRSService {
 
     constructor(cards: Record<string, FSRSCardData> = {}) {
         this.scheduler = fsrs({
-            request_retention: 0.9,
-            maximum_interval: 365,
+            request_retention: FSRSService.getRetention(),
+            maximum_interval: FSRSService.getMaxInterval(),
             enable_fuzz: true,
             enable_short_term: true
         });
@@ -35,8 +42,8 @@ export class FSRSService {
         if (cardData.st !== State.Review) return false;
 
         // Must not be due
-        const due = new Date(cardData.d);
-        if (now >= due) return false;
+        const due = FSRSService.computeDueDate(cardData);
+        if (!due || now >= due) return false;
 
         // Retrievability must be >= threshold
         const card = this.hydrate(cardData);
@@ -102,7 +109,7 @@ export class FSRSService {
         const cardData = this.cards[key];
         if (!cardData) return false;
         if (cardData.st === State.New) return true;
-        const due = new Date(cardData.d);
+        const due = FSRSService.computeDueDate(cardData) ?? new Date(cardData.d);
         return now >= due;
     }
 
@@ -150,13 +157,14 @@ export class FSRSService {
         if (!cardData) return 0;
         if (cardData.st === State.New) return 0;
 
-        const due = new Date(cardData.d);
+        const due = FSRSService.computeDueDate(cardData) ?? new Date(cardData.d);
         const msPastDue = now.getTime() - due.getTime();
         if (msPastDue <= 0) return 0;
 
         const daysPastDue = msPastDue / (1000 * 60 * 60 * 24);
         if (cardData.st === State.Review && cardData.sd > 0) {
-            return daysPastDue / cardData.sd;
+            const scheduledDays = FSRSService.computeInterval(cardData) ?? cardData.sd;
+            return daysPastDue / scheduledDays;
         }
         return daysPastDue;
     }
@@ -173,8 +181,8 @@ export class FSRSService {
             if (!cardData) continue;
             if (cardData.st !== State.Review) continue;
 
-            const due = new Date(cardData.d);
-            if (now >= due) continue; // already due, not ahead-of-schedule
+            const due = FSRSService.computeDueDate(cardData);
+            if (!due || now >= due) continue; // already due, not ahead-of-schedule
 
             const card = this.hydrate(cardData);
             const R = this.scheduler.get_retrievability(card, now, false);
@@ -186,12 +194,14 @@ export class FSRSService {
     }
 
     hydrate(data: FSRSCardData): Card {
+        const due = FSRSService.computeDueDate(data) ?? new Date(data.d);
+        const scheduledDays = FSRSService.computeInterval(data) ?? data.sd;
         return {
-            due: new Date(data.d),
+            due,
             stability: data.s,
             difficulty: data.di,
             elapsed_days: data.e,
-            scheduled_days: data.sd,
+            scheduled_days: scheduledDays,
             learning_steps: data.ls,
             reps: data.r,
             lapses: data.l,
@@ -218,5 +228,65 @@ export class FSRSService {
                 : String(card.last_review);
         }
         return result;
+    }
+
+    // ─── Settings (localStorage) ────────────────────────────────────────
+
+    static getRetention(): number {
+        try {
+            const stored = localStorage.getItem(RETENTION_KEY);
+            if (stored !== null) {
+                const val = parseFloat(stored);
+                if (isFinite(val) && val >= 0.80 && val <= 0.99) return val;
+            }
+        } catch { /* localStorage unavailable */ }
+        return DEFAULT_RETENTION;
+    }
+
+    static setRetention(value: number): void {
+        try {
+            localStorage.setItem(RETENTION_KEY, String(Math.max(0.80, Math.min(0.99, value))));
+        } catch { /* localStorage unavailable */ }
+    }
+
+    static getMaxInterval(): number {
+        try {
+            const stored = localStorage.getItem(MAX_INTERVAL_KEY);
+            if (stored !== null) {
+                const val = parseInt(stored, 10);
+                if (isFinite(val) && val >= 7 && val <= 365) return val;
+            }
+        } catch { /* localStorage unavailable */ }
+        return DEFAULT_MAX_INTERVAL;
+    }
+
+    static setMaxInterval(value: number): void {
+        try {
+            localStorage.setItem(MAX_INTERVAL_KEY, String(Math.max(7, Math.min(365, Math.round(value)))));
+        } catch { /* localStorage unavailable */ }
+    }
+
+    /**
+     * Compute the interval (in days) for a Review-state card using current settings.
+     * Returns null for non-Review cards or cards without last_review.
+     */
+    static computeInterval(card: FSRSCardData): number | null {
+        if (card.st !== State.Review || !card.lr) return null;
+        const retention = FSRSService.getRetention();
+        const maxInterval = FSRSService.getMaxInterval();
+        return Math.min(
+            Math.max(Math.round((card.s / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1)), 1),
+            maxInterval
+        );
+    }
+
+    /**
+     * Compute the due date for a Review-state card using current settings.
+     * Returns null for non-Review cards or cards without last_review.
+     */
+    static computeDueDate(card: FSRSCardData): Date | null {
+        const interval = FSRSService.computeInterval(card);
+        if (interval === null || !card.lr) return null;
+        return new Date(new Date(card.lr).getTime() + interval * 24 * 60 * 60 * 1000);
     }
 }
