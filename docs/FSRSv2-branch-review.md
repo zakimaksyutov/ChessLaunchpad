@@ -85,19 +85,21 @@
 
 ---
 
-## 🧹 DEAD CODE & CLEANUP (~1,300 lines removable)
+## ✅ ~~🧹 DEAD CODE & CLEANUP (~1,300 lines removable)~~ — ADDRESSED
 
-| Priority | Item | Lines |
-|----------|------|-------|
-| **A** | Delete `LaunchpadLogic.ts` + test (entirely dead) | ~1,150 |
-| **A** | Delete `BadgeRowUtils.ts` + test (orphaned) | ~80 |
-| **A** | Remove unused `GraphEdge` import (TrainingEngine.ts:5) | 1 |
-| **A** | Remove dead methods: `peekIsNew`, `getCardDataByKey`, 5 graph accessors | ~30 |
-| **A** | Drop write-only `TraversalPlan.targetCardKeys` & `isTeachingPlan` | ~10 |
-| **B** | Unify duplicated `isUserTurn` logic (TrainingEngine vs PathPlanner) | — |
-| **B** | Have `requestHint` reuse `getHintForStep` | — |
-| **B** | Extract common retry-loop from `startRegularTraversal`/`startTeachRecall` | — |
-| **C** | V1 fields (`currentEpoch`, `errorEMA`, `successEMA`, `WeightSettings`) — plan sunset | ~40 |
+> **Resolved** (commit `9036325`): All Priority A items removed — 1,347 lines deleted across 12 files.
+
+| Priority | Item | Lines | Status |
+|----------|------|-------|--------|
+| **A** | ~~Delete `LaunchpadLogic.ts` + test (entirely dead)~~ | ~1,150 | ✅ Deleted |
+| **A** | ~~Delete `BadgeRowUtils.ts` + test (orphaned)~~ | ~80 | ✅ Deleted |
+| **A** | ~~Remove unused `GraphEdge` import (TrainingEngine.ts:5)~~ | 1 | ✅ Removed |
+| **A** | ~~Remove dead methods: `peekIsNew`, `getCardDataByKey`, 5 graph accessors~~ | ~30 | ✅ Removed |
+| **A** | ~~Drop write-only `TraversalPlan.targetCardKeys` & `isTeachingPlan`~~ | ~10 | ✅ Removed |
+| **B** | Unify duplicated `isUserTurn` logic (TrainingEngine vs PathPlanner) | — | Deferred — refactoring, not dead code |
+| **B** | Have `requestHint` reuse `getHintForStep` | — | Deferred — refactoring, not dead code |
+| **B** | Extract common retry-loop from `startRegularTraversal`/`startTeachRecall` | — | Deferred — refactoring, not dead code |
+| **C** | V1 fields (`currentEpoch`, `errorEMA`, `successEMA`, `WeightSettings`) — plan sunset | ~40 | Kept intentionally for rollback safety |
 
 ---
 
