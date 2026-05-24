@@ -158,10 +158,32 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const handleAddAccount = () => {
+    const [addingAccount, setAddingAccount] = useState(false);
+    const [addAccountError, setAddAccountError] = useState<string>('');
+
+    const handleAddAccount = async () => {
         const trimmed = newAccountUsername.trim().toLowerCase();
         if (!trimmed) return;
         if (linkedAccounts.some(a => a.platform === newAccountPlatform && a.username === trimmed)) return;
+
+        setAddingAccount(true);
+        setAddAccountError('');
+        try {
+            const url = newAccountPlatform === 'lichess'
+                ? `https://lichess.org/api/user/${encodeURIComponent(trimmed)}`
+                : `https://api.chess.com/pub/player/${encodeURIComponent(trimmed)}`;
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                setAddAccountError(`User "${trimmed}" not found on ${newAccountPlatform === 'chess.com' ? 'Chess.com' : 'Lichess'}.`);
+                return;
+            }
+        } catch {
+            setAddAccountError('Could not verify username. Check your connection and try again.');
+            return;
+        } finally {
+            setAddingAccount(false);
+        }
+
         setLinkedAccountsDraft([...linkedAccounts, { platform: newAccountPlatform, username: trimmed }]);
         setNewAccountUsername('');
     };
@@ -172,7 +194,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleAccountKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleAddAccount();
+        if (e.key === 'Enter') { e.preventDefault(); handleAddAccount(); }
     };
 
     const handleLichessConnect = async () => {
@@ -205,8 +227,10 @@ const SettingsPage: React.FC = () => {
             <div className="settings-card">
                 <h1>Settings</h1>
 
-                {loading && <div>Loading settings…</div>}
-
+                {loading ? (
+                    <div>Loading settings…</div>
+                ) : (
+                <>
                 {errorMessage && <div className="settings-error">{errorMessage}</div>}
                 {saveMessage && (
                     <div className={saveMessage.type === 'success' ? 'cache-success' : 'settings-error'}>
@@ -215,7 +239,8 @@ const SettingsPage: React.FC = () => {
                 )}
 
                 {/* ── Training Settings ── */}
-                <h2 style={{ marginTop: '1rem', marginBottom: '0.5rem', fontSize: '1.1rem' }}>Training</h2>
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />
+                <h2 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>Training</h2>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
                     <label htmlFor="context-depth" style={{ fontWeight: 500 }}>Context Depth:</label>
@@ -226,7 +251,6 @@ const SettingsPage: React.FC = () => {
                         max="10"
                         step="1"
                         value={contextDepth}
-                        disabled={loading}
                         onChange={(e) => setContextDepth(Math.max(0, Math.min(10, parseInt(e.target.value, 10))))}
                         style={{ flex: 1 }}
                     />
@@ -247,7 +271,6 @@ const SettingsPage: React.FC = () => {
                         max="0.99"
                         step="0.01"
                         value={retention}
-                        disabled={loading}
                         onChange={(e) => setRetention(parseFloat(e.target.value))}
                         style={{ flex: 1 }}
                     />
@@ -269,7 +292,6 @@ const SettingsPage: React.FC = () => {
                         max="365"
                         step="1"
                         value={maxInterval}
-                        disabled={loading}
                         onChange={(e) => setMaxInterval(Math.max(7, Math.min(365, parseInt(e.target.value, 10))))}
                         style={{ flex: 1 }}
                     />
@@ -304,18 +326,22 @@ const SettingsPage: React.FC = () => {
                         placeholder={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
                         aria-label={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
                         value={newAccountUsername}
-                        onChange={(e) => setNewAccountUsername(e.target.value)}
+                        onChange={(e) => { setNewAccountUsername(e.target.value); setAddAccountError(''); }}
                         onKeyDown={handleAccountKeyDown}
+                        disabled={addingAccount}
                     />
                     <button
                         className="linked-accounts-add-btn"
                         type="button"
                         onClick={handleAddAccount}
-                        disabled={!newAccountUsername.trim()}
+                        disabled={!newAccountUsername.trim() || addingAccount}
                     >
-                        Add
+                        {addingAccount ? 'Checking…' : 'Add'}
                     </button>
                 </div>
+                {addAccountError && (
+                    <div className="settings-error" style={{ marginTop: '0.5rem' }}>{addAccountError}</div>
+                )}
 
                 {linkedAccounts.length > 0 && (
                     <ul className="linked-accounts-list">
@@ -350,25 +376,27 @@ const SettingsPage: React.FC = () => {
                     <button
                         className="primary"
                         onClick={handleSave}
-                        disabled={!isDirty || saving || loading}
+                        disabled={!isDirty || saving}
                     >
                         {saving ? 'Saving…' : 'Save'}
                     </button>
                     <button
                         className="secondary"
                         onClick={handleDiscard}
-                        disabled={!isDirty || saving || loading}
+                        disabled={!isDirty || saving}
                     >
                         Discard
                     </button>
                     <button
                         className="secondary"
                         onClick={handleReset}
-                        disabled={saving || loading}
+                        disabled={saving}
                     >
                         Reset to Defaults
                     </button>
                 </div>
+                </>
+                )}
             </div>
 
             <div className="settings-card lichess-section">
