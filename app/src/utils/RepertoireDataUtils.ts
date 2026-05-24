@@ -1,9 +1,11 @@
 import { OpeningVariant } from "../models/OpeningVariant";
-import { RepertoireData, OpeningVariantData } from "../models/RepertoireData";
+import { RepertoireData, OpeningVariantData, AppSettings } from "../models/RepertoireData";
 import { WeightSettings } from "../models/WeightSettings";
 import { FSRSCardData } from "../models/FSRSCardData";
 import { RepertoireGraph } from "../services/RepertoireGraph";
 import { FSRSService } from "../services/FSRSService";
+import { TrainingEngine } from "../services/TrainingEngine";
+import { getLinkedAccounts, setLinkedAccounts } from "../services/LinkedAccountsService";
 
 export class RepertoireDataUtils {
 
@@ -60,6 +62,21 @@ export class RepertoireDataUtils {
             // Reset daily counter on new day
             repertoireData.dailyPlayCount = 0;
         }
+
+        // Hydrate in-memory settings from backend (settings preferred, trainingSettings as legacy fallback)
+        const s = repertoireData.settings ?? repertoireData.trainingSettings;
+        if (s) {
+            if (typeof s.contextDepth === 'number') TrainingEngine.setContextDepth(s.contextDepth);
+            if (typeof s.retention === 'number') FSRSService.setRetention(s.retention);
+            if (typeof s.maxInterval === 'number') FSRSService.setMaxInterval(s.maxInterval);
+            if (Array.isArray(s.linkedAccounts)) setLinkedAccounts(s.linkedAccounts);
+        }
+
+        // Migrate: ensure we use `settings` going forward
+        if (repertoireData.trainingSettings && !repertoireData.settings) {
+            repertoireData.settings = repertoireData.trainingSettings;
+        }
+        delete repertoireData.trainingSettings;
     }
 
     public static convertToVariantData(repertoireData: RepertoireData): OpeningVariant[] {
@@ -81,11 +98,26 @@ export class RepertoireDataUtils {
         return variants;
     }
 
+    /**
+     * Build current AppSettings from in-memory state.
+     * Merges into existing settings to preserve unknown fields.
+     */
+    public static buildCurrentSettings(existing?: AppSettings | null): AppSettings {
+        return {
+            ...(existing ?? {}),
+            contextDepth: TrainingEngine.getContextDepth(),
+            retention: FSRSService.getRetention(),
+            maxInterval: FSRSService.getMaxInterval(),
+            linkedAccounts: getLinkedAccounts(),
+        };
+    }
+
     public static convertToRepertoireData(
         variants: OpeningVariant[],
         dailyPlayCount: number,
         weightSettings?: WeightSettings,
-        fsrsCards?: Record<string, FSRSCardData>
+        fsrsCards?: Record<string, FSRSCardData>,
+        existingSettings?: AppSettings | null
     ): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
@@ -97,7 +129,7 @@ export class RepertoireDataUtils {
             successEMA: variant.successEMA
         }));
 
-        const settings =
+        const wSettings =
             weightSettings?.clone() ??
             variants[0]?.weightSettings?.clone() ??
             WeightSettings.createDefault();
@@ -107,8 +139,9 @@ export class RepertoireDataUtils {
             currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
             dailyPlayCount: dailyPlayCount,
-            weightSettings: settings,
-            fsrsCards: fsrsCards ?? {}
+            weightSettings: wSettings,
+            fsrsCards: fsrsCards ?? {},
+            settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
         };
     }
 

@@ -1,85 +1,188 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLichessAuth } from '../LichessAuthContext';
 import {
     getLinkedAccounts,
-    addLinkedAccount,
-    removeLinkedAccount,
+    setLinkedAccounts,
     LinkedAccount,
     Platform,
-    getSyncTimestampKey,
+    cleanupRemovedAccount,
 } from '../services/LinkedAccountsService';
 import { clearGames } from '../data/GamesDB';
 import { clearMastersCache } from '../services/MastersExplorerService';
 import { TrainingEngine } from '../services/TrainingEngine';
 import { FSRSService } from '../services/FSRSService';
+import { createDataAccessLayer } from '../data/DataAccessLayer';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import './SettingsPage.css';
 
 const SettingsPage: React.FC = () => {
+    // Draft state (local to form, not applied until Save)
     const [contextDepth, setContextDepth] = useState<number>(() => TrainingEngine.getContextDepth());
     const [retention, setRetention] = useState<number>(() => FSRSService.getRetention());
     const [maxInterval, setMaxInterval] = useState<number>(() => FSRSService.getMaxInterval());
-    const [lichessLoading, setLichessLoading] = useState(false);
-    const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
+    const [linkedAccounts, setLinkedAccountsDraft] = useState<LinkedAccount[]>(() => getLinkedAccounts());
     const [newAccountUsername, setNewAccountUsername] = useState('');
     const [newAccountPlatform, setNewAccountPlatform] = useState<Platform>('lichess');
-    const [clearingCache, setClearingCache] = useState(false);
-    const [cacheCleared, setCacheCleared] = useState(false);
-    const [errorMessage, setErrorMessage] = useState<string>('');
 
+    // Track removed accounts for deferred cleanup
+    const removedAccountsRef = useRef<LinkedAccount[]>([]);
+
+    // Loading state for initial fetch
+    const [loading, setLoading] = useState(true);
+
+    // Dirty tracking
+    const [isDirty, setIsDirty] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Lichess integration (separate, not part of Save/Discard)
+    const [lichessLoading, setLichessLoading] = useState(false);
     const { connected, login, logout } = useLichessAuth();
 
-    const handleContextDepthChange = (newDepth: number) => {
-        const clamped = Math.max(0, Math.min(10, Math.round(newDepth)));
-        setContextDepth(clamped);
-        TrainingEngine.setContextDepth(clamped);
+    // Cache clearing
+    const [clearingCache, setClearingCache] = useState(false);
+    const [cacheCleared, setCacheCleared] = useState(false);
+
+    const [errorMessage, setErrorMessage] = useState<string>('');
+
+    // On mount, fetch RepertoireData to hydrate module-level settings from backend
+    useEffect(() => {
+        let cancelled = false;
+        const hydrate = async () => {
+            try {
+                const username = localStorage.getItem('username');
+                const hashedPassword = localStorage.getItem('hashedPassword');
+                if (!username || !hashedPassword) return;
+
+                const dal = createDataAccessLayer(username, hashedPassword);
+                await dal.retrieveRepertoireData(); // normalize() hydrates module vars
+
+                if (cancelled) return;
+                // Refresh draft state from freshly-hydrated module vars
+                setContextDepth(TrainingEngine.getContextDepth());
+                setRetention(FSRSService.getRetention());
+                setMaxInterval(FSRSService.getMaxInterval());
+                setLinkedAccountsDraft(getLinkedAccounts());
+            } catch (err: unknown) {
+                if (cancelled) return;
+                const msg = err instanceof Error ? err.message : String(err);
+                setErrorMessage(`Failed to load settings: ${msg}`);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        };
+        hydrate();
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Mark dirty when any draft value changes (skip while loading)
+    useEffect(() => {
+        if (loading) return;
+        const committedAccounts = getLinkedAccounts();
+        const accountsChanged =
+            JSON.stringify(linkedAccounts) !== JSON.stringify(committedAccounts);
+        const trainingChanged =
+            contextDepth !== TrainingEngine.getContextDepth() ||
+            retention !== FSRSService.getRetention() ||
+            maxInterval !== FSRSService.getMaxInterval();
+        setIsDirty(accountsChanged || trainingChanged);
+    }, [contextDepth, retention, maxInterval, linkedAccounts, loading]);
+
+    const handleDiscard = () => {
+        setContextDepth(TrainingEngine.getContextDepth());
+        setRetention(FSRSService.getRetention());
+        setMaxInterval(FSRSService.getMaxInterval());
+        setLinkedAccountsDraft(getLinkedAccounts());
+        removedAccountsRef.current = [];
+        setIsDirty(false);
+        setSaveMessage(null);
     };
 
-    const handleRetentionChange = (value: number) => {
-        setRetention(value);
-        FSRSService.setRetention(value);
-    };
-
-    const handleMaxIntervalChange = (value: number) => {
-        const clamped = Math.max(7, Math.min(365, Math.round(value)));
-        setMaxInterval(clamped);
-        FSRSService.setMaxInterval(clamped);
-    };
-
-    const handleLichessConnect = async () => {
-        setLichessLoading(true);
-        try {
-            await login();
-        } finally {
-            setLichessLoading(false);
+    const handleReset = () => {
+        setContextDepth(2);
+        setRetention(0.97);
+        setMaxInterval(90);
+        setLinkedAccountsDraft([]);
+        // Mark all current committed accounts as removed for cleanup on save
+        for (const account of getLinkedAccounts()) {
+            if (!removedAccountsRef.current.some(a => a.platform === account.platform && a.username === account.username)) {
+                removedAccountsRef.current.push(account);
+            }
         }
     };
 
-    const handleLichessDisconnect = async () => {
-        setLichessLoading(true);
+    const handleSave = async () => {
+        setSaving(true);
+        setSaveMessage(null);
+        setErrorMessage('');
+
         try {
-            await logout();
+            const username = localStorage.getItem('username');
+            const hashedPassword = localStorage.getItem('hashedPassword');
+            if (!username || !hashedPassword) {
+                setErrorMessage('Not logged in. Please log in first.');
+                return;
+            }
+
+            const dal = createDataAccessLayer(username, hashedPassword);
+            const current = await dal.retrieveRepertoireData();
+
+            // Apply draft to in-memory services
+            TrainingEngine.setContextDepth(contextDepth);
+            FSRSService.setRetention(retention);
+            FSRSService.setMaxInterval(maxInterval);
+            setLinkedAccounts(linkedAccounts);
+
+            // Merge settings into existing backend data (preserves unknown fields)
+            const updated = {
+                ...current,
+                settings: RepertoireDataUtils.buildCurrentSettings(current.settings),
+            };
+
+            await dal.storeRepertoireData(updated);
+
+            // Clean up local data for removed accounts after successful save
+            for (const removed of removedAccountsRef.current) {
+                cleanupRemovedAccount(removed.username, removed.platform);
+            }
+            removedAccountsRef.current = [];
+
+            setIsDirty(false);
+            setSaveMessage({ type: 'success', text: 'Settings saved.' });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to save settings: ${msg}`);
         } finally {
-            setLichessLoading(false);
+            setSaving(false);
         }
     };
 
     const handleAddAccount = () => {
-        const trimmed = newAccountUsername.trim();
+        const trimmed = newAccountUsername.trim().toLowerCase();
         if (!trimmed) return;
-        const updated = addLinkedAccount(trimmed, newAccountPlatform);
-        setLinkedAccounts(updated);
+        if (linkedAccounts.some(a => a.platform === newAccountPlatform && a.username === trimmed)) return;
+        setLinkedAccountsDraft([...linkedAccounts, { platform: newAccountPlatform, username: trimmed }]);
         setNewAccountUsername('');
     };
 
     const handleRemoveAccount = (username: string, platform: Platform) => {
-        const updated = removeLinkedAccount(username, platform);
-        setLinkedAccounts(updated);
+        setLinkedAccountsDraft(linkedAccounts.filter(a => !(a.platform === platform && a.username === username)));
+        removedAccountsRef.current.push({ username, platform });
     };
 
     const handleAccountKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleAddAccount();
-        }
+        if (e.key === 'Enter') handleAddAccount();
+    };
+
+    const handleLichessConnect = async () => {
+        setLichessLoading(true);
+        try { await login(); } finally { setLichessLoading(false); }
+    };
+
+    const handleLichessDisconnect = async () => {
+        setLichessLoading(true);
+        try { await logout(); } finally { setLichessLoading(false); }
     };
 
     const handleClearCache = async () => {
@@ -88,9 +191,6 @@ const SettingsPage: React.FC = () => {
         try {
             await clearGames();
             await clearMastersCache();
-            for (const account of linkedAccounts) {
-                localStorage.removeItem(getSyncTimestampKey(account.platform, account.username));
-            }
             setCacheCleared(true);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -103,14 +203,21 @@ const SettingsPage: React.FC = () => {
     return (
         <div className="settings-page">
             <div className="settings-card">
-                <h1>Training Settings</h1>
-                <p className="settings-description">
-                    Configure how many moves of context are shown before and after the target position during training.
-                </p>
+                <h1>Settings</h1>
+
+                {loading && <div>Loading settings…</div>}
 
                 {errorMessage && <div className="settings-error">{errorMessage}</div>}
+                {saveMessage && (
+                    <div className={saveMessage.type === 'success' ? 'cache-success' : 'settings-error'}>
+                        {saveMessage.text}
+                    </div>
+                )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                {/* ── Training Settings ── */}
+                <h2 style={{ marginTop: '1rem', marginBottom: '0.5rem', fontSize: '1.1rem' }}>Training</h2>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
                     <label htmlFor="context-depth" style={{ fontWeight: 500 }}>Context Depth:</label>
                     <input
                         id="context-depth"
@@ -119,7 +226,8 @@ const SettingsPage: React.FC = () => {
                         max="10"
                         step="1"
                         value={contextDepth}
-                        onChange={(e) => handleContextDepthChange(parseInt(e.target.value, 10))}
+                        disabled={loading}
+                        onChange={(e) => setContextDepth(Math.max(0, Math.min(10, parseInt(e.target.value, 10))))}
                         style={{ flex: 1 }}
                     />
                     <span style={{ minWidth: '2rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
@@ -128,12 +236,9 @@ const SettingsPage: React.FC = () => {
                 </div>
                 <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
                     Number of your moves shown as warm-up/cool-down around each target position.
-                    Higher values provide more context but longer traversals.
                 </p>
 
-                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.2rem 0' }} />
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
                     <label htmlFor="retention" style={{ fontWeight: 500 }}>Target Retention:</label>
                     <input
                         id="retention"
@@ -142,7 +247,8 @@ const SettingsPage: React.FC = () => {
                         max="0.99"
                         step="0.01"
                         value={retention}
-                        onChange={(e) => handleRetentionChange(parseFloat(e.target.value))}
+                        disabled={loading}
+                        onChange={(e) => setRetention(parseFloat(e.target.value))}
                         style={{ flex: 1 }}
                     />
                     <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
@@ -154,7 +260,7 @@ const SettingsPage: React.FC = () => {
                     Higher values mean shorter intervals and more frequent reviews.
                 </p>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
                     <label htmlFor="max-interval" style={{ fontWeight: 500 }}>Max Interval:</label>
                     <input
                         id="max-interval"
@@ -163,7 +269,8 @@ const SettingsPage: React.FC = () => {
                         max="365"
                         step="1"
                         value={maxInterval}
-                        onChange={(e) => handleMaxIntervalChange(parseInt(e.target.value, 10))}
+                        disabled={loading}
+                        onChange={(e) => setMaxInterval(Math.max(7, Math.min(365, parseInt(e.target.value, 10))))}
                         style={{ flex: 1 }}
                     />
                     <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
@@ -173,38 +280,11 @@ const SettingsPage: React.FC = () => {
                 <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
                     Maximum number of days before a card is reviewed again.
                 </p>
-            </div>
 
-            <div className="settings-card lichess-section">
-                <h1>Lichess Integration</h1>
-                <p className="settings-description">
-                    Connect your Lichess account to improve API rate limits for position analysis.
-                </p>
-                {connected ? (
-                    <div className="lichess-status">
-                        <span className="lichess-connected-badge">✓ Connected</span>
-                        <button
-                            className="secondary"
-                            onClick={handleLichessDisconnect}
-                            disabled={lichessLoading}
-                        >
-                            {lichessLoading ? 'Disconnecting…' : 'Disconnect'}
-                        </button>
-                    </div>
-                ) : (
-                    <button
-                        className="lichess-connect-btn"
-                        onClick={handleLichessConnect}
-                        disabled={lichessLoading}
-                    >
-                        {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
-                    </button>
-                )}
-            </div>
-
-            <div className="settings-card linked-accounts-section">
-                <h1>Linked Accounts</h1>
-                <p className="settings-description">
+                {/* ── Linked Accounts ── */}
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />
+                <h2 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>Linked Accounts</h2>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem' }}>
                     Add Lichess or Chess.com usernames to download and analyze your games on the Games page.
                 </p>
 
@@ -264,25 +344,77 @@ const SettingsPage: React.FC = () => {
                     </ul>
                 )}
 
-                {linkedAccounts.length > 0 && (
-                    <div className="cache-section">
-                        {cacheCleared && (
-                            <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
-                        )}
-                        <div className="cache-info">
-                            <button
-                                className="secondary"
-                                onClick={handleClearCache}
-                                disabled={clearingCache}
-                            >
-                                {clearingCache ? 'Clearing…' : 'Clear Cache'}
-                            </button>
-                            <span className="cache-count">
-                                Remove all downloaded games and sync timestamps.
-                            </span>
-                        </div>
+                {/* ── Save / Discard / Reset ── */}
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />
+                <div className="settings-actions">
+                    <button
+                        className="primary"
+                        onClick={handleSave}
+                        disabled={!isDirty || saving || loading}
+                    >
+                        {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                        className="secondary"
+                        onClick={handleDiscard}
+                        disabled={!isDirty || saving || loading}
+                    >
+                        Discard
+                    </button>
+                    <button
+                        className="secondary"
+                        onClick={handleReset}
+                        disabled={saving || loading}
+                    >
+                        Reset to Defaults
+                    </button>
+                </div>
+            </div>
+
+            <div className="settings-card lichess-section">
+                <h1>Lichess Integration</h1>
+                <p className="settings-description">
+                    Connect your Lichess account to improve API rate limits for position analysis.
+                </p>
+                {connected ? (
+                    <div className="lichess-status">
+                        <span className="lichess-connected-badge">✓ Connected</span>
+                        <button
+                            className="secondary"
+                            onClick={handleLichessDisconnect}
+                            disabled={lichessLoading}
+                        >
+                            {lichessLoading ? 'Disconnecting…' : 'Disconnect'}
+                        </button>
                     </div>
+                ) : (
+                    <button
+                        className="lichess-connect-btn"
+                        onClick={handleLichessConnect}
+                        disabled={lichessLoading}
+                    >
+                        {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
+                    </button>
                 )}
+            </div>
+
+            <div className="settings-card">
+                <h1>Data Cache</h1>
+                <p className="settings-description">
+                    Remove all downloaded games and sync timestamps.
+                </p>
+                {cacheCleared && (
+                    <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
+                )}
+                <div className="cache-info">
+                    <button
+                        className="secondary"
+                        onClick={handleClearCache}
+                        disabled={clearingCache}
+                    >
+                        {clearingCache ? 'Clearing…' : 'Clear Cache'}
+                    </button>
+                </div>
             </div>
         </div>
     );

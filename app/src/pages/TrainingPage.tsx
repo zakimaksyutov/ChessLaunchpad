@@ -81,7 +81,8 @@ const TrainingPage: React.FC = () => {
                 RepertoireDataUtils.convertToVariantData(currentData),
                 newDailyCount,
                 settings,
-                updatedCards
+                updatedCards,
+                currentData.settings
             );
 
             // Update ref immediately but don't trigger engine recreation via setRepertoireData

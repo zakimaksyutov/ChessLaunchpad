@@ -5,10 +5,11 @@ const AUTOPLAY_RETRIEVABILITY_THRESHOLD = 0.97;
 
 const { decay: DECAY, factor: FACTOR } = computeDecayFactor(FSRS5_DEFAULT_DECAY);
 
-const RETENTION_KEY = 'chesslaunchpad_fsrs_retention';
-const MAX_INTERVAL_KEY = 'chesslaunchpad_fsrs_max_interval';
 const DEFAULT_RETENTION = 0.97;
 const DEFAULT_MAX_INTERVAL = 90;
+
+let _retention: number = DEFAULT_RETENTION;
+let _maxInterval: number = DEFAULT_MAX_INTERVAL;
 
 export class FSRSService {
     private scheduler: FSRS;
@@ -233,37 +234,19 @@ export class FSRSService {
     // ─── Settings (localStorage) ────────────────────────────────────────
 
     static getRetention(): number {
-        try {
-            const stored = localStorage.getItem(RETENTION_KEY);
-            if (stored !== null) {
-                const val = parseFloat(stored);
-                if (isFinite(val) && val >= 0.80 && val <= 0.99) return val;
-            }
-        } catch { /* localStorage unavailable */ }
-        return DEFAULT_RETENTION;
+        return _retention;
     }
 
     static setRetention(value: number): void {
-        try {
-            localStorage.setItem(RETENTION_KEY, String(Math.max(0.80, Math.min(0.99, value))));
-        } catch { /* localStorage unavailable */ }
+        _retention = Math.max(0.80, Math.min(0.99, value));
     }
 
     static getMaxInterval(): number {
-        try {
-            const stored = localStorage.getItem(MAX_INTERVAL_KEY);
-            if (stored !== null) {
-                const val = parseInt(stored, 10);
-                if (isFinite(val) && val >= 7 && val <= 365) return val;
-            }
-        } catch { /* localStorage unavailable */ }
-        return DEFAULT_MAX_INTERVAL;
+        return _maxInterval;
     }
 
     static setMaxInterval(value: number): void {
-        try {
-            localStorage.setItem(MAX_INTERVAL_KEY, String(Math.max(7, Math.min(365, Math.round(value)))));
-        } catch { /* localStorage unavailable */ }
+        _maxInterval = Math.max(7, Math.min(365, Math.round(value)));
     }
 
     /**

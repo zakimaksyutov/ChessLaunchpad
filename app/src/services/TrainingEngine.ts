@@ -41,8 +41,9 @@ export interface EngineStatus {
     annotations: Annotation[];
 }
 
-const CONTEXT_DEPTH_KEY = 'chesslaunchpad_context_depth';
 const DEFAULT_CONTEXT_DEPTH = 2;
+
+let _contextDepth: number = DEFAULT_CONTEXT_DEPTH;
 
 /**
  * Orchestrates the traversal lifecycle for FSRSv2 training.
@@ -97,20 +98,11 @@ export class TrainingEngine {
     // ─── Static helpers ────────────────────────────────────────────────
 
     static getContextDepth(): number {
-        try {
-            const stored = localStorage.getItem(CONTEXT_DEPTH_KEY);
-            if (stored !== null) {
-                const val = parseInt(stored, 10);
-                if (isFinite(val) && val >= 0) return val;
-            }
-        } catch { /* localStorage unavailable */ }
-        return DEFAULT_CONTEXT_DEPTH;
+        return _contextDepth;
     }
 
     static setContextDepth(depth: number): void {
-        try {
-            localStorage.setItem(CONTEXT_DEPTH_KEY, String(Math.max(0, Math.round(depth))));
-        } catch { /* localStorage unavailable */ }
+        _contextDepth = Math.max(0, Math.round(depth));
     }
 
     // ─── Traversal lifecycle ───────────────────────────────────────────
