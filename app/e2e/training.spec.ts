@@ -1,0 +1,289 @@
+import { test, expect, Page } from '@playwright/test';
+import { buildRepertoireData, setupMockEnvironment, advanceTime } from './helpers';
+
+// ── Board helpers (adapted from ChessControl e2e) ────────────────────
+
+async function getBoardInfo(page: Page) {
+  const board = page.locator('[data-testid="chessboard"]');
+  const boardBox = await board.boundingBox();
+  expect(boardBox).not.toBeNull();
+  const sqSize = boardBox!.width / 8;
+  return { board, boardBox: boardBox!, sqSize };
+}
+
+function squareCenter(
+  boardBox: { x: number; y: number; width: number },
+  square: string,
+  orientation: 'white' | 'black' = 'white',
+) {
+  const sqSize = boardBox.width / 8;
+  const file = square.charCodeAt(0) - 97;
+  const rank = parseInt(square[1]) - 1;
+  if (orientation === 'white') {
+    return {
+      x: boardBox.x + (file + 0.5) * sqSize,
+      y: boardBox.y + (7 - rank + 0.5) * sqSize,
+    };
+  }
+  return {
+    x: boardBox.x + (7 - file + 0.5) * sqSize,
+    y: boardBox.y + (rank + 0.5) * sqSize,
+  };
+}
+
+async function dragPiece(
+  page: Page,
+  boardBox: { x: number; y: number; width: number },
+  from: string,
+  to: string,
+  orientation: 'white' | 'black' = 'white',
+) {
+  const fromPos = squareCenter(boardBox, from, orientation);
+  const toPos = squareCenter(boardBox, to, orientation);
+  await page.mouse.move(fromPos.x, fromPos.y);
+  await page.mouse.down();
+  await page.mouse.move(toPos.x, toPos.y, { steps: 5 });
+  await page.mouse.up();
+}
+
+/**
+ * Assert that a green hint arrow points from `fromSq` to `toSq`.
+ * The arrow-layer SVG uses board-relative pixel coords, so we compare
+ * line endpoints against computed square centers (with a tolerance).
+ */
+async function expectHintArrow(
+  page: Page,
+  boardBox: { x: number; y: number; width: number },
+  fromSq: string,
+  toSq: string,
+  orientation: 'white' | 'black' = 'white',
+) {
+  const arrow = page.locator('.arrow-layer line[stroke="#15781B"]:not([display="none"])');
+  await expect(arrow.first()).toBeAttached({ timeout: 5_000 });
+
+  const sqSize = boardBox.width / 8;
+  // Arrow SVG coords are relative to the board (0,0 = top-left of board)
+  const from = squareCenter(boardBox, fromSq, orientation);
+  const to = squareCenter(boardBox, toSq, orientation);
+  const relFrom = { x: from.x - boardBox.x, y: from.y - boardBox.y };
+  const relTo   = { x: to.x   - boardBox.x, y: to.y   - boardBox.y };
+
+  const x1 = Number(await arrow.first().getAttribute('x1'));
+  const y1 = Number(await arrow.first().getAttribute('y1'));
+  const x2 = Number(await arrow.first().getAttribute('x2'));
+  const y2 = Number(await arrow.first().getAttribute('y2'));
+
+  const tolerance = sqSize * 0.5;
+  expect(Math.abs(x1 - relFrom.x)).toBeLessThan(tolerance);
+  expect(Math.abs(y1 - relFrom.y)).toBeLessThan(tolerance);
+  expect(Math.abs(x2 - relTo.x)).toBeLessThan(tolerance);
+  expect(Math.abs(y2 - relTo.y)).toBeLessThan(tolerance);
+}
+
+/**
+ * Assert that a specific piece (e.g. 'wp', 'bn') sits on `square`.
+ * Piece codes: first char = color (w/b), second = type (p/n/b/r/q/k).
+ */
+async function expectPiece(page: Page, square: string, piece: string) {
+  const loc = page.locator(`[data-square="${square}"] [data-piece="${piece}"]`);
+  await expect(loc).toBeAttached({ timeout: 2_000 });
+}
+
+/** Assert that a square has no piece on it. */
+async function expectEmpty(page: Page, square: string) {
+  const loc = page.locator(`[data-square="${square}"] [data-piece]`);
+  await expect(loc).not.toBeAttached();
+}
+
+/** Assert the board shows the starting position (spot-check key squares). */
+async function expectStartingPosition(page: Page) {
+  await Promise.all([
+    expectPiece(page, 'e2', 'wp'),
+    expectPiece(page, 'e7', 'bp'),
+    expectPiece(page, 'g1', 'wn'),
+    expectEmpty(page, 'e4'),
+    expectEmpty(page, 'f3'),
+  ]);
+}
+
+/** Assert the board shows position after 1. e4 e5 2. Nf3. */
+async function expectPositionAfterNf3(page: Page) {
+  await Promise.all([
+    expectPiece(page, 'e4', 'wp'),
+    expectPiece(page, 'e5', 'bp'),
+    expectPiece(page, 'f3', 'wn'),
+    expectEmpty(page, 'e2'),
+    expectEmpty(page, 'g1'),
+  ]);
+}
+
+const fixture = buildRepertoireData([
+  { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
+]);
+
+// ── Tests ────────────────────────────────────────────────────────────
+
+test.describe('Training page – one white variant (1. e4 e5 2. Nf3)', () => {
+
+  test('loads and shows the chessboard with badges', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, fixture);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    await expect(page.locator('text=Error')).not.toBeVisible();
+    await expect(page.locator('text=No variants available')).not.toBeVisible();
+  });
+
+  test('teaching mode autoplays and waits for user moves', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, fixture);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // New FSRS cards (st=0) → teaching mode.
+    // White variant: user plays white moves, engine autoplays black.
+
+    // Teaching mode shows a green arrow (SVG line) and a status bar
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).toBeVisible({ timeout: 5_000 });
+    await expect(teachingBar).toContainText('New moves');
+
+    // Board should show starting position at the beginning of teaching
+    await expectStartingPosition(page);
+
+    const { boardBox } = await getBoardInfo(page);
+
+    // Green hint arrow should point from e2 to e4
+    await expectHintArrow(page, boardBox, 'e2', 'e4');
+
+    // 1. e4 (follow the arrow)
+    await dragPiece(page, boardBox, 'e2', 'e4');
+
+    // Engine autoplays 1...e5, then teaching arrow should point g1→f3
+    await expectHintArrow(page, boardBox, 'g1', 'f3');
+
+    // 2. Nf3 (follow the arrow)
+    await dragPiece(page, boardBox, 'g1', 'f3');
+
+    // ── Recall pass ──────────────────────────────────────────────────
+    // No save should have occurred yet (teaching doesn't trigger a save)
+    expect(saves).toHaveLength(0);
+
+    // After teaching, the engine resets the board and asks the user to
+    // recall the same moves without arrows.
+    const recallBar = page.locator('.status-bar-recall');
+    await expect(recallBar).toBeVisible({ timeout: 5_000 });
+    await expect(recallBar).toContainText('Recall');
+
+    // Board should be reset to starting position for recall
+    await expectStartingPosition(page);
+
+    // No hint arrows should be present during recall
+    const greenArrows = page.locator('.arrow-layer line[stroke="#15781B"]:not([display="none"])');
+    await expect(greenArrows).toHaveCount(0);
+
+    // 1. e4 (from memory)
+    await dragPiece(page, boardBox, 'e2', 'e4');
+
+    // Engine autoplays 1...e5 — wait for the pawn to land
+    await expectPiece(page, 'e5', 'bp');
+
+    // 2. Nf3 (from memory)
+    await dragPiece(page, boardBox, 'g1', 'f3');
+
+    // Board should show position after 1. e4 e5 2. Nf3
+    await expectPositionAfterNf3(page);
+
+    // ── Verify FSRS rating was persisted ────────────────────────────
+    // Exactly one save should have occurred (after recall, not during teaching)
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+    const saved = saves[0].body as {
+      fsrsCards: Record<string, { st: number; r: number }>;
+    };
+
+    // Card keys: "{normalized_fen}::{SAN}"
+    const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+    const nf3Key = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
+
+    expect(saved.fsrsCards[e4Key]).toBeDefined();
+    expect(saved.fsrsCards[e4Key].st).toBeGreaterThan(0);   // no longer New
+    expect(saved.fsrsCards[e4Key].r).toBeGreaterThan(0);     // has been reviewed
+    expect(saved.fsrsCards[e4Key].ls).toBe(0);               // rated Again (ls=0)
+
+    expect(saved.fsrsCards[nf3Key]).toBeDefined();
+    expect(saved.fsrsCards[nf3Key].st).toBeGreaterThan(0);
+    expect(saved.fsrsCards[nf3Key].r).toBeGreaterThan(0);
+    expect(saved.fsrsCards[nf3Key].ls).toBe(0);              // rated Again (ls=0), not Good
+
+    // Both cards should be due within 2 minutes (Again → 1-min learning step)
+    const now = Date.now();
+    const e4Due = new Date(saved.fsrsCards[e4Key].d).getTime();
+    const nf3Due = new Date(saved.fsrsCards[nf3Key].d).getTime();
+    const twoMinMs = 2 * 60 * 1000;
+    expect(e4Due - now).toBeLessThan(twoMinMs);
+    expect(nf3Due - now).toBeLessThan(twoMinMs);
+
+    // ── After recall: cards are not immediately due ────────────────
+    // After recall, cards are rated "Again" and enter Learning state
+    // (st=1) with a short relearning interval (~1 min). The engine
+    // correctly reports "No cards to train" until they become due.
+    const noCardsMsg = page.getByText('No cards to train.');
+    await expect(noCardsMsg).toBeVisible({ timeout: 5_000 });
+
+    // ── Fast-forward time and re-enter training ─────────────────────
+    await advanceTime(page, 2);
+
+    // Navigate away and back to trigger a fresh startTraversal()
+    // The GET mock now returns the saved data (with rated fsrsCards).
+    await page.goto('/#/training');
+
+    // ── Regular training (review pass) ──────────────────────────────
+    // Cards are Learning (st=1) and now due → regular review mode.
+    await expect(board).toBeVisible({ timeout: 10_000 });
+    await expectStartingPosition(page);
+
+    // Re-capture board box after navigation (may have changed)
+    const { boardBox: reviewBoardBox } = await getBoardInfo(page);
+
+    // Should NOT be teaching or recalling
+    await expect(teachingBar).not.toBeVisible({ timeout: 3_000 });
+    await expect(recallBar).not.toBeVisible();
+    await expect(greenArrows).toHaveCount(0);
+
+    // 1. e4 (regular review — no hints)
+    await dragPiece(page, reviewBoardBox, 'e2', 'e4');
+
+    // Engine autoplays 1...e5 — wait for the pawn to land
+    await expectPiece(page, 'e5', 'bp');
+
+    // 2. Nf3 (regular review)
+    await dragPiece(page, reviewBoardBox, 'g1', 'f3');
+
+    // Board should show final position
+    await expectPositionAfterNf3(page);
+
+    // Second save should arrive (after regular review)
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(2);
+
+    // Verify due dates after regular review — both rated Good (ls=1),
+    // next learning step is ~10 min, so due date should be well under 1 hour.
+    const saved2 = saves[1].body as { fsrsCards: Record<string, { d: string; ls: number; st: number }> };
+    const now2 = Date.now();
+    const oneHourMs = 60 * 60 * 1000;
+    const e4Due2 = new Date(saved2.fsrsCards[e4Key].d).getTime();
+    const nf3Due2 = new Date(saved2.fsrsCards[nf3Key].d).getTime();
+    expect(e4Due2 - now2).toBeLessThan(oneHourMs);
+    expect(nf3Due2 - now2).toBeLessThan(oneHourMs);
+    // Both should have advanced to learning step 1
+    expect(saved2.fsrsCards[e4Key].ls).toBe(1);
+    expect(saved2.fsrsCards[nf3Key].ls).toBe(1);
+
+    // Cards are not due yet (~10 min learning step) — should see empty state again
+    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+  });
+
+});

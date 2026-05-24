@@ -291,6 +291,14 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         // Advance to next action
         const status = eng.getStatus();
         setPhase(status.phase);
+
+        // Board reset for teaching → recall transition
+        if (status.phase === 'recalling' && phase === 'teaching') {
+            chessRef.current = new Chess();
+            setFen(chessRef.current.fen());
+            setPgn('');
+        }
+
         scheduleNextAction(eng);
         onQueueStatsRef.current(eng.getQueueStats());
 

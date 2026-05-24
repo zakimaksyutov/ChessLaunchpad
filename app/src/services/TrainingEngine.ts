@@ -63,6 +63,7 @@ export class TrainingEngine {
     private branchAlternativesPlayed: Set<string> = new Set(); // card keys played at branch points
     private _isTeachingPass: boolean = false;
     private _isAheadOfSchedule: boolean = false;
+    private _isRecalling: boolean = false;
     private _recallPlan: TraversalPlan | null = null; // saved for recall pass after teaching
     private hintRequested: boolean = false;
 
@@ -122,6 +123,7 @@ export class TrainingEngine {
         this.branchAlternativesPlayed.clear();
         this._isTeachingPass = false;
         this._isAheadOfSchedule = false;
+        this._isRecalling = false;
         this._recallPlan = null;
         this.hintRequested = false;
 
@@ -202,7 +204,7 @@ export class TrainingEngine {
         }
 
         // ── Recall pass: user must recall each move, rated Again ──
-        if (this.phase === 'recalling') {
+        if (this._isRecalling) {
             if (step.isUserTurn && playedSan !== step.expectedMove) {
                 // Wrong move during recall
                 this.errorFens.add(currentFen);
@@ -211,17 +213,19 @@ export class TrainingEngine {
             if (step.isUserTurn) {
                 // Only rate cards that are part of the new card set being taught
                 const isNewCard = this.plan!.newCardKeys.includes(step.cardKey);
-                if (isNewCard) {
-                    this.fsrsService.rateCardByKey(step.cardKey, false, new Date());
-                    this.cardsRated++;
-                    this.queue.remove(step.cardKey);
-                }
-                this.errorFens.delete(currentFen);
-                this.hintRequested = false;
+               if (isNewCard) {
+                   this.fsrsService.rateCardByKey(step.cardKey, false, new Date());
+                   this.cardsRated++;
+                   this.queue.remove(step.cardKey);
+               }
+               this.errorFens.delete(currentFen);
+               this.hintRequested = false;
             }
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
-            if (!isEnd) {
+            if (isEnd) {
+                this._isRecalling = false;
+            } else {
                 // Update phase for next step (e.g. transition to autoplay for opponent)
                 this.advanceToNextAction();
             }
@@ -493,6 +497,7 @@ export class TrainingEngine {
     private finishTeachingPass(): MoveResult {
         // Switch to recall pass
         this._isTeachingPass = false;
+        this._isRecalling = true;
         this.phase = 'recalling';
         this.plan = this._recallPlan;
         this._recallPlan = null;
@@ -518,6 +523,7 @@ export class TrainingEngine {
                 }
                 // If recall plan is also empty, complete
             }
+            this._isRecalling = false;
             this.phase = 'complete';
             return this.getStatus();
         }
@@ -533,7 +539,7 @@ export class TrainingEngine {
             return this.getStatus();
         }
 
-        if (this.phase === 'recalling') {
+        if (this._isRecalling) {
             if (!step.isUserTurn) {
                 this.phase = 'autoplay';
             } else {
