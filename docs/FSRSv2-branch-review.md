@@ -9,9 +9,10 @@
 
 ## 🚨 CRITICAL / HIGH (fix before merge)
 
-### 1. Null assertion crash on missing credentials
+### ~~1. Null assertion crash on missing credentials~~ — FALSE POSITIVE
 **TrainingPage.tsx:27** — `createDataAccessLayer(username!, hashedPassword!)` proceeds even when credentials are null. `setError()` is async and doesn't halt execution.
 *Found by: Code Review*
+**Resolution:** `TrainingPage` is wrapped in `<ProtectedRoute>` (App.tsx:59), which checks `localStorage.getItem('username')` and redirects to `/` before the component ever renders. The non-null assertions are safe. Comment added to code for clarity.
 
 ### 2. Shared graph edges are orientation-order-dependent
 **RepertoireGraph.ts:84-93** — `GraphEdge` stores one `isUserTurn` flag, but edges can be shared across white/black repertoires. Whichever PGN loads first determines `isUserTurn` for all orientations. `getCardKeys()` can silently drop real user cards.

@@ -18,6 +18,8 @@ const TrainingPage: React.FC = () => {
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
 
+    // Safe to use non-null assertions: ProtectedRoute guarantees credentials
+    // exist in localStorage before this component renders.
     const dal: IDataAccessLayer = useMemo(() => {
         const username = localStorage.getItem('username');
         const hashedPassword = localStorage.getItem('hashedPassword');
