@@ -47,6 +47,14 @@ jobs:
         run: yarn test
         working-directory: app
 
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: app
+
+      - name: Run Playwright e2e tests
+        run: yarn test:e2e
+        working-directory: app
+
       # If tests pass, do a build
       - name: Build
         run: yarn build
