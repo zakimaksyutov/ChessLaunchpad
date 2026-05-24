@@ -40,6 +40,12 @@ yarn build
 yarn test
 ```
 
+### Run E2E tests (Playwright)
+
+```sh
+yarn test:e2e
+```
+
 ### Start dev server
 
 ```sh
@@ -82,3 +88,4 @@ The dev server is pinned to **port 5274** (`strictPort: true`) to avoid conflict
 
 - **Never amend commits.** Always create new commits instead of using `git commit --amend`.
 - Do not auto-commit. Leave changes uncommitted for review unless explicitly told to commit.
+- **Baseline before big changes.** Run `yarn test` and `yarn test:e2e` before starting to confirm they pass, so failures after your changes aren't misattributed.

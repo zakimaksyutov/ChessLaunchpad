@@ -128,22 +128,6 @@ describe('ReviewQueue', () => {
         });
     });
 
-    describe('peekIsNew', () => {
-        it('should return true when next card is new', () => {
-            const service = new FSRSService({});
-            service.ensureCard('fen1::e4');
-            const queue = new ReviewQueue();
-            queue.build(service, ['fen1::e4'], new Date());
-            expect(queue.peekIsNew()).toBe(true);
-        });
-
-        it('should return false on empty queue', () => {
-            const queue = new ReviewQueue();
-            queue.build(new FSRSService({}), [], new Date());
-            expect(queue.peekIsNew()).toBe(false);
-        });
-    });
-
     describe('dueCount / newCount', () => {
         it('should count new vs due cards', () => {
             const service = new FSRSService({});

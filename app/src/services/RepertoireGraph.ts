@@ -48,24 +48,6 @@ export class RepertoireGraph {
     }
 
     /**
-     * Returns all user-turn edges from the given position.
-     */
-    getUserMoveEdges(fen: string): GraphEdge[] {
-        const node = this.nodes.get(fen);
-        if (!node) return [];
-        return node.edges.filter(e => e.isUserTurn);
-    }
-
-    /**
-     * Returns all opponent-turn edges from the given position.
-     */
-    getOpponentMoveEdges(fen: string): GraphEdge[] {
-        const node = this.nodes.get(fen);
-        if (!node) return [];
-        return node.edges.filter(e => !e.isUserTurn);
-    }
-
-    /**
      * Returns all outgoing edges from the given position.
      * If orientation is provided, only returns edges that belong to that orientation's repertoire.
      */
@@ -129,15 +111,6 @@ export class RepertoireGraph {
         }
 
         return results;
-    }
-
-    /**
-     * Check if a move from `fen` leads to a position in the repertoire.
-     */
-    hasEdge(fen: string, san: string): boolean {
-        const node = this.nodes.get(fen);
-        if (!node) return false;
-        return node.edges.some(e => e.san === san);
     }
 
     /**

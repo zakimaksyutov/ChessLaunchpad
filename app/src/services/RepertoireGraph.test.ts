@@ -48,47 +48,6 @@ describe('RepertoireGraph', () => {
         });
     });
 
-    describe('edges', () => {
-        it('should identify user-turn edges for white', () => {
-            const graph = new RepertoireGraph([
-                { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
-            ]);
-            const userEdges = graph.getUserMoveEdges(startFen);
-            expect(userEdges.length).toBe(1);
-            expect(userEdges[0].san).toBe('e4');
-            expect(userEdges[0].isUserTurn).toBe(true);
-        });
-
-        it('should identify opponent edges for white', () => {
-            const graph = new RepertoireGraph([
-                { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
-            ]);
-            const afterE4 = getFenAfterMoves(['e4']);
-            const opponentEdges = graph.getOpponentMoveEdges(afterE4);
-            expect(opponentEdges.length).toBe(1);
-            expect(opponentEdges[0].san).toBe('e5');
-            expect(opponentEdges[0].isUserTurn).toBe(false);
-        });
-
-        it('should identify user-turn edges for black', () => {
-            const graph = new RepertoireGraph([
-                { pgn: PGN_1E4_E5_BLACK, orientation: 'black' },
-            ]);
-            const afterE4 = getFenAfterMoves(['e4']);
-            const userEdges = graph.getUserMoveEdges(afterE4);
-            expect(userEdges.length).toBe(1);
-            expect(userEdges[0].san).toBe('e5');
-        });
-
-        it('should return empty array for unknown FEN', () => {
-            const graph = new RepertoireGraph([
-                { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
-            ]);
-            expect(graph.getUserMoveEdges('unknown/fen')).toHaveLength(0);
-            expect(graph.getOpponentMoveEdges('unknown/fen')).toHaveLength(0);
-        });
-    });
-
     describe('card keys', () => {
         it('should return card keys only for user-turn edges', () => {
             const graph = new RepertoireGraph([
@@ -131,12 +90,11 @@ describe('RepertoireGraph', () => {
         });
     });
 
-    describe('hasEdge / getEdge', () => {
+    describe('getEdge', () => {
         it('should find existing edge', () => {
             const graph = new RepertoireGraph([
                 { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
             ]);
-            expect(graph.hasEdge(startFen, 'e4')).toBe(true);
             const edge = graph.getEdge(startFen, 'e4');
             expect(edge).toBeDefined();
             expect(edge!.san).toBe('e4');
@@ -146,7 +104,6 @@ describe('RepertoireGraph', () => {
             const graph = new RepertoireGraph([
                 { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
             ]);
-            expect(graph.hasEdge(startFen, 'd4')).toBe(false);
             expect(graph.getEdge(startFen, 'd4')).toBeUndefined();
         });
     });
@@ -215,9 +172,9 @@ describe('RepertoireGraph', () => {
             const node = graph.getNode(afterE4);
             expect(node).toBeDefined();
             // Should have both d5 and e5 as opponent edges
-            const edges = graph.getOpponentMoveEdges(afterE4);
-            expect(edges.length).toBe(2);
-            const moves = edges.map(e => e.san).sort();
+            const opponentEdges = node!.edges.filter(e => !e.isUserTurn);
+            expect(opponentEdges.length).toBe(2);
+            const moves = opponentEdges.map(e => e.san).sort();
             expect(moves).toEqual(['d5', 'e5']);
         });
     });

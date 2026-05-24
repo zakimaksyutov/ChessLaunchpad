@@ -15,8 +15,6 @@ export interface TraversalStep {
 export interface TraversalPlan {
     steps: TraversalStep[];
     orientation: 'white' | 'black';
-    targetCardKeys: string[];  // card keys that are targets in this traversal
-    isTeachingPlan: boolean;   // true if this is a teach-then-recall plan for new cards
     newCardKeys: string[];     // card keys being taught (for teaching plans)
 }
 
@@ -55,15 +53,9 @@ export class PathPlanner {
         // Build traversal steps with role assignments
         const steps = this.assignRoles(path, dueCardKeys, orientation);
 
-        const targetKeys = steps
-            .filter(s => s.role === 'target')
-            .map(s => s.cardKey);
-
         return {
             steps,
             orientation,
-            targetCardKeys: [...new Set(targetKeys)],
-            isTeachingPlan: false,
             newCardKeys: [],
         };
     }
@@ -102,8 +94,6 @@ export class PathPlanner {
         return {
             steps,
             orientation,
-            targetCardKeys: newCardKeysInPlan,
-            isTeachingPlan: true,
             newCardKeys: newCardKeysInPlan,
         };
     }

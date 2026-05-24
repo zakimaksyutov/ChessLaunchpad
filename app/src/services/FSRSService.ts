@@ -84,10 +84,6 @@ export class FSRSService {
         return this.cards[key];
     }
 
-    getCardDataByKey(key: string): FSRSCardData | undefined {
-        return this.cards[key];
-    }
-
     getRetrievability(normalizedFen: string, moveSan: string, now: Date): number | null {
         const key = FSRSService.makeCardKey(normalizedFen, moveSan);
         return this.getRetrievabilityByKey(key, now);

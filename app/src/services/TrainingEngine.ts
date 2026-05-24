@@ -2,7 +2,7 @@ import { Chess } from 'chess.js';
 import { State } from 'ts-fsrs';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService } from './FSRSService';
-import { RepertoireGraph, GraphEdge } from './RepertoireGraph';
+import { RepertoireGraph } from './RepertoireGraph';
 import { ReviewQueue } from './ReviewQueue';
 import { PathPlanner, TraversalPlan, TraversalStep } from './PathPlanner';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';

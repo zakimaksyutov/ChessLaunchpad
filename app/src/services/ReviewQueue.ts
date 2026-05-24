@@ -92,14 +92,6 @@ export class ReviewQueue {
     }
 
     /**
-     * Check if the next item is a new card (for teach-then-recall flow).
-     */
-    peekIsNew(): boolean {
-        const entry = this.peek();
-        return entry !== undefined && entry.state === State.New;
-    }
-
-    /**
      * Get all remaining entries (read-only snapshot).
      */
     getEntries(): readonly QueueEntry[] {
