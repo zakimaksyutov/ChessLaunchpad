@@ -2,9 +2,9 @@
 
 ## Project Description
 
-ChessLaunchpad is a web application for memorizing chess openings using spaced repetition. It helps players master their opening repertoires through interactive board training with an adaptive algorithm that prioritizes variants based on recency, error rate, frequency, and newness. Deployed at https://zakimaksyutov.github.io/ChessLaunchpad/.
+ChessLaunchpad is a web application for memorizing chess openings using spaced repetition. It helps players master their opening repertoires through interactive board training driven by the FSRS algorithm, which schedules position-level reviews via a priority queue and plans traversals through the repertoire tree. Deployed at https://zakimaksyutov.github.io/ChessLaunchpad/.
 
-For a deeper understanding of the product (variant selection, FSRS autoplay, pages, data flow), see `ARCHITECTURE.md`.
+For a deeper understanding of the product (FSRS training system, pages, data flow), see `ARCHITECTURE.md`.
 
 ## Tech Stack
 
@@ -12,6 +12,7 @@ For a deeper understanding of the product (variant selection, FSRS autoplay, pag
 - Vite for bundling and dev server
 - Vitest for testing
 - chess.js for game logic and PGN parsing
+- ts-fsrs for spaced-repetition scheduling
 - chess-control (in-house) for interactive board rendering, vendored in `app/vendor/chess-control/`
 - idb for IndexedDB access (Games page local storage)
 - React Router for client-side routing
@@ -67,7 +68,7 @@ yarn dev
 - `openings/` — Opening database files and merge scripts
 - `docs/` — Technical specifications
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
-  - `product-specs/FSRS.md` — FSRS autoplay specification
+  - `product-specs/FSRS.md` — FSRS training system specification
   - `product-specs/GAMES.md` — Games page product specification
   - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
