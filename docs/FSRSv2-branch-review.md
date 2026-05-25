@@ -130,15 +130,17 @@
 
 ---
 
-## 📊 SPEC DRIFT (intentional, update spec)
+## ~~📊 SPEC DRIFT (intentional, update spec)~~ — SPEC UPDATED
 
-| Item | Spec says | Code does | Likely intentional? |
-|------|-----------|-----------|---------------------|
-| Retention default | 0.9 | 0.97 | ✅ Aligns with autoplay threshold |
-| Max interval | 365 | 90 | ✅ Better for chess openings |
-| Context depth storage | Local only | Backend sync | ✅ Improvement (roaming) |
-| Inter-traversal delay | Immediate | 300ms | ✅ UX (sound plays) |
-| Retention/maxInterval settings | Fixed | User-configurable | ✅ Extension |
+> **Resolved:** All five items below have been updated in `docs/product-specs/FSRS.md` to match the implementation.
+
+| Item | Spec says | Code does | Likely intentional? | Spec updated? |
+|------|-----------|-----------|---------------------|---------------|
+| Retention default | 0.9 | 0.97 | ✅ Aligns with autoplay threshold | ✅ Spec §FSRS Configuration |
+| Max interval | 365 | 90 | ✅ Better for chess openings | ✅ Spec §FSRS Configuration |
+| Context depth storage | Local only | Backend sync | ✅ Improvement (roaming) | ✅ Spec §FSRS Configuration |
+| Inter-traversal delay | Immediate | 300ms | ✅ UX (sound plays) | ✅ Spec §FSRS Configuration |
+| Retention/maxInterval settings | Fixed | User-configurable | ✅ Extension | ✅ Spec §FSRS Configuration |
 
 ---
 
