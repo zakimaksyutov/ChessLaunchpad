@@ -808,7 +808,7 @@ function E({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 							}
 						}, `arrow-${n}`);
 					}
-					let c = i.x - r.x, l = i.y - r.y, u = Math.sqrt(c * c + l * l), d = Q * .156, f = i.x - c / u * d, p = i.y - l / u * d, m = `arrowhead-${o.replace(/[^a-zA-Z0-9]/g, "")}`;
+					let c = i.x - r.x, l = i.y - r.y, u = Math.sqrt(c * c + l * l), d = Q * .156, f = u > 0 ? i.x - c / u * d : i.x, p = u > 0 ? i.y - l / u * d : i.y, m = `arrowhead-${o.replace(/[^a-zA-Z0-9]/g, "")}`;
 					return /* @__PURE__ */ s("line", {
 						x1: r.x,
 						y1: r.y,
