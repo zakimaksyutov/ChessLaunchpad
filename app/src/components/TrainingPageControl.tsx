@@ -329,7 +329,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         timeoutRef.current = setTimeout(() => {
             timeoutRef.current = null;
             startNewTraversal();
-        }, 300); // tiny delay for the success sound to be heard
+        }, 500); // delay for the success sound to be heard
     };
 
     const handleHintRequest = () => {

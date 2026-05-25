@@ -502,7 +502,7 @@ test.describe('Training page — shared edge from both colors', () => {
     expect(saved1.fsrsCards[e4Key].st).toBeGreaterThan(0);
 
     // ── 2nd traversal: black e5 (teach + recall) ─────────────────────
-    // Engine auto-starts the next card after a 300ms delay.
+    // Engine auto-starts the next card after a 500ms delay.
     // Board flips to black orientation.
 
     await expect(teachingBar).toBeVisible({ timeout: 5_000 });
@@ -546,9 +546,12 @@ test.describe('Training page — shared edge from both colors', () => {
     await dragPiece(page, rwb, 'e2', 'e4');
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(3);
 
-    // Wait for second traversal to start — autoplay glow signals
-    // the engine is autoplaying white's e4 for the black review.
-    await expect(page.locator('.board-glow-autoplay')).toBeVisible({ timeout: 5_000 });
+    // Wait for second traversal to start — board flips to black orientation.
+    // Detect via the a1 square moving from bottom-left (white) to top-right (black).
+    await page.waitForFunction(() => {
+      const a1 = document.querySelector('[data-square="a1"]') as HTMLElement | null;
+      return a1 != null && parseFloat(a1.style.left) > 0;
+    }, { timeout: 6_000 });
 
     // Review e5 (black) — engine autoplays e4, then user plays e5
     await expectPiece(page, 'e4', 'wp');
