@@ -50,6 +50,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const [pgnAnnotations, setPgnAnnotations] = useState<Annotation[]>([]);
 
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const mountedRef = useRef(true);
     const chessRef = useRef<Chess>(new Chess());
     const engineRef = useRef<TrainingEngine | null>(null);
     const onTraversalCompleteRef = useRef(onTraversalComplete);
@@ -129,9 +130,11 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     }, []);
 
     useEffect(() => {
+        mountedRef.current = true;
         startNewTraversal();
 
         return () => {
+            mountedRef.current = false;
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current);
                 timeoutRef.current = null;
@@ -318,6 +321,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         // Await save completion before starting next traversal (prevents ETag race)
         await onTraversalCompleteRef.current(correctCount, updatedCards);
+
+        // Guard against scheduling after unmount (save was in-flight when component unmounted)
+        if (!mountedRef.current) return;
 
         // Start next traversal after save completes (tracked timeout for cleanup)
         timeoutRef.current = setTimeout(() => {

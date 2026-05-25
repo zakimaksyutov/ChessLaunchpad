@@ -77,15 +77,15 @@
 | # | Issue | Source |
 |---|-------|--------|
 | 14 | ~~Frozen `currentEpoch` breaks v1 rollback recency scoring~~ — N/A (V1 fields removed) | Data Migration |
-| 15 | PGN edits silently delete FSRS card history for changed positions | Data Migration |
-| 16 | `initialFsrsCardsRef` stale when variants+fsrsCards change simultaneously | React State |
-| 17 | Orphan timeout on unmount during async save | React State |
-| 18 | `setError` side effect inside `useMemo` (anti-pattern for future React) | React State |
-| 19 | `allAnnotations` creates new array every render, defeating memo | React State |
-| 20 | SettingsPage fragile coupling to `normalize()` side effects for hydration | Code Review |
-| 21 | `isDue()` returns true for New cards (confusing API, unused in queue) | Code Review |
+| 15 | ~~PGN edits silently delete FSRS card history for changed positions~~ — BY DESIGN (reconcileCards correctly removes cards for positions no longer in repertoire) | Data Migration |
+| 16 | ~~`initialFsrsCardsRef` stale when variants+fsrsCards change simultaneously~~ — DISMISSED (theoretical only; `variants` changes on load/import always come with fresh `fsrsCards`) | React State |
+| 17 | ~~Orphan timeout on unmount during async save~~ — FIXED (added `mountedRef` guard before post-save setTimeout) | React State |
+| 18 | ~~`setError` side effect inside `useMemo` (anti-pattern for future React)~~ — FALSE POSITIVE (no `setError` call exists inside any `useMemo` in the codebase) | React State |
+| 19 | ~~`allAnnotations` creates new array every render, defeating memo~~ — DISMISSED (negligible impact; vendored ChessboardControl does its own diffing) | React State |
+| 20 | SettingsPage fragile coupling to `normalize()` side effects for hydration — BACKLOG | Code Review |
+| 21 | ~~`isDue()` returns true for New cards (confusing API, unused in queue)~~ — DISMISSED (naming nitpick; queue handles New cards separately; doc comment already present) | Code Review |
 | 22 | ~~`isUserTurn` field on shared edges incorrect for multi-orientation~~ — FIXED (see #2) | Code Review |
-| 23 | No 412 retry logic for ETag conflicts between tabs | Data Migration |
+| 23 | No 412 retry logic for ETag conflicts between tabs — BACKLOG | Data Migration |
 
 ---
 
