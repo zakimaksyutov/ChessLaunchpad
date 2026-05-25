@@ -5,6 +5,7 @@ import { RepertoireGraph } from "../services/RepertoireGraph";
 import { FSRSService } from "../services/FSRSService";
 import { TrainingEngine } from "../services/TrainingEngine";
 import { getLinkedAccounts, setLinkedAccounts } from "../services/LinkedAccountsService";
+import { ensureActivity, getTodayEntry } from "../services/ActivityService";
 
 export class RepertoireDataUtils {
 
@@ -50,6 +51,10 @@ export class RepertoireDataUtils {
             // Reset daily counter on new day
             repertoireData.dailyPlayCount = 0;
         }
+
+        // Initialize activity and handle day boundary for practiceLog
+        const activity = ensureActivity(repertoireData);
+        getTodayEntry(activity);
 
         // Hydrate in-memory settings from backend (settings preferred, trainingSettings as legacy fallback)
         const s = repertoireData.settings ?? repertoireData.trainingSettings;
@@ -97,7 +102,8 @@ export class RepertoireDataUtils {
         variants: OpeningVariant[],
         dailyPlayCount: number,
         fsrsCards?: Record<string, FSRSCardData>,
-        existingSettings?: AppSettings | null
+        existingSettings?: AppSettings | null,
+        existingData?: RepertoireData | null,
     ): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
@@ -117,6 +123,7 @@ export class RepertoireDataUtils {
             dailyPlayCount: dailyPlayCount,
             fsrsCards: fsrsCards ?? {},
             settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
+            activity: existingData?.activity,
         };
     }
 

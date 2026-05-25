@@ -60,6 +60,9 @@ export class TrainingEngine {
     private stepIndex: number = 0;
     private phase: EnginePhase = 'idle';
     private cardsRated: number = 0;
+    private _reviewedCount: number = 0;  // positions rated Good in regular review
+    private _mistakeCount: number = 0;   // positions rated Again in regular review
+    private _learnedCount: number = 0;   // new positions that completed teach → recall
     private errorFens: Set<string> = new Set();
     private branchAlternativesPlayed: Set<string> = new Set(); // card keys played at branch points
     private _isTeachingPass: boolean = false;
@@ -120,6 +123,9 @@ export class TrainingEngine {
         this.queue.build(this.fsrsService, cardKeys, now);
 
         this.cardsRated = 0;
+        this._reviewedCount = 0;
+        this._mistakeCount = 0;
+        this._learnedCount = 0;
         this.errorFens.clear();
         this.branchAlternativesPlayed.clear();
         this._isTeachingPass = false;
@@ -217,6 +223,7 @@ export class TrainingEngine {
                if (isNewCard) {
                    this.fsrsService.rateCardByKey(step.cardKey, false, new Date());
                    this.cardsRated++;
+                   this._learnedCount++;  // recall-pass Again is "learned", not a mistake
                    this.queue.remove(step.cardKey);
                }
                this.errorFens.delete(currentFen);
@@ -247,6 +254,11 @@ export class TrainingEngine {
             const isCorrect = !hadError && !this.hintRequested;
             this.fsrsService.rateCardByKey(step.cardKey, isCorrect, new Date());
             this.cardsRated++;
+            if (isCorrect) {
+                this._reviewedCount++;
+            } else {
+                this._mistakeCount++;
+            }
             this.queue.remove(step.cardKey);
             this.errorFens.delete(currentFen);
             this.hintRequested = false;
@@ -279,6 +291,7 @@ export class TrainingEngine {
                 // Rate this unplanned move as Good
                 this.fsrsService.rateCardByKey(edge.cardKey, true, new Date());
                 this.cardsRated++;
+                this._reviewedCount++;
                 this.queue.remove(edge.cardKey);
                 this.branchAlternativesPlayed.add(edge.cardKey);
             }
@@ -388,6 +401,17 @@ export class TrainingEngine {
      */
     getCardsRated(): number {
         return this.cardsRated;
+    }
+
+    /**
+     * Get detailed traversal stats for activity tracking.
+     */
+    getTraversalStats(): { reviewed: number; mistakes: number; learned: number } {
+        return {
+            reviewed: this._reviewedCount,
+            mistakes: this._mistakeCount,
+            learned: this._learnedCount,
+        };
     }
 
     // ─── Private ───────────────────────────────────────────────────────

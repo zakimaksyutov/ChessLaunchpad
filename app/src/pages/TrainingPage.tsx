@@ -4,6 +4,8 @@ import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer
 import { RepertoireData } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
+import { recordTraversal, recordTime, ensureActivity, TraversalStats } from '../services/ActivityService';
+import { TimeTracker } from '../services/TimeTracker';
 import BadgeRow from '../components/BadgeRow';
 
 const TrainingPage: React.FC = () => {
@@ -16,6 +18,7 @@ const TrainingPage: React.FC = () => {
     const [reviewedToday, setReviewedToday] = useState<number>(0);
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
+    const timeTrackerRef = useRef<TimeTracker>(new TimeTracker());
 
     // Safe to use non-null assertions: ProtectedRoute guarantees credentials
     // exist in localStorage before this component renders.
@@ -27,6 +30,27 @@ const TrainingPage: React.FC = () => {
         }
         return createDataAccessLayer(username!, hashedPassword!);
     }, []);
+
+    // Start time tracker on mount, flush on unmount
+    useEffect(() => {
+        const tracker = timeTrackerRef.current;
+        tracker.start();
+
+        return () => {
+            tracker.stop();
+            // Flush remaining time on unmount
+            const elapsed = tracker.getElapsedSeconds();
+            const currentData = repertoireDataRef.current;
+            if (currentData && elapsed > 0) {
+                ensureActivity(currentData);
+                recordTime(currentData, elapsed);
+                // Best-effort save (fire-and-forget since component is unmounting)
+                dal.storeRepertoireData(currentData).catch(() => { /* best-effort */ });
+            }
+            tracker.destroy();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dal]);
 
     // On mount, retrieve data from the server
     useEffect(() => {
@@ -70,27 +94,38 @@ const TrainingPage: React.FC = () => {
         return RepertoireDataUtils.convertToVariantData(repertoireData);
     }, [repertoireData]);
 
-    // Handle traversal completion: save updated FSRS cards + dailyPlayCount
-    const handleTraversalComplete = useCallback(async (correctCardsRated: number, updatedCards: Record<string, FSRSCardData>) => {
+    // Handle traversal completion: save updated FSRS cards + activity stats
+    const handleTraversalComplete = useCallback(async (
+        correctCardsRated: number,
+        updatedCards: Record<string, FSRSCardData>,
+        traversalStats: TraversalStats,
+    ) => {
         const currentData = repertoireDataRef.current;
         if (!currentData || !dal) return;
 
         try {
-            const newDailyCount = currentData.dailyPlayCount + correctCardsRated;
+            // Consume elapsed time from tracker for this traversal
+            const elapsed = timeTrackerRef.current.consumeElapsed();
+
+            // Record activity
+            ensureActivity(currentData);
+            recordTraversal(currentData, traversalStats, elapsed);
+
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 RepertoireDataUtils.convertToVariantData(currentData),
-                newDailyCount,
+                currentData.dailyPlayCount,
                 updatedCards,
-                currentData.settings
+                currentData.settings,
+                currentData,
             );
 
             // Update ref immediately but don't trigger engine recreation via setRepertoireData
             repertoireDataRef.current = newData;
-            // Reconcile UI with persisted value (should match live count)
-            setReviewedToday(newDailyCount);
+            // Reconcile UI with persisted value
+            setReviewedToday(newData.dailyPlayCount);
             await dal.storeRepertoireData(newData);
 
-            console.log(`DAL: Saved. dailyPlayCount: ${newDailyCount} (+${correctCardsRated})`);
+            console.log(`DAL: Saved. dailyPlayCount: ${newData.dailyPlayCount} (+${correctCardsRated})`);
         } catch (e: any) {
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);

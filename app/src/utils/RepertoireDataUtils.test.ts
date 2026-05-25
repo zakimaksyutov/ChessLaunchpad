@@ -257,5 +257,76 @@ describe('RepertoireDataUtils', () => {
 
             expect(result.fsrsCards).toEqual({});
         });
+
+        it('should preserve activity from existing data', () => {
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', [])
+            ];
+
+            const existingData: RepertoireData = {
+                data: [],
+                currentEpoch: 0,
+                lastPlayedDate: new Date(),
+                dailyPlayCount: 5,
+                fsrsCards: {},
+                activity: {
+                    practiceLog: [{ date: '2026-05-25', reviewed: 10, mistakes: 2, learned: 1, traversals: 3, timeSeconds: 300 }],
+                    lifetime: { reviewed: 100, mistakes: 20, learned: 10, traversals: 50, timeSeconds: 5000 },
+                },
+            };
+
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 5, {}, null, existingData);
+
+            expect(result.activity).toBeDefined();
+            expect(result.activity!.practiceLog).toHaveLength(1);
+            expect(result.activity!.practiceLog[0].reviewed).toBe(10);
+            expect(result.activity!.lifetime.reviewed).toBe(100);
+        });
+
+        it('should have undefined activity when no existing data provided', () => {
+            const variants: OpeningVariant[] = [
+                new OpeningVariant('1. e4 e5', 'white', [])
+            ];
+
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, 0);
+
+            expect(result.activity).toBeUndefined();
+        });
+    });
+
+    describe('normalize — activity initialization', () => {
+        it('initializes activity on data without it', () => {
+            const data: RepertoireData = {
+                data: [{ pgn: '1. e4 e5', orientation: 'white', classifications: [], numberOfTimesPlayed: 0, errorEMA: 0, lastSucceededEpoch: 0, successEMA: 0 }],
+                currentEpoch: 0,
+                lastPlayedDate: new Date(),
+                dailyPlayCount: 0,
+                fsrsCards: {},
+            };
+
+            RepertoireDataUtils.normalize(data);
+
+            expect(data.activity).toBeDefined();
+            expect(data.activity!.practiceLog.length).toBeGreaterThanOrEqual(1);
+            expect(data.activity!.lifetime).toBeDefined();
+        });
+
+        it('preserves existing activity during normalization', () => {
+            const data: RepertoireData = {
+                data: [{ pgn: '1. e4 e5', orientation: 'white', classifications: [], numberOfTimesPlayed: 0, errorEMA: 0, lastSucceededEpoch: 0, successEMA: 0 }],
+                currentEpoch: 0,
+                lastPlayedDate: new Date(),
+                dailyPlayCount: 3,
+                fsrsCards: {},
+                activity: {
+                    practiceLog: [{ date: '2026-05-25', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 }],
+                    lifetime: { reviewed: 50, mistakes: 10, learned: 5, traversals: 20, timeSeconds: 3000 },
+                },
+            };
+
+            RepertoireDataUtils.normalize(data);
+
+            expect(data.activity!.lifetime.reviewed).toBe(50);
+        });
     });
 });

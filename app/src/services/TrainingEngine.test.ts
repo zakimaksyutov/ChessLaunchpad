@@ -473,6 +473,55 @@ describe('TrainingEngine', () => {
         });
     });
 
+    describe('getTraversalStats', () => {
+        it('tracks learned count for teach-recall traversals', () => {
+            TrainingEngine.setContextDepth(0);
+            const engine = makeEngine([makePgnInput('1. e4', 'white')]);
+            engine.startTraversal();
+
+            // Teaching pass
+            const chess1 = new Chess();
+            engine.handleUserMove('e2', 'e4', chess1);
+
+            // Recall pass — rated Again but counted as learned, not mistake
+            const chess2 = new Chess();
+            engine.handleUserMove('e2', 'e4', chess2);
+
+            const stats = engine.getTraversalStats();
+            expect(stats.learned).toBe(1);
+            expect(stats.mistakes).toBe(0);
+            expect(stats.reviewed).toBe(0);
+        });
+
+        it('tracks reviewed and mistakes for regular traversals', () => {
+            TrainingEngine.setContextDepth(0);
+            const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
+            const cardKeyE4 = `${startFen}::e4`;
+            const pastDue = new Date(Date.now() - 86400000).toISOString();
+
+            const engine = makeEngine(
+                [makePgnInput('1. e4', 'white')],
+                {
+                    [cardKeyE4]: {
+                        d: pastDue, s: 1, di: 5, e: 1, sd: 1,
+                        ls: 0, r: 1, l: 0, st: 2, lr: pastDue,
+                    },
+                }
+            );
+            engine.startTraversal();
+
+            // Play correct move
+            const chess = new Chess();
+            const result = engine.handleUserMove('e2', 'e4', chess);
+            expect(result.accepted).toBe(true);
+
+            const stats = engine.getTraversalStats();
+            expect(stats.reviewed).toBe(1);
+            expect(stats.mistakes).toBe(0);
+            expect(stats.learned).toBe(0);
+        });
+    });
+
     describe('branch point orientation filtering (issue #3)', () => {
         it('should NOT treat a move from the other orientation as a branch point', () => {
             // Setup: White repertoire has 1.e4 e5, Black repertoire has 1.e4 c5.

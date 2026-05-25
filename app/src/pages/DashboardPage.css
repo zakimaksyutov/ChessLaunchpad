@@ -1,0 +1,139 @@
+.dashboard {
+    padding: 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.dashboard-loading,
+.dashboard-error {
+    padding: 2rem;
+    text-align: center;
+    color: #666;
+}
+
+.dashboard-error {
+    color: #d32f2f;
+}
+
+/* Call to Action */
+.dashboard-cta {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-cta-button {
+    padding: 0.75rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #fff;
+    background: #4caf50;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.dashboard-cta-button:hover {
+    background: #388e3c;
+}
+
+/* Widget Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-widget {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.widget-title {
+    margin: 0 0 0.75rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.widget-empty {
+    color: #999;
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+/* Stat Rows */
+.widget-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+}
+
+.stat-label {
+    color: #666;
+}
+
+.stat-value {
+    font-weight: 600;
+    color: #333;
+}
+
+/* Activity Feed */
+.dashboard-activity {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.activity-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.activity-day {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
+}
+
+.activity-day:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.activity-date {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.activity-line {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #444;
+    line-height: 1.4;
+}
+
+.activity-line-sub {
+    padding-left: 1.5rem;
+    color: #777;
+    font-size: 0.8rem;
+}
+
+.accuracy-badge {
+    font-weight: 600;
+}
