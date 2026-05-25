@@ -55,21 +55,25 @@
 *Found by: Codex (GPT-5.4)*
 **Resolution:** `planTeachRecall()` now assigns `role: 'autoplay'` to known prefix user-turn steps and `'target'` only to new card positions. `advanceToNextAction()` respects `step.role === 'autoplay'` during teaching and recall phases, autoplaying known prefix moves instead of requiring manual play. Unit tests and E2E test added.
 
-### 10. Module-level state corrupted on save failure
+### ~~10. Module-level state corrupted on save failure~~ — FIXED
 **SettingsPage.tsx:131-132** — `setContextDepth()`/`setRetention()` mutate module globals *before* the save succeeds. On save failure, module state is wrong until page refresh.
 *Found by: React State*
+**Resolution:** Settings payload is now built directly from React draft state instead of reading module globals. Module-level setters (`setContextDepth`, `setRetention`, `setMaxInterval`, `setLinkedAccounts`) moved after `await dal.storeRepertoireData()` so globals only update on successful save.
 
-### 11. Unhandled promise rejection in `handleTraversalComplete`
+### ~~11. Unhandled promise rejection in `handleTraversalComplete`~~ — FIXED
 **TrainingPageControl.tsx:308** — Called without `await` from multiple sites. If the save rejects, error is silently swallowed.
 *Found by: Code Review*
+**Resolution:** Added `.catch(console.error)` to all three fire-and-forget call sites (lines 154, 283, 286) so rejected saves are logged instead of silently swallowed.
 
-### 12. Non-deterministic branch selection
+### ~~12. Non-deterministic branch selection~~ — WON'T FIX
 **PathPlanner.ts:308** — `Math.random() < 0.5` tiebreak makes traversals non-reproducible and tests non-deterministic.
 *Found by: Code Review*
+**Resolution:** Intentional design. The random tiebreak prevents array-order bias when two branches have equal due-card counts. Tests should assert valid paths (correct max due count), not specific paths. Not a bug.
 
-### 13. Module-level state leaks across sessions
+### ~~13. Module-level state leaks across sessions~~ — WON'T FIX
 **LinkedAccountsService.ts, FSRSService.ts, TrainingEngine.ts** — If a user/repertoire has no `settings` blob, previous in-memory values survive from the prior session. Can write stale settings on save.
 *Found by: Codex, React State*
+**Resolution:** No practical trigger — single-user app with single repertoire. SettingsPage always hydrates from backend on mount; TrainingPage is behind ProtectedRoute. Revisit if multi-user support is added.
 
 ---
 

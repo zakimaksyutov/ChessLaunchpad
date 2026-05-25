@@ -154,7 +154,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         setPhase(status.phase);
 
         if (status.phase === 'complete') {
-            handleTraversalComplete(eng);
+            handleTraversalComplete(eng).catch(console.error);
             return;
         }
 
@@ -283,10 +283,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             if (delay > 0) {
                 timeoutRef.current = setTimeout(() => {
                     timeoutRef.current = null;
-                    handleTraversalComplete(eng);
+                    handleTraversalComplete(eng).catch(console.error);
                 }, delay);
             } else {
-                handleTraversalComplete(eng);
+                handleTraversalComplete(eng).catch(console.error);
             }
             return true;
         }

@@ -128,19 +128,25 @@ const SettingsPage: React.FC = () => {
             const dal = createDataAccessLayer(username, hashedPassword);
             const current = await dal.retrieveRepertoireData();
 
-            // Apply draft to in-memory services
+            // Build settings from draft values (don't mutate globals until save succeeds)
+            const updated = {
+                ...current,
+                settings: {
+                    ...(current.settings ?? {}),
+                    contextDepth,
+                    retention,
+                    maxInterval,
+                    linkedAccounts,
+                },
+            };
+
+            await dal.storeRepertoireData(updated);
+
+            // Apply draft to in-memory services only after save succeeds
             TrainingEngine.setContextDepth(contextDepth);
             FSRSService.setRetention(retention);
             FSRSService.setMaxInterval(maxInterval);
             setLinkedAccounts(linkedAccounts);
-
-            // Merge settings into existing backend data (preserves unknown fields)
-            const updated = {
-                ...current,
-                settings: RepertoireDataUtils.buildCurrentSettings(current.settings),
-            };
-
-            await dal.storeRepertoireData(updated);
 
             // Clean up local data for removed accounts after successful save
             for (const removed of removedAccountsRef.current) {
