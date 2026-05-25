@@ -810,3 +810,86 @@ test.describe('Training page — PGN annotations before autoplay (1. e4 {arrows/
   });
 
 });
+
+// ── Incorrect moves → Again rating ──────────────────────────────────
+
+const incorrectMoveFixture = (() => {
+  const f = buildRepertoireData([
+    { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
+  ]);
+  const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+  const nf3Key =
+    'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
+  f.fsrsCards = {
+    [e4Key]: rateGoodNTimes(3),
+    [nf3Key]: rateGoodNTimes(3),
+  };
+  return f;
+})();
+
+test.describe('Training page — incorrect moves then correct (1. e4 e5 2. Nf3)', () => {
+
+  test('wrong moves are rejected and Nf3 is rated Again while e4 is rated Good', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, incorrectMoveFixture);
+
+    // Cards are Review (3× Good) — due in ~13 days; advance past that
+    await advanceTime(page, 20_000);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // Should NOT be in teaching mode
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).not.toBeVisible({ timeout: 3_000 });
+
+    await expectStartingPosition(page);
+    const { boardBox } = await getBoardInfo(page);
+
+    // 1. e4 — correct
+    await dragPiece(page, boardBox, 'e2', 'e4');
+
+    // Engine autoplays 1…e5
+    await expectPiece(page, 'e5', 'bp');
+
+    // Save count should still be 0 (no traversal complete yet)
+    expect(saves.length).toBe(0);
+
+    // 2. Wrong move #1: Nc3 instead of Nf3
+    await dragPiece(page, boardBox, 'b1', 'c3');
+    // Piece should snap back — knight still on b1, c3 empty
+    await expectPiece(page, 'b1', 'wn');
+    await expectEmpty(page, 'c3');
+    // No save should have occurred
+    expect(saves.length).toBe(0);
+
+    // 3. Wrong move #2: d4 instead of Nf3
+    await dragPiece(page, boardBox, 'd2', 'd4');
+    // Piece should snap back — pawn still on d2, d4 empty
+    await expectPiece(page, 'd2', 'wp');
+    await expectEmpty(page, 'd4');
+    expect(saves.length).toBe(0);
+
+    // 4. Correct move: Nf3
+    await dragPiece(page, boardBox, 'g1', 'f3');
+    await expectPositionAfterNf3(page);
+
+    // Save should arrive
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+    const saved = saves[0].body as {
+      fsrsCards: Record<string, { ls: number; st: number; l: number }>;
+    };
+    const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+    const nf3Key =
+      'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
+
+    // e4 was played correctly → rated Good (stays Review, no lapses)
+    expect(saved.fsrsCards[e4Key].st).toBe(2);  // Review
+    expect(saved.fsrsCards[e4Key].l).toBe(0);   // no lapses
+    // Nf3 had errors → rated Again (Relearning, 1 lapse)
+    expect(saved.fsrsCards[nf3Key].st).toBe(3);  // Relearning
+    expect(saved.fsrsCards[nf3Key].l).toBe(1);   // 1 lapse
+  });
+
+});
