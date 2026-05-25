@@ -154,6 +154,7 @@ A newly created user starts with `{}`. After the first update, the repertoire mu
 | `weightSettings`  | object \| null | No | Weight configuration (see below). May be `null` or omitted. |
 | `fsrsCards`       | object \| null | No | Map of FSRS card states keyed by string. May be `null` or omitted. |
 | `settings`        | object \| null | No | Training configuration (free-form object). May be `null` or omitted. |
+| `activity`        | object \| null | No | Activity data (free-form object). May be `null` or omitted. |
 
 No additional properties are allowed on the root object.
 
