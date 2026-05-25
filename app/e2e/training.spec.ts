@@ -137,7 +137,7 @@ const fixture = buildRepertoireData([
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-test.describe('Training page – one white variant (1. e4 e5 2. Nf3)', () => {
+test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
 
   test('loads and shows the chessboard with badges', async ({ page }) => {
     const { saves } = await setupMockEnvironment(page, fixture);
@@ -327,7 +327,7 @@ async function expectPositionAfterE4E5(page: Page) {
   ]);
 }
 
-test.describe('Training page – one black variant (1. e4 e5)', () => {
+test.describe('Training page — one black variant (1. e4 e5)', () => {
 
   test('loads and shows the chessboard with badges', async ({ page }) => {
     const { saves } = await setupMockEnvironment(page, blackFixture);
@@ -460,7 +460,7 @@ const mixedFixture = buildRepertoireData([
   { pgn: '1. e4', orientation: 'white' },
 ]);
 
-test.describe('Training page – shared edge from both colors', () => {
+test.describe('Training page — shared edge from both colors', () => {
 
   // Card keys for verification
   const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
@@ -651,4 +651,162 @@ test.describe('Teaching with known prefix (e4 studied, Nf3 new)', () => {
     expect(saved.fsrsCards[e4CardKey].st).toBe(2); // still Review
     expect(saved.fsrsCards[e4CardKey].r).toBe(3);  // reps unchanged from rateGoodNTimes(3)
   });
+});
+
+// ── PGN annotation rendering ────────────────────────────────────────
+
+/**
+ * Assert that an annotation arrow (SVG line) with the given stroke color
+ * points from `fromSq` to `toSq`. Checks all matching lines and passes
+ * if any one matches the expected coordinates.
+ */
+async function expectAnnotationArrow(
+  page: Page,
+  boardBox: { x: number; y: number; width: number },
+  fromSq: string,
+  toSq: string,
+  strokeColor: string,
+  orientation: 'white' | 'black' = 'white',
+) {
+  const arrows = page.locator(
+    `.arrow-layer line[stroke="${strokeColor}"]:not([display="none"])`,
+  );
+  await expect(arrows.first()).toBeAttached({ timeout: 5_000 });
+
+  const sqSize = boardBox.width / 8;
+  const from = squareCenter(boardBox, fromSq, orientation);
+  const to = squareCenter(boardBox, toSq, orientation);
+  const relFrom = { x: from.x - boardBox.x, y: from.y - boardBox.y };
+  const relTo = { x: to.x - boardBox.x, y: to.y - boardBox.y };
+  const tolerance = sqSize * 0.5;
+
+  const count = await arrows.count();
+  let found = false;
+  for (let i = 0; i < count; i++) {
+    const el = arrows.nth(i);
+    const x1 = Number(await el.getAttribute('x1'));
+    const y1 = Number(await el.getAttribute('y1'));
+    const x2 = Number(await el.getAttribute('x2'));
+    const y2 = Number(await el.getAttribute('y2'));
+    if (
+      Math.abs(x1 - relFrom.x) < tolerance &&
+      Math.abs(y1 - relFrom.y) < tolerance &&
+      Math.abs(x2 - relTo.x) < tolerance &&
+      Math.abs(y2 - relTo.y) < tolerance
+    ) {
+      found = true;
+      break;
+    }
+  }
+  expect(found).toBe(true);
+}
+
+/**
+ * Assert that a square-highlight circle with the given stroke color
+ * is positioned on `square`.
+ */
+async function expectSquareHighlight(
+  page: Page,
+  boardBox: { x: number; y: number; width: number },
+  square: string,
+  strokeColor: string,
+  orientation: 'white' | 'black' = 'white',
+) {
+  const circles = page.locator(
+    `.arrow-layer circle.square-highlight[stroke="${strokeColor}"]`,
+  );
+  await expect(circles.first()).toBeAttached({ timeout: 5_000 });
+
+  const center = squareCenter(boardBox, square, orientation);
+  const relCenter = { x: center.x - boardBox.x, y: center.y - boardBox.y };
+  const tolerance = boardBox.width / 8 * 0.5;
+
+  const count = await circles.count();
+  let found = false;
+  for (let i = 0; i < count; i++) {
+    const el = circles.nth(i);
+    const cx = Number(await el.getAttribute('cx'));
+    const cy = Number(await el.getAttribute('cy'));
+    if (
+      Math.abs(cx - relCenter.x) < tolerance &&
+      Math.abs(cy - relCenter.y) < tolerance
+    ) {
+      found = true;
+      break;
+    }
+  }
+  expect(found).toBe(true);
+}
+
+/** Rate a fresh card Again once and return serialized FSRS data. */
+function rateAgainOnce(): FSRSCardData {
+  const scheduler = fsrs({ enable_short_term: true });
+  let card = createEmptyCard();
+  card = scheduler.next(card, card.due, Rating.Again).card;
+  return FSRSService.serialize(card);
+}
+
+// PGN with a green arrow e5→d6 and a red square on e5 shown before opponent's e5
+// Comment on e4 so annotations appear during the autoplay pause (step.fen = post-e4).
+const annotatedFixture = (() => {
+  const f = buildRepertoireData([
+    { pgn: '1. e4 {[%cal Ge5d6] [%csl Re5]} e5 2. Nf3', orientation: 'white' },
+  ]);
+  const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+  const nf3Key =
+    'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
+  f.fsrsCards = {
+    [e4Key]: rateAgainOnce(),
+    [nf3Key]: rateAgainOnce(),
+  };
+  return f;
+})();
+
+test.describe('Training page — PGN annotations before autoplay (1. e4 {arrows/highlights} e5 2. Nf3)', () => {
+
+  test('renders annotation arrow and square highlight during review', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, annotatedFixture);
+
+    // Advance time so Again-rated cards (~1 min due) become due
+    await advanceTime(page, 2);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // Should NOT be in teaching mode (cards are rated Again, not New)
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).not.toBeVisible({ timeout: 3_000 });
+    const recallBar = page.locator('.status-bar-recall');
+    await expect(recallBar).not.toBeVisible();
+
+    // Board should show starting position
+    await expectStartingPosition(page);
+
+    const { boardBox } = await getBoardInfo(page);
+
+    // 1. e4 (regular review — no hints)
+    await dragPiece(page, boardBox, 'e2', 'e4');
+
+    // ── Verify PGN annotations are visible BEFORE opponent plays e5 ──
+    // The board still shows position after e4 (no e5 pawn yet).
+    // Green arrow from e5 to d6 ([%cal Ge5d6])
+    await expectAnnotationArrow(page, boardBox, 'e5', 'd6', '#15781B');
+
+    // Red square highlight on e5 ([%csl Re5])
+    await expectSquareHighlight(page, boardBox, 'e5', '#882020');
+
+    // Engine autoplays 1…e5 — wait for the pawn to land
+    await expectPiece(page, 'e5', 'bp');
+
+    // 2. Nf3 (complete the review)
+    await dragPiece(page, boardBox, 'g1', 'f3');
+
+    // Board should show final position
+    await expectPositionAfterNf3(page);
+
+    // Save should arrive after traversal
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+  });
+
 });
