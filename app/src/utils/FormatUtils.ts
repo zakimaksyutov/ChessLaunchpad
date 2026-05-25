@@ -18,13 +18,10 @@ export function formatDuration(totalSeconds: number): string {
  * Example: "25 MAY 2026"
  */
 export function formatDateHeader(dateStr: string): string {
-    const d = new Date(dateStr + 'T00:00:00Z');
+    const [y, m, d] = dateStr.split('-').map(Number);
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const day = d.getUTCDate();
-    const month = months[d.getUTCMonth()];
-    const year = d.getUTCFullYear();
-    return `${day} ${month} ${year}`;
+    return `${d} ${months[m - 1]} ${y}`;
 }
 
 /**
