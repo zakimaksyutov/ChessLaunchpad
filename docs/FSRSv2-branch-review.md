@@ -19,9 +19,10 @@
 *Found by: Codex (GPT-5.4)*
 **Resolution:** `addPgn()` now sets `hasCard = true` when merging an existing edge that is a user turn for the new orientation. Field renamed from `isUserTurn` to `hasCard` to clarify it's an orientation-agnostic "produces FSRS card" flag. All path sorting and descendant collection now use `isUserTurnForOrientation(fen, orientation)` instead of the edge field. E2E test added for mixed-orientation training.
 
-### 3. Branch-point validation ignores orientation
+### ~~3. Branch-point validation ignores orientation~~ — FIXED
 **TrainingEngine.ts:268-292** — `handleUserMove()` accepts any `graph.getEdge(currentFen, san)` without filtering by `plan.orientation`. A black traversal could rate a card from a white-only repertoire line, creating orphan FSRS cards.
 *Found by: Codex (GPT-5.4)*
+**Resolution:** Added `edge.orientations.has(this.plan!.orientation)` guard to the branch-point condition in `handleUserMove()`. Regression test added for cross-orientation branch-point rejection.
 
 ### 4. Dynamic interval recomputation causes review flood on upgrade
 **FSRSService.ts:260** — `computeInterval()` uses runtime settings (retention=0.97, maxInterval=90), NOT the stored `sd` field. Existing v1 cards scheduled at retention=0.9 get dramatically shorter intervals retroactively. All Review cards become due much sooner on first v2 session.

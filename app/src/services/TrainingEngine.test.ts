@@ -407,4 +407,64 @@ describe('TrainingEngine', () => {
             expect(cards[cardKey].r).toBeGreaterThan(0);
         });
     });
+
+    describe('branch point orientation filtering (issue #3)', () => {
+        it('should NOT treat a move from the other orientation as a branch point', () => {
+            // Setup: White repertoire has 1.e4 e5, Black repertoire has 1.e4 c5.
+            // The edge for 1...e5 exists in the graph from the white repertoire
+            // (as an opponent response), but should NOT be recognised as a
+            // branch-point during a BLACK traversal.
+            TrainingEngine.setContextDepth(0);
+
+            const fenAfterE4 = normalizeFenResetHalfmoveClock(
+                (() => { const c = new Chess(); c.move('e4'); return c.fen(); })()
+            );
+
+            // Pre-rate the black card (1...c5) so it enters regular traversal, not teaching
+            const cardKeyC5 = `${fenAfterE4}::c5`;
+            const pastDue = new Date(Date.now() - 86400000).toISOString();
+            const fsrsCards: Record<string, any> = {};
+            fsrsCards[cardKeyC5] = {
+                d: pastDue, s: 1, di: 5, e: 1, sd: 1, ls: 0, r: 1, l: 0, st: 1, lr: pastDue,
+            };
+
+            const engine = makeEngine([
+                makePgnInput('1. e4 e5 2. Nf3', 'white'),  // white repertoire — 1...e5 is opponent
+                makePgnInput('1. e4 c5', 'black'),          // black repertoire — 1...c5 is user
+            ], fsrsCards);
+
+            const status = engine.startTraversal();
+            expect(status).not.toBeNull();
+            // The traversal should be for black (the only due card is black's 1...c5)
+            expect(status!.orientation).toBe('black');
+
+            // Advance through autoplay (1.e4 is opponent move for black)
+            const chess = new Chess();
+            let step = engine.getCurrentStep();
+            while (step && !step.isUserTurn) {
+                chess.move(step.expectedMove);
+                engine.advanceAutoplay();
+                step = engine.getCurrentStep();
+            }
+            expect(step).not.toBeNull();
+            expect(step!.expectedMove).toBe('c5');
+
+            // Play 1...e5 instead — this exists in the graph (from white repertoire)
+            // but should NOT be accepted as a branch point for the black traversal.
+            const cardKeyE5 = `${fenAfterE4}::e5`;
+            const hadE5CardBefore = engine.getFsrsCards()[cardKeyE5] !== undefined;
+
+            const result = engine.handleUserMove('e7', 'e5', chess);
+
+            // The move should be rejected as an invalid move, NOT as a branch point
+            expect(result.accepted).toBe(false);
+            expect(result.branchPointMessage).toBeUndefined();
+            expect(result.ratingWasCorrect).toBeUndefined();
+
+            // No orphan FSRS card should have been created for 1...e5
+            if (!hadE5CardBefore) {
+                expect(engine.getFsrsCards()[cardKeyE5]).toBeUndefined();
+            }
+        });
+    });
 });

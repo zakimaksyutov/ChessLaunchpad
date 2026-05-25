@@ -273,7 +273,7 @@ export class TrainingEngine {
         const isWhiteToMove = activeColor === 'w';
         const isUserTurnHere = (this.plan!.orientation === 'white' && isWhiteToMove) ||
                                (this.plan!.orientation === 'black' && !isWhiteToMove);
-        if (edge && isUserTurnHere) {
+        if (edge && isUserTurnHere && edge.orientations.has(this.plan!.orientation)) {
             // Valid repertoire move at a branch point
             if (!this.branchAlternativesPlayed.has(edge.cardKey)) {
                 // Rate this unplanned move as Good
