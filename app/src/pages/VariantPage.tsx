@@ -234,20 +234,19 @@ const VariantPage: React.FC = () => {
             const classifications = DatabaseOpeningsUtils.ClassifyOpening(finalPgn, openings);
 
             // Add to the repertoire
-            const shouldKeepStats = mode === 'edit' && !resetStats;
-            const errorEMA = shouldKeepStats ? (oldVariant?.errorEMA ?? 0) : 0;
-            const numberOfTimesPlayed = shouldKeepStats ? (oldVariant?.numberOfTimesPlayed ?? 0) : 0;
-            const lastSucceededEpoch = shouldKeepStats ? (oldVariant?.lastSucceededEpoch ?? 0) : 0;
-            const successEMA = shouldKeepStats ? (oldVariant?.successEMA ?? 0) : 0;
+            const numberOfTimesPlayed = (mode === 'edit' && !resetStats)
+                ? (oldVariant?.numberOfTimesPlayed ?? 0)
+                : 0;
 
             repertoire.data.push({
                 pgn: finalPgn,
                 orientation,
                 classifications: classifications,
-                errorEMA,
                 numberOfTimesPlayed,
-                lastSucceededEpoch,
-                successEMA
+                // V1 stubs — backend requires these as numbers
+                errorEMA: 0,
+                lastSucceededEpoch: 0,
+                successEMA: 0,
             });
 
             // Persist the updated repertoire

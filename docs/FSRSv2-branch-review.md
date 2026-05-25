@@ -27,9 +27,10 @@
 **FSRSService.ts:260** — `computeInterval()` uses runtime settings (retention=0.97, maxInterval=90), NOT the stored `sd` field. Existing v1 cards scheduled at retention=0.9 get dramatically shorter intervals retroactively. All Review cards become due much sooner on first v2 session.
 *Found by: Data Migration*
 
-### 5. `Math.max(...[])` → `-Infinity` on empty variants
+### ~~5. `Math.max(...[])` → `-Infinity` on empty variants~~ — FIXED
 **RepertoireDataUtils.ts:138** — If `variants` is empty, produces an invalid `currentEpoch`.
 *Found by: Code Review*
+**Resolution:** V1 fields removed. `currentEpoch` is now always stubbed to `0`; `Math.max(...variants.map(...))` call eliminated.
 
 ### 6. Stale closure on teaching→recall transition
 **TrainingPageControl.tsx:296** — `phase` is captured from the render closure; by the time the user acts, React state may have moved on. Board-reset logic for teach→recall could fire at the wrong time.
@@ -73,7 +74,7 @@
 
 | # | Issue | Source |
 |---|-------|--------|
-| 14 | Frozen `currentEpoch` breaks v1 rollback recency scoring | Data Migration |
+| 14 | ~~Frozen `currentEpoch` breaks v1 rollback recency scoring~~ — N/A (V1 fields removed) | Data Migration |
 | 15 | PGN edits silently delete FSRS card history for changed positions | Data Migration |
 | 16 | `initialFsrsCardsRef` stale when variants+fsrsCards change simultaneously | React State |
 | 17 | Orphan timeout on unmount during async save | React State |
@@ -100,7 +101,7 @@
 | **B** | ~~Unify duplicated `isUserTurn` logic (TrainingEngine vs PathPlanner)~~ | — | Partially addressed — `GraphEdge.isUserTurn` renamed to `hasCard`; both PathPlanner and RepertoireGraph now have `isUserTurnForOrientation()` |
 | **B** | Have `requestHint` reuse `getHintForStep` | — | Deferred — refactoring, not dead code |
 | **B** | Extract common retry-loop from `startRegularTraversal`/`startTeachRecall` | — | Deferred — refactoring, not dead code |
-| **C** | V1 fields (`currentEpoch`, `errorEMA`, `successEMA`, `WeightSettings`) — plan sunset | ~40 | Kept intentionally for rollback safety |
+| **C** | ~~V1 fields (`currentEpoch`, `errorEMA`, `successEMA`, `WeightSettings`) — plan sunset~~ | ~40 | ✅ Removed — `WeightSettings` deleted, `calculateWeight()` removed, all V1 fields stubbed to `0` for backend compat |
 
 ---
 

@@ -5,7 +5,6 @@ import { RepertoireData } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import BadgeRow from '../components/BadgeRow';
-import { WeightSettings } from '../models/WeightSettings';
 
 const TrainingPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
@@ -78,11 +77,9 @@ const TrainingPage: React.FC = () => {
 
         try {
             const newDailyCount = currentData.dailyPlayCount + correctCardsRated;
-            const settings = currentData.weightSettings ?? WeightSettings.createDefault();
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 RepertoireDataUtils.convertToVariantData(currentData),
                 newDailyCount,
-                settings,
                 updatedCards,
                 currentData.settings
             );

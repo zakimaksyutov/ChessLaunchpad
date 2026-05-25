@@ -1,6 +1,5 @@
 import { OpeningVariant } from "../models/OpeningVariant";
 import { RepertoireData, OpeningVariantData, AppSettings } from "../models/RepertoireData";
-import { WeightSettings } from "../models/WeightSettings";
 import { FSRSCardData } from "../models/FSRSCardData";
 import { RepertoireGraph } from "../services/RepertoireGraph";
 import { FSRSService } from "../services/FSRSService";
@@ -14,9 +13,8 @@ export class RepertoireDataUtils {
         if (!repertoireData.data) {
             repertoireData.data = [];
         }
-        if (!repertoireData.currentEpoch) {
-            repertoireData.currentEpoch = 0;
-        }
+        // V1 stub — always reset to 0
+        repertoireData.currentEpoch = 0;
         if (!repertoireData.lastPlayedDate) {
             repertoireData.lastPlayedDate = new Date(0);
         } else {
@@ -27,24 +25,15 @@ export class RepertoireDataUtils {
             repertoireData.dailyPlayCount = 0;
         }
 
-        // Normalize the data
+        // Normalize the data — stub V1 fields
         for (const variant of repertoireData.data) {
-            if (!variant.errorEMA) {
-                variant.errorEMA = 0;
-            }
+            variant.errorEMA = 0;
+            variant.lastSucceededEpoch = 0;
+            variant.successEMA = 0;
             if (!variant.numberOfTimesPlayed) {
                 variant.numberOfTimesPlayed = 0;
             }
-            if (!variant.lastSucceededEpoch) {
-                variant.lastSucceededEpoch = 0;
-            }
-            if (!variant.successEMA) {
-                variant.successEMA = 0;
-            }
         }
-
-        // Ensure weight settings are always present and hydrated.
-        repertoireData.weightSettings = WeightSettings.from(repertoireData.weightSettings);
 
         // Ensure fsrsCards is always present.
         if (!repertoireData.fsrsCards) {
@@ -55,7 +44,6 @@ export class RepertoireDataUtils {
         RepertoireDataUtils.reconcileCards(repertoireData);
 
         // Check whether we started a new day — reset daily counter.
-        // Note: currentEpoch is no longer incremented (FSRSv2) but kept for rollback safety.
         const currentDate = RepertoireDataUtils.getCurrentDateOnly();
         if (currentDate > repertoireData.lastPlayedDate) {
             repertoireData.lastPlayedDate = currentDate;
@@ -80,16 +68,9 @@ export class RepertoireDataUtils {
     }
 
     public static convertToVariantData(repertoireData: RepertoireData): OpeningVariant[] {
-        const settings = WeightSettings.from(repertoireData.weightSettings);
         const variants = repertoireData.data.map(data => {
             const variant = new OpeningVariant(data.pgn, data.orientation, data.classifications);
-            variant.errorEMA = data.errorEMA;
             variant.numberOfTimesPlayed = data.numberOfTimesPlayed;
-            variant.lastSucceededEpoch = data.lastSucceededEpoch;
-            variant.successEMA = data.successEMA;
-            variant.numberOfErrors = 0;
-            variant.currentEpoch = repertoireData.currentEpoch;
-            variant.weightSettings = settings.clone();
             return variant;
         });
 
@@ -115,7 +96,6 @@ export class RepertoireDataUtils {
     public static convertToRepertoireData(
         variants: OpeningVariant[],
         dailyPlayCount: number,
-        weightSettings?: WeightSettings,
         fsrsCards?: Record<string, FSRSCardData>,
         existingSettings?: AppSettings | null
     ): RepertoireData {
@@ -123,23 +103,18 @@ export class RepertoireDataUtils {
             pgn: variant.pgn,
             orientation: variant.orientation,
             classifications: variant.classifications,
-            errorEMA: variant.errorEMA,
             numberOfTimesPlayed: variant.numberOfTimesPlayed,
-            lastSucceededEpoch: variant.lastSucceededEpoch,
-            successEMA: variant.successEMA
+            // V1 stubs — backend requires these as numbers
+            errorEMA: 0,
+            lastSucceededEpoch: 0,
+            successEMA: 0,
         }));
-
-        const wSettings =
-            weightSettings?.clone() ??
-            variants[0]?.weightSettings?.clone() ??
-            WeightSettings.createDefault();
 
         return {
             data,
-            currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
+            currentEpoch: 0, // V1 stub
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
             dailyPlayCount: dailyPlayCount,
-            weightSettings: wSettings,
             fsrsCards: fsrsCards ?? {},
             settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
         };

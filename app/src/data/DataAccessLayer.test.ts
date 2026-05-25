@@ -41,15 +41,15 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
                 pgn: "1. e4 e5",
                 orientation: "white",
                 classifications: [],
-                errorEMA: 0,
                 numberOfTimesPlayed: 0,
+                errorEMA: 0,
                 lastSucceededEpoch: 0,
                 successEMA: 0,
             }
         ];
 
         repertoireData.data = newVariants1;
-        repertoireData.currentEpoch = 1;
+        repertoireData.currentEpoch = 0;
         repertoireData.lastPlayedDate = new Date();
 
         // Store with the fresh DAL -> Expect a "Precondition Failed." error (from server)
@@ -90,8 +90,8 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
                 pgn: "1. d4 d5",
                 orientation: "white",
                 classifications: [],
-                errorEMA: 0,
                 numberOfTimesPlayed: 0,
+                errorEMA: 0,
                 lastSucceededEpoch: 0,
                 successEMA: 0,
             }

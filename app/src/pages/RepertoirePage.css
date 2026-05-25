@@ -62,16 +62,6 @@
   outline-offset: 1px;
 }
 
-.repertoire-stats-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-  color: #555;
-  cursor: pointer;
-  user-select: none;
-}
-
 /* ===== Evals loading banner ===== */
 .repertoire-evals-loading {
   margin-bottom: 0.5rem;
@@ -122,15 +112,6 @@
 /* Column modifiers */
 .repertoire-table .col-nowrap {
   white-space: nowrap;
-}
-
-.repertoire-table .col-stat {
-  white-space: nowrap;
-  width: 1%;
-  text-align: right;
-  font-family: monospace;
-  font-size: 0.85rem;
-  color: #555;
 }
 
 .repertoire-table .col-actions {
