@@ -293,7 +293,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         setPhase(status.phase);
 
         // Board reset for teaching → recall transition
-        if (status.phase === 'recalling' && phase === 'teaching') {
+        // Use isRecalling (mode) instead of phase, since the first recall step
+        // may be 'autoplay' (e.g., opponent's e4 for black variants).
+        if (status.isRecalling && phase === 'teaching') {
             chessRef.current = new Chess();
             setFen(chessRef.current.fen());
             setPgn('');

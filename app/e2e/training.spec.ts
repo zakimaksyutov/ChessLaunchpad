@@ -287,3 +287,154 @@ test.describe('Training page – one white variant (1. e4 e5 2. Nf3)', () => {
   });
 
 });
+
+// ── One black variant ─────────────────────────────────────────────────
+
+const blackFixture = buildRepertoireData([
+  { pgn: '1. e4 e5', orientation: 'black' },
+]);
+
+/** Assert the board shows position after 1. e4 (pawn moved, starting position otherwise intact). */
+async function expectPositionAfterE4(page: Page) {
+  await Promise.all([
+    expectPiece(page, 'e4', 'wp'),
+    expectPiece(page, 'e7', 'bp'),
+    expectEmpty(page, 'e2'),
+  ]);
+}
+
+/** Assert the board shows position after 1. e4 e5. */
+async function expectPositionAfterE4E5(page: Page) {
+  await Promise.all([
+    expectPiece(page, 'e4', 'wp'),
+    expectPiece(page, 'e5', 'bp'),
+    expectEmpty(page, 'e2'),
+    expectEmpty(page, 'e7'),
+  ]);
+}
+
+test.describe('Training page – one black variant (1. e4 e5)', () => {
+
+  test('loads and shows the chessboard with badges', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, blackFixture);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    await expect(page.locator('text=Error')).not.toBeVisible();
+    await expect(page.locator('text=No variants available')).not.toBeVisible();
+  });
+
+  test('teaching mode autoplays opponent e4 then teaches user e5', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, blackFixture);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // New FSRS card (st=0) → teaching mode.
+    // Black variant: engine autoplays white's e4, then user plays black's e5.
+
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).toBeVisible({ timeout: 5_000 });
+    await expect(teachingBar).toContainText('New moves');
+
+    // Engine should have autoplayed 1. e4 (opponent move)
+    const e4Piece = page.locator('[data-square="e4"] [data-piece="wp"]');
+    await expect(e4Piece).toBeAttached({ timeout: 5_000 });
+
+    const { boardBox } = await getBoardInfo(page);
+
+    // Green hint arrow should point from e7 to e5 (black perspective)
+    await expectHintArrow(page, boardBox, 'e7', 'e5', 'black');
+
+    // 1...e5 (follow the arrow)
+    await dragPiece(page, boardBox, 'e7', 'e5', 'black');
+
+    // ── Recall pass ──────────────────────────────────────────────────
+    // No save should have occurred yet (teaching doesn't trigger a save)
+    expect(saves).toHaveLength(0);
+
+    // After teaching, the engine resets the board and asks the user to
+    // recall the same moves without arrows.
+    const recallBar = page.locator('.status-bar-recall');
+    await expect(recallBar).toBeVisible({ timeout: 5_000 });
+
+    // Engine autoplays 1. e4 — wait for the pawn to land
+    await expectPiece(page, 'e4', 'wp');
+
+    // No hint arrows should be present during recall
+    const greenArrows = page.locator('.arrow-layer line[stroke="#15781B"]:not([display="none"])');
+    await expect(greenArrows).toHaveCount(0);
+
+    // 1...e5 (from memory)
+    await dragPiece(page, boardBox, 'e7', 'e5', 'black');
+
+    // Board should show position after 1. e4 e5
+    await expectPositionAfterE4E5(page);
+
+    // ── Verify FSRS rating was persisted ────────────────────────────
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+    const saved = saves[0].body as {
+      fsrsCards: Record<string, { st: number; r: number; ls: number; d: string }>;
+    };
+
+    // Card key: "{normalized_fen_before_e5}::e5"
+    const e5Key = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1::e5';
+
+    expect(saved.fsrsCards[e5Key]).toBeDefined();
+    expect(saved.fsrsCards[e5Key].st).toBeGreaterThan(0);   // no longer New
+    expect(saved.fsrsCards[e5Key].r).toBeGreaterThan(0);     // has been reviewed
+    expect(saved.fsrsCards[e5Key].ls).toBe(0);               // rated Again (ls=0)
+
+    // Card should be due within 2 minutes (Again → 1-min learning step)
+    const now = Date.now();
+    const e5Due = new Date(saved.fsrsCards[e5Key].d).getTime();
+    const twoMinMs = 2 * 60 * 1000;
+    expect(e5Due - now).toBeLessThan(twoMinMs);
+
+    // ── After recall: card is not immediately due ────────────────────
+    const noCardsMsg = page.getByText('No cards to train.');
+    await expect(noCardsMsg).toBeVisible({ timeout: 5_000 });
+
+    // ── Fast-forward time and re-enter training ─────────────────────
+    await advanceTime(page, 2);
+    await page.goto('/#/training');
+
+    // ── Regular training (review pass) ──────────────────────────────
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    const { boardBox: reviewBoardBox } = await getBoardInfo(page);
+
+    // Should NOT be teaching or recalling
+    await expect(teachingBar).not.toBeVisible({ timeout: 3_000 });
+    await expect(recallBar).not.toBeVisible();
+    await expect(greenArrows).toHaveCount(0);
+
+    // Engine autoplays 1. e4
+    await expectPiece(page, 'e4', 'wp');
+
+    // 1...e5 (regular review — no hints)
+    await dragPiece(page, reviewBoardBox, 'e7', 'e5', 'black');
+
+    // Board should show final position
+    await expectPositionAfterE4E5(page);
+
+    // Second save should arrive (after regular review)
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(2);
+
+    // Verify due dates after regular review — rated Good (ls=1)
+    const saved2 = saves[1].body as { fsrsCards: Record<string, { d: string; ls: number; st: number }> };
+    const now2 = Date.now();
+    const oneHourMs = 60 * 60 * 1000;
+    const e5Due2 = new Date(saved2.fsrsCards[e5Key].d).getTime();
+    expect(e5Due2 - now2).toBeLessThan(oneHourMs);
+    expect(saved2.fsrsCards[e5Key].ls).toBe(1);
+
+    // Card is not due yet — should see empty state again
+    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+  });
+
+});

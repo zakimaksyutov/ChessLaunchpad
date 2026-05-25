@@ -36,6 +36,7 @@ export interface EngineStatus {
     cardsReviewedThisTraversal: number;
     orientation: 'white' | 'black';
     isTeaching: boolean;
+    isRecalling: boolean;   // true = recall mode (phase may be 'autoplay' or 'recalling')
     showHint: boolean;      // true = show correct move arrow/highlight
     hintMove?: { from: string; to: string; san: string };
     annotations: Annotation[];
@@ -348,6 +349,7 @@ export class TrainingEngine {
             cardsReviewedThisTraversal: this.cardsRated,
             orientation: this.plan?.orientation ?? 'white',
             isTeaching: this._isTeachingPass,
+            isRecalling: this._isRecalling,
             showHint: this._isTeachingPass || this.hintRequested,
             hintMove: this._isTeachingPass && step ? this.getHintForStep(step) : hint ?? undefined,
             annotations: anns,
@@ -498,12 +500,15 @@ export class TrainingEngine {
         // Switch to recall pass
         this._isTeachingPass = false;
         this._isRecalling = true;
-        this.phase = 'recalling';
         this.plan = this._recallPlan;
         this._recallPlan = null;
         this.stepIndex = 0;
         this.errorFens.clear();
         this.hintRequested = false;
+
+        // Determine the correct phase for the first recall step.
+        // For black variants, step 0 is an opponent autoplay (not a user turn).
+        this.advanceToNextAction();
 
         return { accepted: true, isEndOfTraversal: false };
     }
