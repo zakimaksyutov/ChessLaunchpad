@@ -438,3 +438,118 @@ test.describe('Training page – one black variant (1. e4 e5)', () => {
   });
 
 });
+
+// ── Mixed: same edge from both orientations ──────────────────────────
+
+const mixedFixture = buildRepertoireData([
+  { pgn: '1. e4 e5', orientation: 'black' },
+  { pgn: '1. e4', orientation: 'white' },
+]);
+
+test.describe('Training page – shared edge from both colors', () => {
+
+  // Card keys for verification
+  const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+  const e5Key = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1::e5';
+
+  test('trains both white e4 and black e5 in sequence', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, mixedFixture);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // ── 1st traversal: white e4 (teach + recall) ─────────────────────
+
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).toBeVisible({ timeout: 5_000 });
+
+    // Board starts in starting position (white orientation)
+    await expectStartingPosition(page);
+
+    const { boardBox: wb } = await getBoardInfo(page);
+
+    // Teaching: play e4 following the hint
+    await dragPiece(page, wb, 'e2', 'e4');
+
+    // Recall: board resets, user plays e4 from memory
+    const recallBar = page.locator('.status-bar-recall');
+    await expect(recallBar).toBeVisible({ timeout: 5_000 });
+    await expectStartingPosition(page);
+    await dragPiece(page, wb, 'e2', 'e4');
+
+    // Save should arrive after e4 recall
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+    const saved1 = saves[0].body as {
+      fsrsCards: Record<string, { st: number; r: number; ls: number }>;
+    };
+    expect(saved1.fsrsCards[e4Key]).toBeDefined();
+    expect(saved1.fsrsCards[e4Key].st).toBeGreaterThan(0);
+
+    // ── 2nd traversal: black e5 (teach + recall) ─────────────────────
+    // Engine auto-starts the next card after a 300ms delay.
+    // Board flips to black orientation.
+
+    await expect(teachingBar).toBeVisible({ timeout: 5_000 });
+
+    // Engine autoplays white's e4 (opponent move for black)
+    await expectPiece(page, 'e4', 'wp');
+
+    const { boardBox: bb } = await getBoardInfo(page);
+
+    // Teaching: play e5 following the hint (black orientation)
+    await dragPiece(page, bb, 'e7', 'e5', 'black');
+
+    // Recall: board resets, engine autoplays e4, user recalls e5
+    await expect(recallBar).toBeVisible({ timeout: 5_000 });
+    await expectPiece(page, 'e4', 'wp');
+    await dragPiece(page, bb, 'e7', 'e5', 'black');
+
+    await expectPositionAfterE4E5(page);
+
+    // Save should arrive after e5 recall
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(2);
+
+    const saved2 = saves[1].body as {
+      fsrsCards: Record<string, { st: number; r: number; ls: number }>;
+    };
+    expect(saved2.fsrsCards[e5Key]).toBeDefined();
+    expect(saved2.fsrsCards[e5Key].st).toBeGreaterThan(0);
+
+    // Both cards trained — no more cards to train
+    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+
+    // ── Fast-forward and review both ─────────────────────────────────
+    await advanceTime(page, 2);
+    await page.goto('/#/training');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // Review e4 (white) — regular mode, no teaching
+    const { boardBox: rwb } = await getBoardInfo(page);
+    await expect(teachingBar).not.toBeVisible({ timeout: 3_000 });
+    await expectStartingPosition(page);
+    await dragPiece(page, rwb, 'e2', 'e4');
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(3);
+
+    // Wait for second traversal to start — autoplay glow signals
+    // the engine is autoplaying white's e4 for the black review.
+    await expect(page.locator('.board-glow-autoplay')).toBeVisible({ timeout: 5_000 });
+
+    // Review e5 (black) — engine autoplays e4, then user plays e5
+    await expectPiece(page, 'e4', 'wp');
+    const { boardBox: rbb } = await getBoardInfo(page);
+    await dragPiece(page, rbb, 'e7', 'e5', 'black');
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(4);
+
+    // Verify final FSRS state — both cards rated Good (ls=1)
+    const saved4 = saves[3].body as {
+      fsrsCards: Record<string, { d: string; ls: number; st: number }>;
+    };
+    expect(saved4.fsrsCards[e4Key].ls).toBe(1);
+    expect(saved4.fsrsCards[e5Key].ls).toBe(1);
+
+    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+  });
+
+});

@@ -6,8 +6,8 @@ export interface GraphEdge {
     from: string;       // normalized FEN before the move
     to: string;         // normalized FEN after the move
     san: string;        // SAN notation of the move
-    isUserTurn: boolean;
-    cardKey: string;    // FSRSService.makeCardKey(from, san) — only meaningful for user-turn edges
+    hasCard: boolean;   // true if any orientation treats this as a user-turn move (produces an FSRS card)
+    cardKey: string;    // FSRSService.makeCardKey(from, san) — only meaningful when hasCard is true
     orientations: Set<'white' | 'black'>; // which repertoire orientations include this edge
 }
 
@@ -67,7 +67,7 @@ export class RepertoireGraph {
         const keys: string[] = [];
         for (const node of this.nodes.values()) {
             for (const edge of node.edges) {
-                if (edge.isUserTurn) {
+                if (edge.hasCard) {
                     keys.push(edge.cardKey);
                 }
             }
@@ -97,13 +97,15 @@ export class RepertoireGraph {
         const results: GraphEdge[][] = [];
         this.dfsPathsToEdge(this.rootFen, targetFen, targetSan, [], new Set(), results, orientation);
 
-        if (isDueCheck) {
+        if (isDueCheck && orientation) {
             results.sort((a, b) => {
                 // Shortest path first
                 if (a.length !== b.length) return a.length - b.length;
-                // Most due cards as tiebreak
-                const aDue = a.filter(e => e.isUserTurn && isDueCheck(e.cardKey)).length;
-                const bDue = b.filter(e => e.isUserTurn && isDueCheck(e.cardKey)).length;
+                // Most due cards as tiebreak — use orientation-aware check
+                // so shared edges are only counted when they're user turns
+                // for the current orientation.
+                const aDue = a.filter(e => RepertoireGraph.isUserTurnForOrientation(e.from, orientation) && isDueCheck(e.cardKey)).length;
+                const bDue = b.filter(e => RepertoireGraph.isUserTurnForOrientation(e.from, orientation) && isDueCheck(e.cardKey)).length;
                 return bDue - aDue;
             });
         } else {
@@ -127,7 +129,7 @@ export class RepertoireGraph {
      * useful for determining opponent branch density of due cards.
      * If orientation is provided, only follows edges belonging to that orientation.
      */
-    getDescendantCardKeys(fen: string, orientation?: 'white' | 'black'): string[] {
+    getDescendantCardKeys(fen: string, orientation: 'white' | 'black'): string[] {
         const keys: string[] = [];
         const visited = new Set<string>();
         this.collectDescendantCardKeys(fen, visited, keys, orientation);
@@ -142,6 +144,12 @@ export class RepertoireGraph {
     }
 
     // ─── Private ───────────────────────────────────────────────────────
+
+    private static isUserTurnForOrientation(fen: string, orientation: 'white' | 'black'): boolean {
+        const active = fen.split(' ')[1] ?? 'w';
+        return (orientation === 'white' && active === 'w') ||
+               (orientation === 'black' && active === 'b');
+    }
 
     private addPgn(pgn: string, orientation: 'white' | 'black'): void {
         const chess = new Chess();
@@ -176,12 +184,17 @@ export class RepertoireGraph {
             const existing = node.edges.find(e => e.san === move.san && e.to === afterFen);
             if (existing) {
                 existing.orientations.add(orientation);
+                // A shared edge may be a user turn for the new orientation
+                // even if it wasn't for the first-loaded one.
+                if (isUserTurn) {
+                    existing.hasCard = true;
+                }
             } else {
                 const edge: GraphEdge = {
                     from: beforeFen,
                     to: afterFen,
                     san: move.san,
-                    isUserTurn,
+                    hasCard: isUserTurn,
                     cardKey,
                     orientations: new Set([orientation]),
                 };
@@ -241,7 +254,7 @@ export class RepertoireGraph {
         visited.delete(currentFen);
     }
 
-    private collectDescendantCardKeys(fen: string, visited: Set<string>, keys: string[], orientation?: 'white' | 'black'): void {
+    private collectDescendantCardKeys(fen: string, visited: Set<string>, keys: string[], orientation: 'white' | 'black'): void {
         if (visited.has(fen)) return;
         visited.add(fen);
 
@@ -253,7 +266,7 @@ export class RepertoireGraph {
             : node.edges;
 
         for (const edge of edges) {
-            if (edge.isUserTurn) {
+            if (RepertoireGraph.isUserTurnForOrientation(edge.from, orientation)) {
                 keys.push(edge.cardKey);
             }
             this.collectDescendantCardKeys(edge.to, visited, keys, orientation);

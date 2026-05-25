@@ -202,7 +202,7 @@ export class PathPlanner {
 
     /**
      * Determine if a step is a user turn based on the FEN's active color and plan orientation.
-     * This is authoritative — graph edges may have stale isUserTurn from a different orientation.
+     * This is authoritative — GraphEdge.hasCard is orientation-agnostic.
      */
     private static isUserTurnForOrientation(fen: string, orientation: 'white' | 'black'): boolean {
         const parts = fen.split(' ');
@@ -286,7 +286,7 @@ export class PathPlanner {
         return steps;
     }
 
-    private pickBranchWithMostDue(edges: GraphEdge[], dueCardKeys: Set<string>, orientation?: 'white' | 'black'): GraphEdge | null {
+    private pickBranchWithMostDue(edges: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): GraphEdge | null {
         if (edges.length === 0) return null;
 
         let best: GraphEdge | null = null;

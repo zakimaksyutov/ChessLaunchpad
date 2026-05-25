@@ -14,9 +14,10 @@
 *Found by: Code Review*
 **Resolution:** `TrainingPage` is wrapped in `<ProtectedRoute>` (App.tsx:59), which checks `localStorage.getItem('username')` and redirects to `/` before the component ever renders. The non-null assertions are safe. Comment added to code for clarity.
 
-### 2. Shared graph edges are orientation-order-dependent
+### ~~2. Shared graph edges are orientation-order-dependent~~ — FIXED
 **RepertoireGraph.ts:84-93** — `GraphEdge` stores one `isUserTurn` flag, but edges can be shared across white/black repertoires. Whichever PGN loads first determines `isUserTurn` for all orientations. `getCardKeys()` can silently drop real user cards.
 *Found by: Codex (GPT-5.4)*
+**Resolution:** `addPgn()` now sets `hasCard = true` when merging an existing edge that is a user turn for the new orientation. Field renamed from `isUserTurn` to `hasCard` to clarify it's an orientation-agnostic "produces FSRS card" flag. All path sorting and descendant collection now use `isUserTurnForOrientation(fen, orientation)` instead of the edge field. E2E test added for mixed-orientation training.
 
 ### 3. Branch-point validation ignores orientation
 **TrainingEngine.ts:268-292** — `handleUserMove()` accepts any `graph.getEdge(currentFen, san)` without filtering by `plan.orientation`. A black traversal could rate a card from a white-only repertoire line, creating orphan FSRS cards.
@@ -80,7 +81,7 @@
 | 19 | `allAnnotations` creates new array every render, defeating memo | React State |
 | 20 | SettingsPage fragile coupling to `normalize()` side effects for hydration | Code Review |
 | 21 | `isDue()` returns true for New cards (confusing API, unused in queue) | Code Review |
-| 22 | `isUserTurn` field on shared edges incorrect for multi-orientation | Code Review |
+| 22 | ~~`isUserTurn` field on shared edges incorrect for multi-orientation~~ — FIXED (see #2) | Code Review |
 | 23 | No 412 retry logic for ETag conflicts between tabs | Data Migration |
 
 ---
@@ -96,7 +97,7 @@
 | **A** | ~~Remove unused `GraphEdge` import (TrainingEngine.ts:5)~~ | 1 | ✅ Removed |
 | **A** | ~~Remove dead methods: `peekIsNew`, `getCardDataByKey`, 5 graph accessors~~ | ~30 | ✅ Removed |
 | **A** | ~~Drop write-only `TraversalPlan.targetCardKeys` & `isTeachingPlan`~~ | ~10 | ✅ Removed |
-| **B** | Unify duplicated `isUserTurn` logic (TrainingEngine vs PathPlanner) | — | Deferred — refactoring, not dead code |
+| **B** | ~~Unify duplicated `isUserTurn` logic (TrainingEngine vs PathPlanner)~~ | — | Partially addressed — `GraphEdge.isUserTurn` renamed to `hasCard`; both PathPlanner and RepertoireGraph now have `isUserTurnForOrientation()` |
 | **B** | Have `requestHint` reuse `getHintForStep` | — | Deferred — refactoring, not dead code |
 | **B** | Extract common retry-loop from `startRegularTraversal`/`startTeachRecall` | — | Deferred — refactoring, not dead code |
 | **C** | V1 fields (`currentEpoch`, `errorEMA`, `successEMA`, `WeightSettings`) — plan sunset | ~40 | Kept intentionally for rollback safety |

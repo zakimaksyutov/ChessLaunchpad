@@ -144,7 +144,7 @@ describe('RepertoireGraph', () => {
             const graph = new RepertoireGraph([
                 { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
             ]);
-            const descendants = graph.getDescendantCardKeys(startFen);
+            const descendants = graph.getDescendantCardKeys(startFen, 'white');
             // All user-turn cards should be descendants of root
             expect(descendants.length).toBe(graph.getCardKeys().length);
         });
@@ -154,7 +154,7 @@ describe('RepertoireGraph', () => {
                 { pgn: PGN_1E4_E5_NF3, orientation: 'white' },
             ]);
             const fenAfterNf3 = getFenAfterMoves(['e4', 'e5', 'Nf3']);
-            const descendants = graph.getDescendantCardKeys(fenAfterNf3);
+            const descendants = graph.getDescendantCardKeys(fenAfterNf3, 'white');
             expect(descendants.length).toBe(0);
         });
     });
@@ -172,7 +172,7 @@ describe('RepertoireGraph', () => {
             const node = graph.getNode(afterE4);
             expect(node).toBeDefined();
             // Should have both d5 and e5 as opponent edges
-            const opponentEdges = node!.edges.filter(e => !e.isUserTurn);
+            const opponentEdges = node!.edges.filter(e => !e.hasCard);
             expect(opponentEdges.length).toBe(2);
             const moves = opponentEdges.map(e => e.san).sort();
             expect(moves).toEqual(['d5', 'e5']);
