@@ -41,9 +41,8 @@
 
 ## ⚠️ MAJOR (should fix)
 
-### 7. `dailyPlayCount` undercounting
-**TrainingPageControl.tsx:236-239** — Only counts `ratingWasCorrect && isTargetCard`. Misses Again ratings, recall-pass ratings, warm-up/cool-down, and branch-point Good reviews. Spec says "per card rated."
-*Found by: Spec Alignment, Codex — 3 reviewers flagged this independently*
+### 7. ~~`dailyPlayCount` undercounting~~
+**Resolved** — Implementation is intentional: `dailyPlayCount` counts only correctly-played target cards, not every FSRS rating. Spec updated to match.
 
 ### 8. Annotations shown during autoplay
 **TrainingEngine.ts:335-341, TrainingPageControl.tsx:163-176** — Spec says annotations should NOT appear during autoplay segments. Current code shows them with delay, slowing the root→target path.

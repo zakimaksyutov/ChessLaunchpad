@@ -87,7 +87,7 @@ A **"give me hint"** option is always available (including during the recall pas
 
 ### Progress Display
 
-Replace the current BadgeRow with minimal relevant badges: **cards due**, **cards reviewed today** (`dailyPlayCount`, incremented per card rated), and **total cards**. Show queue status — when the queue empties and ahead-of-schedule mode activates, the display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
+Replace the current BadgeRow with minimal relevant badges: **cards due**, **cards reviewed today** (`dailyPlayCount`, incremented per correctly-played target card), and **total cards**. Show queue status — when the queue empties and ahead-of-schedule mode activates, the display signals the transition (e.g., "All due cards reviewed — practicing ahead of schedule").
 
 Remove badges that no longer apply (oldest, 80th percentile, variant-level errors).
 
@@ -117,7 +117,7 @@ A traversal ends after the cool-down of the last due card on the path. It does n
 | Filter | `?filter=` by classification/FEN | Not supported |
 | Between traversals | Auto-load countdown | Immediate |
 | Debug table | Variant weights/probability | Removed |
-| `dailyPlayCount` | Per variant round | Per card reviewed |
+| `dailyPlayCount` | Per variant round | Per correctly-played target card |
 
 ## What Stays
 
