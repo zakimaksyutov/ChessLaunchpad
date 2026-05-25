@@ -1,5 +1,6 @@
 import { RepertoireGraph, GraphEdge } from './RepertoireGraph';
 import { FSRSService } from './FSRSService';
+import { isUserTurnForOrientation } from '../utils/FenUtils';
 
 export type StepRole = 'autoplay' | 'warm-up' | 'target' | 'cool-down';
 
@@ -78,7 +79,7 @@ export class PathPlanner {
         // All steps are autoplay (system shows the move, user plays it)
         const newCardKeysInPlan: string[] = [];
         const steps: TraversalStep[] = path.map(edge => {
-            const isUser = PathPlanner.isUserTurnForOrientation(edge.from, orientation);
+            const isUser = isUserTurnForOrientation(edge.from, orientation);
             const isNew = isUser && allNewCardKeys.has(edge.cardKey);
             if (isNew) newCardKeysInPlan.push(edge.cardKey);
             return {
@@ -114,7 +115,7 @@ export class PathPlanner {
             if (edges.length === 0) break;
 
             // For opponent turns, pick the branch with the most due descendants
-            const isUserTurnHere = PathPlanner.isUserTurnForOrientation(currentFen, orientation);
+            const isUserTurnHere = isUserTurnForOrientation(currentFen, orientation);
 
             if (!isUserTurnHere && edges.length > 0) {
                 // Opponent move: pick branch with most due cards
@@ -146,7 +147,7 @@ export class PathPlanner {
                     // Check if we've gone far enough past the last due card (user-turn edges only)
                     const lastDueIndex = this.findLastDueIndex(extended, dueCardKeys, orientation);
                     const userStepsAfterDue = extended.slice(lastDueIndex + 1)
-                        .filter(e => PathPlanner.isUserTurnForOrientation(e.from, orientation)).length;
+                        .filter(e => isUserTurnForOrientation(e.from, orientation)).length;
                     if (userStepsAfterDue >= this.contextDepth) break;
                     continue;
                 }
@@ -169,7 +170,7 @@ export class PathPlanner {
             const edges = this.graph.getEdges(currentFen, orientation);
             if (edges.length === 0) break;
 
-            const isUserTurnHere = PathPlanner.isUserTurnForOrientation(currentFen, orientation);
+            const isUserTurnHere = isUserTurnForOrientation(currentFen, orientation);
 
             if (!isUserTurnHere && edges.length > 0) {
                 // Opponent turn: pick any branch with new cards
@@ -201,17 +202,6 @@ export class PathPlanner {
     }
 
     /**
-     * Determine if a step is a user turn based on the FEN's active color and plan orientation.
-     * This is authoritative — GraphEdge.hasCard is orientation-agnostic.
-     */
-    private static isUserTurnForOrientation(fen: string, orientation: 'white' | 'black'): boolean {
-        const parts = fen.split(' ');
-        const activeColor = parts.length > 1 ? parts[1] : 'w';
-        const isWhiteToMove = activeColor === 'w';
-        return (orientation === 'white' && isWhiteToMove) || (orientation === 'black' && !isWhiteToMove);
-    }
-
-    /**
      * Assign roles to path edges based on target positions and context depth.
      */
     private assignRoles(path: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): TraversalStep[] {
@@ -221,7 +211,7 @@ export class PathPlanner {
             expectedMove: edge.san,
             cardKey: edge.cardKey,
             role: 'autoplay' as StepRole,
-            isUserTurn: PathPlanner.isUserTurnForOrientation(edge.from, orientation),
+            isUserTurn: isUserTurnForOrientation(edge.from, orientation),
         }));
 
         // Find all target indices (user-turn edges with due cards)
@@ -306,7 +296,7 @@ export class PathPlanner {
 
     private findLastDueIndex(path: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): number {
         for (let i = path.length - 1; i >= 0; i--) {
-            if (PathPlanner.isUserTurnForOrientation(path[i].from, orientation) && dueCardKeys.has(path[i].cardKey)) {
+            if (isUserTurnForOrientation(path[i].from, orientation) && dueCardKeys.has(path[i].cardKey)) {
                 return i;
             }
         }

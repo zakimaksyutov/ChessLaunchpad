@@ -3,13 +3,6 @@ import { RepertoireData, OpeningVariantData } from "../models/RepertoireData";
 import { OpeningVariant } from "../models/OpeningVariant";
 import { FSRSCardData } from "../models/FSRSCardData";
 
-// --- Mocks ---
-vi.mock('./LaunchpadLogic', () => ({
-    LaunchpadLogic: {
-        SUCCESS_EMA_ALPHA: 0.5
-    }
-}));
-
 describe('RepertoireDataUtils', () => {
     beforeEach(() => {
         vi.resetAllMocks();

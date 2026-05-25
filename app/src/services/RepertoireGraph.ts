@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
+import { normalizeFenResetHalfmoveClock, isUserTurnForOrientation } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
 
 export interface GraphEdge {
@@ -23,7 +23,6 @@ export interface GraphNode {
  */
 export class RepertoireGraph {
     private nodes: Map<string, GraphNode> = new Map();
-    private parentEdges: Map<string, GraphEdge[]> = new Map(); // child FEN → edges leading to it
     private rootFen: string;
     private orientations: Map<string, 'white' | 'black'> = new Map(); // card key → orientation
 
@@ -104,8 +103,8 @@ export class RepertoireGraph {
                 // Most due cards as tiebreak — use orientation-aware check
                 // so shared edges are only counted when they're user turns
                 // for the current orientation.
-                const aDue = a.filter(e => RepertoireGraph.isUserTurnForOrientation(e.from, orientation) && isDueCheck(e.cardKey)).length;
-                const bDue = b.filter(e => RepertoireGraph.isUserTurnForOrientation(e.from, orientation) && isDueCheck(e.cardKey)).length;
+                const aDue = a.filter(e => isUserTurnForOrientation(e.from, orientation) && isDueCheck(e.cardKey)).length;
+                const bDue = b.filter(e => isUserTurnForOrientation(e.from, orientation) && isDueCheck(e.cardKey)).length;
                 return bDue - aDue;
             });
         } else {
@@ -144,12 +143,6 @@ export class RepertoireGraph {
     }
 
     // ─── Private ───────────────────────────────────────────────────────
-
-    private static isUserTurnForOrientation(fen: string, orientation: 'white' | 'black'): boolean {
-        const active = fen.split(' ')[1] ?? 'w';
-        return (orientation === 'white' && active === 'w') ||
-               (orientation === 'black' && active === 'b');
-    }
 
     private addPgn(pgn: string, orientation: 'white' | 'black'): void {
         const chess = new Chess();
@@ -199,12 +192,6 @@ export class RepertoireGraph {
                     orientations: new Set([orientation]),
                 };
                 node.edges.push(edge);
-
-                // Track parent edges for backward traversal
-                if (!this.parentEdges.has(afterFen)) {
-                    this.parentEdges.set(afterFen, []);
-                }
-                this.parentEdges.get(afterFen)!.push(edge);
             }
 
             if (isUserTurn) {
@@ -266,7 +253,7 @@ export class RepertoireGraph {
             : node.edges;
 
         for (const edge of edges) {
-            if (RepertoireGraph.isUserTurnForOrientation(edge.from, orientation)) {
+            if (isUserTurnForOrientation(edge.from, orientation)) {
                 keys.push(edge.cardKey);
             }
             this.collectDescendantCardKeys(edge.to, visited, keys, orientation);

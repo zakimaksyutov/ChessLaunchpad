@@ -35,6 +35,15 @@ export function isLikelyFen(value: string): boolean {
     return ranks.length === 8;
 }
 
+/**
+ * Determine if a position is a user turn based on the FEN's active color and orientation.
+ */
+export function isUserTurnForOrientation(fen: string, orientation: 'white' | 'black'): boolean {
+    const active = fen.split(' ')[1] ?? 'w';
+    return (orientation === 'white' && active === 'w') ||
+           (orientation === 'black' && active === 'b');
+}
+
 export function buildNormalizedFensFromPgn(pgn: string): string[] {
     const chess = new Chess();
     try {
