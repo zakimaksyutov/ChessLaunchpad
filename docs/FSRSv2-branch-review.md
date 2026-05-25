@@ -50,9 +50,10 @@
 **TrainingEngine.ts:335-341, TrainingPageControl.tsx:163-176** — Spec says annotations should NOT appear during autoplay segments. Current code shows them with delay, slowing the root→target path.
 *Found by: Spec Alignment, Codex — 2 reviewers flagged*
 
-### 9. Teach/recall replays known prefix moves
-**PathPlanner.ts:86-100** — `planTeachRecall()` marks every user-turn step as manual. If only one deep card is new, the user replays all earlier known moves twice (teach + recall). Spec says autoplay to the new cards, then teach/recall only those.
+### ~~9. Teach/recall replays known prefix moves~~ — FIXED
+**PathPlanner.ts:89** — `planTeachRecall()` marked every user-turn step as manual. If only one deep card is new, the user replays all earlier known moves twice (teach + recall). Spec says autoplay to the new cards, then teach/recall only those.
 *Found by: Codex (GPT-5.4)*
+**Resolution:** `planTeachRecall()` now assigns `role: 'autoplay'` to known prefix user-turn steps and `'target'` only to new card positions. `advanceToNextAction()` respects `step.role === 'autoplay'` during teaching and recall phases, autoplaying known prefix moves instead of requiring manual play. Unit tests and E2E test added.
 
 ### 10. Module-level state corrupted on save failure
 **SettingsPage.tsx:131-132** — `setContextDepth()`/`setRetention()` mutate module globals *before* the save succeeds. On save failure, module state is wrong until page refresh.

@@ -536,7 +536,7 @@ export class TrainingEngine {
         const step = this.plan.steps[this.stepIndex];
 
         if (this._isTeachingPass) {
-            if (!step.isUserTurn) {
+            if (!step.isUserTurn || step.role === 'autoplay') {
                 this.phase = 'autoplay';
             } else {
                 this.phase = 'teaching';
@@ -545,7 +545,7 @@ export class TrainingEngine {
         }
 
         if (this._isRecalling) {
-            if (!step.isUserTurn) {
+            if (!step.isUserTurn || step.role === 'autoplay') {
                 this.phase = 'autoplay';
             } else {
                 this.phase = 'recalling';

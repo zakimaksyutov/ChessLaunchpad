@@ -89,6 +89,52 @@ describe('PathPlanner', () => {
             expect(plan).not.toBeNull();
             expect(plan!.steps.length).toBeGreaterThan(0);
         });
+
+        it('should assign autoplay role to known prefix and target to new cards', () => {
+            // Variant: 1. e4 e5 2. Nf3 Nc6 3. Bb5
+            // Only Bb5 is new; e4 and Nf3 are known prefix moves
+            const graph = new RepertoireGraph([{ pgn, orientation: 'white' }]);
+            const service = new FSRSService({});
+            for (const key of graph.getCardKeys()) service.ensureCard(key);
+
+            const bb5Key = makeCardKey(moves, 4); // Bb5 at index 4
+            const allNewKeys = new Set([bb5Key]);
+            const planner = new PathPlanner(graph, service, 2);
+            const plan = planner.planTeachRecall(bb5Key, allNewKeys);
+
+            expect(plan).not.toBeNull();
+            // User-turn steps: e4 (index 0), Nf3 (index 2), Bb5 (index 4)
+            const userSteps = plan!.steps.filter(s => s.isUserTurn);
+            expect(userSteps.length).toBe(3);
+
+            // e4 and Nf3 are known → autoplay role
+            expect(userSteps[0].expectedMove).toBe('e4');
+            expect(userSteps[0].role).toBe('autoplay');
+            expect(userSteps[1].expectedMove).toBe('Nf3');
+            expect(userSteps[1].role).toBe('autoplay');
+
+            // Bb5 is new → target role
+            expect(userSteps[2].expectedMove).toBe('Bb5');
+            expect(userSteps[2].role).toBe('target');
+        });
+
+        it('should assign target role to all steps when all cards are new', () => {
+            const graph = new RepertoireGraph([{ pgn, orientation: 'white' }]);
+            const service = new FSRSService({});
+            for (const key of graph.getCardKeys()) service.ensureCard(key);
+
+            const e4Key = makeCardKey(moves, 0);
+            const allNewKeys = new Set(graph.getCardKeys());
+            const planner = new PathPlanner(graph, service, 2);
+            const plan = planner.planTeachRecall(e4Key, allNewKeys);
+
+            expect(plan).not.toBeNull();
+            const userSteps = plan!.steps.filter(s => s.isUserTurn);
+            // All user-turn steps should be targets when all cards are new
+            for (const step of userSteps) {
+                expect(step.role).toBe('target');
+            }
+        });
     });
 
     describe('context depth', () => {

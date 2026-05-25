@@ -1,4 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
+import { createEmptyCard, fsrs, Rating } from 'ts-fsrs';
+import { FSRSService } from '../src/services/FSRSService';
+import { FSRSCardData } from '../src/models/FSRSCardData';
 import { buildRepertoireData, setupMockEnvironment, advanceTime } from './helpers';
 
 // ── Board helpers (adapted from ChessControl e2e) ────────────────────
@@ -115,6 +118,17 @@ async function expectPositionAfterNf3(page: Page) {
     expectEmpty(page, 'e2'),
     expectEmpty(page, 'g1'),
   ]);
+}
+
+/** Rate a fresh card Good `n` times and return serialized FSRS data. */
+function rateGoodNTimes(n: number): FSRSCardData {
+  const scheduler = fsrs({ enable_short_term: true });
+  let card = createEmptyCard();
+  for (let i = 0; i < n; i++) {
+    const due = card.due;
+    card = scheduler.next(card, due, Rating.Good).card;
+  }
+  return FSRSService.serialize(card);
 }
 
 const fixture = buildRepertoireData([
@@ -552,4 +566,89 @@ test.describe('Training page – shared edge from both colors', () => {
     await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
   });
 
+});
+
+// ── Prefix-autoplay tests ────────────────────────────────────────────
+
+test.describe('Teaching with known prefix (e4 studied, Nf3 new)', () => {
+
+  // e4 card key from starting position
+  const e4CardKey = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+  const nf3CardKey = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
+
+  // Build fixture with e4 pre-rated as well-studied (Good × 3)
+  const studiedPrefixFixture = (() => {
+    const f = buildRepertoireData([
+      { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
+    ]);
+    f.fsrsCards = {
+      [e4CardKey]: rateGoodNTimes(3),
+    };
+    return f;
+  })();
+
+  test('autoplays known prefix e4 during teach and recall of new Nf3', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, studiedPrefixFixture);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // Nf3 is New → teaching mode should trigger.
+    // e4 is well-studied (Review state) and e5 is an opponent move.
+    // Both should autoplay before teaching begins for Nf3.
+
+    // ── Teaching pass ──────────────────────────────────────────────
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).toBeVisible({ timeout: 10_000 });
+
+    // When the teaching bar first appears, the board should already
+    // show position after 1. e4 e5 (both autoplayed), NOT the
+    // starting position. This is the key assertion: known prefix
+    // moves are autoplayed, not presented for manual play.
+    await expectPiece(page, 'e4', 'wp');
+    await expectPiece(page, 'e5', 'bp');
+
+    const { boardBox } = await getBoardInfo(page);
+
+    // Hint arrow should point g1→f3 (the new card), not e2→e4
+    await expectHintArrow(page, boardBox, 'g1', 'f3');
+
+    // Play Nf3 (the only move the user should need to make)
+    await dragPiece(page, boardBox, 'g1', 'f3');
+
+    // ── Recall pass ───────────────────────────────────────────────
+    const recallBar = page.locator('.status-bar-recall');
+    await expect(recallBar).toBeVisible({ timeout: 10_000 });
+
+    // Again, e4 and e5 should autoplay first. When recall becomes
+    // interactive, the board should show position after 1. e4 e5.
+    await expectPiece(page, 'e4', 'wp');
+    await expectPiece(page, 'e5', 'bp');
+
+    // No hint arrows during recall
+    const greenArrows = page.locator('.arrow-layer line[stroke="#15781B"]:not([display="none"])');
+    await expect(greenArrows).toHaveCount(0);
+
+    // Recall Nf3 (the only move the user should recall)
+    await dragPiece(page, boardBox, 'g1', 'f3');
+
+    // Board should show final position
+    await expectPositionAfterNf3(page);
+
+    // ── Verify only Nf3 was rated ─────────────────────────────────
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+    const saved = saves[0].body as {
+      fsrsCards: Record<string, { st: number; r: number; ls: number }>;
+    };
+
+    // Nf3 should have been rated (no longer New)
+    expect(saved.fsrsCards[nf3CardKey]).toBeDefined();
+    expect(saved.fsrsCards[nf3CardKey].st).toBeGreaterThan(0);
+
+    // e4 should remain untouched (it was autoplayed, not re-rated)
+    expect(saved.fsrsCards[e4CardKey]).toBeDefined();
+    expect(saved.fsrsCards[e4CardKey].st).toBe(2); // still Review
+    expect(saved.fsrsCards[e4CardKey].r).toBe(3);  // reps unchanged from rateGoodNTimes(3)
+  });
 });

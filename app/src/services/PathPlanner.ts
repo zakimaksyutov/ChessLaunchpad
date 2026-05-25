@@ -86,7 +86,7 @@ export class PathPlanner {
                 destFen: edge.to,
                 expectedMove: edge.san,
                 cardKey: edge.cardKey,
-                role: 'target' as StepRole, // all user-turn steps in teach plan are targets
+                role: (isNew ? 'target' : 'autoplay') as StepRole,
                 isUserTurn: isUser,
             };
         });

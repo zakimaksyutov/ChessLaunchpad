@@ -230,6 +230,71 @@ describe('TrainingEngine', () => {
             // Card was rated
             expect(engine.getCardsRated()).toBe(1);
         });
+
+        it('should autoplay known prefix moves during teach and recall', () => {
+            // 1. e4 e5 2. Nf3: e4 is pre-rated (not New), Nf3 is New
+            TrainingEngine.setContextDepth(2);
+
+            const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
+            const e4Key = `${startFen}::e4`;
+
+            // Pre-rate e4 so it's in Learning state (not New)
+            const now = new Date();
+            const futureDate = new Date(now.getTime() + 86400000).toISOString();
+            const fsrsCards: Record<string, any> = {
+                [e4Key]: {
+                    d: futureDate, s: 5, di: 5, e: 1, sd: 5, ls: 1, r: 2, l: 0, st: 1, lr: now.toISOString()
+                }
+            };
+
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')], fsrsCards);
+            const status = engine.startTraversal();
+            expect(status).not.toBeNull();
+
+            // First step is e4 (user turn, known) → should be autoplay, not teaching
+            expect(status!.phase).toBe('autoplay');
+            let step = engine.getCurrentStep();
+            expect(step).not.toBeNull();
+            expect(step!.expectedMove).toBe('e4');
+            expect(step!.role).toBe('autoplay');
+
+            // Advance through autoplay: e4 (user), e5 (opponent)
+            let s = engine.advanceAutoplay(); // e4
+            expect(s.phase).toBe('autoplay');  // e5 is opponent → autoplay
+            s = engine.advanceAutoplay();      // e5
+            expect(s.phase).toBe('teaching');  // Nf3 is new → teaching
+
+            step = engine.getCurrentStep();
+            expect(step!.expectedMove).toBe('Nf3');
+            expect(step!.role).toBe('target');
+
+            // Play Nf3 during teaching
+            const chess = new Chess();
+            chess.move('e4'); chess.move('e5');
+            const teachResult = engine.handleUserMove('g1', 'f3', chess);
+            expect(teachResult.accepted).toBe(true);
+
+            // Should transition to recall
+            const recallStatus = engine.getStatus();
+            // First recall step is e4 (known, autoplay role) → autoplay
+            expect(recallStatus.phase).toBe('autoplay');
+
+            // Advance through prefix autoplay during recall
+            s = engine.advanceAutoplay(); // e4
+            expect(s.phase).toBe('autoplay');  // e5 → autoplay
+            s = engine.advanceAutoplay(); // e5
+            expect(s.phase).toBe('recalling'); // Nf3 → recall
+
+            // Recall Nf3
+            const recallChess = new Chess();
+            recallChess.move('e4'); recallChess.move('e5');
+            const recallResult = engine.handleUserMove('g1', 'f3', recallChess);
+            expect(recallResult.accepted).toBe(true);
+            expect(recallResult.isEndOfTraversal).toBe(true);
+
+            // Only Nf3 was rated (e4 was autoplayed)
+            expect(engine.getCardsRated()).toBe(1);
+        });
     });
 
     describe('branch point handling', () => {
