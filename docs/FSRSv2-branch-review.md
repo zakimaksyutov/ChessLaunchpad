@@ -33,9 +33,10 @@
 *Found by: Code Review*
 **Resolution:** V1 fields removed. `currentEpoch` is now always stubbed to `0`; `Math.max(...variants.map(...))` call eliminated.
 
-### 6. Stale closure on teaching→recall transition
+### ~~6. Stale closure on teaching→recall transition~~ — FALSE POSITIVE
 **TrainingPageControl.tsx:296** — `phase` is captured from the render closure; by the time the user acts, React state may have moved on. Board-reset logic for teach→recall could fire at the wrong time.
 *Found by: Code Review, React State*
+**Resolution:** Safe by design. `ChessboardControl` stores `movePlayed` in a ref (`movePlayedRef`, updated every render), so `handleMove` always captures the current `phase`. React re-renders between user events, preventing staleness. The `phase === 'teaching'` check intentionally compares pre-move phase (closure) with post-move `status.isRecalling` (engine) — correct transition detection. Interactive guard (line 226/368) further prevents races during autoplay.
 
 ---
 
