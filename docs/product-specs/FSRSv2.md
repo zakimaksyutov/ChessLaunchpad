@@ -93,7 +93,7 @@ Remove badges that no longer apply (oldest, 80th percentile, variant-level error
 
 ### Annotations
 
-PGN annotations carry over into v2 traversals. Annotations are **not** displayed during autoplay segments. During user-play segments (warm-up, target, cool-down), annotations are displayed on the board with the same extra delay as the current system.
+PGN annotations carry over into v2 traversals. Annotations are displayed during all segments — autoplay, warm-up, target, and cool-down. During autoplay, annotation display adds a brief extra delay before the next autoplay move, giving the user time to read. During user-play segments, annotations are displayed on the board with the same extra delay as the current system.
 
 ### Between Traversals
 
@@ -124,14 +124,14 @@ A traversal ends after the cool-down of the last due card on the path. It does n
 - `/repertoire` and `/games` pages — unchanged
 - PGN as import/storage format
 - `fsrsCards` storage (`Record<string, FSRSCardData>`)
-- FSRS config (request_retention 0.9, max_interval 365, fuzz, short_term)
+- FSRS config (request_retention 0.97, max_interval 90, fuzz, short_term)
 - `Good`/`Again` rating mapping
 - `ts-fsrs` library
 - Backend API contract (additive — variant-level stats become vestigial)
 
 ## Scope
 
-Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power) and gains a **context depth** setting (number of user-turn moves to play before and after a due card; default: 2). Context depth is stored locally (not synced to backend). No changes to `/repertoire` or `/games`.
+Only `/training` and `/settings` are affected. `/settings` loses the weight-tuning sliders (recency/frequency/error power) and gains a **context depth** setting (number of user-turn moves to play before and after a due card; default: 2). Context depth is synced to the backend as part of the `settings` object. No changes to `/repertoire` or `/games`.
 
 ## New Components
 
