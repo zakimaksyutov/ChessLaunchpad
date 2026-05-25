@@ -24,9 +24,10 @@
 *Found by: Codex (GPT-5.4)*
 **Resolution:** Added `edge.orientations.has(this.plan!.orientation)` guard to the branch-point condition in `handleUserMove()`. Regression test added for cross-orientation branch-point rejection.
 
-### 4. Dynamic interval recomputation causes review flood on upgrade
+### ~~4. Dynamic interval recomputation causes review flood on upgrade~~ — WON'T FIX
 **FSRSService.ts:260** — `computeInterval()` uses runtime settings (retention=0.97, maxInterval=90), NOT the stored `sd` field. Existing v1 cards scheduled at retention=0.9 get dramatically shorter intervals retroactively. All Review cards become due much sooner on first v2 session.
 *Found by: Data Migration*
+**Resolution:** Only one user exists and has already migrated. No future upgrade population to protect. Dynamic recomputation design is intentional (settings changes take immediate effect). Can revisit if onboarding new users with pre-existing v1 card histories.
 
 ### ~~5. `Math.max(...[])` → `-Infinity` on empty variants~~ — FIXED
 **RepertoireDataUtils.ts:138** — If `variants` is empty, produces an invalid `currentEpoch`.
