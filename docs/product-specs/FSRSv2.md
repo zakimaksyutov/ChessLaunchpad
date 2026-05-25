@@ -34,7 +34,7 @@ When the queue's highest-priority item is a **New card**, a teach-then-recall fl
 The full traversal is pre-computed before the first move:
 
 1. Pull the highest-priority due card from the review queue
-2. Compute path from root to that card, choosing opponent branches that lead toward more due cards. When opponent branches have equal due-card density, choose randomly. When transpositions offer multiple paths to the same card, prefer the shortest path (fewest moves from root); break ties by the path with the most due cards, then randomly.
+2. Compute path from root to that card, choosing opponent branches that lead toward more due cards. When opponent branches have equal due-card density, choose randomly. When transpositions offer multiple paths to the same card, prefer the shortest path (fewest moves from root); break ties by the path with the most due cards, then by DFS discovery order.
 3. Mark each user-turn position in the path: **autoplay**, **warm-up** (N moves before target), **target** (due card), or **cool-down** (N moves after target). N = context depth setting (default: 2).
 4. If more due cards exist deeper on the chosen path, extend the plan with another autoplay/warm-up/target/cool-down zone
 5. Execute the pre-computed plan move-by-move
@@ -57,7 +57,7 @@ Incidentally reviewed cards (rated `Good` at branch points) are fully reviewed �
 New cards use a two-phase teach-then-recall flow:
 
 1. **Teaching pass:** Autoplay path to the new card(s). At each new position, show the correct move on the board (arrow/highlight). User must physically play it. If the user plays a wrong move, reject it with an error sound. Cards are **not rated** — they stay in New state.
-2. **Recall pass:** Immediately replay the same path. User must recall each move. Rate each card `Again` — immediate recall after teaching is not real learning. The **"give me hint"** option is available; using it still results in an `Again` rating (same as the default recall rating).
+2. **Recall pass:** Immediately replay the same path. User must recall each newly taught card. Only the new cards are rated — each receives `Again` (immediate recall after teaching is not real learning). Non-new cards on the path (warm-up/cool-down) are not rated during recall. The **"give me hint"** option is available; using it still results in an `Again` rating (same as the default recall rating).
 
 After the recall pass, individual cards enter Learning with tight intervals. Subsequent reviews are unguided and rated normally (`Good`/`Again`).
 
@@ -97,7 +97,7 @@ PGN annotations carry over into v2 traversals. Annotations are displayed during 
 
 ### Between Traversals
 
-No auto-load countdown. The next traversal starts immediately after the previous one completes. The user stops training by navigating away.
+No auto-load countdown. The next traversal starts after a 300 ms inter-traversal delay (allowing the success sound to finish playing). The user stops training by navigating away.
 
 ### Traversal End
 
@@ -115,7 +115,7 @@ A traversal ends after the cool-down of the last due card on the path. It does n
 | "Done" signal | Never | Queue empty → ahead-of-schedule mode |
 | Variant-level stats | `errorEMA`, `successEMA`, `lastSucceededEpoch`, `WeightSettings` | Removed |
 | Filter | `?filter=` by classification/FEN | Not supported |
-| Between traversals | Auto-load countdown | Immediate |
+| Between traversals | Auto-load countdown | 300 ms delay |
 | Debug table | Variant weights/probability | Removed |
 | `dailyPlayCount` | Per variant round | Per correctly-played target card |
 
@@ -167,7 +167,7 @@ When the review queue is empty, offer an "ahead of schedule" practice mode. Sele
 
 ## Autoplay Path Speed
 
-Autoplay to the target position uses the current animation speed — no instant jumps.
+Autoplay to the target position uses a fixed 250 ms move delay — no instant jumps. Annotation display adds an additional brief delay when annotations are present.
 
 ## Backlog (Not v1)
 
