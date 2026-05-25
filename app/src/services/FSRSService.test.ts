@@ -63,8 +63,8 @@ describe('FSRSService', () => {
 
         beforeEach(() => {
             scheduler = fsrs({
-                request_retention: 0.9,
-                maximum_interval: 365,
+                request_retention: 0.97,
+                maximum_interval: 90,
                 enable_fuzz: false,
                 enable_short_term: true
             });
@@ -127,9 +127,10 @@ describe('FSRSService', () => {
             const cardData = buildReviewCard(reviewDate);
 
             const service = new FSRSService({ 'fen::e4': cardData });
-            // Check slightly before due — R should be close to request_retention (0.9), below 0.97
-            const almostDue = new Date(new Date(cardData.d).getTime() - 1000);
-            expect(service.shouldAutoplay('fen', 'e4', almostDue)).toBe(false);
+            // At due date, R equals request_retention (0.97) which meets the 0.97 autoplay threshold
+            // To get R below threshold, check slightly past due
+            const pastDue = new Date(new Date(cardData.d).getTime() + 24 * 60 * 60 * 1000);
+            expect(service.shouldAutoplay('fen', 'e4', pastDue)).toBe(false);
         });
 
         it('should return true when card is Review, not due, and R >= 0.97', () => {

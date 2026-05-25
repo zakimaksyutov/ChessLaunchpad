@@ -1,10 +1,14 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import ChessboardControl from './ChessboardControl';
-import { Chess, Move } from "chess.js";
+import { Chess } from "chess.js";
 import { OpeningVariant } from '../models/OpeningVariant';
-import { LaunchpadLogic } from '../utils/LaunchpadLogic';
-import PgnControl from './PgnControl';
 import { FSRSCardData } from '../models/FSRSCardData';
+import { TrainingEngine, EnginePhase } from '../services/TrainingEngine';
+import { TraversalStep } from '../services/PathPlanner';
+import { Annotation } from '../models/Annotation';
+import { extractAnnotations } from '../utils/AnnotationUtils';
+import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
+import PgnControl from './PgnControl';
 import './TrainingPageControl.css';
 
 import soundMoveFile from '../assets/move.mp3';
@@ -12,356 +16,362 @@ import soundCaptureFile from '../assets/capture.mp3';
 import soundErrorFile from '../assets/error.mp3';
 import soundSuccessFile from '../assets/energy.mp3';
 
-// Create Audio objects for move/capture/error/success sounds
 const soundMove = new Audio(soundMoveFile);
 const soundCapture = new Audio(soundCaptureFile);
 const soundError = new Audio(soundErrorFile);
 const soundSuccess = new Audio(soundSuccessFile);
 
-const FSRS_STATE_NAMES = ['New', 'Learning', 'Review', 'Relearning'];
-
-type AutoPlayPhase = 'autoplay' | 'idle';
-
-function formatCardForLog(card: FSRSCardData) {
-    return {
-        state: FSRS_STATE_NAMES[card.st] ?? card.st,
-        stability: card.s,
-        difficulty: card.di,
-        elapsed_days: card.e,
-        scheduled_days: card.sd,
-        learning_steps: card.ls,
-        reps: card.r,
-        lapses: card.l,
-        due: card.d,
-        last_review: card.lr ?? '—',
-    };
-}
-
 interface TrainingPageControlProps {
     variants: OpeningVariant[];
     fsrsCards: Record<string, FSRSCardData>;
-    onCompletion: () => void;
-    onLoadNext: () => void;
-    orientation: 'white' | 'black';
+    onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>) => Promise<void>;
+    onQueueStats: (stats: { dueCount: number; newCount: number; totalCards: number }) => void;
+    onCardRated: () => void;
 }
 
-// Table visibility states
-const TABLE_HIDDEN = 0;
-const TABLE_SELECTED_ONLY = 1;
-const TABLE_FULL = 2;
+const AUTOPLAY_MOVE_DELAY_MS = 250;
+const ANNOTATION_DELAY_BASE_IN_MS = 200;
+const ANNOTATION_DELAY_GROWTH = 1.26;
 
-const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsrsCards, onCompletion, onLoadNext, orientation }) => {
+const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
+    variants,
+    fsrsCards,
+    onTraversalComplete,
+    onQueueStats,
+    onCardRated,
+}) => {
+    const [fen, setFen] = useState<string>(() => new Chess().fen());
+    const [pgn, setPgn] = useState<string>('');
+    const [orientation, setOrientation] = useState<'white' | 'black'>('white');
+    const [phase, setPhase] = useState<EnginePhase>('idle');
+    const [roundId, setRoundId] = useState<string>('');
+    const [statusMessage, setStatusMessage] = useState<string>('');
+    const [hintAnnotations, setHintAnnotations] = useState<Annotation[]>([]);
+    const [pgnAnnotations, setPgnAnnotations] = useState<Annotation[]>([]);
 
-    const ANNOTATION_DELAY_BASE_IN_MS = 200;
-    const ANNOTATION_DELAY_GROWTH = 1.26;
-    const AUTOPLAY_MOVE_DELAY_MS = 250;
-    const NORMAL_MOVE_DELAY_MS = 750;
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const mountedRef = useRef(true);
+    const chessRef = useRef<Chess>(new Chess());
+    const engineRef = useRef<TrainingEngine | null>(null);
+    const onTraversalCompleteRef = useRef(onTraversalComplete);
+    const onQueueStatsRef = useRef(onQueueStats);
+    const onCardRatedRef = useRef(onCardRated);
+    const correctCardsCountRef = useRef(0);
 
-    ////////////////////////////////////////////
-    // React References
-    const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Timeout reference for auto-play
-    const loadNextTriggeredRef = useRef(false); // Guards against double-calling onLoadNext
-    const onLoadNextRef = useRef(onLoadNext);
-    useEffect(() => { onLoadNextRef.current = onLoadNext; }, [onLoadNext]);
+    useEffect(() => { onTraversalCompleteRef.current = onTraversalComplete; }, [onTraversalComplete]);
+    useEffect(() => { onQueueStatsRef.current = onQueueStats; }, [onQueueStats]);
+    useEffect(() => { onCardRatedRef.current = onCardRated; }, [onCardRated]);
 
-    ////////////////////////////////////////////
-    // React States
-    const [pgn, setPgn] = useState<string>(''); // Game's PGN
-    const [fen, setFen] = useState<string>(() => new Chess().fen()); // Game's FEN
-    const [autoLoadNext, setAutoLoadNext] = useState<boolean>(false); // Whether to auto-load the next variant
-    const [progress, setProgress] = useState<number>(0); // Progress bar till auto-loading
-    const [applicableVariants, setApplicableVariants] = useState<OpeningVariant[]>([]); // Applicable variants for the position before the last move
-    const [roundId, setRoundId] = useState<string>(''); // ID of the current round
-    const [tableVisibility, setTableVisibility] = useState<number>(TABLE_HIDDEN); // Table visibility state
-    const [autoPlayPhase, setAutoPlayPhase] = useState<AutoPlayPhase>('idle'); // FSRS autoplay visual state
+    // Build engine once on mount or when variants change (not when fsrsCards changes from saves)
+    const initialFsrsCardsRef = useRef(fsrsCards);
+    useEffect(() => { initialFsrsCardsRef.current = fsrsCards; }, [fsrsCards]);
+    const engine = useMemo<TrainingEngine>(() => {
+        const pgns = variants.map(v => {
+            const anns: Record<string, Annotation[]> = {};
+            const tempChess = new Chess();
+            try {
+                tempChess.loadPgn(v.pgn);
+                for (const comment of tempChess.getComments()) {
+                    // Normalize FEN to match engine's normalized FENs
+                    const normalizedFen = normalizeFenResetHalfmoveClock(comment.fen);
+                    const existing = anns[normalizedFen] ?? [];
+                    anns[normalizedFen] = [...existing, ...extractAnnotations(comment.comment)];
+                }
+            } catch { /* skip bad PGN */ }
+            return {
+                pgn: v.pgn,
+                orientation: v.orientation,
+                annotations: anns,
+            };
+        });
+        return new TrainingEngine(pgns, initialFsrsCardsRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [variants]);
 
-    ////////////////////////////////////////////
-    // React Memory
-    const logic = useMemo<LaunchpadLogic>(() => new LaunchpadLogic(variants, fsrsCards), [variants, fsrsCards]);
-    const chess = useMemo(() => new Chess(), []);
-
-    ////////////////////////////////////////////
-    // React References — FSRS autoplay prefix tracking
-    const userHasPlayedManuallyRef = useRef<boolean>(false);
-
-    ////////////////////////////////////////////
-    // React Effect: Handle keyboard shortcuts for debugging
     useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            // Check for Ctrl+Alt+D
-            if (event.ctrlKey && event.altKey && event.key === 'd') {
-                setTableVisibility(prev => (prev + 1) % 3); // Cycle through 0, 1, 2
-            }
-        };
+        engineRef.current = engine;
+    }, [engine]);
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, []);
+    // Start traversal on mount / engine change
+    const startNewTraversal = useCallback(() => {
+        const eng = engineRef.current;
+        if (!eng) return;
 
-    ////////////////////////////////////////////
-    // React Effect: Full reset when orientation or variants change
-    /* eslint-disable react-hooks/exhaustive-deps */
-    useEffect(() => {
-        chess.reset();
+        correctCardsCountRef.current = 0;
+        chessRef.current = new Chess();
+        setFen(chessRef.current.fen());
         setPgn('');
-        setFen(chess.fen());
-        setAutoLoadNext(false);
-        setProgress(0);
-        setApplicableVariants([]);
-        setAutoPlayPhase('idle');
-        userHasPlayedManuallyRef.current = false;
-
-        // Generate a new ID for the round
+        setStatusMessage('');
+        setHintAnnotations([]);
+        setPgnAnnotations([]);
         setRoundId(Math.random().toString(36).substring(7));
 
-        // Schedule the first action based on whose turn it is
-        decideNextAction(chess);
+        const status = eng.startTraversal();
+        if (!status) {
+            setPhase('empty');
+            setStatusMessage('No cards to train.');
+            return;
+        }
+
+        setOrientation(status.orientation);
+        setPhase(status.phase);
+        onQueueStatsRef.current(eng.getQueueStats());
+
+        if (status.phase === 'empty') {
+            setStatusMessage('No cards to train.');
+            return;
+        }
+
+        if (status.phase === 'ahead_of_schedule') {
+            setStatusMessage('All due cards reviewed — practicing ahead of schedule');
+        }
+
+        scheduleNextAction(eng);
+    }, []);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        startNewTraversal();
 
         return () => {
+            mountedRef.current = false;
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current);
                 timeoutRef.current = null;
             }
-        }
-    }, [orientation, variants]);
-    /* eslint-enable react-hooks/exhaustive-deps */
-
-    ////////////////////////////////////////////
-    // React Effect: Reacts to autoLoadNext state & progresses the progress bar
-    useEffect(() => {
-        let interval: NodeJS.Timeout | null = null;
-
-        if (autoLoadNext) {
-            loadNextTriggeredRef.current = false;
-
-            // We auto-play in 5 seconds if there were errors, otherwise in 1 second
-            let durationMilliseconds = logic.hadErrors() ? 5000 : 1000;
-
-            // We also give extra time per annotation
-            const annotations = logic.getAnnotations(chess.fen());
-            durationMilliseconds += getAnnotationDelayMilliseconds(annotations);
-
-            const stepMilliseconds = 100;
-            const numberOfSteps = durationMilliseconds / stepMilliseconds;
-            const progressBarStepSize = 100 / numberOfSteps;
-
-            interval = setInterval(() => {
-                setProgress(prev => {
-                    const newVal = prev + progressBarStepSize;
-                    if (newVal >= 100) {
-                        clearInterval(interval!);
-                        return 100;
-                    }
-                    return newVal;
-                });
-            }, stepMilliseconds);
-        }
-
-        return () => {
-            if (interval) {
-                clearInterval(interval);
-            }
         };
-    }, [autoLoadNext, logic, chess]);
+    }, [engine, startNewTraversal]);
 
-    // Trigger onLoadNext when the progress bar completes.
-    // Separated from the progress effect to keep the state updater pure
-    // (StrictMode calls updaters twice, which was causing double onLoadNext calls).
-    useEffect(() => {
-        if (autoLoadNext && progress >= 100 && !loadNextTriggeredRef.current) {
-            loadNextTriggeredRef.current = true;
-            onLoadNextRef.current();
-        }
-    }, [autoLoadNext, progress]);
+    // ── Core flow ──────────────────────────────────────────────────────
 
-    const handleMove = (orig: string, dest: string, isAutoplay: boolean): boolean => {
-
-        const chessTestMove = new Chess();
-        chessTestMove.loadPgn(chess.pgn());
-        const move: Move = chessTestMove.move({ from: orig, to: dest })!;
-
-        if (!logic.isValidVariant(chessTestMove.fen())) {
-            // There is no such variant. Play an error sound and return false to revert the move.
-            playSound(soundError);
-            logic.markError(chess.fen());
-            return false;
-        }
-
-        // Rate FSRS card if user played manually (not autoplayed)
-        if (!isAutoplay) {
-            const currentFen = chess.fen();
-            const hadError = logic.hasErrorAtPosition(currentFen);
-            const cardBefore = logic.getCardDataForMove(currentFen, move.san);
-
-            userHasPlayedManuallyRef.current = true;
-            setAutoPlayPhase('idle');
-            logic.rateUserMove(currentFen, move.san);
-
-            const cardAfter = logic.getCardDataForMove(currentFen, move.san);
-            console.log(`[FSRS] Played ${move.san}: correct=${!hadError}`);
-            console.table([{
-                label: 'before',
-                ...(cardBefore ? formatCardForLog(cardBefore) : { state: '(new card)' }),
-            }, {
-                label: 'after',
-                ...(cardAfter ? formatCardForLog(cardAfter) : {}),
-            }]);
-        }
-
-        var isEndOfVariant = logic.isEndOfVariant(chessTestMove.fen(), chessTestMove.history().length);
-
-        // Play a corresponding sound.
-        if (isEndOfVariant) {
-            playSound(soundSuccess);
-        } else if (move.captured) {
-            playSound(soundCapture);
-        } else {
-            playSound(soundMove);
-        }
-
-        // Update internal position
-        chess.move({ from: orig, to: dest });
-
-        // Update the PGN and FEN states
-        setPgn(chess.pgn());
-        setFen(chess.fen());
-
-        if (isEndOfVariant) {
-            handleCompletion();
-        } else {
-            decideNextAction(chess);
-        }
-
-        return true;
-    }
-
-    const handleCompletion = () => {
-        logic.completeVariant(chess.fen());
-
-        // Defensive: clear any pending autoplay timeout
+    const scheduleNextAction = (eng: TrainingEngine) => {
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;
         }
 
-        // Reset autoplay phase so status bar doesn't persist during countdown
-        setAutoPlayPhase('idle');
+        const status = eng.getStatus();
+        setPhase(status.phase);
 
-        // Notify parent component that the variant is complete
-        onCompletion();
+        if (status.phase === 'complete') {
+            handleTraversalComplete(eng).catch(console.error);
+            return;
+        }
 
-        // Set the progress bar for auto-reload
-        setAutoLoadNext(true);
-        setProgress(0);
+        if (status.phase === 'empty') {
+            setStatusMessage('No cards to train.');
+            return;
+        }
+
+        if (status.phase === 'autoplay') {
+            const step = eng.getCurrentStep();
+            if (!step) return;
+
+            setHintAnnotations([]);
+            setPgnAnnotations(status.annotations);
+
+            const annotations = status.annotations;
+            const delay = AUTOPLAY_MOVE_DELAY_MS + getAnnotationDelayMs(annotations);
+
+            timeoutRef.current = setTimeout(() => {
+                timeoutRef.current = null;
+                executeAutoplay(eng, step);
+            }, delay);
+            return;
+        }
+
+        if (status.phase === 'teaching') {
+            setPgnAnnotations([]);
+            if (status.hintMove) {
+                setHintAnnotations([{
+                    brush: 'G',
+                    orig: status.hintMove.from,
+                    dest: status.hintMove.to,
+                }]);
+            }
+            return;
+        }
+
+        if (status.phase === 'recalling' || status.phase === 'awaiting_user' || status.phase === 'ahead_of_schedule') {
+            setHintAnnotations([]);
+            setPgnAnnotations(status.annotations);
+            return;
+        }
+    };
+
+    const executeAutoplay = (eng: TrainingEngine, step: TraversalStep) => {
+        const chess = chessRef.current;
+        try {
+            const move = chess.move(step.expectedMove);
+            if (move) {
+                if (move.captured) {
+                    playSound(soundCapture);
+                } else {
+                    playSound(soundMove);
+                }
+                setFen(chess.fen());
+                setPgn(chess.pgn());
+
+                const status = eng.advanceAutoplay();
+                setPhase(status.phase);
+                scheduleNextAction(eng);
+            }
+        } catch (e) {
+            console.error('[TrainingEngine] Autoplay failed:', step.expectedMove, e);
+        }
+    };
+
+    const handleMove = (orig: string, dest: string): boolean => {
+        const eng = engineRef.current;
+        if (!eng) return false;
+
+        // Guard against clicks during autoplay (race condition)
+        if (phase === 'autoplay' || phase === 'complete' || phase === 'empty') return false;
+
+        const chess = chessRef.current;
+        const result = eng.handleUserMove(orig, dest, chess);
+
+        if (!result.accepted) {
+            if (result.branchPointMessage) {
+                // Valid repertoire move at branch point — rate it but revert board
+                setStatusMessage(result.branchPointMessage);
+                playSound(soundMove);
+                if (result.ratingWasCorrect && result.isTargetCard) {
+                    correctCardsCountRef.current++;
+                    onCardRatedRef.current();
+                }
+                onQueueStatsRef.current(eng.getQueueStats());
+                return false; // ChessboardControl will revert the move
+            }
+            // Invalid move — clear any branch point message
+            setStatusMessage('');
+            playSound(soundError);
+            return false;
+        }
+
+        // Move accepted — apply to chess
+        try {
+            const move = chess.move({ from: orig, to: dest });
+            if (!move) return false;
+
+            if (move.captured) {
+                playSound(soundCapture);
+            } else {
+                playSound(soundMove);
+            }
+            setFen(chess.fen());
+            setPgn(chess.pgn());
+            setStatusMessage('');
+            setHintAnnotations([]);
+        } catch {
+            return false;
+        }
+
+        if (result.ratingWasCorrect && result.isTargetCard) {
+            correctCardsCountRef.current++;
+            onCardRatedRef.current();
+        }
+
+        if (result.isEndOfTraversal) {
+            playSound(soundSuccess);
+
+            // Show end-of-line annotations before transitioning
+            const endAnnotations = eng.getEndOfTraversalAnnotations();
+            setPgnAnnotations(endAnnotations);
+            const delay = getAnnotationDelayMs(endAnnotations);
+
+            if (delay > 0) {
+                timeoutRef.current = setTimeout(() => {
+                    timeoutRef.current = null;
+                    handleTraversalComplete(eng).catch(console.error);
+                }, delay);
+            } else {
+                handleTraversalComplete(eng).catch(console.error);
+            }
+            return true;
+        }
+
+        // Advance to next action
+        const status = eng.getStatus();
+        setPhase(status.phase);
+
+        // Board reset for teaching → recall transition
+        // Use isRecalling (mode) instead of phase, since the first recall step
+        // may be 'autoplay' (e.g., opponent's e4 for black variants).
+        if (status.isRecalling && phase === 'teaching') {
+            chessRef.current = new Chess();
+            setFen(chessRef.current.fen());
+            setPgn('');
+        }
+
+        scheduleNextAction(eng);
+        onQueueStatsRef.current(eng.getQueueStats());
+
+        return true;
+    };
+
+    const handleTraversalComplete = async (eng: TrainingEngine) => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+
+        const correctCount = correctCardsCountRef.current;
+        const updatedCards = eng.getFsrsCards();
+
+        // Await save completion before starting next traversal (prevents ETag race)
+        await onTraversalCompleteRef.current(correctCount, updatedCards);
+
+        // Guard against scheduling after unmount (save was in-flight when component unmounted)
+        if (!mountedRef.current) return;
+
+        // Start next traversal after save completes (tracked timeout for cleanup)
+        timeoutRef.current = setTimeout(() => {
+            timeoutRef.current = null;
+            startNewTraversal();
+        }, 300); // tiny delay for the success sound to be heard
+    };
+
+    const handleHintRequest = () => {
+        const eng = engineRef.current;
+        if (!eng) return;
+
+        const hint = eng.requestHint();
+        if (hint) {
+            setHintAnnotations([{
+                brush: 'B',
+                orig: hint.from,
+                dest: hint.to,
+            }]);
+        }
     };
 
     const playSound = (sound: HTMLAudioElement): void => {
         sound.play().catch((error) => {
-            if (error.name === 'NotAllowedError') {
-                console.warn('Sound playback was blocked by the browser. This is expected if the sound is not triggered by a user action.');
-                return;
-            } else if (error.name === 'NotSupportedError') {
-                console.warn('Playing sound is not supported.');
+            if (error.name === 'NotAllowedError' || error.name === 'NotSupportedError') {
                 return;
             }
             throw error;
         });
-    }
+    };
 
-    const scheduleToPlayNextMove = (chess: Chess, fastAutoplay: boolean = false) => {
-        // Clear any existing timeout before setting a new one.
-        // This is needed because it is run from useEffect and it can run multiple times (strict mode in development)
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
+    const getAnnotationDelayMs = (annotations: { dest?: string }[]): number => {
+        const count = annotations.reduce((c, a) => c + (a.dest ? 1 : 0), 0);
+        if (count === 0) return 0;
+        return ANNOTATION_DELAY_BASE_IN_MS * (Math.pow(ANNOTATION_DELAY_GROWTH, count) - 1) / (ANNOTATION_DELAY_GROWTH - 1);
+    };
 
-        const baseDelay = fastAutoplay ? AUTOPLAY_MOVE_DELAY_MS : NORMAL_MOVE_DELAY_MS;
+    // ── Render ─────────────────────────────────────────────────────────
 
-        // If there are annotations then we delay auto-play by extra time per annotation.
-        // The idea is that we want to give the user time to follow annotations.
-        const annotations = logic.getAnnotations(chess.fen());
+    const allAnnotations = [...(pgnAnnotations || []), ...hintAnnotations];
 
-        timeoutRef.current = setTimeout(() => {
-            // Clear ref BEFORE executing: playNextMove may schedule a new
-            // timeout via decideNextAction → scheduleToPlayNextMove, and we
-            // must not overwrite that new reference afterwards.
-            timeoutRef.current = null;
-            playNextMove(chess);
-        }, baseDelay + getAnnotationDelayMilliseconds(annotations));
-    }
-
-    const getAnnotationDelayMilliseconds = (annotations: { dest?: string }[]): number => {
-        const annotationCount = annotations.reduce((count, annotation) => count + (annotation.dest ? 1 : 0), 0);
-        if (annotationCount === 0) {
-            return 0;
-        }
-
-        // Geometric series: base * (growth^n - 1) / (growth - 1)
-        return ANNOTATION_DELAY_BASE_IN_MS * (Math.pow(ANNOTATION_DELAY_GROWTH, annotationCount) - 1) / (ANNOTATION_DELAY_GROWTH - 1);
-    }
-
-    const isUserTurn = (moveCount: number): boolean => {
-        // After moveCount moves have been played, the next move is by...
-        const nextMoveIsWhite = moveCount % 2 === 0;
-        return (orientation === 'white' && nextMoveIsWhite) || (orientation === 'black' && !nextMoveIsWhite);
-    }
-
-    const logFsrsLookahead = (fen: string, skipLookahead: boolean, autoplay: boolean = false) => {
-        const entries = logic.getLookaheadEvaluation(fen, skipLookahead);
-        console.log(`[FSRS] Your turn${autoplay ? ' (autoplaying)' : ''}${skipLookahead ? ' (no lookahead)' : ''} — FEN:`, fen);
-        console.table(entries.map(e => ({
-            path: e.path,
-            fen: e.fen,
-            state: e.cardData ? FSRS_STATE_NAMES[e.cardData.st] : '(none)',
-            stability: e.cardData?.s ?? '—',
-            difficulty: e.cardData?.di ?? '—',
-            reps: e.cardData?.r ?? '—',
-            lapses: e.cardData?.l ?? '—',
-            retrievability: e.retrievability !== null ? e.retrievability.toFixed(4) : '—',
-            autoplay: e.shouldAutoplay ? '✓' : '✗',
-            due: e.cardData?.d ?? '—',
-        })));
-    }
-
-    const decideNextAction = (chess: Chess) => {
-        const moveCount = chess.history().length;
-        const inAutoplayPrefix = !userHasPlayedManuallyRef.current;
-
-        // Skip lookahead for the first 2 user-turn moves to avoid excessive
-        // tree evaluation at the root where branching factor is highest.
-        const userTurnIndex = orientation === 'white'
-            ? moveCount / 2
-            : (moveCount - 1) / 2;
-        const skipLookahead = userTurnIndex < 2;
-
-        if (!isUserTurn(moveCount)) {
-            // Opponent's turn → always autoplay
-            scheduleToPlayNextMove(chess, inAutoplayPrefix);
-        } else if (inAutoplayPrefix && logic.shouldAutoplayUserMove(chess.fen(), skipLookahead)) {
-            // User's turn, still in autoplay prefix, FSRS says autoplay
-            setAutoPlayPhase('autoplay');
-            logFsrsLookahead(chess.fen(), skipLookahead, true);
-            scheduleToPlayNextMove(chess, true);
-        } else {
-            // User's turn, user must play manually
-            setAutoPlayPhase('idle');
-            logFsrsLookahead(chess.fen(), skipLookahead);
-        }
-    }
-
-    const playNextMove = (chess: Chess) => {
-        const move = logic.getNextMove(chess.fen(), chess.history().length);
-
-        setApplicableVariants(logic.getAllVariants().filter(variant => variant.move !== null));
-
-        handleMove(move.from, move.to, true);
-    }
-
-    const boardContainerClass = autoPlayPhase === 'autoplay'
+    const boardContainerClass = phase === 'autoplay'
         ? 'board-wrapper board-glow-autoplay'
-        : 'board-wrapper';
+        : phase === 'teaching'
+            ? 'board-wrapper board-glow-teaching'
+            : 'board-wrapper';
+
+    const isInteractive = phase !== 'autoplay' && phase !== 'complete' && phase !== 'empty';
 
     return (
         <div style={{
@@ -371,27 +381,64 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
             width: '100%',
             maxWidth: '100%'
         }}>
-            {(() => {
-                const annotations = logic.getAnnotations(fen);
+            <div className={boardContainerClass}>
+                <ChessboardControl
+                    roundId={roundId}
+                    fen={fen}
+                    orientation={orientation}
+                    movePlayed={(orig, dest) => handleMove(orig, dest)}
+                    annotations={allAnnotations}
+                    interactive={isInteractive}
+                />
+            </div>
 
-                return (
-                    <div className={boardContainerClass}>
-                        <ChessboardControl
-                            roundId={roundId}
-                            fen={fen}
-                            orientation={orientation}
-                            movePlayed={(orig, dest) => handleMove(orig, dest, false)}
-                            annotations={annotations}
-                            interactive={autoPlayPhase !== 'autoplay'}
-                        />
-                    </div>
-                );
-            })()}
-            {autoPlayPhase === 'autoplay' && (
+            {/* Status messages */}
+            {phase === 'autoplay' && (
                 <div className="status-bar status-bar-autoplay">
-                    ⏩ Auto-playing mastered moves…
+                    ⏩ Auto-playing to target position…
                 </div>
             )}
+            {phase === 'teaching' && (
+                <div className="status-bar status-bar-teaching">
+                    📖 New moves — play the highlighted move
+                </div>
+            )}
+            {phase === 'recalling' && (
+                <div className="status-bar status-bar-recall">
+                    🔁 Recall pass — try to remember the moves
+                </div>
+            )}
+            {phase === 'ahead_of_schedule' && (
+                <div className="status-bar status-bar-ahead">
+                    ✅ All due cards reviewed — practicing ahead of schedule
+                </div>
+            )}
+            {statusMessage && phase !== 'ahead_of_schedule' && (
+                <div className="status-bar status-bar-info">
+                    {statusMessage}
+                </div>
+            )}
+
+            {/* Hint button — available during user play and recall */}
+            {(phase === 'awaiting_user' || phase === 'recalling' || phase === 'ahead_of_schedule') && (
+                <button
+                    className="hint-button"
+                    onClick={handleHintRequest}
+                    style={{
+                        marginTop: '0.3rem',
+                        padding: '0.3rem 1rem',
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        background: '#f9f9f9',
+                    }}
+                >
+                    💡 Hint
+                </button>
+            )}
+
+            {/* PGN display */}
             <div className="pgn-container"
                 style={{
                     width: '100%',
@@ -403,83 +450,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({ variants, fsr
                     margin: '10px auto'
                 }}
             >
-                {/* PGN text in the background */}
-                <div style={{ padding: '0.5rem', opacity: autoLoadNext ? 0.4 : 1 }}>
+                <div style={{ padding: '0.5rem' }}>
                     <PgnControl pgn={pgn} />
                 </div>
-
-                {/* If auto-loading is active, show a semi-transparent overlay with progress bar */}
-                {autoLoadNext && (
-                    <div
-                        style={{
-                            position: 'absolute',
-                            top: 0, left: 0, right: 0, bottom: 0,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: 'rgba(0,0,0,0.3)'
-                        }}
-                    >
-                        <div
-                            style={{
-                                width: '80%',
-                                backgroundColor: '#ccc',
-                                height: '10px',
-                                marginBottom: '1rem',
-                                borderRadius: '5px',
-                                overflow: 'hidden'
-                            }}
-                        >
-                            <div
-                                style={{
-                                    width: `${progress}%`,
-                                    backgroundColor: 'green',
-                                    height: '100%'
-                                }}
-                            />
-                        </div>
-                        <button onClick={() => setAutoLoadNext(false)}>
-                            Stop Auto-Load
-                        </button>
-                    </div>
-                )}
             </div>
-            {tableVisibility !== TABLE_HIDDEN && (
-                <div className="table-container">
-                    <table className="table">
-                        <thead>
-                            <tr>
-                                <th className="th">pgn</th>
-                                <th className="th">#</th>
-                                <th className="th">_nf</th>
-                                <th className="th">_rf</th>
-                                <th className="th">_ff</th>
-                                <th className="th">_ef</th>
-                                <th className="th">_w</th>
-                                <th className="th">_wp</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {applicableVariants
-                                .filter(variant => tableVisibility === TABLE_FULL || 
-                                                 (tableVisibility === TABLE_SELECTED_ONLY && variant.isPicked))
-                                .map((variant, index) => (
-                                    <tr key={index} className={variant.isPicked ? 'highlight' : ''}>
-                                        <td className="td">{variant.pgnWithoutAnnotations}</td>
-                                        <td className="td">{variant.numberOfTimesPlayed}</td>
-                                        <td className="td">{Math.round(variant.newnessFactor * 100) / 100}</td>
-                                        <td className="td">{Math.round(variant.recencyFactor * 100) / 100}</td>
-                                        <td className="td">{Math.round(variant.frequencyFactor * 100) / 100}</td>
-                                        <td className="td">{Math.round(variant.errorFactor * 100) / 100}</td>
-                                        <td className="td">{Math.round(variant.weight * 100) / 100}</td>
-                                        <td className="td">{Math.round(variant.weightedProbability * 10000) / 100}%</td>
-                                    </tr>
-                                ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
         </div>
     );
 };

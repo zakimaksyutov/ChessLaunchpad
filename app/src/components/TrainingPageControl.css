@@ -38,6 +38,30 @@
     color: #4a6a8a;
 }
 
+.status-bar-teaching {
+    background-color: rgba(76, 175, 80, 0.15);
+    color: #2e7d32;
+}
+
+.status-bar-recall {
+    background-color: rgba(255, 152, 0, 0.15);
+    color: #e65100;
+}
+
+.status-bar-ahead {
+    background-color: rgba(76, 175, 80, 0.1);
+    color: #388e3c;
+}
+
+.status-bar-info {
+    background-color: rgba(33, 150, 243, 0.1);
+    color: #1565c0;
+}
+
+.board-glow-teaching {
+    box-shadow: 0 0 12px 3px rgba(76, 175, 80, 0.6);
+}
+
 .table {
     border-collapse: collapse;
     width: 100%;

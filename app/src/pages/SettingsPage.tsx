@@ -1,183 +1,216 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
-import { RepertoireData } from '../models/RepertoireData';
-import { WeightSettings } from '../models/WeightSettings';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLichessAuth } from '../LichessAuthContext';
 import {
     getLinkedAccounts,
-    addLinkedAccount,
-    removeLinkedAccount,
+    setLinkedAccounts,
     LinkedAccount,
     Platform,
-    getSyncTimestampKey,
+    cleanupRemovedAccount,
 } from '../services/LinkedAccountsService';
 import { clearGames } from '../data/GamesDB';
 import { clearMastersCache } from '../services/MastersExplorerService';
+import { TrainingEngine } from '../services/TrainingEngine';
+import { FSRSService } from '../services/FSRSService';
+import { createDataAccessLayer } from '../data/DataAccessLayer';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import './SettingsPage.css';
 
-interface CoefficientValues {
-    recency: string;
-    frequency: string;
-    error: string;
-}
-
 const SettingsPage: React.FC = () => {
-    const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
-    const [values, setValues] = useState<CoefficientValues>({ recency: '', frequency: '', error: '' });
-    const [loading, setLoading] = useState<boolean>(true);
-    const [saving, setSaving] = useState<boolean>(false);
-    const [errorMessage, setErrorMessage] = useState<string>('');
-    const [lichessLoading, setLichessLoading] = useState(false);
-    const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>(() => getLinkedAccounts());
+    // Draft state (local to form, not applied until Save)
+    const [contextDepth, setContextDepth] = useState<number>(() => TrainingEngine.getContextDepth());
+    const [retention, setRetention] = useState<number>(() => FSRSService.getRetention());
+    const [maxInterval, setMaxInterval] = useState<number>(() => FSRSService.getMaxInterval());
+    const [linkedAccounts, setLinkedAccountsDraft] = useState<LinkedAccount[]>(() => getLinkedAccounts());
     const [newAccountUsername, setNewAccountUsername] = useState('');
     const [newAccountPlatform, setNewAccountPlatform] = useState<Platform>('lichess');
+
+    // Track removed accounts for deferred cleanup
+    const removedAccountsRef = useRef<LinkedAccount[]>([]);
+
+    // Loading state for initial fetch
+    const [loading, setLoading] = useState(true);
+
+    // Dirty tracking
+    const [isDirty, setIsDirty] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Lichess integration (separate, not part of Save/Discard)
+    const [lichessLoading, setLichessLoading] = useState(false);
+    const { connected, login, logout } = useLichessAuth();
+
+    // Cache clearing
     const [clearingCache, setClearingCache] = useState(false);
     const [cacheCleared, setCacheCleared] = useState(false);
 
-    const { connected, login, logout } = useLichessAuth();
-    const navigate = useNavigate();
+    const [errorMessage, setErrorMessage] = useState<string>('');
 
-    const dal: IDataAccessLayer = useMemo(() => {
-        const username = localStorage.getItem('username') || '';
-        const hashedPassword = localStorage.getItem('hashedPassword') || '';
-        return createDataAccessLayer(username, hashedPassword);
-    }, []);
-
+    // On mount, fetch RepertoireData to hydrate module-level settings from backend
     useEffect(() => {
-        const load = async () => {
-            setLoading(true);
-            setErrorMessage('');
+        let cancelled = false;
+        const hydrate = async () => {
             try {
-                const data = await dal.retrieveRepertoireData();
-                setRepertoireData(data);
-                const settings = WeightSettings.from(data.weightSettings);
-                setValues({
-                    recency: settings.recencyPower.toString(),
-                    frequency: settings.frequencyPower.toString(),
-                    error: settings.errorPower.toString()
-                });
+                const username = localStorage.getItem('username');
+                const hashedPassword = localStorage.getItem('hashedPassword');
+                if (!username || !hashedPassword) return;
+
+                const dal = createDataAccessLayer(username, hashedPassword);
+                await dal.retrieveRepertoireData(); // normalize() hydrates module vars
+
+                if (cancelled) return;
+                // Refresh draft state from freshly-hydrated module vars
+                setContextDepth(TrainingEngine.getContextDepth());
+                setRetention(FSRSService.getRetention());
+                setMaxInterval(FSRSService.getMaxInterval());
+                setLinkedAccountsDraft(getLinkedAccounts());
             } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : String(err);
-                setErrorMessage(`Failed to load settings: ${message}`);
+                if (cancelled) return;
+                const msg = err instanceof Error ? err.message : String(err);
+                setErrorMessage(`Failed to load settings: ${msg}`);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         };
+        hydrate();
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-        load();
-    }, [dal]);
+    // Mark dirty when any draft value changes (skip while loading)
+    useEffect(() => {
+        if (loading) return;
+        const committedAccounts = getLinkedAccounts();
+        const accountsChanged =
+            JSON.stringify(linkedAccounts) !== JSON.stringify(committedAccounts);
+        const trainingChanged =
+            contextDepth !== TrainingEngine.getContextDepth() ||
+            retention !== FSRSService.getRetention() ||
+            maxInterval !== FSRSService.getMaxInterval();
+        setIsDirty(accountsChanged || trainingChanged);
+    }, [contextDepth, retention, maxInterval, linkedAccounts, loading]);
 
-    const parseCoefficient = (value: string): number | null => {
-        const num = Number(value);
-        if (!isFinite(num) || num < 0) {
-            return null;
-        }
-        return num;
-    };
-
-    const parsedValues = {
-        recency: parseCoefficient(values.recency),
-        frequency: parseCoefficient(values.frequency),
-        error: parseCoefficient(values.error)
-    };
-
-    const hasInvalidInput = Object.values(parsedValues).some(v => v === null);
-    const referenceSettings = repertoireData?.weightSettings ?? null;
-    const hasChanges =
-        !hasInvalidInput &&
-        referenceSettings !== null &&
-        (
-            parsedValues.recency !== referenceSettings.recencyPower ||
-            parsedValues.frequency !== referenceSettings.frequencyPower ||
-            parsedValues.error !== referenceSettings.errorPower
-        );
-
-    const handleChange = (field: keyof CoefficientValues) => (event: React.ChangeEvent<HTMLInputElement>) => {
-        setValues(prev => ({
-            ...prev,
-            [field]: event.target.value
-        }));
+    const handleDiscard = () => {
+        setContextDepth(TrainingEngine.getContextDepth());
+        setRetention(FSRSService.getRetention());
+        setMaxInterval(FSRSService.getMaxInterval());
+        setLinkedAccountsDraft(getLinkedAccounts());
+        removedAccountsRef.current = [];
+        setIsDirty(false);
+        setSaveMessage(null);
     };
 
     const handleReset = () => {
-        const defaults = WeightSettings.createDefault();
-        setValues({
-            recency: defaults.recencyPower.toString(),
-            frequency: defaults.frequencyPower.toString(),
-            error: defaults.errorPower.toString()
-        });
-        setErrorMessage('');
-    };
-
-    const handleCancel = () => {
-        navigate(-1);
+        setContextDepth(2);
+        setRetention(0.97);
+        setMaxInterval(90);
+        setLinkedAccountsDraft([]);
+        // Mark all current committed accounts as removed for cleanup on save
+        for (const account of getLinkedAccounts()) {
+            if (!removedAccountsRef.current.some(a => a.platform === account.platform && a.username === account.username)) {
+                removedAccountsRef.current.push(account);
+            }
+        }
     };
 
     const handleSave = async () => {
-        if (!repertoireData || hasInvalidInput || saving) {
-            return;
-        }
-
-        const newSettings = new WeightSettings(
-            parsedValues.recency!,
-            parsedValues.frequency!,
-            parsedValues.error!
-        );
-
         setSaving(true);
+        setSaveMessage(null);
         setErrorMessage('');
+
         try {
-            const updatedData: RepertoireData = {
-                ...repertoireData,
-                weightSettings: newSettings
+            const username = localStorage.getItem('username');
+            const hashedPassword = localStorage.getItem('hashedPassword');
+            if (!username || !hashedPassword) {
+                setErrorMessage('Not logged in. Please log in first.');
+                return;
+            }
+
+            const dal = createDataAccessLayer(username, hashedPassword);
+            const current = await dal.retrieveRepertoireData();
+
+            // Build settings from draft values (don't mutate globals until save succeeds)
+            const updated = {
+                ...current,
+                settings: {
+                    ...(current.settings ?? {}),
+                    contextDepth,
+                    retention,
+                    maxInterval,
+                    linkedAccounts,
+                },
             };
-            await dal.storeRepertoireData(updatedData);
-            setRepertoireData(updatedData);
-            navigate(-1);
+
+            await dal.storeRepertoireData(updated);
+
+            // Apply draft to in-memory services only after save succeeds
+            TrainingEngine.setContextDepth(contextDepth);
+            FSRSService.setRetention(retention);
+            FSRSService.setMaxInterval(maxInterval);
+            setLinkedAccounts(linkedAccounts);
+
+            // Clean up local data for removed accounts after successful save
+            for (const removed of removedAccountsRef.current) {
+                cleanupRemovedAccount(removed.username, removed.platform);
+            }
+            removedAccountsRef.current = [];
+
+            setIsDirty(false);
+            setSaveMessage({ type: 'success', text: 'Settings saved.' });
         } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            setErrorMessage(`Failed to save settings: ${message}`);
+            const msg = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to save settings: ${msg}`);
         } finally {
             setSaving(false);
         }
     };
 
-    const handleLichessConnect = async () => {
-        setLichessLoading(true);
-        try {
-            await login();
-        } finally {
-            setLichessLoading(false);
-        }
-    };
+    const [addingAccount, setAddingAccount] = useState(false);
+    const [addAccountError, setAddAccountError] = useState<string>('');
 
-    const handleLichessDisconnect = async () => {
-        setLichessLoading(true);
-        try {
-            await logout();
-        } finally {
-            setLichessLoading(false);
-        }
-    };
-
-    const handleAddAccount = () => {
-        const trimmed = newAccountUsername.trim();
+    const handleAddAccount = async () => {
+        const trimmed = newAccountUsername.trim().toLowerCase();
         if (!trimmed) return;
-        const updated = addLinkedAccount(trimmed, newAccountPlatform);
-        setLinkedAccounts(updated);
+        if (linkedAccounts.some(a => a.platform === newAccountPlatform && a.username === trimmed)) return;
+
+        setAddingAccount(true);
+        setAddAccountError('');
+        try {
+            const url = newAccountPlatform === 'lichess'
+                ? `https://lichess.org/api/user/${encodeURIComponent(trimmed)}`
+                : `https://api.chess.com/pub/player/${encodeURIComponent(trimmed)}`;
+            const resp = await fetch(url);
+            if (!resp.ok) {
+                setAddAccountError(`User "${trimmed}" not found on ${newAccountPlatform === 'chess.com' ? 'Chess.com' : 'Lichess'}.`);
+                return;
+            }
+        } catch {
+            setAddAccountError('Could not verify username. Check your connection and try again.');
+            return;
+        } finally {
+            setAddingAccount(false);
+        }
+
+        setLinkedAccountsDraft([...linkedAccounts, { platform: newAccountPlatform, username: trimmed }]);
         setNewAccountUsername('');
     };
 
     const handleRemoveAccount = (username: string, platform: Platform) => {
-        const updated = removeLinkedAccount(username, platform);
-        setLinkedAccounts(updated);
+        setLinkedAccountsDraft(linkedAccounts.filter(a => !(a.platform === platform && a.username === username)));
+        removedAccountsRef.current.push({ username, platform });
     };
 
     const handleAccountKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleAddAccount();
-        }
+        if (e.key === 'Enter') { e.preventDefault(); handleAddAccount(); }
+    };
+
+    const handleLichessConnect = async () => {
+        setLichessLoading(true);
+        try { await login(); } finally { setLichessLoading(false); }
+    };
+
+    const handleLichessDisconnect = async () => {
+        setLichessLoading(true);
+        try { await logout(); } finally { setLichessLoading(false); }
     };
 
     const handleClearCache = async () => {
@@ -186,10 +219,6 @@ const SettingsPage: React.FC = () => {
         try {
             await clearGames();
             await clearMastersCache();
-            // Clear sync timestamps so next sync does a fresh initial fetch
-            for (const account of linkedAccounts) {
-                localStorage.removeItem(getSyncTimestampKey(account.platform, account.username));
-            }
             setCacheCleared(true);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -199,103 +228,180 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    const renderTable = () => (
-        <table className="settings-table">
-            <thead>
-                <tr>
-                    <th>Factor</th>
-                    <th>Exponent</th>
-                    <th>Description</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>newnessFactor</td>
-                    <td className="exponent-cell">
-                        <span className="exponent-sign">+</span>
-                        <input type="number" value="2" readOnly />
-                    </td>
-                    <td>Boosts openings played fewer than seven times.</td>
-                </tr>
-                <tr>
-                    <td>recencyFactor</td>
-                    <td className="exponent-cell">
-                        <span className="exponent-sign">+</span>
-                        <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={values.recency}
-                            onChange={handleChange('recency')}
-                        />
-                    </td>
-                    <td>Rewards lines that have not been solved recently.</td>
-                </tr>
-                <tr>
-                    <td>frequencyFactor</td>
-                    <td className="exponent-cell">
-                        <span className="exponent-sign">-</span>
-                        <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={values.frequency}
-                            onChange={handleChange('frequency')}
-                        />
-                    </td>
-                    <td>Down-weights variants you solve consistently.</td>
-                </tr>
-                <tr>
-                    <td>errorFactor</td>
-                    <td className="exponent-cell">
-                        <span className="exponent-sign">+</span>
-                        <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            value={values.error}
-                            onChange={handleChange('error')}
-                        />
-                    </td>
-                    <td>Prioritizes lines with recent mistakes.</td>
-                </tr>
-            </tbody>
-        </table>
-    );
-
     return (
         <div className="settings-page">
             <div className="settings-card">
-                <h1>Weight Settings</h1>
-                <p className="settings-description">
-                    Tune how strongly each factor contributes to a variant&apos;s training weight.
-                    Enter positive values only; higher numbers amplify that part of the formula.
-                </p>
-
-                {errorMessage && <div className="settings-error">{errorMessage}</div>}
+                <h1>Settings</h1>
 
                 {loading ? (
-                    <div>Loading...</div>
+                    <div>Loading settings…</div>
                 ) : (
-                    <>
-                        {renderTable()}
+                <>
+                {errorMessage && <div className="settings-error">{errorMessage}</div>}
+                {saveMessage && (
+                    <div className={saveMessage.type === 'success' ? 'cache-success' : 'settings-error'}>
+                        {saveMessage.text}
+                    </div>
+                )}
 
-                        <div className="settings-actions">
-                            <button
-                                className="primary"
-                                onClick={handleSave}
-                                disabled={saving || hasInvalidInput || !hasChanges}
-                            >
-                                {saving ? 'Saving...' : 'Save'}
-                            </button>
-                            <button className="secondary" onClick={handleCancel} disabled={saving}>
-                                Cancel
-                            </button>
-                            <button className="link" onClick={handleReset} disabled={saving}>
-                                Reset
-                            </button>
-                        </div>
-                    </>
+                {/* ── Training Settings ── */}
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />
+                <h2 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>Training</h2>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
+                    <label htmlFor="context-depth" style={{ fontWeight: 500 }}>Context Depth:</label>
+                    <input
+                        id="context-depth"
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="1"
+                        value={contextDepth}
+                        onChange={(e) => setContextDepth(Math.max(0, Math.min(10, parseInt(e.target.value, 10))))}
+                        style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: '2rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+                        {contextDepth}
+                    </span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                    Number of your moves shown as warm-up/cool-down around each target position.
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
+                    <label htmlFor="retention" style={{ fontWeight: 500 }}>Target Retention:</label>
+                    <input
+                        id="retention"
+                        type="range"
+                        min="0.80"
+                        max="0.99"
+                        step="0.01"
+                        value={retention}
+                        onChange={(e) => setRetention(parseFloat(e.target.value))}
+                        style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+                        {Math.round(retention * 100)}%
+                    </span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                    Desired probability of recalling a move at review time.
+                    Higher values mean shorter intervals and more frequent reviews.
+                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
+                    <label htmlFor="max-interval" style={{ fontWeight: 500 }}>Max Interval:</label>
+                    <input
+                        id="max-interval"
+                        type="range"
+                        min="7"
+                        max="365"
+                        step="1"
+                        value={maxInterval}
+                        onChange={(e) => setMaxInterval(Math.max(7, Math.min(365, parseInt(e.target.value, 10))))}
+                        style={{ flex: 1 }}
+                    />
+                    <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
+                        {maxInterval}d
+                    </span>
+                </div>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+                    Maximum number of days before a card is reviewed again.
+                </p>
+
+                {/* ── Linked Accounts ── */}
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />
+                <h2 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>Linked Accounts</h2>
+                <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem' }}>
+                    Add Lichess or Chess.com usernames to download and analyze your games on the Games page.
+                </p>
+
+                <div className="linked-accounts-add">
+                    <select
+                        className="linked-accounts-platform-select"
+                        value={newAccountPlatform}
+                        onChange={(e) => setNewAccountPlatform(e.target.value as Platform)}
+                        aria-label="Platform"
+                    >
+                        <option value="lichess">Lichess</option>
+                        <option value="chess.com">Chess.com</option>
+                    </select>
+                    <input
+                        type="text"
+                        className="linked-accounts-input"
+                        placeholder={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
+                        aria-label={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
+                        value={newAccountUsername}
+                        onChange={(e) => { setNewAccountUsername(e.target.value); setAddAccountError(''); }}
+                        onKeyDown={handleAccountKeyDown}
+                        disabled={addingAccount}
+                    />
+                    <button
+                        className="linked-accounts-add-btn"
+                        type="button"
+                        onClick={handleAddAccount}
+                        disabled={!newAccountUsername.trim() || addingAccount}
+                    >
+                        {addingAccount ? 'Checking…' : 'Add'}
+                    </button>
+                </div>
+                {addAccountError && (
+                    <div className="settings-error" style={{ marginTop: '0.5rem' }}>{addAccountError}</div>
+                )}
+
+                {linkedAccounts.length > 0 && (
+                    <ul className="linked-accounts-list">
+                        {linkedAccounts.map((account) => (
+                            <li key={`${account.platform}:${account.username}`} className="linked-account-item">
+                                <span className="linked-account-platform">
+                                    {account.platform === 'chess.com' ? '♔' : '♞'}
+                                </span>
+                                <span className="linked-account-name">
+                                    {account.username}
+                                    <span className="linked-account-platform-label">
+                                        {account.platform === 'chess.com' ? ' (Chess.com)' : ' (Lichess)'}
+                                    </span>
+                                </span>
+                                <button
+                                    className="linked-account-remove"
+                                    type="button"
+                                    onClick={() => handleRemoveAccount(account.username, account.platform)}
+                                    aria-label={`Remove ${account.username}`}
+                                    title="Remove account"
+                                >
+                                    ✕
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                {/* ── Save / Discard / Reset ── */}
+                <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />
+                <div className="settings-actions">
+                    <button
+                        className="primary"
+                        onClick={handleSave}
+                        disabled={!isDirty || saving}
+                    >
+                        {saving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                        className="secondary"
+                        onClick={handleDiscard}
+                        disabled={!isDirty || saving}
+                    >
+                        Discard
+                    </button>
+                    <button
+                        className="secondary"
+                        onClick={handleReset}
+                        disabled={saving}
+                    >
+                        Reset to Defaults
+                    </button>
+                </div>
+                </>
                 )}
             </div>
 
@@ -326,87 +432,23 @@ const SettingsPage: React.FC = () => {
                 )}
             </div>
 
-            <div className="settings-card linked-accounts-section">
-                <h1>Linked Accounts</h1>
+            <div className="settings-card">
+                <h1>Data Cache</h1>
                 <p className="settings-description">
-                    Add Lichess or Chess.com usernames to download and analyze your games on the Games page.
+                    Remove all downloaded games and sync timestamps.
                 </p>
-
-                <div className="linked-accounts-add">
-                    <select
-                        className="linked-accounts-platform-select"
-                        value={newAccountPlatform}
-                        onChange={(e) => setNewAccountPlatform(e.target.value as Platform)}
-                        aria-label="Platform"
-                    >
-                        <option value="lichess">Lichess</option>
-                        <option value="chess.com">Chess.com</option>
-                    </select>
-                    <input
-                        type="text"
-                        className="linked-accounts-input"
-                        placeholder={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
-                        aria-label={newAccountPlatform === 'lichess' ? 'Lichess username' : 'Chess.com username'}
-                        value={newAccountUsername}
-                        onChange={(e) => setNewAccountUsername(e.target.value)}
-                        onKeyDown={handleAccountKeyDown}
-                    />
+                {cacheCleared && (
+                    <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
+                )}
+                <div className="cache-info">
                     <button
-                        className="linked-accounts-add-btn"
-                        type="button"
-                        onClick={handleAddAccount}
-                        disabled={!newAccountUsername.trim()}
+                        className="secondary"
+                        onClick={handleClearCache}
+                        disabled={clearingCache}
                     >
-                        Add
+                        {clearingCache ? 'Clearing…' : 'Clear Cache'}
                     </button>
                 </div>
-
-                {linkedAccounts.length > 0 && (
-                    <ul className="linked-accounts-list">
-                        {linkedAccounts.map((account) => (
-                            <li key={`${account.platform}:${account.username}`} className="linked-account-item">
-                                <span className="linked-account-platform">
-                                    {account.platform === 'chess.com' ? '♔' : '♞'}
-                                </span>
-                                <span className="linked-account-name">
-                                    {account.username}
-                                    <span className="linked-account-platform-label">
-                                        {account.platform === 'chess.com' ? ' (Chess.com)' : ' (Lichess)'}
-                                    </span>
-                                </span>
-                                <button
-                                    className="linked-account-remove"
-                                    type="button"
-                                    onClick={() => handleRemoveAccount(account.username, account.platform)}
-                                    aria-label={`Remove ${account.username}`}
-                                    title="Remove account"
-                                >
-                                    ✕
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-
-                {linkedAccounts.length > 0 && (
-                    <div className="cache-section">
-                        {cacheCleared && (
-                            <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
-                        )}
-                        <div className="cache-info">
-                            <button
-                                className="secondary"
-                                onClick={handleClearCache}
-                                disabled={clearingCache}
-                            >
-                                {clearingCache ? 'Clearing…' : 'Clear Cache'}
-                            </button>
-                            <span className="cache-count">
-                                Remove all downloaded games and sync timestamps.
-                            </span>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );

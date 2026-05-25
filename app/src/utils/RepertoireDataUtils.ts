@@ -1,8 +1,10 @@
 import { OpeningVariant } from "../models/OpeningVariant";
-import { RepertoireData, OpeningVariantData } from "../models/RepertoireData";
-import { LaunchpadLogic } from "./LaunchpadLogic";
-import { WeightSettings } from "../models/WeightSettings";
+import { RepertoireData, OpeningVariantData, AppSettings } from "../models/RepertoireData";
 import { FSRSCardData } from "../models/FSRSCardData";
+import { RepertoireGraph } from "../services/RepertoireGraph";
+import { FSRSService } from "../services/FSRSService";
+import { TrainingEngine } from "../services/TrainingEngine";
+import { getLinkedAccounts, setLinkedAccounts } from "../services/LinkedAccountsService";
 
 export class RepertoireDataUtils {
 
@@ -11,9 +13,8 @@ export class RepertoireDataUtils {
         if (!repertoireData.data) {
             repertoireData.data = [];
         }
-        if (!repertoireData.currentEpoch) {
-            repertoireData.currentEpoch = 0;
-        }
+        // V1 stub — always reset to 0
+        repertoireData.currentEpoch = 0;
         if (!repertoireData.lastPlayedDate) {
             repertoireData.lastPlayedDate = new Date(0);
         } else {
@@ -24,63 +25,52 @@ export class RepertoireDataUtils {
             repertoireData.dailyPlayCount = 0;
         }
 
-        // Normalize the data
+        // Normalize the data — stub V1 fields
         for (const variant of repertoireData.data) {
-            if (!variant.errorEMA) {
-                variant.errorEMA = 0;
-            }
+            variant.errorEMA = 0;
+            variant.lastSucceededEpoch = 0;
+            variant.successEMA = 0;
             if (!variant.numberOfTimesPlayed) {
                 variant.numberOfTimesPlayed = 0;
             }
-            if (!variant.lastSucceededEpoch) {
-                variant.lastSucceededEpoch = 0;
-            }
-            if (!variant.successEMA) {
-                variant.successEMA = 0;
-            }
         }
-
-        // Ensure weight settings are always present and hydrated.
-        repertoireData.weightSettings = WeightSettings.from(repertoireData.weightSettings);
 
         // Ensure fsrsCards is always present.
         if (!repertoireData.fsrsCards) {
             repertoireData.fsrsCards = {};
         }
 
-        // Check whether we started a new epoch (a new day).
-        // Note, if a player hasn't played for N days, then the epoch will be incremented only once and not N times.
-        var newEpoch: boolean = false;
+        // Reconcile FSRS cards with current repertoire positions
+        RepertoireDataUtils.reconcileCards(repertoireData);
 
+        // Check whether we started a new day — reset daily counter.
         const currentDate = RepertoireDataUtils.getCurrentDateOnly();
         if (currentDate > repertoireData.lastPlayedDate) {
-            repertoireData.currentEpoch++;
             repertoireData.lastPlayedDate = currentDate;
-            newEpoch = true;
+            // Reset daily counter on new day
+            repertoireData.dailyPlayCount = 0;
         }
 
-        // If a new epoch has started, adjust successEMA.
-        if (newEpoch) {
-            // Reset daily counter on new epoch
-            repertoireData.dailyPlayCount = 0;
-        
-            for (const variant of repertoireData.data) {
-                variant.successEMA = LaunchpadLogic.SUCCESS_EMA_ALPHA * variant.successEMA;
-            }
+        // Hydrate in-memory settings from backend (settings preferred, trainingSettings as legacy fallback)
+        const s = repertoireData.settings ?? repertoireData.trainingSettings;
+        if (s) {
+            if (typeof s.contextDepth === 'number') TrainingEngine.setContextDepth(s.contextDepth);
+            if (typeof s.retention === 'number') FSRSService.setRetention(s.retention);
+            if (typeof s.maxInterval === 'number') FSRSService.setMaxInterval(s.maxInterval);
+            if (Array.isArray(s.linkedAccounts)) setLinkedAccounts(s.linkedAccounts);
         }
+
+        // Migrate: ensure we use `settings` going forward
+        if (repertoireData.trainingSettings && !repertoireData.settings) {
+            repertoireData.settings = repertoireData.trainingSettings;
+        }
+        delete repertoireData.trainingSettings;
     }
 
     public static convertToVariantData(repertoireData: RepertoireData): OpeningVariant[] {
-        const settings = WeightSettings.from(repertoireData.weightSettings);
         const variants = repertoireData.data.map(data => {
             const variant = new OpeningVariant(data.pgn, data.orientation, data.classifications);
-            variant.errorEMA = data.errorEMA;
             variant.numberOfTimesPlayed = data.numberOfTimesPlayed;
-            variant.lastSucceededEpoch = data.lastSucceededEpoch;
-            variant.successEMA = data.successEMA;
-            variant.numberOfErrors = 0;
-            variant.currentEpoch = repertoireData.currentEpoch;
-            variant.weightSettings = settings.clone();
             return variant;
         });
 
@@ -89,35 +79,76 @@ export class RepertoireDataUtils {
         return variants;
     }
 
+    /**
+     * Build current AppSettings from in-memory state.
+     * Merges into existing settings to preserve unknown fields.
+     */
+    public static buildCurrentSettings(existing?: AppSettings | null): AppSettings {
+        return {
+            ...(existing ?? {}),
+            contextDepth: TrainingEngine.getContextDepth(),
+            retention: FSRSService.getRetention(),
+            maxInterval: FSRSService.getMaxInterval(),
+            linkedAccounts: getLinkedAccounts(),
+        };
+    }
+
     public static convertToRepertoireData(
         variants: OpeningVariant[],
         dailyPlayCount: number,
-        weightSettings?: WeightSettings,
-        fsrsCards?: Record<string, FSRSCardData>
+        fsrsCards?: Record<string, FSRSCardData>,
+        existingSettings?: AppSettings | null
     ): RepertoireData {
         const data: OpeningVariantData[] = variants.map(variant => ({
             pgn: variant.pgn,
             orientation: variant.orientation,
             classifications: variant.classifications,
-            errorEMA: variant.errorEMA,
             numberOfTimesPlayed: variant.numberOfTimesPlayed,
-            lastSucceededEpoch: variant.lastSucceededEpoch,
-            successEMA: variant.successEMA
+            // V1 stubs — backend requires these as numbers
+            errorEMA: 0,
+            lastSucceededEpoch: 0,
+            successEMA: 0,
         }));
-
-        const settings =
-            weightSettings?.clone() ??
-            variants[0]?.weightSettings?.clone() ??
-            WeightSettings.createDefault();
 
         return {
             data,
-            currentEpoch: Math.max(...variants.map(v => v.currentEpoch)),
+            currentEpoch: 0, // V1 stub
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
             dailyPlayCount: dailyPlayCount,
-            weightSettings: settings,
-            fsrsCards: fsrsCards ?? {}
+            fsrsCards: fsrsCards ?? {},
+            settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
         };
+    }
+
+    /**
+     * Reconcile fsrsCards with the repertoire graph.
+     * - New positions (in graph, no card) → create card with state=New
+     * - Removed positions (card exists, not in graph) → delete card
+     * - Existing positions → untouched
+     */
+    public static reconcileCards(repertoireData: RepertoireData): void {
+        const cards = repertoireData.fsrsCards ?? {};
+        repertoireData.fsrsCards = cards;
+
+        const pgns = repertoireData.data.map(v => ({
+            pgn: v.pgn,
+            orientation: v.orientation,
+        }));
+        const graph = new RepertoireGraph(pgns);
+        const graphKeys = new Set(graph.getCardKeys());
+        const fsrsService = new FSRSService(cards);
+
+        // Create new cards for positions in graph but not in cards
+        for (const key of graphKeys) {
+            fsrsService.ensureCard(key);
+        }
+
+        // Delete cards for positions not in graph
+        for (const key of fsrsService.getAllCardKeys()) {
+            if (!graphKeys.has(key)) {
+                fsrsService.deleteCard(key);
+            }
+        }
     }
 
     public static getCurrentDateOnly(): Date {

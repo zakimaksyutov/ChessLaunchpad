@@ -153,6 +153,7 @@ A newly created user starts with `{}`. After the first update, the repertoire mu
 | `dailyPlayCount`  | number   | Yes      | Number of plays today.                         |
 | `weightSettings`  | object \| null | No | Weight configuration (see below). May be `null` or omitted. |
 | `fsrsCards`       | object \| null | No | Map of FSRS card states keyed by string. May be `null` or omitted. |
+| `settings`        | object \| null | No | Training configuration (free-form object). May be `null` or omitted. |
 
 No additional properties are allowed on the root object.
 
@@ -203,6 +204,20 @@ When `fsrsCards` is present and non-null, it must be a JSON object. Each key mus
 
 No additional properties are allowed. Each entry must have exactly 9 required properties, plus optionally `lr` (9 or 10 total).
 
+### Settings
+
+When present and non-null, `settings` must be a JSON object. Any properties are allowed inside (no strict schema validation on contents).
+
+```json
+{
+  "settings": {
+    "contextDepth": 2,
+    "retention": 0.97,
+    "maxInterval": 90
+  }
+}
+```
+
 ### Example
 
 ```json
@@ -228,6 +243,11 @@ No additional properties are allowed. Each entry must have exactly 9 required pr
   },
   "fsrsCards": {
     "pos1": {"d":"2026-05-01T00:00:00.000Z","s":15.23,"di":5.68,"e":3,"sd":7,"ls":0,"r":12,"l":2,"st":2,"lr":"2026-04-19T00:00:00.000Z"}
+  },
+  "settings": {
+    "contextDepth": 2,
+    "retention": 0.97,
+    "maxInterval": 90
   }
 }
 ```

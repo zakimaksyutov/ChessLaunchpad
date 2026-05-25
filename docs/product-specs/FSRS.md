@@ -26,11 +26,11 @@ A position is **autoplayed** when ALL of the following are true:
 3. A card exists for the move.
 4. The card state is `Review` (not `New`, `Learning`, or `Relearning`).
 5. The card is **not due** (`now < card.due`) and retrievability `R ≥ 0.97`.
-6. **Lookahead**: the next user-turn position (reached through all possible opponent responses) also satisfies conditions 2–5. This is a recursive check with a total depth of `AUTOPLAY_LOOKAHEAD_DEPTH` user-turn moves (default: 2, meaning the current position + 1 future position). If the variant ends within the lookahead window, that branch passes (there is nothing weak ahead).
+6. **Lookahead**: the next user-turn position (reached through all possible opponent responses) also satisfies conditions 2–5. This is a recursive check with a total depth of `contextDepth` user-turn moves (default: 2, meaning the current position + 1 future position). If the variant ends within the lookahead window, that branch passes (there is nothing weak ahead).
 
 If any repertoire move at the position (or at any position within the lookahead window) has no card, or its card fails conditions 4–5, autoplay stops and the user is asked to play. Once autoplay ends, it does not resume for the remainder of that variant traversal.
 
-The lookahead depth is controlled by `LaunchpadLogic.AUTOPLAY_LOOKAHEAD_DEPTH` (default: 2). A depth of 2 means the user starts playing 1 user-turn move before the first weak card, giving them a warm-up move before the actual challenge.
+The lookahead depth is controlled by `contextDepth` on `PathPlanner` (default: 2, configured via `TrainingEngine.setContextDepth()`). A depth of 2 means the user starts playing 1 user-turn move before the first weak card, giving them a warm-up move before the actual challenge.
 
 **Early-move exception:** For the first 2 user-turn moves of a traversal, the lookahead is skipped (depth is reduced to 1). This avoids excessive tree evaluation at the root where the branching factor is highest, and allows mastered opening moves to be autoplayed even when deeper positions are still being learned.
 
@@ -42,7 +42,7 @@ After the user plays a move:
 - **Correct on first attempt** → `Rating.Good`
 - **Incorrect (any error), then corrected** → `Rating.Again`
 
-Error state is tracked per-position in `LaunchpadLogic.fsrsErrorFens` and cleared after rating, so if the same FEN appears again later in the traversal it gets a fresh first-attempt assessment.
+Error state is tracked per-position in `TrainingEngine.errorFens` and cleared after rating, so if the same FEN appears again later in the traversal it gets a fresh first-attempt assessment.
 
 > `Hard` and `Easy` are not used. They could be exposed later via UI gestures.
 
@@ -96,18 +96,20 @@ The FEN part uses `normalizeFenResetHalfmoveClock()` from `FenUtils`.
 
 ## FSRS Configuration
 
-Shared defaults for all users, configured in `FSRSService` constructor:
+Defaults configured in `FSRSService`:
 
 ```typescript
 {
-    request_retention: 0.9,
-    maximum_interval: 365,
+    request_retention: 0.97,
+    maximum_interval: 90,
     enable_fuzz: true,
     enable_short_term: true
 }
 ```
 
-These are not user-configurable.
+`retention` and `maxInterval` are **user-configurable** via the Settings page. Changes are clamped (retention: 0.80–0.99, max interval: 7–365 days) and persisted in the backend `settings` field, so they roam across devices. `contextDepth` (lookahead depth) is also stored in `settings` and synced to backend.
+
+After a traversal completes, there is a **300 ms inter-traversal delay** before the next one begins, allowing the success sound to finish playing.
 
 ## Architecture
 
@@ -119,26 +121,32 @@ Wraps ts-fsrs and owns card lifecycle:
 - `getCards()` — returns the shared cards map (same object reference passed to constructor).
 - `getRetrievability(fen, san, now)` — returns current retrievability for a card in Review state, or `null`.
 
-### LaunchpadLogic (`utils/LaunchpadLogic.ts`)
+### TrainingEngine (`services/TrainingEngine.ts`)
 
-Integrates FSRS with game traversal:
-- `shouldAutoplayUserMove(fen, skipLookahead?)` — applies the full autoplay policy with recursive lookahead via `isAutoplayableWithLookahead()`.
-- `rateUserMove(fen, moveSan)` — rates a card as `Good` or `Again` based on whether an error was recorded at this position.
-- `markError(fen)` / `hasErrorAtPosition(fen)` — tracks incorrect attempts per-position (via `fsrsErrorFens` set). Error state is cleared after rating.
+Orchestrates traversal lifecycle and integrates FSRS with game traversal:
+- Owns `errorFens` set — tracks incorrect attempts per-position. Error state is cleared after rating.
+- `handleUserMove(san)` — validates the move, rates the FSRS card (`Good` or `Again`), and advances the traversal.
 - `getFsrsCards()` — returns the shared cards map for persistence.
-- `getLookaheadEvaluation(fen, skipLookahead?)` — diagnostic: collects a flat table of all positions evaluated by the lookahead tree (used for debug console logging).
-- `getRepertoireMovesAtPosition(fen)` / `getCardDataForMove(fen, san)` — query helpers for card state at a position.
+- `getContextDepth()` / `setContextDepth(depth)` — static getter/setter for lookahead depth (synced to backend via `settings`).
+
+### PathPlanner (`services/PathPlanner.ts`)
+
+Computes traversal plans from root to target card(s):
+- `planTraversal(targetCardKey, dueCardKeys)` — builds a step-by-step plan marking each position as `autoplay`, `warm-up`, `target`, or `cool-down` based on FSRS card state and `contextDepth`.
+- `planTeachRecall(newCardKeys)` — builds a teaching plan for new cards.
+- Autoplay prefix is determined by card state: positions with Review-state cards at `R ≥ 0.97` and not due are autoplayed; once a weak card is within `contextDepth` user-turn moves, the user takes over.
 
 ### TrainingPageControl (`components/TrainingPageControl.tsx`)
 
 Orchestrates autoplay and card rating during a training round:
-- `decideNextAction(chess)` — on each user turn, checks whether to autoplay (FSRS prefix) or wait for user input. Computes `skipLookahead` for the first 2 user-turn moves.
-- `handleMove(orig, dest, isAutoplay)` — when the user plays manually (`isAutoplay=false`), calls `logic.rateUserMove()` and logs card state transitions to the console.
-- Tracks the autoplay prefix via `userHasPlayedManuallyRef` — once set to `true`, no further autoplay occurs.
+- Drives the `TrainingEngine` step-by-step: autoplays system moves, waits for user input on user-turn moves, and handles teaching/recall flows.
+- `handleMove(orig, dest)` — delegates to `TrainingEngine.handleUserMove()` which rates the FSRS card and advances the plan.
+- On traversal completion, saves updated cards and starts the next traversal after a 300 ms delay.
 
 ### Persistence
 
-- On round completion (`handleCompletion` in `pages/TrainingPage.tsx`), the already-mutated `fsrsCards` from `repertoireData` is included in the `RepertoireData` written to the server. The `fsrsCards` object is shared by reference between `RepertoireData` and `FSRSService`, following the same mutation pattern used for variant stats (`errorEMA`, `successEMA`, etc.).
+- On traversal completion (`onTraversalComplete` callback), the already-mutated `fsrsCards` from `repertoireData` is included in the `RepertoireData` written to the server. The `fsrsCards` object is shared by reference between `RepertoireData` and `FSRSService`, following the same mutation pattern used for variant stats.
+- User-configurable settings (`retention`, `maxInterval`, `contextDepth`) are stored in the backend `settings` field via `RepertoireDataUtils.buildCurrentSettings()` and hydrated on load via `RepertoireDataUtils.normalize()`.
 - On load (`retrieveRepertoireData`), `fsrsCards` is stored as-is with minified keys. ISO date strings are converted to `Date` objects lazily by `FSRSService` when cards are accessed, not upfront during normalization.
 - Missing/undefined `fsrsCards` field means no FSRS data yet (backward compatible).
 
@@ -164,11 +172,15 @@ Tests in `services/FSRSService.test.ts`:
 - Rating mapping: correct → Good, error → Again.
 - Hydration/serialization round-trip of FSRSCardData, including optional `last_review`.
 
-Tests in `utils/LaunchpadLogic.test.ts` (FSRS Integration section):
-- `shouldAutoplayUserMove`: no cards (backward compat), well-known cards, non-Review state, branch points with missing cards.
-- Lookahead: strong cards at depth 2, missing depth-2 card, Learning state at depth 2, variant ends within window, opponent-response branching, `AUTOPLAY_LOOKAHEAD_DEPTH` constant override, `skipLookahead` behavior.
-- `rateUserMove`: Good rating, Again rating after error, error-state clearing for repeated FENs.
-- `getFsrsCards`: shared reference verification.
+Tests in `services/TrainingEngine.test.ts` (FSRS Integration section):
+- Autoplay behavior, card rating (Good/Again), error tracking and clearing.
+- Context depth effects on warm-up/cool-down steps.
+- Branch-point handling, teach/recall flows, ahead-of-schedule detection.
+
+Tests in `services/PathPlanner.test.ts`:
+- Plan generation for due cards, new cards, and teach/recall flows.
+- Context depth warm-up and cool-down step assignment.
+- Autoplay prefix based on card state and retrievability.
 
 Tests in `utils/RepertoireDataUtils.test.ts`:
 - `fsrsCards` preserved during normalization, defaulted to `{}` when missing.

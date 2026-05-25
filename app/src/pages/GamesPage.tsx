@@ -472,6 +472,8 @@ const GamesPage: React.FC = () => {
                 const sets = buildRepertoireFenSets(repertoireData.data);
                 if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "fenSets-ready", totalMs: Math.round(performance.now() - perfT0Ref.current), whiteFens: sets.whiteFens.size, blackFens: sets.blackFens.size })}`);
                 setFenSets(sets);
+                // Refresh linked accounts after normalize() has hydrated them from backend
+                setLinkedAccounts(getLinkedAccounts());
             } catch (err) {
                 console.warn('Failed to load repertoire data for game annotation:', err);
             }
