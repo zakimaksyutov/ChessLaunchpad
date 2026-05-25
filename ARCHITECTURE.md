@@ -4,24 +4,49 @@ Web app for memorizing chess openings via spaced repetition. Deployed at https:/
 
 ## How It Works
 
-Users import PGN-based opening repertoires (white and/or black). During training, the system picks a variant, autoplays opponent moves, and waits for the user to recall each correct move. Errors are flagged immediately with the correct move shown.
+Users import PGN-based opening repertoires (white and/or black). The FSRS spaced-repetition algorithm schedules reviews at the position level. During training, the system builds a review queue of due and new cards, plans a path through the repertoire tree to each target position, autoplays mastered positions at the start, and asks the user to recall moves around the target. Errors are flagged immediately with the correct move shown.
 
-## Variant Selection
+## Training System
 
-Variants are selected by weighted probability. Each variant's weight is the product of four factors:
+Training is driven by [ts-fsrs](https://github.com/open-spaced-repetition/ts-fsrs). Each user-turn position and its expected move form an FSRS card (`normalized FEN :: move SAN`). Transpositions share one card. PGN lines are flattened into a directed acyclic graph (DAG) at runtime.
 
-| Factor    | Raises weight when…                        |
-| --------- | ------------------------------------------ |
-| Recency   | Variant hasn't been practiced recently     |
-| Frequency | Variant is rarely played successfully      |
-| Error     | Variant has a high error rate              |
-| Newness   | Variant has been played fewer than 7 times |
+### Review Queue
 
-Exponents for recency, frequency, and error are user-configurable.
+Before each traversal, a priority queue is rebuilt from all cards:
 
-## FSRS Autoplay
+1. **Relearning** — failed recently, short-term schedule
+2. **Due Review** — overdue, sorted by overdueness
+3. **Learning** — still in initial learning steps
+4. **New** — unseen cards
 
-Per-position cards track mastery using the FSRS algorithm (ts-fsrs). Well-known positions at the start of a variant are autoplayed so training jumps straight to the moves the user actually needs to practice. Autoplay forms a strict prefix — once the user plays manually, it doesn't resume.
+Training continues until the queue empties or the user navigates away.
+
+### Path Planning
+
+Each traversal is pre-computed before the first move. The system pulls the highest-priority card, computes a root-to-card path, and marks each user-turn position as **autoplay** (mastered prefix), **warm-up** (context before target), **target** (due card), or **cool-down** (context after target). If more due cards exist deeper on the same path, additional zones are appended.
+
+### Autoplay
+
+Mastered positions (Review state, not due, retrievability ≥ target retention) are auto-played as a strict prefix. Once the user plays a move, autoplay does not resume for the rest of the traversal.
+
+### New Card Introduction
+
+New cards use a teach-then-recall flow: the teaching pass shows the correct move (not rated), followed by an immediate recall pass (rated `Again`). Cards then enter Learning state with tight intervals.
+
+### Rating
+
+- Correct on first attempt → `Good`
+- Any error → `Again`
+
+### Ahead-of-Schedule Mode
+
+When the queue is empty, the system drills cards with the lowest retrievability using the same path-planning flow.
+
+### Progress Badges
+
+Three badges on the training page: **due** (cards in queue), **today** (reviewed this day), **total** (all cards).
+
+See `docs/product-specs/FSRS.md` for the full behavioral specification.
 
 ## Pages
 
@@ -29,15 +54,15 @@ Per-position cards track mastery using the FSRS algorithm (ts-fsrs). Well-known 
 | ------------------- | ----------------------------------------------- |
 | `/`                 | Landing page                                    |
 | `/login`            | Authentication                                  |
-| `/training`         | Interactive board training                      |
+| `/training`         | Interactive board training (FSRS-driven)        |
 | `/repertoire`       | Browse / manage imported variants               |
 | `/repertoire/variant` | View a single variant's PGN and annotations   |
-| `/games`            | Annotated game history from linked Lichess accounts |
-| `/settings`         | Weight tuning and account settings              |
+| `/games`            | Annotated game history from linked Lichess and Chess.com accounts |
+| `/settings`         | FSRS tuning, linked accounts, and account settings |
 
 ## Tech Stack
 
-React 19 · TypeScript · Vite · Vitest · chess.js · chess-control (vendored) · Azure Functions backend · Application Insights telemetry.
+React 19 · TypeScript · Vite · Vitest · chess.js · ts-fsrs · chess-control (vendored) · Azure Functions backend · Application Insights telemetry.
 
 ## Lichess Integration
 
@@ -76,14 +101,17 @@ Evaluations are precomputed per-position (see `models/ExplorerEvals.ts`) with up
 Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 ```
 
-The entire repertoire (variants + stats + FSRS cards) is stored as a single JSON blob with ETag-based optimistic concurrency. See `docs/BACKEND_API_CONTRACT.md`.
+The entire repertoire (variants + FSRS cards + settings) is stored as a single JSON blob with ETag-based optimistic concurrency. Legacy variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `currentEpoch`) remain in the payload for backward compatibility but are zeroed on load and not used for scheduling. See `docs/BACKEND_API_CONTRACT.md`.
 
 ### Games Page Data Flow
 
-The Games page downloads games from the Lichess public API and stores them locally:
+The Games page downloads games from Lichess and Chess.com public APIs and stores them locally:
 
-- **`LinkedAccountsService`** — Manages linked Lichess usernames in `localStorage`.
+- **`LinkedAccountsService`** — Manages linked Lichess and Chess.com usernames in `localStorage`.
 - **`LichessGamesService`** — Streams games via NDJSON from `lichess.org/api/games/user/{username}`, with incremental sync via per-user timestamp watermarks.
-- **`GamesDB`** — IndexedDB storage (via `idb` library) for downloaded games, keyed by Lichess game ID.
+- **`ChesscomGamesService`** — Fetches games from the Chess.com monthly archives API, with incremental sync via per-user timestamp watermarks.
+- **`GamesDB`** — IndexedDB storage (via `idb` library) for downloaded games, keyed by platform-specific game ID.
 - **`RepertoireFenSet`** — Builds `Set<string>` of normalized FENs from the user's repertoire for cross-referencing.
-- **`GameAnnotationService`** — Replays each game, compares positions against the repertoire FEN set, and computes eval-drop highlights for deviations.
+- **`GameAnnotationService`** — Replays each game, compares positions against the repertoire FEN set, and computes eval-drop highlights for deviations. Uses `ExplorerEvals` (static pre-computed evals) and embedded Lichess analysis as eval sources. Consults `MastersExplorerService` for out-of-theory detection when eval data is ambiguous.
+- **`MastersExplorerService`** — Wraps the Lichess Masters database API (`explorer.lichess.org/masters`) with in-memory and IndexedDB caching. Used to determine whether opponent deviations are still within known theory.
+- **`OpponentAnalysisService`** — Downloads and scans an opponent's recent games to assess their familiarity with specific positions. Results are persisted in a separate IndexedDB store (`OpponentAnalysisDB`).
