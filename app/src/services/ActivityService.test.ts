@@ -8,7 +8,6 @@ import {
     computeAccuracy,
     computeCurrentStreak,
     computeBestStreak,
-    getTodayDateString,
 } from './ActivityService';
 
 function makeRepertoireData(overrides: Partial<RepertoireData> = {}): RepertoireData {
@@ -23,7 +22,19 @@ function makeRepertoireData(overrides: Partial<RepertoireData> = {}): Repertoire
 }
 
 describe('ActivityService', () => {
-    const today = getTodayDateString();
+    // Pin the clock so tests are deterministic and immune to midnight rollover.
+    const FAKE_NOW = new Date('2026-05-25T12:00:00');
+    const today = '2026-05-25';
+    const yesterday = '2026-05-24';
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(FAKE_NOW);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
 
     describe('ensureActivity', () => {
         it('initializes activity when missing', () => {
@@ -185,24 +196,16 @@ describe('ActivityService', () => {
         });
 
         it('counts consecutive days including today', () => {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-
             const log = [
-                { date: yStr, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
                 { date: today, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
             ];
             expect(computeCurrentStreak(log)).toBe(2);
         });
 
         it('returns 0 when today has no activity', () => {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-
             const log = [
-                { date: yStr, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
                 { date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
             ];
             // Today empty → check if yesterday counts from yesterday
