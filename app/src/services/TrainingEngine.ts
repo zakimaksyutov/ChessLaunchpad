@@ -263,9 +263,6 @@ export class TrainingEngine {
                 } else {
                     this._mistakeCount++;
                 }
-            } else if (!isCorrect) {
-                // Non-target mistake (warm-up/cool-down) — user lost mastery
-                this._mistakeCount++;
             }
             this.queue.remove(step.cardKey);
             this.errorFens.delete(currentFen);

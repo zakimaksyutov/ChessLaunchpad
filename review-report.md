@@ -22,7 +22,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 | H1 | Data Integrity | ✅ **FIXED — UTC vs local-time day boundary disagreement.** `getCurrentDateOnly()` now uses local time (`setHours`) matching `getTodayDateString()`. `dailyPlayCount` demoted to legacy field (always 0); practice log is single source of truth. | `RepertoireDataUtils.ts:48-57`, `ActivityService.ts:18-24` |
 | H2 | Data Integrity | ✅ **FIXED — `reviewedToday` UI counter drifts from persisted `dailyPlayCount`.** Badge now reads from practice log via `getTodayPlayCount()`. Eager increment only fires for correct target cards, matching the reconciled value. `dailyPlayCount` no longer involved. | `TrainingPage.tsx:49,101,117` |
 | H3 | Test Coverage | ✅ **FIXED — `ActivityService.test.ts` uses real clock.** Added `vi.useFakeTimers()` pinned to `2026-05-25T12:00:00`. Replaced dynamic `getTodayDateString()` call and manual `new Date()` arithmetic with deterministic `today`/`yesterday` constants. All tests pass. | `ActivityService.test.ts:24-37` |
-| H4 | Correctness (Codex) | **Asymmetric warm-up/cool-down counting biases accuracy low.** Correct answers on non-target cards (`step.role !== 'target'`) are excluded from `reviewed`, but wrong answers still increment `mistakes`. With context depth 2, many correct answers vanish from the numerator while mistakes remain — systematically underreporting accuracy. Fix: either count all regular-review moves symmetrically, or exclude both correct and incorrect non-target outcomes. | `TrainingEngine.ts:258-269` |
+| H4 | Correctness (Codex) | ✅ **FIXED — Asymmetric warm-up/cool-down counting biased accuracy low.** Non-target mistakes no longer increment `mistakes`. Only target cards contribute to `reviewed`/`mistakes`, making accuracy symmetric. | `TrainingEngine.ts:260-266` |
 
 ### 🟡 MEDIUM (15 findings)
 
@@ -104,7 +104,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 
 ## Top Recommendations (Priority Order)
 
-1. **Fix asymmetric warm-up/cool-down counting** — either count correct non-target answers in `reviewed`, or exclude non-target mistakes from `mistakes`. Current logic biases accuracy low. *(Codex-only finding)*
+1. ~~**Fix asymmetric warm-up/cool-down counting**~~ ✅ Done — non-target moves no longer affect `reviewed`/`mistakes`; only target cards contribute to accuracy.
 2. ~~**Unify date logic**~~ ✅ Done — `getCurrentDateOnly()` switched to local time; `dailyPlayCount` demoted to legacy (always 0).
 3. ~~**Fix `reviewedToday` drift**~~ ✅ Done — badge reads from practice log via `getTodayPlayCount()`; eager increment only fires for correct target cards.
 4. ~~**Add `vi.useFakeTimers()` to `ActivityService.test.ts`**~~ ✅ Done — pinned to `2026-05-25T12:00:00` with deterministic `today`/`yesterday` constants.
@@ -122,10 +122,10 @@ The Codex agent (GPT-5.4, `--effort xhigh`) independently reviewed the full `mai
 ### Codex Finding 1 — HIGH: Mixed UTC/local day handling ⟵ *Also found by 4 Opus agents* ✅ FIXED
 Same as H1 above. `getCurrentDateOnly()` now uses local time. `dailyPlayCount` demoted to legacy field (always 0).
 
-### Codex Finding 2 — HIGH: Asymmetric warm-up/cool-down counting biases accuracy low ⟵ *NEW — missed by all Opus agents*
-In `TrainingEngine.ts:258-269`, correct answers on warm-up/cool-down cards (`step.role !== 'target'`) are **not** counted in `reviewed`, but wrong answers **are** counted in `mistakes`. This systematically undercounts the numerator and biases dashboard accuracy low. With the default context depth of 2, many correct answers disappear from stats while mistakes are still recorded. Either count all regular-review user moves symmetrically, or exclude both correct and incorrect non-target outcomes.
+### Codex Finding 2 — HIGH: Asymmetric warm-up/cool-down counting biases accuracy low ⟵ *NEW — missed by all Opus agents* ✅ FIXED
+In `TrainingEngine.ts:258-269`, correct answers on warm-up/cool-down cards (`step.role !== 'target'`) were **not** counted in `reviewed`, but wrong answers **were** counted in `mistakes`. Fixed by removing non-target mistake counting — only target cards now contribute to `reviewed`/`mistakes`.
 
-**Files:** `TrainingEngine.ts:258-269`, `TrainingPageControl.tsx:271-283`, `ActivityService.ts:106-119`
+**Files:** `TrainingEngine.ts:260-266`
 
 ### Codex Finding 3 — MEDIUM: Eager empty-day creation can evict real history ⟵ *NEW — missed by all Opus agents*
 `normalize()` eagerly calls `getTodayEntry()`, which appends a zeroed practice-log row even if the user never trains. Read-modify-write flows (e.g., Settings save) persist these blank rows. Since empty rows still count toward the 30-entry cap, inactive days gradually push real activity out of stored history. Only create the day entry when actual activity is recorded, or strip zero-only rows before storing.
