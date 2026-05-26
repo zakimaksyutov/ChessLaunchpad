@@ -115,8 +115,8 @@ export function recordTraversal(
     activity.lifetime.traversals += 1;
     activity.lifetime.timeSeconds += Math.round(elapsedSeconds);
 
-    // Backward compat: dailyPlayCount = today's reviewed
-    data.dailyPlayCount = entry.reviewed;
+    // Backward compat: dailyPlayCount = today's meaningful interactions
+    data.dailyPlayCount = entry.reviewed + entry.mistakes;
 }
 
 /**

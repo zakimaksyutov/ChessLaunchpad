@@ -7,18 +7,20 @@ interface BadgeRowProps {
     learningCount: number;
     newCount: number;
     reviewedToday: number;
+    /** Incremented each time the "+1" pop animation should fire. */
+    animationTrigger?: number;
 }
 
-const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCount, reviewedToday }) => {
-    const prevReviewedRef = useRef(reviewedToday);
+const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCount, reviewedToday, animationTrigger = 0 }) => {
+    const prevTriggerRef = useRef(animationTrigger);
     const [animKey, setAnimKey] = useState(0);
 
     useEffect(() => {
-        if (reviewedToday > prevReviewedRef.current) {
+        if (animationTrigger > prevTriggerRef.current) {
             setAnimKey(k => k + 1);
         }
-        prevReviewedRef.current = reviewedToday;
-    }, [reviewedToday]);
+        prevTriggerRef.current = animationTrigger;
+    }, [animationTrigger]);
 
     const leftPartStyle: React.CSSProperties = {
         backgroundColor: '#555',

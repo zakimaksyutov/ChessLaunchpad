@@ -15,6 +15,7 @@ const TrainingPage: React.FC = () => {
         dueCount: 0, newCount: 0, reviewCount: 0, learningCount: 0, totalCards: 0
     });
     const [reviewedToday, setReviewedToday] = useState<number>(0);
+    const [animationTrigger, setAnimationTrigger] = useState<number>(0);
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
 
@@ -114,6 +115,7 @@ const TrainingPage: React.FC = () => {
 
     const handleCardRated = useCallback(() => {
         setReviewedToday(prev => prev + 1);
+        setAnimationTrigger(prev => prev + 1);
     }, []);
 
     if (loading) {
@@ -143,6 +145,7 @@ const TrainingPage: React.FC = () => {
                 learningCount={queueStats.learningCount}
                 newCount={queueStats.newCount}
                 reviewedToday={reviewedToday}
+                animationTrigger={animationTrigger}
             />
             <TrainingPageControl
                 variants={variants}

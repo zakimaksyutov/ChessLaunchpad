@@ -257,9 +257,14 @@ export class TrainingEngine {
             const isCorrect = !hadError && !this.hintRequested;
             this.fsrsService.rateCardByKey(step.cardKey, isCorrect, new Date());
             this.cardsRated++;
-            if (isCorrect) {
-                this._reviewedCount++;
-            } else {
+            if (step.role === 'target') {
+                if (isCorrect) {
+                    this._reviewedCount++;
+                } else {
+                    this._mistakeCount++;
+                }
+            } else if (!isCorrect) {
+                // Non-target mistake (warm-up/cool-down) — user lost mastery
                 this._mistakeCount++;
             }
             this.queue.remove(step.cardKey);
@@ -292,10 +297,9 @@ export class TrainingEngine {
         if (edge && isUserTurnHere && edge.orientations.has(this.plan!.orientation)) {
             // Valid repertoire move at a branch point
             if (!this.branchAlternativesPlayed.has(edge.cardKey)) {
-                // Rate this unplanned move as Good
+                // Rate this unplanned move as Good (FSRS update only, not counted as reviewed)
                 this.fsrsService.rateCardByKey(edge.cardKey, true, new Date());
                 this.cardsRated++;
-                this._reviewedCount++;
                 this.queue.remove(edge.cardKey);
                 this.branchAlternativesPlayed.add(edge.cardKey);
             }
