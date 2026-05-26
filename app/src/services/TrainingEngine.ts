@@ -65,6 +65,7 @@ export class TrainingEngine {
     private _learnedCount: number = 0;   // new positions that completed teach → recall
     private errorFens: Set<string> = new Set();
     private branchAlternativesPlayed: Set<string> = new Set(); // card keys played at branch points
+    private userMoveTimestamps: number[] = []; // Date.now() per accepted user move
     private _isTeachingPass: boolean = false;
     private _isAheadOfSchedule: boolean = false;
     private _isRecalling: boolean = false;
@@ -128,6 +129,7 @@ export class TrainingEngine {
         this._learnedCount = 0;
         this.errorFens.clear();
         this.branchAlternativesPlayed.clear();
+        this.userMoveTimestamps = [];
         this._isTeachingPass = false;
         this._isAheadOfSchedule = false;
         this._isRecalling = false;
@@ -228,6 +230,7 @@ export class TrainingEngine {
                }
                this.errorFens.delete(currentFen);
                this.hintRequested = false;
+               this.userMoveTimestamps.push(Date.now());
             }
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
@@ -262,6 +265,7 @@ export class TrainingEngine {
             this.queue.remove(step.cardKey);
             this.errorFens.delete(currentFen);
             this.hintRequested = false;
+            this.userMoveTimestamps.push(Date.now());
 
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
@@ -295,6 +299,7 @@ export class TrainingEngine {
                 this.queue.remove(edge.cardKey);
                 this.branchAlternativesPlayed.add(edge.cardKey);
             }
+            this.userMoveTimestamps.push(Date.now());
 
             return {
                 accepted: false, // move is acknowledged but board reverts (user must play planned move)
@@ -414,6 +419,42 @@ export class TrainingEngine {
         };
     }
 
+    /** Seconds of idle-timeout threshold per move. */
+    private static readonly IDLE_THRESHOLD_MS = 60_000;
+    /** Approximate seconds per user move when idle is detected. */
+    private static readonly APPROX_SECONDS_PER_MOVE = 2;
+    /** Extra seconds added after the last user move (result display). */
+    private static readonly END_BUFFER_SECONDS = 2;
+
+    /**
+     * Compute elapsed training time for the current traversal from per-move timestamps.
+     *
+     * Rules:
+     * - If any gap between consecutive user moves exceeds 60 s, the user likely
+     *   stepped away → use approximate time: numberOfMoves × 2 s.
+     * - Otherwise: (lastTimestamp − firstTimestamp) / 1000 + 2 s.
+     * - 0 or 1 moves → return the END_BUFFER_SECONDS (2 s) for 1 move, 0 for none.
+     */
+    getTraversalElapsedSeconds(): number {
+        const ts = this.userMoveTimestamps;
+        if (ts.length === 0) return 0;
+        if (ts.length === 1) return TrainingEngine.END_BUFFER_SECONDS;
+
+        // Check for idle gap
+        for (let i = 1; i < ts.length; i++) {
+            if (ts[i] - ts[i - 1] > TrainingEngine.IDLE_THRESHOLD_MS) {
+                return ts.length * TrainingEngine.APPROX_SECONDS_PER_MOVE;
+            }
+        }
+
+        return (ts[ts.length - 1] - ts[0]) / 1000 + TrainingEngine.END_BUFFER_SECONDS;
+    }
+
+    /** @internal Inject timestamps for testing. */
+    _setUserMoveTimestamps(timestamps: number[]): void {
+        this.userMoveTimestamps = [...timestamps];
+    }
+
     // ─── Private ───────────────────────────────────────────────────────
 
     private logPlan(plan: TraversalPlan, mode: 'regular' | 'teach'): void {
@@ -529,6 +570,7 @@ export class TrainingEngine {
         this.stepIndex = 0;
         this.errorFens.clear();
         this.hintRequested = false;
+        this.userMoveTimestamps = []; // reset — teaching timestamps don't count
 
         // Determine the correct phase for the first recall step.
         // For black variants, step 0 is an opponent autoplay (not a user turn).

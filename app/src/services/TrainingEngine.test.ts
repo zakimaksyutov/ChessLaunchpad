@@ -581,4 +581,52 @@ describe('TrainingEngine', () => {
             }
         });
     });
+
+    describe('getTraversalElapsedSeconds', () => {
+        it('returns 0 when no user moves', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(0);
+        });
+
+        it('returns 2s for a single user move', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([1000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(2);
+        });
+
+        it('returns (last - first)/1000 + 2 for normal moves', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            // 3 moves: t=0, t=5s, t=10s → (10000-0)/1000 + 2 = 12
+            engine._setUserMoveTimestamps([0, 5000, 10000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(12);
+        });
+
+        it('uses approximate time when a gap exceeds 60s', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            // 4 moves, one gap > 60s → 4 × 2 = 8
+            engine._setUserMoveTimestamps([0, 3000, 64000, 67000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(8);
+        });
+
+        it('does not trigger idle for exactly 60s gap', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            // gap = exactly 60000ms → NOT idle (> not >=)
+            engine._setUserMoveTimestamps([0, 60000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(62); // 60 + 2
+        });
+
+        it('triggers idle for gap just over 60s', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([0, 60001]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(4); // 2 moves × 2
+        });
+
+        it('resets timestamps on startTraversal', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([0, 5000, 10000]);
+            engine.startTraversal();
+            expect(engine.getTraversalElapsedSeconds()).toBe(0);
+        });
+    });
 });

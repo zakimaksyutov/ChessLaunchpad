@@ -25,7 +25,7 @@ const soundSuccess = new Audio(soundSuccessFile);
 interface TrainingPageControlProps {
     variants: OpeningVariant[];
     fsrsCards: Record<string, FSRSCardData>;
-    onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>, traversalStats: TraversalStats) => Promise<void>;
+    onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
     onQueueStats: (stats: { dueCount: number; newCount: number; totalCards: number }) => void;
     onCardRated: () => void;
 }
@@ -320,9 +320,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         const correctCount = correctCardsCountRef.current;
         const updatedCards = eng.getFsrsCards();
         const stats = eng.getTraversalStats();
+        const elapsed = eng.getTraversalElapsedSeconds();
 
         // Await save completion before starting next traversal (prevents ETag race)
-        await onTraversalCompleteRef.current(correctCount, updatedCards, stats);
+        await onTraversalCompleteRef.current(correctCount, updatedCards, stats, elapsed);
 
         // Guard against scheduling after unmount (save was in-flight when component unmounted)
         if (!mountedRef.current) return;

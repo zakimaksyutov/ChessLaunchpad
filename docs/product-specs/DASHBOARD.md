@@ -81,7 +81,7 @@ activity: {
 | `mistakes`    | number | Positions rated Again during regular review (wrong move or hint used).                           |
 | `learned`     | number | New positions that completed the teaching → recall flow.                                         |
 | `traversals`  | number | Number of completed traversals (full root-to-leaf runs).                                         |
-| `timeSeconds` | number | Wall-clock seconds spent on the training page (paused when tab is hidden).                       |
+| `timeSeconds` | number | Active training seconds for the day (see §2.3 Time tracking).                                    |
 
 #### Derived metrics (not stored)
 
@@ -107,11 +107,17 @@ activity: {
 | `mistakes`             | number | All-time positions rated Again (review).          |
 | `learned`              | number | All-time new positions taught + recalled.         |
 | `traversals`           | number | All-time traversals completed.                    |
-| `timeSeconds`          | number | All-time wall-clock training seconds.             |
+| `timeSeconds`          | number | All-time active training seconds.                 |
 
 ### 2.3 Time tracking
 
-Wall-clock time on the training page, paused when the browser tab is hidden (`document.visibilitychange`). Accumulated into `dailyTimeSeconds` on each traversal save and on page unmount.
+Time is measured per traversal from user-move timestamps recorded inside the training engine. Only completed traversals contribute to `timeSeconds`; navigating away without finishing a traversal records no time.
+
+**Normal traversal** — elapsed = *(last user move − first user move) + 2 s*. The +2 s accounts for seeing the result after the final move.
+
+**Idle detection** — if any gap between consecutive user moves exceeds **60 seconds**, the user is assumed to have stepped away. The entire traversal uses approximate time instead: *number of user moves × 2 s*.
+
+Teaching-pass moves (guided, not from memory) are excluded; only recall-pass and regular-review moves contribute timestamps.
 
 ---
 

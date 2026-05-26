@@ -4,8 +4,7 @@ import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer
 import { RepertoireData } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
-import { recordTraversal, recordTime, ensureActivity, TraversalStats } from '../services/ActivityService';
-import { TimeTracker } from '../services/TimeTracker';
+import { recordTraversal, ensureActivity, TraversalStats } from '../services/ActivityService';
 import BadgeRow from '../components/BadgeRow';
 
 const TrainingPage: React.FC = () => {
@@ -18,7 +17,6 @@ const TrainingPage: React.FC = () => {
     const [reviewedToday, setReviewedToday] = useState<number>(0);
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
-    const timeTrackerRef = useRef<TimeTracker>(new TimeTracker());
 
     // Safe to use non-null assertions: ProtectedRoute guarantees credentials
     // exist in localStorage before this component renders.
@@ -30,27 +28,6 @@ const TrainingPage: React.FC = () => {
         }
         return createDataAccessLayer(username!, hashedPassword!);
     }, []);
-
-    // Start time tracker on mount, flush on unmount
-    useEffect(() => {
-        const tracker = timeTrackerRef.current;
-        tracker.start();
-
-        return () => {
-            tracker.stop();
-            // Flush remaining time on unmount
-            const elapsed = tracker.getElapsedSeconds();
-            const currentData = repertoireDataRef.current;
-            if (currentData && elapsed > 0) {
-                ensureActivity(currentData);
-                recordTime(currentData, elapsed);
-                // Best-effort save (fire-and-forget since component is unmounting)
-                dal.storeRepertoireData(currentData).catch(() => { /* best-effort */ });
-            }
-            tracker.destroy();
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [dal]);
 
     // On mount, retrieve data from the server
     useEffect(() => {
@@ -99,17 +76,15 @@ const TrainingPage: React.FC = () => {
         correctCardsRated: number,
         updatedCards: Record<string, FSRSCardData>,
         traversalStats: TraversalStats,
+        elapsedSeconds: number,
     ) => {
         const currentData = repertoireDataRef.current;
         if (!currentData || !dal) return;
 
         try {
-            // Consume elapsed time from tracker for this traversal
-            const elapsed = timeTrackerRef.current.consumeElapsed();
-
             // Record activity
             ensureActivity(currentData);
-            recordTraversal(currentData, traversalStats, elapsed);
+            recordTraversal(currentData, traversalStats, elapsedSeconds);
 
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 RepertoireDataUtils.convertToVariantData(currentData),
