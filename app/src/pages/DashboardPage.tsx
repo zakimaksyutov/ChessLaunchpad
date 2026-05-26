@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
+import { FSRSService } from '../services/FSRSService';
 import { ensureActivity, computeAccuracy, computeCurrentStreak, computeBestStreak } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy } from '../utils/FormatUtils';
 import './DashboardPage.css';
@@ -16,11 +17,15 @@ function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
 
     for (const card of Object.values(fsrsCards)) {
         total++;
+        const isDue = (): boolean => {
+            const due = FSRSService.computeDueDate(card);
+            return now >= due;
+        };
         switch (card.st) {
             case 0: newCount++; dueNow++; break;
-            case 1: learning++; if (new Date(card.d) <= now) dueNow++; break;
-            case 2: review++; if (new Date(card.d) <= now) dueNow++; break;
-            case 3: learning++; if (new Date(card.d) <= now) dueNow++; break;
+            case 1: learning++; if (isDue()) dueNow++; break;
+            case 2: review++; if (isDue()) dueNow++; break;
+            case 3: learning++; if (isDue()) dueNow++; break;
         }
     }
 

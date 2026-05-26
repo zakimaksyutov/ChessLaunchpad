@@ -44,7 +44,7 @@ export class FSRSService {
 
         // Must not be due
         const due = FSRSService.computeDueDate(cardData);
-        if (!due || now >= due) return false;
+        if (now >= due) return false;
 
         // Retrievability must be >= threshold
         const card = this.hydrate(cardData);
@@ -101,7 +101,7 @@ export class FSRSService {
         const cardData = this.cards[key];
         if (!cardData) return false;
         if (cardData.st === State.New) return true;
-        const due = FSRSService.computeDueDate(cardData) ?? new Date(cardData.d);
+        const due = FSRSService.computeDueDate(cardData);
         return now >= due;
     }
 
@@ -149,7 +149,7 @@ export class FSRSService {
         if (!cardData) return 0;
         if (cardData.st === State.New) return 0;
 
-        const due = FSRSService.computeDueDate(cardData) ?? new Date(cardData.d);
+        const due = FSRSService.computeDueDate(cardData);
         const msPastDue = now.getTime() - due.getTime();
         if (msPastDue <= 0) return 0;
 
@@ -174,7 +174,7 @@ export class FSRSService {
             if (cardData.st !== State.Review) continue;
 
             const due = FSRSService.computeDueDate(cardData);
-            if (!due || now >= due) continue; // already due, not ahead-of-schedule
+            if (now >= due) continue; // already due, not ahead-of-schedule
 
             const card = this.hydrate(cardData);
             const R = this.scheduler.get_retrievability(card, now, false);
@@ -186,7 +186,7 @@ export class FSRSService {
     }
 
     hydrate(data: FSRSCardData): Card {
-        const due = FSRSService.computeDueDate(data) ?? new Date(data.d);
+        const due = FSRSService.computeDueDate(data);
         const scheduledDays = FSRSService.computeInterval(data) ?? data.sd;
         return {
             due,
@@ -255,12 +255,15 @@ export class FSRSService {
     }
 
     /**
-     * Compute the due date for a Review-state card using current settings.
-     * Returns null for non-Review cards or cards without last_review.
+     * Compute the due date for a card using current settings.
+     * Review cards: recomputed from last_review + interval(stability, retention, maxInterval).
+     * New/Learning/Relearning: stored step-based due date.
      */
-    static computeDueDate(card: FSRSCardData): Date | null {
+    static computeDueDate(card: FSRSCardData): Date {
         const interval = FSRSService.computeInterval(card);
-        if (interval === null || !card.lr) return null;
-        return new Date(new Date(card.lr).getTime() + interval * 24 * 60 * 60 * 1000);
+        if (interval !== null && card.lr) {
+            return new Date(new Date(card.lr).getTime() + interval * 24 * 60 * 60 * 1000);
+        }
+        return new Date(card.d);
     }
 }
