@@ -21,7 +21,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 |---|-----------|---------|-------|
 | H1 | Data Integrity | ✅ **FIXED — UTC vs local-time day boundary disagreement.** `getCurrentDateOnly()` now uses local time (`setHours`) matching `getTodayDateString()`. `dailyPlayCount` demoted to legacy field (always 0); practice log is single source of truth. | `RepertoireDataUtils.ts:48-57`, `ActivityService.ts:18-24` |
 | H2 | Data Integrity | ✅ **FIXED — `reviewedToday` UI counter drifts from persisted `dailyPlayCount`.** Badge now reads from practice log via `getTodayPlayCount()`. Eager increment only fires for correct target cards, matching the reconciled value. `dailyPlayCount` no longer involved. | `TrainingPage.tsx:49,101,117` |
-| H3 | Test Coverage | **`ActivityService.test.ts` uses real clock** — `getTodayDateString()` is evaluated once at import time without `vi.useFakeTimers()`. Tests become non-deterministic at midnight or across timezones. `RepertoireDataUtils.test.ts` correctly uses fake timers — this file should follow the same pattern. | `ActivityService.test.ts:26` |
+| H3 | Test Coverage | ✅ **FIXED — `ActivityService.test.ts` uses real clock.** Added `vi.useFakeTimers()` pinned to `2026-05-25T12:00:00`. Replaced dynamic `getTodayDateString()` call and manual `new Date()` arithmetic with deterministic `today`/`yesterday` constants. All tests pass. | `ActivityService.test.ts:24-37` |
 | H4 | Correctness (Codex) | **Asymmetric warm-up/cool-down counting biases accuracy low.** Correct answers on non-target cards (`step.role !== 'target'`) are excluded from `reviewed`, but wrong answers still increment `mistakes`. With context depth 2, many correct answers vanish from the numerator while mistakes remain — systematically underreporting accuracy. Fix: either count all regular-review moves symmetrically, or exclude both correct and incorrect non-target outcomes. | `TrainingEngine.ts:258-269` |
 
 ### 🟡 MEDIUM (15 findings)
@@ -76,7 +76,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 - `RepertoireDataUtils`: normalize with activity, convertToRepertoireData with activity preservation
 
 ### What's Missing ❌
-- **Fake timers in ActivityService tests** (uses real clock — flaky)
+- ~~**Fake timers in ActivityService tests**~~ ✅ Fixed — uses `vi.useFakeTimers()` pinned to a deterministic date
 - **`computeCardBreakdown()`** — zero tests, embedded in component
 - **Streak across month/year boundaries** (relies on JS Date underflow)
 - **`computeCurrentStreak` with zero-activity-today** — test description/assertion mismatch
@@ -107,7 +107,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 1. **Fix asymmetric warm-up/cool-down counting** — either count correct non-target answers in `reviewed`, or exclude non-target mistakes from `mistakes`. Current logic biases accuracy low. *(Codex-only finding)*
 2. ~~**Unify date logic**~~ ✅ Done — `getCurrentDateOnly()` switched to local time; `dailyPlayCount` demoted to legacy (always 0).
 3. ~~**Fix `reviewedToday` drift**~~ ✅ Done — badge reads from practice log via `getTodayPlayCount()`; eager increment only fires for correct target cards.
-4. **Add `vi.useFakeTimers()` to `ActivityService.test.ts`** — highest-ROI test fix.
+4. ~~**Add `vi.useFakeTimers()` to `ActivityService.test.ts`**~~ ✅ Done — pinned to `2026-05-25T12:00:00` with deterministic `today`/`yesterday` constants.
 5. **Defer empty-day creation** — only call `getTodayEntry()` when recording actual activity, not in `normalize()`. Strip zero-only rows before persisting. *(Codex-only finding)*
 6. **Extract `computeCardBreakdown` to a service** — deduplicate with ReviewQueue's state classification, use `State` enum.
 7. **Persist `bestStreak` in lifetime** — so it survives the 30-entry log eviction.
