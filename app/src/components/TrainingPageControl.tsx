@@ -281,6 +281,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         if (result.isEndOfTraversal) {
             playSound(soundSuccess);
+            onQueueStatsRef.current(eng.getQueueStats());
 
             // Show end-of-line annotations before transitioning
             const endAnnotations = eng.getEndOfTraversalAnnotations();
