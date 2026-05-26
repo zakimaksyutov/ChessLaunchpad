@@ -22,6 +22,35 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCoun
         prevTriggerRef.current = animationTrigger;
     }, [animationTrigger]);
 
+    // Track decreases in count badges for "-1" animation
+    const prevReviewRef = useRef(reviewCount);
+    const prevLearningRef = useRef(learningCount);
+    const prevNewRef = useRef(newCount);
+    const [reviewAnimKey, setReviewAnimKey] = useState(0);
+    const [learningAnimKey, setLearningAnimKey] = useState(0);
+    const [newAnimKey, setNewAnimKey] = useState(0);
+
+    useEffect(() => {
+        if (reviewCount < prevReviewRef.current) {
+            setReviewAnimKey(k => k + 1);
+        }
+        prevReviewRef.current = reviewCount;
+    }, [reviewCount]);
+
+    useEffect(() => {
+        if (learningCount < prevLearningRef.current) {
+            setLearningAnimKey(k => k + 1);
+        }
+        prevLearningRef.current = learningCount;
+    }, [learningCount]);
+
+    useEffect(() => {
+        if (newCount < prevNewRef.current) {
+            setNewAnimKey(k => k + 1);
+        }
+        prevNewRef.current = newCount;
+    }, [newCount]);
+
     const leftPartStyle: React.CSSProperties = {
         backgroundColor: '#555',
         color: '#fff',
@@ -39,11 +68,28 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCoun
         fontSize: '0.8rem',
     };
 
-    const renderBadge = (label: React.ReactNode, value: React.ReactNode, backgroundColor: string) => {
+    const renderBadge = (label: React.ReactNode, value: React.ReactNode, backgroundColor: string, badgeAnimKey?: number, badgeKey?: string) => {
         const finalStyle: React.CSSProperties = {
             ...rightPartStyle,
             backgroundColor,
         };
+
+        if (badgeAnimKey !== undefined && badgeKey) {
+            return (
+                <div className="badge-count-wrapper" key={`${badgeKey}-${badgeAnimKey}`}>
+                    <div
+                        style={{ display: 'inline-flex' }}
+                        className={badgeAnimKey > 0 ? 'badge-count-pop' : undefined}
+                    >
+                        <span style={leftPartStyle}>{label}</span>
+                        <span style={finalStyle}>{value}</span>
+                    </div>
+                    {badgeAnimKey > 0 && (
+                        <span className="badge-minus-one" style={{ color: backgroundColor }}>−1</span>
+                    )}
+                </div>
+            );
+        }
 
         return (
             <div style={{ display: 'inline-flex' }}>
@@ -64,9 +110,9 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCoun
             maxWidth: '100%',
             paddingBottom: '0'
         }}>
-            {renderBadge('review', reviewCount.toString(), '#3b82f6')}
-            {renderBadge('learning', learningCount.toString(), '#06b6d4')}
-            {renderBadge('new', newCount.toString(), '#8b5cf6')}
+            {renderBadge('review', reviewCount.toString(), '#3b82f6', reviewAnimKey, 'review')}
+            {renderBadge('learning', learningCount.toString(), '#06b6d4', learningAnimKey, 'learning')}
+            {renderBadge('new', newCount.toString(), '#8b5cf6', newAnimKey, 'new')}
             <div className="badge-today-wrapper" key={`today-${animKey}`}>
                 <div
                     style={{ display: 'inline-flex' }}
