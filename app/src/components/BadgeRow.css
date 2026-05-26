@@ -1,0 +1,31 @@
+.badge-today-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+@keyframes badge-pop {
+    0%  { transform: scale(1); }
+    40% { transform: scale(1.25); }
+    70% { transform: scale(0.95); }
+    100% { transform: scale(1); }
+}
+
+.badge-today-pop {
+    animation: badge-pop 0.35s ease-out;
+}
+
+@keyframes float-up {
+    0%   { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-24px); }
+}
+
+.badge-plus-one {
+    position: absolute;
+    top: -2px;
+    right: -6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #22c55e;
+    pointer-events: none;
+    animation: float-up 0.7s ease-out forwards;
+}
