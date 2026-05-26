@@ -83,12 +83,12 @@ activity: {
 | `traversals`  | number | Number of completed traversals (full root-to-leaf runs).                                         |
 | `timeSeconds` | number | Active training seconds for the day (see §2.3 Time tracking).                                    |
 
-#### Derived metrics (not stored)
+#### Derived metrics (computed from practiceLog + lifetime)
 
 - **Total positions** — `reviewed + mistakes + learned`.
 - **Accuracy** — `reviewed / (reviewed + mistakes)` (exclude `learned`; recall-pass Again is not an error).
-- **Current streak** — consecutive days (including today) with total > 0.
-- **Best streak** — longest such run in the log.
+- **Current streak** — consecutive days (including today) with total > 0. Persisted in `lifetime.currentStreak` so it survives the 30-entry log eviction; the log-based value is used unless the streak spans the full capped window, in which case the persisted value is preferred.
+- **Best streak** — longest such run. Persisted in `lifetime.bestStreak` (monotonically increasing) so it survives log eviction.
 
 #### Lifecycle
 
@@ -106,6 +106,8 @@ activity: {
 | `learned`              | number | All-time new positions taught + recalled.         |
 | `traversals`           | number | All-time traversals completed.                    |
 | `timeSeconds`          | number | All-time active training seconds.                 |
+| `bestStreak`           | number | Highest streak ever recorded (survives log eviction). |
+| `currentStreak`        | number | Latest active streak (survives log eviction).     |
 
 ### 2.3 Time tracking
 

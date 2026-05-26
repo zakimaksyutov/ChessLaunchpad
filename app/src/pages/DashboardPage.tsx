@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { State } from 'ts-fsrs';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService } from '../services/FSRSService';
-import { ensureActivity, computeAccuracy, computeCurrentStreak, computeBestStreak } from '../services/ActivityService';
+import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy } from '../utils/FormatUtils';
 import './DashboardPage.css';
 
-// FSRS states: 0=New, 1=Learning, 2=Review, 3=Relearning
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
     total: number; newCount: number; learning: number; reviewDue: number; mastered: number; dueNow: number;
 } {
@@ -17,18 +17,16 @@ function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
 
     for (const card of Object.values(fsrsCards)) {
         total++;
-        const isDue = (): boolean => {
-            const due = FSRSService.computeDueDate(card);
-            return now >= due;
-        };
-        switch (card.st) {
-            case 0: newCount++; dueNow++; break;
-            case 1: learning++; if (isDue()) dueNow++; break;
-            case 2:
-                if (isDue()) { reviewDue++; dueNow++; }
+        const due = FSRSService.computeDueDate(card);
+        const isDue = now >= due;
+        switch (card.st as State) {
+            case State.New: newCount++; dueNow++; break;
+            case State.Learning: learning++; if (isDue) dueNow++; break;
+            case State.Review:
+                if (isDue) { reviewDue++; dueNow++; }
                 else { mastered++; }
                 break;
-            case 3: learning++; if (isDue()) dueNow++; break;
+            case State.Relearning: learning++; if (isDue) dueNow++; break;
         }
     }
 
@@ -92,8 +90,8 @@ const DashboardPage: React.FC = () => {
         ? activity.practiceLog[activity.practiceLog.length - 1]
         : null;
 
-    const currentStreak = computeCurrentStreak(activity.practiceLog);
-    const bestStreak = computeBestStreak(activity.practiceLog);
+    const currentStreak = getCurrentStreak(activity);
+    const bestStreak = getBestStreak(activity);
 
     return (
         <div className="dashboard">

@@ -126,6 +126,21 @@ export function recordTraversal(
     activity.lifetime.traversals += 1;
     activity.lifetime.timeSeconds += Math.round(elapsedSeconds);
 
+    // Update persisted bestStreak so it survives log eviction
+    const logBest = computeBestStreak(activity.practiceLog);
+    activity.lifetime.bestStreak = Math.max(activity.lifetime.bestStreak ?? 0, logBest);
+
+    // Update persisted currentStreak — use log value unless streak may extend beyond window
+    const logCurrentStreak = computeCurrentStreak(activity.practiceLog);
+    const mayBeTruncated = logCurrentStreak > 0
+        && activity.practiceLog.length >= MAX_LOG_ENTRIES
+        && logCurrentStreak >= activity.practiceLog.length - 1;
+    if (mayBeTruncated) {
+        activity.lifetime.currentStreak = Math.max(activity.lifetime.currentStreak ?? 0, logCurrentStreak);
+    } else {
+        activity.lifetime.currentStreak = logCurrentStreak;
+    }
+
     // Backward compat: backend requires this field, always 0
     data.dailyPlayCount = 0;
 }
@@ -147,6 +162,32 @@ export function computeAccuracy(reviewed: number, mistakes: number): number | nu
     const total = reviewed + mistakes;
     if (total === 0) return null;
     return reviewed / total;
+}
+
+/**
+ * Get best streak, accounting for possible log truncation.
+ * Uses persisted lifetime value when older entries have been evicted.
+ */
+export function getBestStreak(activity: Activity): number {
+    return Math.max(
+        computeBestStreak(activity.practiceLog),
+        activity.lifetime.bestStreak ?? 0,
+    );
+}
+
+/**
+ * Get current streak, accounting for possible log truncation.
+ * Uses persisted lifetime value only when the streak spans the full log window.
+ */
+export function getCurrentStreak(activity: Activity): number {
+    const logStreak = computeCurrentStreak(activity.practiceLog);
+    if (logStreak === 0) return 0;
+
+    const persisted = activity.lifetime.currentStreak ?? 0;
+    if (activity.practiceLog.length >= MAX_LOG_ENTRIES && logStreak >= activity.practiceLog.length - 1) {
+        return Math.max(logStreak, persisted);
+    }
+    return logStreak;
 }
 
 /** Compute current streak (consecutive days including today with activity). */

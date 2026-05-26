@@ -8,6 +8,8 @@ import {
     computeAccuracy,
     computeCurrentStreak,
     computeBestStreak,
+    getCurrentStreak,
+    getBestStreak,
 } from './ActivityService';
 
 function makeRepertoireData(overrides: Partial<RepertoireData> = {}): RepertoireData {
@@ -228,6 +230,174 @@ describe('ActivityService', () => {
                 { date: '2026-05-25', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
             ];
             expect(computeBestStreak(log)).toBe(3);
+        });
+    });
+
+    describe('recordTraversal persists bestStreak in lifetime', () => {
+        it('updates lifetime.bestStreak after recording a traversal', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                    ],
+                    lifetime: { reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 3, mistakes: 0, learned: 0 }, 60);
+
+            // Yesterday + today = 2-day streak
+            expect(data.activity!.lifetime.bestStreak).toBe(2);
+        });
+
+        it('preserves bestStreak when log entries are evicted', () => {
+            // Simulate: lifetime already recorded a 10-day streak, but those entries are gone
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        { date: today, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                    ],
+                    lifetime: { reviewed: 50, mistakes: 5, learned: 3, traversals: 20, timeSeconds: 3000, bestStreak: 10 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 2, mistakes: 0, learned: 0 }, 30);
+
+            // Log only has today (streak=1), but lifetime bestStreak=10 is preserved
+            expect(data.activity!.lifetime.bestStreak).toBe(10);
+        });
+
+        it('upgrades bestStreak when log streak exceeds persisted value', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        { date: '2026-05-23', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                    ],
+                    lifetime: { reviewed: 10, mistakes: 1, learned: 0, traversals: 5, timeSeconds: 500, bestStreak: 2 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 20);
+
+            // 3 consecutive days now > previous bestStreak of 2
+            expect(data.activity!.lifetime.bestStreak).toBe(3);
+        });
+    });
+
+    describe('recordTraversal persists currentStreak in lifetime', () => {
+        it('updates lifetime.currentStreak after recording a traversal', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                    ],
+                    lifetime: { reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 3, mistakes: 0, learned: 0 }, 60);
+
+            expect(data.activity!.lifetime.currentStreak).toBe(2);
+        });
+
+        it('resets currentStreak when streak is broken', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        // Gap before today — streak was broken
+                        { date: '2026-05-20', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                    ],
+                    lifetime: { reviewed: 50, mistakes: 5, learned: 3, traversals: 20, timeSeconds: 3000, currentStreak: 15 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 20);
+
+            // Streak was broken — log shows 1, persisted 15 must be overwritten
+            expect(data.activity!.lifetime.currentStreak).toBe(1);
+        });
+
+        it('preserves currentStreak when log is at cap and streak spans full window', () => {
+            // Build a full 30-entry log of consecutive active days ending today
+            const entries = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date(2026, 4, 25 - 29 + i); // Apr 26 through May 25
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return { date, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            });
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: entries,
+                    lifetime: { reviewed: 100, mistakes: 10, learned: 5, traversals: 50, timeSeconds: 5000, currentStreak: 45 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10);
+
+            // Log shows 30-day streak (all entries active) but persisted 45 is preserved
+            expect(data.activity!.lifetime.currentStreak).toBe(45);
+        });
+    });
+
+    describe('getCurrentStreak helper', () => {
+        it('returns log-based streak when log is not at cap', () => {
+            const activity = {
+                practiceLog: [
+                    { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                    { date: today, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                ],
+                lifetime: { reviewed: 10, mistakes: 1, learned: 0, traversals: 5, timeSeconds: 500, currentStreak: 20 },
+            };
+            // Log is not at cap (2 entries < 30), so log value wins even though persisted is higher
+            expect(getCurrentStreak(activity)).toBe(2);
+        });
+
+        it('returns persisted value when streak spans full capped log', () => {
+            const entries = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date(2026, 4, 25 - 29 + i);
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return { date, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            });
+            const activity = {
+                practiceLog: entries,
+                lifetime: { reviewed: 100, mistakes: 10, learned: 5, traversals: 50, timeSeconds: 5000, currentStreak: 45 },
+            };
+            expect(getCurrentStreak(activity)).toBe(45);
+        });
+
+        it('returns 0 when no activity', () => {
+            const activity = {
+                practiceLog: [{ date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 }],
+                lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0, currentStreak: 0 },
+            };
+            expect(getCurrentStreak(activity)).toBe(0);
+        });
+    });
+
+    describe('getBestStreak helper', () => {
+        it('returns persisted value when it exceeds log-based streak', () => {
+            const activity = {
+                practiceLog: [
+                    { date: today, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                ],
+                lifetime: { reviewed: 50, mistakes: 5, learned: 3, traversals: 20, timeSeconds: 3000, bestStreak: 15 },
+            };
+            expect(getBestStreak(activity)).toBe(15);
+        });
+
+        it('returns log-based value when it exceeds persisted', () => {
+            const activity = {
+                practiceLog: [
+                    { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                    { date: today, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                ],
+                lifetime: { reviewed: 10, mistakes: 1, learned: 0, traversals: 5, timeSeconds: 500, bestStreak: 1 },
+            };
+            expect(getBestStreak(activity)).toBe(2);
         });
     });
 });

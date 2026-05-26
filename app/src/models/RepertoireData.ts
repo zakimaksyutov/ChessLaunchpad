@@ -16,6 +16,8 @@ export interface LifetimeStats {
     learned: number;
     traversals: number;
     timeSeconds: number;
+    bestStreak?: number;    // Persisted so it survives the 30-entry log eviction
+    currentStreak?: number; // Persisted so it survives the 30-entry log eviction
 }
 
 export interface Activity {
