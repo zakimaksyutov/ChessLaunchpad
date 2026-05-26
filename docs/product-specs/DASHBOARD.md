@@ -95,8 +95,6 @@ activity: {
 - The latest entry in `practiceLog` represents today's session. On each save, update it in place.
 - On day-boundary reset (when `lastPlayedDate` rolls to a new day), append a new entry for the new date. If the log already has 30 entries, drop the oldest.
 
-`dailyPlayCount` is kept for backward compatibility (= latest entry's `reviewed`).
-
 ### 2.2 Lifetime totals
 
 `activity.lifetime` — incremented alongside daily counters, never reset.

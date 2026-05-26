@@ -53,10 +53,10 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.data![0].pgn).toBe('1. e4 e5');
             expect(repertoireData.data![0].orientation).toBe('white');
             expect(repertoireData.currentEpoch).toBe(0);
-            expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
+            expect(repertoireData.lastPlayedDate?.getTime()).toBe(RepertoireDataUtils.getCurrentDateOnly().getTime());
         });
 
-        it('should reset dailyPlayCount on new day', () => {
+        it('should update lastPlayedDate on new day', () => {
             // Prepare
             const yesterday = RepertoireDataUtils.getCurrentDateOnly();
             yesterday.setDate(yesterday.getDate() - 1); // set to "yesterday"
@@ -87,14 +87,12 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.data[0].successEMA).toBe(0);
             expect(repertoireData.data[0].lastSucceededEpoch).toBe(0);
 
-            // lastPlayedDate updated to today
-            expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
-
-            // Check dailyPlayCount gets reset on new day
-            expect(repertoireData.dailyPlayCount).toBe(0);
+            // lastPlayedDate updated to today (local midnight)
+            const expectedDate = RepertoireDataUtils.getCurrentDateOnly();
+            expect(repertoireData.lastPlayedDate?.getTime()).toBe(expectedDate.getTime());
         });
 
-        it('should NOT reset dailyPlayCount if current date has not changed', () => {
+        it('should NOT update lastPlayedDate if current date has not changed', () => {
             // Prepare
             const repertoireData: RepertoireData = {
                 data: [
@@ -117,10 +115,7 @@ describe('RepertoireDataUtils', () => {
             RepertoireDataUtils.normalize(repertoireData);
 
             // Assert
-            expect(repertoireData.lastPlayedDate?.toISOString()).toBe('2025-01-23T00:00:00.000Z');
-
-            // Confirm dailyPlayCount remains unchanged if the day hasn't changed
-            expect(repertoireData.dailyPlayCount).toBe(5);
+            expect(repertoireData.lastPlayedDate?.getTime()).toBe(RepertoireDataUtils.getCurrentDateOnly().getTime());
 
             // V1 stubs still 0
             expect(repertoireData.currentEpoch).toBe(0);
@@ -205,7 +200,7 @@ describe('RepertoireDataUtils', () => {
             variants[1].numberOfTimesPlayed = 20;
 
             // Act
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 3);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants);
 
             // Assert
             expect(result.data).toHaveLength(2);
@@ -225,7 +220,8 @@ describe('RepertoireDataUtils', () => {
             expect(result.data[1].lastSucceededEpoch).toBe(0);
 
             expect(result.currentEpoch).toBe(0);
-            expect(result.dailyPlayCount).toBe(3);
+            // No activity provided → dailyPlayCount defaults to 0
+            expect(result.dailyPlayCount).toBe(0);
 
             // lastPlayedDate should be "today"
             const today = RepertoireDataUtils.getCurrentDateOnly();
@@ -243,7 +239,7 @@ describe('RepertoireDataUtils', () => {
                 'fen1::e4': { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 }
             };
 
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 1, fsrsCards);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, fsrsCards);
 
             expect(result.fsrsCards).toBe(fsrsCards);
         });
@@ -253,7 +249,7 @@ describe('RepertoireDataUtils', () => {
                 new OpeningVariant('1. e4 e5', 'white', [])
             ];
 
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 1);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants);
 
             expect(result.fsrsCards).toEqual({});
         });
@@ -275,7 +271,7 @@ describe('RepertoireDataUtils', () => {
                 },
             };
 
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 5, {}, null, existingData);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants, {}, null, existingData);
 
             expect(result.activity).toBeDefined();
             expect(result.activity!.practiceLog).toHaveLength(1);
@@ -288,7 +284,7 @@ describe('RepertoireDataUtils', () => {
                 new OpeningVariant('1. e4 e5', 'white', [])
             ];
 
-            const result = RepertoireDataUtils.convertToRepertoireData(variants, 0);
+            const result = RepertoireDataUtils.convertToRepertoireData(variants);
 
             expect(result.activity).toBeUndefined();
         });

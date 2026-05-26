@@ -47,7 +47,7 @@ export interface RepertoireData {
     // V1 stub — always 0, kept because the backend schema requires it.
     currentEpoch: number;
     lastPlayedDate: Date;
-    dailyPlayCount: number; // How many times user has played on the current date
+    dailyPlayCount: number; // Backend compat — derived from activity on save, not read internally
     fsrsCards?: Record<string, FSRSCardData>;
     settings?: AppSettings | null;
     trainingSettings?: AppSettings | null; // legacy, migrated to settings

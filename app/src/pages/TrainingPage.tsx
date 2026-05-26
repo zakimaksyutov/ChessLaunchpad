@@ -4,7 +4,7 @@ import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer
 import { RepertoireData } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
-import { recordTraversal, ensureActivity, TraversalStats } from '../services/ActivityService';
+import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
 import BadgeRow from '../components/BadgeRow';
 
 const TrainingPage: React.FC = () => {
@@ -46,7 +46,7 @@ const TrainingPage: React.FC = () => {
                 if (cancelled) return;
                 setRepertoireData(data);
                 repertoireDataRef.current = data;
-                setReviewedToday(data.dailyPlayCount);
+                setReviewedToday(getTodayPlayCount(data));
 
                 console.log(`DAL: Loaded ${data.data.length} variants.`);
             } catch (e: any) {
@@ -83,13 +83,11 @@ const TrainingPage: React.FC = () => {
         if (!currentData || !dal) return;
 
         try {
-            // Record activity
-            ensureActivity(currentData);
+            // Record activity (recordTraversal calls ensureActivity internally)
             recordTraversal(currentData, traversalStats, elapsedSeconds);
 
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 RepertoireDataUtils.convertToVariantData(currentData),
-                currentData.dailyPlayCount,
                 updatedCards,
                 currentData.settings,
                 currentData,
@@ -98,10 +96,10 @@ const TrainingPage: React.FC = () => {
             // Update ref immediately but don't trigger engine recreation via setRepertoireData
             repertoireDataRef.current = newData;
             // Reconcile UI with persisted value
-            setReviewedToday(newData.dailyPlayCount);
+            setReviewedToday(getTodayPlayCount(newData));
             await dal.storeRepertoireData(newData);
 
-            console.log(`DAL: Saved. dailyPlayCount: ${newData.dailyPlayCount} (+${correctCardsRated})`);
+            console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(newData)} (+${correctCardsRated})`);
         } catch (e: any) {
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);

@@ -44,12 +44,10 @@ export class RepertoireDataUtils {
         // Reconcile FSRS cards with current repertoire positions
         RepertoireDataUtils.reconcileCards(repertoireData);
 
-        // Check whether we started a new day — reset daily counter.
+        // Check whether we started a new day — update lastPlayedDate.
         const currentDate = RepertoireDataUtils.getCurrentDateOnly();
         if (currentDate > repertoireData.lastPlayedDate) {
             repertoireData.lastPlayedDate = currentDate;
-            // Reset daily counter on new day
-            repertoireData.dailyPlayCount = 0;
         }
 
         // Initialize activity and handle day boundary for practiceLog
@@ -100,7 +98,6 @@ export class RepertoireDataUtils {
 
     public static convertToRepertoireData(
         variants: OpeningVariant[],
-        dailyPlayCount: number,
         fsrsCards?: Record<string, FSRSCardData>,
         existingSettings?: AppSettings | null,
         existingData?: RepertoireData | null,
@@ -120,7 +117,8 @@ export class RepertoireDataUtils {
             data,
             currentEpoch: 0, // V1 stub
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-            dailyPlayCount: dailyPlayCount,
+            // Backward compat: derive from activity for backend (always 0)
+            dailyPlayCount: 0,
             fsrsCards: fsrsCards ?? {},
             settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
             activity: existingData?.activity,
@@ -160,7 +158,7 @@ export class RepertoireDataUtils {
 
     public static getCurrentDateOnly(): Date {
         const currentDate = new Date();
-        currentDate.setUTCHours(0, 0, 0, 0);
+        currentDate.setHours(0, 0, 0, 0);
         return new Date(currentDate.getTime());
     }
 }

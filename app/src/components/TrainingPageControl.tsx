@@ -268,18 +268,14 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             return false;
         }
 
-        // Count meaningful card interactions for the "today" badge:
-        // - Target cards always count (correct or mistake)
-        // - Non-target mistakes count (user lost mastery of a warm-up/cool-down card)
+        // Count successful target-card interactions for the "today" badge.
         // Note: result.isTargetCard is only defined for regular traversals (not teach/recall)
         if (result.isTargetCard !== undefined) {
             if (result.isTargetCard) {
                 if (result.ratingWasCorrect) {
                     correctCardsCountRef.current++;
+                    onCardRatedRef.current();
                 }
-                onCardRatedRef.current();
-            } else if (!result.ratingWasCorrect) {
-                onCardRatedRef.current();
             }
         }
 

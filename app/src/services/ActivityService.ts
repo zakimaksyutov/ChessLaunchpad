@@ -90,10 +90,21 @@ export interface TraversalStats {
     learned: number;
 }
 
+/** Compute today's play count from the practice log (single source of truth). */
+export function getTodayPlayCount(data: RepertoireData): number {
+    if (!data.activity) return 0;
+    const today = getTodayDateString();
+    const log = data.activity.practiceLog;
+    if (log.length > 0 && log[log.length - 1].date === today) {
+        return log[log.length - 1].reviewed;
+    }
+    return 0;
+}
+
 /**
  * Record a completed traversal into activity data.
  * Updates both today's entry and lifetime totals.
- * Also keeps `dailyPlayCount` in sync.
+ * Also keeps `dailyPlayCount` in sync for backend compatibility.
  */
 export function recordTraversal(
     data: RepertoireData,
@@ -115,8 +126,8 @@ export function recordTraversal(
     activity.lifetime.traversals += 1;
     activity.lifetime.timeSeconds += Math.round(elapsedSeconds);
 
-    // Backward compat: dailyPlayCount = today's meaningful interactions
-    data.dailyPlayCount = entry.reviewed + entry.mistakes;
+    // Backward compat: backend requires this field, always 0
+    data.dailyPlayCount = 0;
 }
 
 /**

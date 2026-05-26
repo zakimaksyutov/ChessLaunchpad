@@ -408,7 +408,7 @@ export class TrainingEngine {
     }
 
     /**
-     * Get total cards rated this traversal (for dailyPlayCount).
+     * Get total cards rated this traversal.
      */
     getCardsRated(): number {
         return this.cardsRated;
