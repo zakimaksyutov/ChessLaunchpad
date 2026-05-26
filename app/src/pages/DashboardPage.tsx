@@ -10,9 +10,9 @@ import './DashboardPage.css';
 
 // FSRS states: 0=New, 1=Learning, 2=Review, 3=Relearning
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
-    total: number; newCount: number; learning: number; review: number; dueNow: number;
+    total: number; newCount: number; learning: number; reviewDue: number; mastered: number; dueNow: number;
 } {
-    let total = 0, newCount = 0, learning = 0, review = 0, dueNow = 0;
+    let total = 0, newCount = 0, learning = 0, reviewDue = 0, mastered = 0, dueNow = 0;
     const now = new Date();
 
     for (const card of Object.values(fsrsCards)) {
@@ -24,12 +24,15 @@ function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
         switch (card.st) {
             case 0: newCount++; dueNow++; break;
             case 1: learning++; if (isDue()) dueNow++; break;
-            case 2: review++; if (isDue()) dueNow++; break;
+            case 2:
+                if (isDue()) { reviewDue++; dueNow++; }
+                else { mastered++; }
+                break;
             case 3: learning++; if (isDue()) dueNow++; break;
         }
     }
 
-    return { total, newCount, learning, review, dueNow };
+    return { total, newCount, learning, reviewDue, mastered, dueNow };
 }
 
 function getAccuracyColor(accuracy: number | null): string {
@@ -145,7 +148,8 @@ const DashboardPage: React.FC = () => {
                         <StatRow label="Total cards" value={cards.total} />
                         <StatRow label="New" value={cards.newCount} />
                         <StatRow label="Learning" value={cards.learning} />
-                        <StatRow label="Review" value={cards.review} />
+                        <StatRow label="Due review" value={cards.reviewDue} />
+                        <StatRow label="Mastered" value={cards.mastered} />
                     </div>
                 </div>
             </div>
