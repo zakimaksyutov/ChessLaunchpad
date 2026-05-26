@@ -89,9 +89,6 @@ const DashboardPage: React.FC = () => {
         ? activity.practiceLog[activity.practiceLog.length - 1]
         : null;
 
-    const todayAccuracy = today ? computeAccuracy(today.reviewed, today.mistakes) : null;
-    const lifetimeAccuracy = computeAccuracy(activity.lifetime.reviewed, activity.lifetime.mistakes);
-
     const currentStreak = computeCurrentStreak(activity.practiceLog);
     const bestStreak = computeBestStreak(activity.practiceLog);
 
@@ -119,8 +116,6 @@ const DashboardPage: React.FC = () => {
                             <StatRow label="Mistakes" value={today.mistakes} />
                             <StatRow label="Learned" value={today.learned} />
                             <StatRow label="Traversals" value={today.traversals} />
-                            <StatRow label="Accuracy" value={formatAccuracy(todayAccuracy)}
-                                color={getAccuracyColor(todayAccuracy)} />
                             <StatRow label="Time" value={formatDuration(today.timeSeconds)} />
                             <StatRow label="Cards due" value={cards.dueNow} />
                         </div>
@@ -137,8 +132,6 @@ const DashboardPage: React.FC = () => {
                         <StatRow label="Total mistakes" value={activity.lifetime.mistakes} />
                         <StatRow label="Total learned" value={activity.lifetime.learned} />
                         <StatRow label="Total traversals" value={activity.lifetime.traversals} />
-                        <StatRow label="Accuracy" value={formatAccuracy(lifetimeAccuracy)}
-                            color={getAccuracyColor(lifetimeAccuracy)} />
                         <StatRow label="Total time" value={formatDuration(activity.lifetime.timeSeconds)} />
                         <StatRow label="Current streak" value={`${currentStreak} day${currentStreak !== 1 ? 's' : ''}`} />
                         <StatRow label="Best streak" value={`${bestStreak} day${bestStreak !== 1 ? 's' : ''}`} />
