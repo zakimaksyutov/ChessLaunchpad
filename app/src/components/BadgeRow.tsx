@@ -54,8 +54,8 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCoun
         }}>
             {renderBadge('review', reviewCount.toString(), '#3b82f6')}
             {renderBadge('learning', learningCount.toString(), '#06b6d4')}
-            {renderBadge('new', newCount.toString(), '#22c55e')}
-            {renderBadge('today', reviewedToday.toString(), '#8b5cf6')}
+            {renderBadge('new', newCount.toString(), '#8b5cf6')}
+            {renderBadge('today', reviewedToday.toString(), '#22c55e')}
         </div>
     );
 };
