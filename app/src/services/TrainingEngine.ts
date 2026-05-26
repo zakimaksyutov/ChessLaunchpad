@@ -386,10 +386,12 @@ export class TrainingEngine {
     /**
      * Get queue statistics for badge display.
      */
-    getQueueStats(): { dueCount: number; newCount: number; totalCards: number } {
+    getQueueStats(): { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number } {
         return {
             dueCount: this.queue.dueCount(),
             newCount: this.queue.newCount(),
+            reviewCount: this.queue.reviewCount(),
+            learningCount: this.queue.learningCount(),
             totalCards: this.graph.getCardKeys().length,
         };
     }

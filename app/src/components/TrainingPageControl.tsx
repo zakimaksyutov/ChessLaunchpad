@@ -26,7 +26,7 @@ interface TrainingPageControlProps {
     variants: OpeningVariant[];
     fsrsCards: Record<string, FSRSCardData>;
     onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
-    onQueueStats: (stats: { dueCount: number; newCount: number; totalCards: number }) => void;
+    onQueueStats: (stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => void;
     onCardRated: () => void;
 }
 

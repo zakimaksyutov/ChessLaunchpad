@@ -173,6 +173,8 @@ describe('TrainingEngine', () => {
             expect(stats.totalCards).toBeGreaterThanOrEqual(0);
             expect(typeof stats.dueCount).toBe('number');
             expect(typeof stats.newCount).toBe('number');
+            expect(typeof stats.reviewCount).toBe('number');
+            expect(typeof stats.learningCount).toBe('number');
         });
     });
 

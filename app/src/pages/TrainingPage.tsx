@@ -11,8 +11,8 @@ const TrainingPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
-    const [queueStats, setQueueStats] = useState<{ dueCount: number; newCount: number; totalCards: number }>({
-        dueCount: 0, newCount: 0, totalCards: 0
+    const [queueStats, setQueueStats] = useState<{ dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }>({
+        dueCount: 0, newCount: 0, reviewCount: 0, learningCount: 0, totalCards: 0
     });
     const [reviewedToday, setReviewedToday] = useState<number>(0);
 
@@ -108,7 +108,7 @@ const TrainingPage: React.FC = () => {
         }
     }, [dal]);
 
-    const handleQueueStats = useCallback((stats: { dueCount: number; newCount: number; totalCards: number }) => {
+    const handleQueueStats = useCallback((stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => {
         setQueueStats(stats);
     }, []);
 
@@ -139,9 +139,10 @@ const TrainingPage: React.FC = () => {
             overflowX: 'hidden'
         }}>
             <BadgeRow
-                dueCount={queueStats.dueCount + queueStats.newCount}
+                reviewCount={queueStats.reviewCount}
+                learningCount={queueStats.learningCount}
+                newCount={queueStats.newCount}
                 reviewedToday={reviewedToday}
-                totalCards={queueStats.totalCards}
             />
             <TrainingPageControl
                 variants={variants}

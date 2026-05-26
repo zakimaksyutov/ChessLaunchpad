@@ -2,12 +2,13 @@
 import React from 'react';
 
 interface BadgeRowProps {
-    dueCount: number;
+    reviewCount: number;
+    learningCount: number;
+    newCount: number;
     reviewedToday: number;
-    totalCards: number;
 }
 
-const BadgeRow: React.FC<BadgeRowProps> = ({ dueCount, reviewedToday, totalCards }) => {
+const BadgeRow: React.FC<BadgeRowProps> = ({ reviewCount, learningCount, newCount, reviewedToday }) => {
 
     const leftPartStyle: React.CSSProperties = {
         backgroundColor: '#555',
@@ -19,7 +20,6 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ dueCount, reviewedToday, totalCards
     };
 
     const rightPartStyle: React.CSSProperties = {
-        backgroundColor: '#4c1',
         color: '#fff',
         padding: '1px 8px',
         paddingBottom: '2px',
@@ -27,29 +27,10 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ dueCount, reviewedToday, totalCards
         fontSize: '0.8rem',
     };
 
-    const getDueBgColor = (): string => {
-        if (dueCount === 0) return '#4c1'; // green — all done
-        const ratio = Math.min(dueCount / Math.max(totalCards * 0.2, 1), 1);
-        const r = Math.round(76 + ratio * (204 - 76));
-        const g = Math.round(193 - ratio * 193);
-        const b = Math.round(1 - ratio);
-        return `rgb(${r}, ${g}, ${b})`;
-    };
-
-    const getReviewedBgColor = (): string => {
-        if (totalCards === 0) return '#4c1';
-        const target = Math.ceil(totalCards * 0.2);
-        const ratio = Math.min(reviewedToday / Math.max(target, 1), 1);
-        const r = Math.round(204 - ratio * (204 - 76));
-        const g = Math.round(ratio * 193);
-        const b = Math.round(ratio);
-        return `rgb(${r}, ${g}, ${b})`;
-    };
-
-    const renderBadge = (label: React.ReactNode, value: React.ReactNode, backgroundColor?: string) => {
+    const renderBadge = (label: React.ReactNode, value: React.ReactNode, backgroundColor: string) => {
         const finalStyle: React.CSSProperties = {
             ...rightPartStyle,
-            backgroundColor: backgroundColor ?? rightPartStyle.backgroundColor,
+            backgroundColor,
         };
 
         return (
@@ -71,9 +52,10 @@ const BadgeRow: React.FC<BadgeRowProps> = ({ dueCount, reviewedToday, totalCards
             maxWidth: '100%',
             paddingBottom: '0'
         }}>
-            {renderBadge('due', dueCount.toString(), getDueBgColor())}
-            {renderBadge('today', reviewedToday.toString(), getReviewedBgColor())}
-            {renderBadge('total', totalCards.toString())}
+            {renderBadge('review', reviewCount.toString(), '#3b82f6')}
+            {renderBadge('learning', learningCount.toString(), '#06b6d4')}
+            {renderBadge('new', newCount.toString(), '#22c55e')}
+            {renderBadge('today', reviewedToday.toString(), '#8b5cf6')}
         </div>
     );
 };

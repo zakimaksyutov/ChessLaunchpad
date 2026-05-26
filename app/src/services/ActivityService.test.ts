@@ -186,8 +186,8 @@ describe('ActivityService', () => {
 
         it('counts consecutive days including today', () => {
             const yesterday = new Date();
-            yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-            const yStr = yesterday.toISOString().slice(0, 10);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
             const log = [
                 { date: yStr, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
@@ -198,8 +198,8 @@ describe('ActivityService', () => {
 
         it('returns 0 when today has no activity', () => {
             const yesterday = new Date();
-            yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-            const yStr = yesterday.toISOString().slice(0, 10);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
             const log = [
                 { date: yStr, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
