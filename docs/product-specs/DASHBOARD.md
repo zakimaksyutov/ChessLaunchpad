@@ -10,11 +10,10 @@ When a logged-in user lands on the home page, show a dashboard that surfaces pra
 
 ### 1.1 Today's Session
 
-- Positions reviewed correctly (mastered).
+- Positions reviewed correctly.
 - Mistakes made.
 - New positions learned.
 - Traversals completed.
-- Accuracy rate.
 - Time spent training.
 - Cards still due right now.
 
@@ -23,12 +22,13 @@ When a logged-in user lands on the home page, show a dashboard that surfaces pra
 - Total positions reviewed / mistakes / learned (all-time).
 - Total traversals completed.
 - Total time spent training.
-- All-time accuracy rate.
+- Current streak (consecutive days with activity, including today).
+- Best streak (longest consecutive run in the log).
 
 ### 1.3 Repertoire Summary
 
 - Total cards in repertoire.
-- Breakdown by FSRS state: new / learning / review.
+- Breakdown by FSRS state: new / learning / due review / mastered. Review-state cards are split into "due review" (due now) and "mastered" (not yet due).
 
 ### 1.4 Activity Feed
 

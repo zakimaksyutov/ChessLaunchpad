@@ -44,7 +44,7 @@ When the queue is empty, the system drills cards with the lowest retrievability 
 
 ### Progress Badges
 
-Three badges on the training page: **due** (cards in queue), **today** (reviewed this day), **total** (all cards).
+Four badges on the training page: **review** (due Review-state cards in queue), **learning** (due Learning/Relearning cards in queue), **new** (unseen cards in queue), **today** (reviewed this day).
 
 See `docs/product-specs/FSRS.md` for the full behavioral specification.
 
@@ -52,7 +52,7 @@ See `docs/product-specs/FSRS.md` for the full behavioral specification.
 
 | Route               | Purpose                                         |
 | ------------------- | ----------------------------------------------- |
-| `/`                 | Landing page                                    |
+| `/`                 | Dashboard (logged-in) / Landing page (anonymous) |
 | `/login`            | Authentication                                  |
 | `/training`         | Interactive board training (FSRS-driven)        |
 | `/repertoire`       | Browse / manage imported variants               |
@@ -101,7 +101,7 @@ Evaluations are precomputed per-position (see `models/ExplorerEvals.ts`) with up
 Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 ```
 
-The entire repertoire (variants + FSRS cards + settings) is stored as a single JSON blob with ETag-based optimistic concurrency. Legacy variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `currentEpoch`) remain in the payload for backward compatibility but are zeroed on load and not used for scheduling. See `docs/BACKEND_API_CONTRACT.md`.
+The entire repertoire (variants + FSRS cards + settings + activity) is stored as a single JSON blob with ETag-based optimistic concurrency. Legacy variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `currentEpoch`) remain in the payload for backward compatibility but are zeroed on load and not used for scheduling. See `docs/BACKEND_API_CONTRACT.md`.
 
 ### Games Page Data Flow
 

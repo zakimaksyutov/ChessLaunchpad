@@ -82,7 +82,7 @@ When the queue is empty, the system practices cards with the lowest retrievabili
 
 ## Progress Display
 
-Three badges: **due** (cards currently in queue), **today** (cards reviewed this session day), **total** (all cards in the repertoire).
+Four badges: **review** (due Review-state cards in queue), **learning** (due Learning/Relearning cards in queue), **new** (unseen cards in queue), **today** (cards reviewed this session day).
 
 ## Settings
 
