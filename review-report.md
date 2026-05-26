@@ -42,7 +42,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 | M12 | Data Integrity | ❌ **FALSE POSITIVE — No concurrency guard on rapid traversals.** The UI flow is inherently sequential — a traversal must complete before the next starts. Concurrent calls to `handleTraversalComplete` cannot happen through normal interaction. | `TrainingPage.tsx:82-102` |
 | M13 | Data Integrity | ✅ **FIXED — `bestStreak` limited by 30-entry log window.** Added `bestStreak` to `LifetimeStats`. `recordTraversal` now persists `Math.max(logBest, lifetime.bestStreak)`. DashboardPage reads the persisted value as fallback. | `ActivityService.ts:172-197` |
 | M14 | Spec Alignment | 🔕 **DISMISSED — Ahead-of-schedule traversals contribute to time tracking.** Confirmed: ahead-of-schedule moves push timestamps. Minor time inflation in a rare edge case; not worth the complexity to fix. | `TrainingEngine.ts` |
-| M15 | Data Integrity (Codex) | **Eager empty-day creation can evict real history.** `normalize()` eagerly calls `getTodayEntry()`, creating a zeroed row even if the user never trains. Read-modify-write flows (Settings save) persist these blanks. Empty rows count toward the 30-entry cap, so inactive days gradually push real activity out. | `RepertoireDataUtils.ts:55-57`, `ActivityService.ts:67-84` |
+| M15 | Data Integrity (Codex) | ✅ **FIXED — Eager empty-day creation can evict real history.** Removed eager `getTodayEntry()` from `normalize()`. `ensureActivity()` now initializes with empty `practiceLog` and strips all-zero entries on load. `computeCurrentStreak()` handles missing today entry (yesterday continues streak). `DashboardPage` checks date before treating last entry as today. `recordTime()` guards sub-second values that round to zero. | `RepertoireDataUtils.ts:54`, `ActivityService.ts:26-77,151-165,210-242`, `DashboardPage.tsx:89-92` |
 
 ### 🟢 LOW (16 findings)
 
@@ -108,7 +108,7 @@ The branch adds a **Dashboard page** for logged-in users, an **ActivityService**
 2. ~~**Unify date logic**~~ ✅ Done — `getCurrentDateOnly()` switched to local time; `dailyPlayCount` demoted to legacy (always 0).
 3. ~~**Fix `reviewedToday` drift**~~ ✅ Done — badge reads from practice log via `getTodayPlayCount()`; eager increment only fires for correct target cards.
 4. ~~**Add `vi.useFakeTimers()` to `ActivityService.test.ts`**~~ ✅ Done — pinned to `2026-05-25T12:00:00` with deterministic `today`/`yesterday` constants.
-5. **Defer empty-day creation** — only call `getTodayEntry()` when recording actual activity, not in `normalize()`. Strip zero-only rows before persisting. *(Codex-only finding)*
+5. ~~**Defer empty-day creation**~~ ✅ Done — removed eager `getTodayEntry()` from `normalize()`. `ensureActivity()` starts with empty log and strips blank entries. `computeCurrentStreak()` handles missing today entry. DashboardPage checks date. *(Codex-only finding)*
 6. **Extract `computeCardBreakdown` to a service** — deduplicate with ReviewQueue's state classification, use `State` enum.
 7. **Persist `bestStreak` in lifetime** — so it survives the 30-entry log eviction.
 8. **Add accessibility basics** — `:focus-visible`, `aria-live`, `prefers-reduced-motion`.
@@ -127,10 +127,10 @@ In `TrainingEngine.ts:258-269`, correct answers on warm-up/cool-down cards (`ste
 
 **Files:** `TrainingEngine.ts:260-266`
 
-### Codex Finding 3 — MEDIUM: Eager empty-day creation can evict real history ⟵ *NEW — missed by all Opus agents*
-`normalize()` eagerly calls `getTodayEntry()`, which appends a zeroed practice-log row even if the user never trains. Read-modify-write flows (e.g., Settings save) persist these blank rows. Since empty rows still count toward the 30-entry cap, inactive days gradually push real activity out of stored history. Only create the day entry when actual activity is recorded, or strip zero-only rows before storing.
+### Codex Finding 3 — MEDIUM: Eager empty-day creation can evict real history ⟵ *NEW — missed by all Opus agents* ✅ FIXED
+Removed eager `getTodayEntry()` from `normalize()`. `ensureActivity()` now initializes with empty `practiceLog: []` and strips all-zero entries on load so existing blanks don't consume the 30-entry cap. `computeCurrentStreak()` handles "no today entry, yesterday active" → streak continues. `DashboardPage` checks last entry's date before treating it as today. `recordTime()` rounds before checking so sub-second values don't create empty entries.
 
-**Files:** `RepertoireDataUtils.ts:55-57`, `ActivityService.ts:67-84`
+**Files:** `RepertoireDataUtils.ts:54`, `ActivityService.ts:26-77,151-165,210-242`, `DashboardPage.tsx:89-92`
 
 ---
 

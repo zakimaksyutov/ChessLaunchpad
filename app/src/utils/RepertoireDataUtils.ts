@@ -5,7 +5,7 @@ import { RepertoireGraph } from "../services/RepertoireGraph";
 import { FSRSService } from "../services/FSRSService";
 import { TrainingEngine } from "../services/TrainingEngine";
 import { getLinkedAccounts, setLinkedAccounts } from "../services/LinkedAccountsService";
-import { ensureActivity, getTodayEntry } from "../services/ActivityService";
+import { ensureActivity } from "../services/ActivityService";
 
 export class RepertoireDataUtils {
 
@@ -50,9 +50,10 @@ export class RepertoireDataUtils {
             repertoireData.lastPlayedDate = currentDate;
         }
 
-        // Initialize activity and handle day boundary for practiceLog
-        const activity = ensureActivity(repertoireData);
-        getTodayEntry(activity);
+        // Initialize activity structure (does not create a today entry — that
+        // only happens when actual activity is recorded, to avoid blank rows
+        // consuming the 30-entry practice log cap).
+        ensureActivity(repertoireData);
 
         // Hydrate in-memory settings from backend (settings preferred, trainingSettings as legacy fallback)
         const s = repertoireData.settings ?? repertoireData.trainingSettings;

@@ -23,16 +23,30 @@ export function getTodayDateString(): string {
     return `${year}-${month}-${day}`;
 }
 
+/** Returns true when every activity counter in an entry is zero. */
+function isEmptyEntry(e: PracticeLogEntry): boolean {
+    return (e.reviewed ?? 0) === 0
+        && (e.mistakes ?? 0) === 0
+        && (e.learned ?? 0) === 0
+        && (e.traversals ?? 0) === 0
+        && (e.timeSeconds ?? 0) === 0;
+}
+
+/**
+ * Remove all-zero practice-log entries so they don't waste the 30-entry cap.
+ * Called during normalization to clean up blanks that earlier code may have persisted.
+ */
+function stripEmptyEntries(activity: Activity): void {
+    activity.practiceLog = activity.practiceLog.filter(e => !isEmptyEntry(e));
+}
+
 /**
  * Ensure `data.activity` exists and is well-formed.
  */
 export function ensureActivity(data: RepertoireData): Activity {
     if (!data.activity) {
-        const today = getTodayDateString();
-        const entry = createEntry(today);
-
         data.activity = {
-            practiceLog: [entry],
+            practiceLog: [],
             lifetime: { ...EMPTY_LIFETIME },
         };
     }
@@ -56,6 +70,9 @@ export function ensureActivity(data: RepertoireData): Activity {
             }
         }
     }
+
+    // Strip blank entries so they don't consume the 30-entry cap
+    stripEmptyEntries(data.activity);
 
     return data.activity;
 }
@@ -149,10 +166,10 @@ export function recordTraversal(
  * Record elapsed time only (e.g., on page unmount without completing a traversal).
  */
 export function recordTime(data: RepertoireData, elapsedSeconds: number): void {
-    if (elapsedSeconds <= 0) return;
+    const rounded = Math.round(elapsedSeconds);
+    if (rounded <= 0) return;
     const activity = ensureActivity(data);
     const entry = getTodayEntry(activity);
-    const rounded = Math.round(elapsedSeconds);
     entry.timeSeconds += rounded;
     activity.lifetime.timeSeconds += rounded;
 }
@@ -195,6 +212,7 @@ export function computeCurrentStreak(practiceLog: PracticeLogEntry[]): number {
     if (practiceLog.length === 0) return 0;
 
     const today = getTodayDateString();
+    const yesterdayStr = getPreviousDate(today);
     let streak = 0;
     let expectedDate = today;
 
@@ -212,6 +230,10 @@ export function computeCurrentStreak(practiceLog: PracticeLogEntry[]): number {
             } else {
                 break;
             }
+        } else if (i === practiceLog.length - 1 && entry.date === yesterdayStr && total > 0) {
+            // No today entry — yesterday is active, continue streak from there
+            streak++;
+            expectedDate = getPreviousDate(entry.date);
         } else {
             break;
         }

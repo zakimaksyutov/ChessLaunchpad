@@ -39,12 +39,11 @@ describe('ActivityService', () => {
     });
 
     describe('ensureActivity', () => {
-        it('initializes activity when missing', () => {
+        it('initializes activity with empty practice log when missing', () => {
             const data = makeRepertoireData();
             const activity = ensureActivity(data);
             expect(data.activity).toBe(activity);
-            expect(activity.practiceLog).toHaveLength(1);
-            expect(activity.practiceLog[0].date).toBe(today);
+            expect(activity.practiceLog).toHaveLength(0);
             expect(activity.lifetime.reviewed).toBe(0);
         });
 
@@ -60,6 +59,23 @@ describe('ActivityService', () => {
             expect(activity.lifetime.reviewed).toBe(100);
         });
 
+        it('strips blank entries from practice log', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        { date: '2026-05-20', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 },
+                        { date: '2026-05-21', reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                        { date: '2026-05-22', reviewed: 3, mistakes: 0, learned: 1, traversals: 1, timeSeconds: 60 },
+                    ],
+                    lifetime: { reviewed: 8, mistakes: 1, learned: 1, traversals: 3, timeSeconds: 180 },
+                },
+            });
+            const activity = ensureActivity(data);
+            expect(activity.practiceLog).toHaveLength(2);
+            expect(activity.practiceLog[0].date).toBe('2026-05-20');
+            expect(activity.practiceLog[1].date).toBe('2026-05-22');
+        });
+
         it('cleans up bogus dailyPlayCount migration (reviewed > 0 but traversals === 0)', () => {
             const data = makeRepertoireData({
                 activity: {
@@ -68,7 +84,8 @@ describe('ActivityService', () => {
                 },
             });
             const activity = ensureActivity(data);
-            expect(activity.practiceLog[0].reviewed).toBe(0);
+            // Migration resets reviewed to 0, then stripEmptyEntries removes the all-zero entry
+            expect(activity.practiceLog).toHaveLength(0);
         });
 
         it('does not clean up entries with real traversals', () => {
@@ -174,7 +191,20 @@ describe('ActivityService', () => {
             recordTime(data, 0);
             recordTime(data, -5);
 
-            expect(data.activity!.practiceLog[0].timeSeconds).toBe(0);
+            // No entry should be created for zero/negative time
+            expect(data.activity!.practiceLog).toHaveLength(0);
+            expect(data.activity!.lifetime.timeSeconds).toBe(0);
+        });
+
+        it('ignores sub-second time that rounds to zero', () => {
+            const data = makeRepertoireData();
+            ensureActivity(data);
+
+            recordTime(data, 0.3);
+
+            // Rounds to 0 — no entry created
+            expect(data.activity!.practiceLog).toHaveLength(0);
+            expect(data.activity!.lifetime.timeSeconds).toBe(0);
         });
     });
 
@@ -212,6 +242,23 @@ describe('ActivityService', () => {
             ];
             // Today empty → check if yesterday counts from yesterday
             expect(computeCurrentStreak(log)).toBe(1);
+        });
+
+        it('returns streak from yesterday when no today entry exists', () => {
+            const log = [
+                { date: '2026-05-23', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                { date: yesterday, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+            ];
+            // No today entry — streak continues from yesterday
+            expect(computeCurrentStreak(log)).toBe(2);
+        });
+
+        it('returns 0 when no today entry and last entry is two days ago', () => {
+            const log = [
+                { date: '2026-05-23', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+            ];
+            // Two days ago — streak is broken
+            expect(computeCurrentStreak(log)).toBe(0);
         });
     });
 

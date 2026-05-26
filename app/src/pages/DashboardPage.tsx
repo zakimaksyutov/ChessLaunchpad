@@ -5,7 +5,7 @@ import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService } from '../services/FSRSService';
-import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak } from '../services/ActivityService';
+import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy } from '../utils/FormatUtils';
 import './DashboardPage.css';
 
@@ -85,10 +85,11 @@ const DashboardPage: React.FC = () => {
     const fsrsCards = repertoireData.fsrsCards ?? {};
     const cards = computeCardBreakdown(fsrsCards);
 
-    // Today's entry
-    const today = activity.practiceLog.length > 0
+    // Today's entry — only use the last log entry if it actually belongs to today
+    const lastEntry = activity.practiceLog.length > 0
         ? activity.practiceLog[activity.practiceLog.length - 1]
         : null;
+    const today = lastEntry && lastEntry.date === getTodayDateString() ? lastEntry : null;
 
     const currentStreak = getCurrentStreak(activity);
     const bestStreak = getBestStreak(activity);

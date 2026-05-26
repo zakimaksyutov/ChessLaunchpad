@@ -291,7 +291,7 @@ describe('RepertoireDataUtils', () => {
     });
 
     describe('normalize — activity initialization', () => {
-        it('initializes activity on data without it', () => {
+        it('initializes activity on data without it (no eager today entry)', () => {
             const data: RepertoireData = {
                 data: [{ pgn: '1. e4 e5', orientation: 'white', classifications: [], numberOfTimesPlayed: 0, errorEMA: 0, lastSucceededEpoch: 0, successEMA: 0 }],
                 currentEpoch: 0,
@@ -303,8 +303,34 @@ describe('RepertoireDataUtils', () => {
             RepertoireDataUtils.normalize(data);
 
             expect(data.activity).toBeDefined();
-            expect(data.activity!.practiceLog.length).toBeGreaterThanOrEqual(1);
+            // No eager today entry — practice log starts empty
+            expect(data.activity!.practiceLog.length).toBe(0);
             expect(data.activity!.lifetime).toBeDefined();
+        });
+
+        it('strips blank entries during normalization', () => {
+            const data: RepertoireData = {
+                data: [{ pgn: '1. e4 e5', orientation: 'white', classifications: [], numberOfTimesPlayed: 0, errorEMA: 0, lastSucceededEpoch: 0, successEMA: 0 }],
+                currentEpoch: 0,
+                lastPlayedDate: new Date(),
+                dailyPlayCount: 0,
+                fsrsCards: {},
+                activity: {
+                    practiceLog: [
+                        { date: '2026-05-20', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 },
+                        { date: '2026-05-21', reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                        { date: '2026-05-22', reviewed: 3, mistakes: 0, learned: 1, traversals: 1, timeSeconds: 60 },
+                    ],
+                    lifetime: { reviewed: 8, mistakes: 1, learned: 1, traversals: 3, timeSeconds: 180 },
+                },
+            };
+
+            RepertoireDataUtils.normalize(data);
+
+            // Blank entry for May 21 should be stripped
+            expect(data.activity!.practiceLog.length).toBe(2);
+            expect(data.activity!.practiceLog[0].date).toBe('2026-05-20');
+            expect(data.activity!.practiceLog[1].date).toBe('2026-05-22');
         });
 
         it('preserves existing activity during normalization', () => {
