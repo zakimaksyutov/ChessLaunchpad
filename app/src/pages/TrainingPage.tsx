@@ -4,16 +4,18 @@ import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer
 import { RepertoireData } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
+import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
 import BadgeRow from '../components/BadgeRow';
 
 const TrainingPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
-    const [queueStats, setQueueStats] = useState<{ dueCount: number; newCount: number; totalCards: number }>({
-        dueCount: 0, newCount: 0, totalCards: 0
+    const [queueStats, setQueueStats] = useState<{ dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }>({
+        dueCount: 0, newCount: 0, reviewCount: 0, learningCount: 0, totalCards: 0
     });
     const [reviewedToday, setReviewedToday] = useState<number>(0);
+    const [animationTrigger, setAnimationTrigger] = useState<number>(0);
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
 
@@ -44,7 +46,7 @@ const TrainingPage: React.FC = () => {
                 if (cancelled) return;
                 setRepertoireData(data);
                 repertoireDataRef.current = data;
-                setReviewedToday(data.dailyPlayCount);
+                setReviewedToday(getTodayPlayCount(data));
 
                 console.log(`DAL: Loaded ${data.data.length} variants.`);
             } catch (e: any) {
@@ -70,27 +72,34 @@ const TrainingPage: React.FC = () => {
         return RepertoireDataUtils.convertToVariantData(repertoireData);
     }, [repertoireData]);
 
-    // Handle traversal completion: save updated FSRS cards + dailyPlayCount
-    const handleTraversalComplete = useCallback(async (correctCardsRated: number, updatedCards: Record<string, FSRSCardData>) => {
+    // Handle traversal completion: save updated FSRS cards + activity stats
+    const handleTraversalComplete = useCallback(async (
+        correctCardsRated: number,
+        updatedCards: Record<string, FSRSCardData>,
+        traversalStats: TraversalStats,
+        elapsedSeconds: number,
+    ) => {
         const currentData = repertoireDataRef.current;
         if (!currentData || !dal) return;
 
         try {
-            const newDailyCount = currentData.dailyPlayCount + correctCardsRated;
+            // Record activity (recordTraversal calls ensureActivity internally)
+            recordTraversal(currentData, traversalStats, elapsedSeconds);
+
             const newData = RepertoireDataUtils.convertToRepertoireData(
                 RepertoireDataUtils.convertToVariantData(currentData),
-                newDailyCount,
                 updatedCards,
-                currentData.settings
+                currentData.settings,
+                currentData,
             );
 
             // Update ref immediately but don't trigger engine recreation via setRepertoireData
             repertoireDataRef.current = newData;
-            // Reconcile UI with persisted value (should match live count)
-            setReviewedToday(newDailyCount);
+            // Reconcile UI with persisted value
+            setReviewedToday(getTodayPlayCount(newData));
             await dal.storeRepertoireData(newData);
 
-            console.log(`DAL: Saved. dailyPlayCount: ${newDailyCount} (+${correctCardsRated})`);
+            console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(newData)} (+${correctCardsRated})`);
         } catch (e: any) {
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);
@@ -98,12 +107,13 @@ const TrainingPage: React.FC = () => {
         }
     }, [dal]);
 
-    const handleQueueStats = useCallback((stats: { dueCount: number; newCount: number; totalCards: number }) => {
+    const handleQueueStats = useCallback((stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => {
         setQueueStats(stats);
     }, []);
 
     const handleCardRated = useCallback(() => {
         setReviewedToday(prev => prev + 1);
+        setAnimationTrigger(prev => prev + 1);
     }, []);
 
     if (loading) {
@@ -129,9 +139,11 @@ const TrainingPage: React.FC = () => {
             overflowX: 'hidden'
         }}>
             <BadgeRow
-                dueCount={queueStats.dueCount + queueStats.newCount}
+                reviewCount={queueStats.reviewCount}
+                learningCount={queueStats.learningCount}
+                newCount={queueStats.newCount}
                 reviewedToday={reviewedToday}
-                totalCards={queueStats.totalCards}
+                animationTrigger={animationTrigger}
             />
             <TrainingPageControl
                 variants={variants}

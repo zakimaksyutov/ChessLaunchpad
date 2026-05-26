@@ -128,7 +128,7 @@ describe('ReviewQueue', () => {
         });
     });
 
-    describe('dueCount / newCount', () => {
+    describe('dueCount / newCount / reviewCount / learningCount', () => {
         it('should count new vs due cards', () => {
             const service = new FSRSService({});
             service.ensureCard('fen1::e4');
@@ -139,6 +139,8 @@ describe('ReviewQueue', () => {
             // Both are new
             expect(queue.newCount()).toBe(2);
             expect(queue.dueCount()).toBe(0);
+            expect(queue.reviewCount()).toBe(0);
+            expect(queue.learningCount()).toBe(0);
         });
     });
 });

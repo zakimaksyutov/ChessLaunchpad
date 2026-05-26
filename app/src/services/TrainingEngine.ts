@@ -60,8 +60,12 @@ export class TrainingEngine {
     private stepIndex: number = 0;
     private phase: EnginePhase = 'idle';
     private cardsRated: number = 0;
+    private _reviewedCount: number = 0;  // positions rated Good in regular review
+    private _mistakeCount: number = 0;   // positions rated Again in regular review
+    private _learnedCount: number = 0;   // new positions that completed teach → recall
     private errorFens: Set<string> = new Set();
     private branchAlternativesPlayed: Set<string> = new Set(); // card keys played at branch points
+    private userMoveTimestamps: number[] = []; // Date.now() per accepted user move
     private _isTeachingPass: boolean = false;
     private _isAheadOfSchedule: boolean = false;
     private _isRecalling: boolean = false;
@@ -120,8 +124,12 @@ export class TrainingEngine {
         this.queue.build(this.fsrsService, cardKeys, now);
 
         this.cardsRated = 0;
+        this._reviewedCount = 0;
+        this._mistakeCount = 0;
+        this._learnedCount = 0;
         this.errorFens.clear();
         this.branchAlternativesPlayed.clear();
+        this.userMoveTimestamps = [];
         this._isTeachingPass = false;
         this._isAheadOfSchedule = false;
         this._isRecalling = false;
@@ -217,10 +225,12 @@ export class TrainingEngine {
                if (isNewCard) {
                    this.fsrsService.rateCardByKey(step.cardKey, false, new Date());
                    this.cardsRated++;
+                   this._learnedCount++;  // recall-pass Again is "learned", not a mistake
                    this.queue.remove(step.cardKey);
                }
                this.errorFens.delete(currentFen);
                this.hintRequested = false;
+               this.userMoveTimestamps.push(Date.now());
             }
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
@@ -247,9 +257,17 @@ export class TrainingEngine {
             const isCorrect = !hadError && !this.hintRequested;
             this.fsrsService.rateCardByKey(step.cardKey, isCorrect, new Date());
             this.cardsRated++;
+            if (step.role === 'target') {
+                if (isCorrect) {
+                    this._reviewedCount++;
+                } else {
+                    this._mistakeCount++;
+                }
+            }
             this.queue.remove(step.cardKey);
             this.errorFens.delete(currentFen);
             this.hintRequested = false;
+            this.userMoveTimestamps.push(Date.now());
 
             this.stepIndex++;
             const isEnd = this.stepIndex >= this.plan!.steps.length;
@@ -276,12 +294,13 @@ export class TrainingEngine {
         if (edge && isUserTurnHere && edge.orientations.has(this.plan!.orientation)) {
             // Valid repertoire move at a branch point
             if (!this.branchAlternativesPlayed.has(edge.cardKey)) {
-                // Rate this unplanned move as Good
+                // Rate this unplanned move as Good (FSRS update only, not counted as reviewed)
                 this.fsrsService.rateCardByKey(edge.cardKey, true, new Date());
                 this.cardsRated++;
                 this.queue.remove(edge.cardKey);
                 this.branchAlternativesPlayed.add(edge.cardKey);
             }
+            this.userMoveTimestamps.push(Date.now());
 
             return {
                 accepted: false, // move is acknowledged but board reverts (user must play planned move)
@@ -368,10 +387,12 @@ export class TrainingEngine {
     /**
      * Get queue statistics for badge display.
      */
-    getQueueStats(): { dueCount: number; newCount: number; totalCards: number } {
+    getQueueStats(): { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number } {
         return {
             dueCount: this.queue.dueCount(),
             newCount: this.queue.newCount(),
+            reviewCount: this.queue.reviewCount(),
+            learningCount: this.queue.learningCount(),
             totalCards: this.graph.getCardKeys().length,
         };
     }
@@ -384,10 +405,57 @@ export class TrainingEngine {
     }
 
     /**
-     * Get total cards rated this traversal (for dailyPlayCount).
+     * Get total cards rated this traversal.
      */
     getCardsRated(): number {
         return this.cardsRated;
+    }
+
+    /**
+     * Get detailed traversal stats for activity tracking.
+     */
+    getTraversalStats(): { reviewed: number; mistakes: number; learned: number } {
+        return {
+            reviewed: this._reviewedCount,
+            mistakes: this._mistakeCount,
+            learned: this._learnedCount,
+        };
+    }
+
+    /** Seconds of idle-timeout threshold per move. */
+    private static readonly IDLE_THRESHOLD_MS = 60_000;
+    /** Approximate seconds per user move when idle is detected. */
+    private static readonly APPROX_SECONDS_PER_MOVE = 2;
+    /** Extra seconds added after the last user move (result display). */
+    private static readonly END_BUFFER_SECONDS = 2;
+
+    /**
+     * Compute elapsed training time for the current traversal from per-move timestamps.
+     *
+     * Rules:
+     * - If any gap between consecutive user moves exceeds 60 s, the user likely
+     *   stepped away → use approximate time: numberOfMoves × 2 s.
+     * - Otherwise: (lastTimestamp − firstTimestamp) / 1000 + 2 s.
+     * - 0 or 1 moves → return the END_BUFFER_SECONDS (2 s) for 1 move, 0 for none.
+     */
+    getTraversalElapsedSeconds(): number {
+        const ts = this.userMoveTimestamps;
+        if (ts.length === 0) return 0;
+        if (ts.length === 1) return TrainingEngine.END_BUFFER_SECONDS;
+
+        // Check for idle gap
+        for (let i = 1; i < ts.length; i++) {
+            if (ts[i] - ts[i - 1] > TrainingEngine.IDLE_THRESHOLD_MS) {
+                return ts.length * TrainingEngine.APPROX_SECONDS_PER_MOVE;
+            }
+        }
+
+        return (ts[ts.length - 1] - ts[0]) / 1000 + TrainingEngine.END_BUFFER_SECONDS;
+    }
+
+    /** @internal Inject timestamps for testing. */
+    _setUserMoveTimestamps(timestamps: number[]): void {
+        this.userMoveTimestamps = [...timestamps];
     }
 
     // ─── Private ───────────────────────────────────────────────────────
@@ -505,6 +573,7 @@ export class TrainingEngine {
         this.stepIndex = 0;
         this.errorFens.clear();
         this.hintRequested = false;
+        this.userMoveTimestamps = []; // reset — teaching timestamps don't count
 
         // Determine the correct phase for the first recall step.
         // For black variants, step 0 is an opponent autoplay (not a user turn).

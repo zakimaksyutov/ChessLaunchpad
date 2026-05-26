@@ -6,6 +6,7 @@ import { FSRSCardData } from '../models/FSRSCardData';
 import { TrainingEngine, EnginePhase } from '../services/TrainingEngine';
 import { TraversalStep } from '../services/PathPlanner';
 import { Annotation } from '../models/Annotation';
+import { TraversalStats } from '../services/ActivityService';
 import { extractAnnotations } from '../utils/AnnotationUtils';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import PgnControl from './PgnControl';
@@ -24,8 +25,8 @@ const soundSuccess = new Audio(soundSuccessFile);
 interface TrainingPageControlProps {
     variants: OpeningVariant[];
     fsrsCards: Record<string, FSRSCardData>;
-    onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>) => Promise<void>;
-    onQueueStats: (stats: { dueCount: number; newCount: number; totalCards: number }) => void;
+    onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
+    onQueueStats: (stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => void;
     onCardRated: () => void;
 }
 
@@ -267,9 +268,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             return false;
         }
 
-        if (result.ratingWasCorrect && result.isTargetCard) {
-            correctCardsCountRef.current++;
-            onCardRatedRef.current();
+        // Count successful target-card interactions for the "today" badge.
+        // Note: result.isTargetCard is only defined for regular traversals (not teach/recall)
+        if (result.isTargetCard !== undefined) {
+            if (result.isTargetCard) {
+                if (result.ratingWasCorrect) {
+                    correctCardsCountRef.current++;
+                    onCardRatedRef.current();
+                }
+            }
         }
 
         if (result.isEndOfTraversal) {
@@ -318,9 +325,11 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         const correctCount = correctCardsCountRef.current;
         const updatedCards = eng.getFsrsCards();
+        const stats = eng.getTraversalStats();
+        const elapsed = eng.getTraversalElapsedSeconds();
 
         // Await save completion before starting next traversal (prevents ETag race)
-        await onTraversalCompleteRef.current(correctCount, updatedCards);
+        await onTraversalCompleteRef.current(correctCount, updatedCards, stats, elapsed);
 
         // Guard against scheduling after unmount (save was in-flight when component unmounted)
         if (!mountedRef.current) return;

@@ -173,6 +173,8 @@ describe('TrainingEngine', () => {
             expect(stats.totalCards).toBeGreaterThanOrEqual(0);
             expect(typeof stats.dueCount).toBe('number');
             expect(typeof stats.newCount).toBe('number');
+            expect(typeof stats.reviewCount).toBe('number');
+            expect(typeof stats.learningCount).toBe('number');
         });
     });
 
@@ -473,6 +475,55 @@ describe('TrainingEngine', () => {
         });
     });
 
+    describe('getTraversalStats', () => {
+        it('tracks learned count for teach-recall traversals', () => {
+            TrainingEngine.setContextDepth(0);
+            const engine = makeEngine([makePgnInput('1. e4', 'white')]);
+            engine.startTraversal();
+
+            // Teaching pass
+            const chess1 = new Chess();
+            engine.handleUserMove('e2', 'e4', chess1);
+
+            // Recall pass — rated Again but counted as learned, not mistake
+            const chess2 = new Chess();
+            engine.handleUserMove('e2', 'e4', chess2);
+
+            const stats = engine.getTraversalStats();
+            expect(stats.learned).toBe(1);
+            expect(stats.mistakes).toBe(0);
+            expect(stats.reviewed).toBe(0);
+        });
+
+        it('tracks reviewed and mistakes for regular traversals', () => {
+            TrainingEngine.setContextDepth(0);
+            const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
+            const cardKeyE4 = `${startFen}::e4`;
+            const pastDue = new Date(Date.now() - 86400000).toISOString();
+
+            const engine = makeEngine(
+                [makePgnInput('1. e4', 'white')],
+                {
+                    [cardKeyE4]: {
+                        d: pastDue, s: 1, di: 5, e: 1, sd: 1,
+                        ls: 0, r: 1, l: 0, st: 2, lr: pastDue,
+                    },
+                }
+            );
+            engine.startTraversal();
+
+            // Play correct move
+            const chess = new Chess();
+            const result = engine.handleUserMove('e2', 'e4', chess);
+            expect(result.accepted).toBe(true);
+
+            const stats = engine.getTraversalStats();
+            expect(stats.reviewed).toBe(1);
+            expect(stats.mistakes).toBe(0);
+            expect(stats.learned).toBe(0);
+        });
+    });
+
     describe('branch point orientation filtering (issue #3)', () => {
         it('should NOT treat a move from the other orientation as a branch point', () => {
             // Setup: White repertoire has 1.e4 e5, Black repertoire has 1.e4 c5.
@@ -530,6 +581,54 @@ describe('TrainingEngine', () => {
             if (!hadE5CardBefore) {
                 expect(engine.getFsrsCards()[cardKeyE5]).toBeUndefined();
             }
+        });
+    });
+
+    describe('getTraversalElapsedSeconds', () => {
+        it('returns 0 when no user moves', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(0);
+        });
+
+        it('returns 2s for a single user move', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([1000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(2);
+        });
+
+        it('returns (last - first)/1000 + 2 for normal moves', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            // 3 moves: t=0, t=5s, t=10s → (10000-0)/1000 + 2 = 12
+            engine._setUserMoveTimestamps([0, 5000, 10000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(12);
+        });
+
+        it('uses approximate time when a gap exceeds 60s', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            // 4 moves, one gap > 60s → 4 × 2 = 8
+            engine._setUserMoveTimestamps([0, 3000, 64000, 67000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(8);
+        });
+
+        it('does not trigger idle for exactly 60s gap', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            // gap = exactly 60000ms → NOT idle (> not >=)
+            engine._setUserMoveTimestamps([0, 60000]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(62); // 60 + 2
+        });
+
+        it('triggers idle for gap just over 60s', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([0, 60001]);
+            expect(engine.getTraversalElapsedSeconds()).toBe(4); // 2 moves × 2
+        });
+
+        it('resets timestamps on startTraversal', () => {
+            const engine = makeEngine([makePgnInput(SIMPLE_WHITE_PGN, 'white')]);
+            engine._setUserMoveTimestamps([0, 5000, 10000]);
+            engine.startTraversal();
+            expect(engine.getTraversalElapsedSeconds()).toBe(0);
         });
     });
 });

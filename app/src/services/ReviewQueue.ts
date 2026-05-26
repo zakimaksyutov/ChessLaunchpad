@@ -111,4 +111,18 @@ export class ReviewQueue {
     newCount(): number {
         return this.entries.filter(e => e.state === State.New).length;
     }
+
+    /**
+     * Count of due Review-state cards in the queue.
+     */
+    reviewCount(): number {
+        return this.entries.filter(e => e.state === State.Review).length;
+    }
+
+    /**
+     * Count of due Learning/Relearning-state cards in the queue.
+     */
+    learningCount(): number {
+        return this.entries.filter(e => e.state === State.Learning || e.state === State.Relearning).length;
+    }
 }

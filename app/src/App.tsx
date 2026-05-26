@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter as Router, Routes, Route } from "react-router-dom";
 import Header from './components/Header';
 import LandingPage from './pages/LandingPage';
+import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import TrainingPage from './pages/TrainingPage';
 import RepertoirePage from './pages/RepertoirePage';
@@ -54,7 +55,7 @@ const App: React.FC = () => {
         <Router>
           <Header username={username} onLogout={handleLogout} />
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={username ? <ProtectedRoute><DashboardPage /></ProtectedRoute> : <LandingPage />} />
             <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
             <Route path="/training" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
             <Route path="/repertoire" element={<ProtectedRoute><RepertoirePage /></ProtectedRoute>} />
