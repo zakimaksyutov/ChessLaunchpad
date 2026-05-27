@@ -415,11 +415,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             </div>
 
             {/* Status messages */}
-            {phase === 'autoplay' && (
-                <div className="status-bar status-bar-autoplay">
-                    ⏩ Auto-playing to target position…
-                </div>
-            )}
             {phase === 'teaching' && (
                 <div className="status-bar status-bar-teaching">
                     📖 New moves — play the highlighted move
