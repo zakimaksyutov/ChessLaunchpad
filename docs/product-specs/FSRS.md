@@ -89,8 +89,19 @@ Four badges: **review** (due Review-state cards in queue), **learning** (due Lea
 | Setting | Range | Default | Description |
 |---|---|---|---|
 | Context Depth | 0–10 | 2 | User-turn moves shown as warm-up/cool-down around each target |
-| Target Retention | 0.80–0.99 | 0.97 | Desired recall probability at review time |
-| Max Interval | 7–365 days | 90 | Maximum days before a card is reviewed again |
+| Review Intensity | preset | Standard | Preset that controls both target retention and max interval (see table below) |
+
+The Settings UI exposes only the preset; the underlying FSRS parameters are derived from it:
+
+| Preset | Target retention | Expected miss rate | Max interval |
+|---|---|---|---|
+| Casual | 0.95 | 5% | 180 days |
+| Light | 0.96 | 4% | 120 days |
+| Standard *(default)* | 0.97 | 3% | 90 days |
+| Sharp | 0.98 | 2% | 45 days |
+| Tournament | 0.99 | 1% | 30 days |
+
+Backend storage continues to use the original `retention` and `maxInterval` fields. On read, the closest preset is determined from the stored retention and both runtime values are snapped to that preset's configuration; legacy values outside the preset grid are recalibrated to the nearest preset.
 
 All settings are synced to the backend and roam across devices.
 

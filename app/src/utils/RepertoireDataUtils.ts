@@ -59,8 +59,14 @@ export class RepertoireDataUtils {
         const s = repertoireData.settings ?? repertoireData.trainingSettings;
         if (s) {
             if (typeof s.contextDepth === 'number') TrainingEngine.setContextDepth(s.contextDepth);
-            if (typeof s.retention === 'number') FSRSService.setRetention(s.retention);
-            if (typeof s.maxInterval === 'number') FSRSService.setMaxInterval(s.maxInterval);
+            if (typeof s.retention === 'number') {
+                // Presets control both retention and maxInterval. Snap to the closest
+                // preset's values; the stored maxInterval (if any) is ignored.
+                const presetId = FSRSService.getPresetForRetention(s.retention);
+                const cfg = FSRSService.getPresetConfig(presetId);
+                FSRSService.setRetention(cfg.retention);
+                FSRSService.setMaxInterval(cfg.maxInterval);
+            }
             if (Array.isArray(s.linkedAccounts)) setLinkedAccounts(s.linkedAccounts);
         }
 

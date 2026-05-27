@@ -1,4 +1,4 @@
-import { FSRSService } from './FSRSService';
+import { FSRSService, RETENTION_PRESETS, DEFAULT_RETENTION_PRESET } from './FSRSService';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { createEmptyCard, fsrs, Rating, State } from 'ts-fsrs';
 
@@ -196,6 +196,168 @@ describe('FSRSService', () => {
 
             // The shared map should have the card
             expect(sharedCards['fen1::e4']).toBeDefined();
+        });
+    });
+
+    describe('Retention presets', () => {
+        afterEach(() => {
+            // Reset to default preset to avoid leaking state between tests.
+            const def = RETENTION_PRESETS.find(p => p.id === DEFAULT_RETENTION_PRESET)!;
+            FSRSService.setRetention(def.retention);
+            FSRSService.setMaxInterval(def.maxInterval);
+        });
+
+        it('exposes five ordered presets (Casual → Tournament)', () => {
+            expect(RETENTION_PRESETS.map(p => p.id)).toEqual([
+                'casual', 'light', 'standard', 'sharp', 'tournament'
+            ]);
+            expect(RETENTION_PRESETS.map(p => p.retention)).toEqual([0.95, 0.96, 0.97, 0.98, 0.99]);
+            // maxInterval should monotonically decrease as intensity rises.
+            for (let i = 1; i < RETENTION_PRESETS.length; i++) {
+                expect(RETENTION_PRESETS[i].maxInterval).toBeLessThan(RETENTION_PRESETS[i - 1].maxInterval);
+            }
+        });
+
+        it('Standard is the default preset and matches historical defaults (0.97, 90d)', () => {
+            expect(DEFAULT_RETENTION_PRESET).toBe('standard');
+            const cfg = FSRSService.getPresetConfig('standard');
+            expect(cfg.retention).toBe(0.97);
+            expect(cfg.maxInterval).toBe(90);
+        });
+
+        describe('getPresetForRetention', () => {
+            it('returns exact preset for the canonical values', () => {
+                expect(FSRSService.getPresetForRetention(0.95)).toBe('casual');
+                expect(FSRSService.getPresetForRetention(0.96)).toBe('light');
+                expect(FSRSService.getPresetForRetention(0.97)).toBe('standard');
+                expect(FSRSService.getPresetForRetention(0.98)).toBe('sharp');
+                expect(FSRSService.getPresetForRetention(0.99)).toBe('tournament');
+            });
+
+            it('snaps in-between values to nearest preset', () => {
+                expect(FSRSService.getPresetForRetention(0.944)).toBe('casual');
+                expect(FSRSService.getPresetForRetention(0.965)).toBe('light');
+                expect(FSRSService.getPresetForRetention(0.974)).toBe('standard');
+                expect(FSRSService.getPresetForRetention(0.985)).toBe('sharp');
+                expect(FSRSService.getPresetForRetention(0.992)).toBe('tournament');
+            });
+
+            it('maps legacy low retentions to Casual (lowest preset)', () => {
+                expect(FSRSService.getPresetForRetention(0.85)).toBe('casual');
+                expect(FSRSService.getPresetForRetention(0.80)).toBe('casual');
+                expect(FSRSService.getPresetForRetention(0.50)).toBe('casual');
+            });
+
+            it('caps retentions above the highest preset to Tournament', () => {
+                expect(FSRSService.getPresetForRetention(0.999)).toBe('tournament');
+                expect(FSRSService.getPresetForRetention(1.0)).toBe('tournament');
+            });
+
+            it('ties break to the lower-intensity preset', () => {
+                // exactly halfway between Casual (0.95) and Light (0.96)
+                expect(FSRSService.getPresetForRetention(0.955)).toBe('casual');
+                // exactly halfway between Standard (0.97) and Sharp (0.98)
+                expect(FSRSService.getPresetForRetention(0.975)).toBe('standard');
+            });
+        });
+
+        describe('estimateDailyLoad', () => {
+            const makeCard = (s: number, st: State = State.Review, lr: string | undefined = '2026-01-01T00:00:00Z'): FSRSCardData => ({
+                d: '2026-02-01T00:00:00Z',
+                s,
+                di: 5,
+                e: 0,
+                sd: 10,
+                ls: 0,
+                r: 1,
+                l: 0,
+                st,
+                lr,
+            });
+
+            it('returns zero for an empty deck', () => {
+                const result = FSRSService.estimateDailyLoad({}, 0.97, 90);
+                expect(result.reviewsPerDay).toBe(0);
+                expect(result.mistakesPerDay).toBe(0);
+            });
+
+            it('counts only Review-state cards with positive stability', () => {
+                const cards: Record<string, FSRSCardData> = {
+                    a: makeCard(10, State.Review),
+                    b: makeCard(10, State.Learning),
+                    c: makeCard(10, State.Relearning),
+                    d: makeCard(10, State.New),
+                    e: makeCard(0, State.Review),
+                    f: makeCard(-1, State.Review),
+                };
+                const result = FSRSService.estimateDailyLoad(cards, 0.97, 90);
+                // Only card 'a' contributes; daily contribution = 1/interval(10, 0.97, 90).
+                const expectedInterval = FSRSService.intervalFromStability(10, 0.97, 90);
+                expect(result.reviewsPerDay).toBeCloseTo(1 / expectedInterval, 10);
+            });
+
+            it('mistakesPerDay = reviewsPerDay × (1 − R)', () => {
+                const cards: Record<string, FSRSCardData> = {
+                    a: makeCard(50),
+                    b: makeCard(20),
+                    c: makeCard(100),
+                };
+                for (const R of [0.95, 0.97, 0.99]) {
+                    const result = FSRSService.estimateDailyLoad(cards, R, 90);
+                    expect(result.mistakesPerDay).toBeCloseTo(result.reviewsPerDay * (1 - R), 10);
+                }
+            });
+
+            it('respects the maxInterval cap (shorter cap → more reviews)', () => {
+                const cards: Record<string, FSRSCardData> = {
+                    a: makeCard(200),
+                    b: makeCard(300),
+                };
+                const loose = FSRSService.estimateDailyLoad(cards, 0.95, 180);
+                const tight = FSRSService.estimateDailyLoad(cards, 0.95, 30);
+                expect(tight.reviewsPerDay).toBeGreaterThan(loose.reviewsPerDay);
+            });
+
+            it('higher retention produces more daily reviews', () => {
+                const cards: Record<string, FSRSCardData> = {
+                    a: makeCard(50),
+                    b: makeCard(20),
+                    c: makeCard(100),
+                };
+                const casual = FSRSService.estimateDailyLoad(cards, 0.95, 180);
+                const tournament = FSRSService.estimateDailyLoad(cards, 0.99, 30);
+                expect(tournament.reviewsPerDay).toBeGreaterThan(casual.reviewsPerDay);
+            });
+        });
+
+        describe('intervalFromStability', () => {
+            it('matches computeInterval for Review-state cards under the global settings', () => {
+                FSRSService.setRetention(0.97);
+                FSRSService.setMaxInterval(90);
+                const card: FSRSCardData = {
+                    d: '2026-02-01T00:00:00Z',
+                    s: 25,
+                    di: 5,
+                    e: 0,
+                    sd: 10,
+                    ls: 0,
+                    r: 1,
+                    l: 0,
+                    st: State.Review,
+                    lr: '2026-01-01T00:00:00Z',
+                };
+                const fromComputeInterval = FSRSService.computeInterval(card);
+                const fromHelper = FSRSService.intervalFromStability(card.s, 0.97, 90);
+                expect(fromComputeInterval).toBe(fromHelper);
+            });
+
+            it('floors interval at 1 day for very low stability', () => {
+                expect(FSRSService.intervalFromStability(0.001, 0.99, 365)).toBe(1);
+            });
+
+            it('caps interval at maxInterval for very high stability', () => {
+                expect(FSRSService.intervalFromStability(10000, 0.95, 21)).toBe(21);
+            });
         });
     });
 });

@@ -5,8 +5,30 @@ const AUTOPLAY_RETRIEVABILITY_THRESHOLD = 0.97;
 
 const { decay: DECAY, factor: FACTOR } = computeDecayFactor(FSRS5_DEFAULT_DECAY);
 
-const DEFAULT_RETENTION = 0.97;
-const DEFAULT_MAX_INTERVAL = 90;
+export type RetentionPreset = 'casual' | 'light' | 'standard' | 'sharp' | 'tournament';
+
+export interface RetentionPresetConfig {
+    id: RetentionPreset;
+    label: string;
+    retention: number;
+    maxInterval: number;
+}
+
+// Ordered low→high intensity. Each preset controls BOTH retention and maxInterval.
+// The Settings UI exposes only the preset; retention/maxInterval are derived from it.
+export const RETENTION_PRESETS: readonly RetentionPresetConfig[] = [
+    { id: 'casual',     label: 'Casual',     retention: 0.95, maxInterval: 180 },
+    { id: 'light',      label: 'Light',      retention: 0.96, maxInterval: 120 },
+    { id: 'standard',   label: 'Standard',   retention: 0.97, maxInterval: 90  },
+    { id: 'sharp',      label: 'Sharp',      retention: 0.98, maxInterval: 45  },
+    { id: 'tournament', label: 'Tournament', retention: 0.99, maxInterval: 30  },
+] as const;
+
+export const DEFAULT_RETENTION_PRESET: RetentionPreset = 'standard';
+
+const DEFAULT_PRESET_CONFIG = RETENTION_PRESETS.find(p => p.id === DEFAULT_RETENTION_PRESET)!;
+const DEFAULT_RETENTION = DEFAULT_PRESET_CONFIG.retention;
+const DEFAULT_MAX_INTERVAL = DEFAULT_PRESET_CONFIG.maxInterval;
 
 let _retention: number = DEFAULT_RETENTION;
 let _maxInterval: number = DEFAULT_MAX_INTERVAL;
@@ -241,16 +263,75 @@ export class FSRSService {
     }
 
     /**
+     * Find the preset whose retention is closest to the given value.
+     * Ties break to the lower-intensity (earlier) preset.
+     */
+    static getPresetForRetention(retention: number): RetentionPreset {
+        let best = RETENTION_PRESETS[0];
+        let bestDist = Math.abs(retention - best.retention);
+        for (let i = 1; i < RETENTION_PRESETS.length; i++) {
+            const p = RETENTION_PRESETS[i];
+            const d = Math.abs(retention - p.retention);
+            if (d < bestDist) {
+                best = p;
+                bestDist = d;
+            }
+        }
+        return best.id;
+    }
+
+    static getPresetConfig(id: RetentionPreset): RetentionPresetConfig {
+        return RETENTION_PRESETS.find(p => p.id === id) ?? DEFAULT_PRESET_CONFIG;
+    }
+
+    /**
+     * Compute the FSRS scheduling interval (days) for a given stability,
+     * target retention, and max-interval cap. Matches the formula used by
+     * `computeInterval`, but parameterized so it can be evaluated against
+     * preset candidates without mutating global settings.
+     */
+    static intervalFromStability(stability: number, retention: number, maxInterval: number): number {
+        const raw = Math.max(Math.round((stability / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1)), 1);
+        return Math.min(raw, maxInterval);
+    }
+
+    /**
+     * Estimate steady-state daily review load for the supplied cards at the given
+     * retention and maxInterval. Only mature Review-state cards with positive
+     * stability contribute. Learning, Relearning, and New cards add short-term
+     * volume not modeled here, so this is a lower-bound estimate that best
+     * reflects a "steady state" repertoire.
+     *
+     * `mistakesPerDay = reviewsPerDay × (1 − R)` — the FSRS contract is that
+     * a card has probability R of being recalled when it is reviewed at its
+     * scheduled due time, so 1 − R is the expected per-review miss rate.
+     */
+    static estimateDailyLoad(
+        cards: Record<string, FSRSCardData>,
+        retention: number,
+        maxInterval: number,
+    ): { reviewsPerDay: number; mistakesPerDay: number } {
+        let reviewsPerDay = 0;
+        for (const c of Object.values(cards)) {
+            if (c.st !== State.Review || c.s <= 0) continue;
+            reviewsPerDay += 1 / FSRSService.intervalFromStability(c.s, retention, maxInterval);
+        }
+        return {
+            reviewsPerDay,
+            mistakesPerDay: reviewsPerDay * (1 - retention),
+        };
+    }
+
+    /**
      * Compute the interval (in days) for a Review-state card using current settings.
      * Returns null for non-Review cards or cards without last_review.
      */
     static computeInterval(card: FSRSCardData): number | null {
         if (card.st !== State.Review || !card.lr) return null;
-        const retention = FSRSService.getRetention();
-        const maxInterval = FSRSService.getMaxInterval();
-        return Math.min(
-            Math.max(Math.round((card.s / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1)), 1),
-            maxInterval
+        return FSRSService.intervalFromStability(
+            card.s,
+            FSRSService.getRetention(),
+            FSRSService.getMaxInterval(),
         );
     }
 
