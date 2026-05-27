@@ -72,7 +72,9 @@ export class TrainingEngine {
     private _recallPlan: TraversalPlan | null = null; // saved for recall pass after teaching
     private hintRequested: boolean = false;
 
-    // Annotation lookup from PGN variants
+    // Annotation lookup from PGN variants, keyed by `${orientation}::${fen}`
+    // so a comment placed on a transposed position in one orientation's
+    // variant does not leak into reviews of the other orientation.
     private annotations: Map<string, Annotation[]> = new Map();
 
     constructor(
@@ -90,12 +92,13 @@ export class TrainingEngine {
             this.fsrsService.ensureCard(key);
         }
 
-        // Merge annotations from all PGNs
+        // Merge annotations from all PGNs, partitioned by orientation
         for (const p of pgns) {
             if (p.annotations) {
                 for (const [fen, anns] of Object.entries(p.annotations)) {
-                    const existing = this.annotations.get(fen) ?? [];
-                    this.annotations.set(fen, [...existing, ...anns]);
+                    const key = `${p.orientation}::${fen}`;
+                    const existing = this.annotations.get(key) ?? [];
+                    this.annotations.set(key, [...existing, ...anns]);
                 }
             }
         }
@@ -355,10 +358,13 @@ export class TrainingEngine {
         // During autoplay, show annotations for the current board position (step.fen)
         // so the user sees them before the opponent moves.
         // During user turns, show annotations for the position after their last move (destFen of prev step = step.fen).
+        // Annotations are partitioned by orientation to avoid leaking
+        // comments from the opposite-orientation variant on transposed positions.
         const annotationFen = step?.fen ?? '';
-        const anns = this._isTeachingPass
+        const orientation = this.plan?.orientation;
+        const anns = (this._isTeachingPass || !orientation)
             ? []
-            : (this.annotations.get(annotationFen) ?? []);
+            : (this.annotations.get(`${orientation}::${annotationFen}`) ?? []);
 
         return {
             phase: this.phase,
@@ -377,11 +383,14 @@ export class TrainingEngine {
 
     /**
      * Get annotations for the final position of the current traversal.
+     * Annotations are filtered by the active plan's orientation so comments
+     * attached to a transposed position in the opposite-orientation variant
+     * do not leak into this review.
      */
     getEndOfTraversalAnnotations(): Annotation[] {
         if (!this.plan || this.plan.steps.length === 0) return [];
         const lastStep = this.plan.steps[this.plan.steps.length - 1];
-        return this.annotations.get(lastStep.destFen) ?? [];
+        return this.annotations.get(`${this.plan.orientation}::${lastStep.destFen}`) ?? [];
     }
 
     /**
