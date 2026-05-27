@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLichessAuth } from '../LichessAuthContext';
 import {
     getLinkedAccounts,
@@ -10,7 +10,13 @@ import {
 import { clearGames } from '../data/GamesDB';
 import { clearMastersCache } from '../services/MastersExplorerService';
 import { TrainingEngine } from '../services/TrainingEngine';
-import { FSRSService } from '../services/FSRSService';
+import {
+    FSRSService,
+    RETENTION_PRESETS,
+    DEFAULT_RETENTION_PRESET,
+    RetentionPreset,
+} from '../services/FSRSService';
+import { FSRSCardData } from '../models/FSRSCardData';
 import { createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import './SettingsPage.css';
@@ -18,8 +24,15 @@ import './SettingsPage.css';
 const SettingsPage: React.FC = () => {
     // Draft state (local to form, not applied until Save)
     const [contextDepth, setContextDepth] = useState<number>(() => TrainingEngine.getContextDepth());
-    const [retention, setRetention] = useState<number>(() => FSRSService.getRetention());
-    const [maxInterval, setMaxInterval] = useState<number>(() => FSRSService.getMaxInterval());
+    const [presetId, setPresetId] = useState<RetentionPreset>(
+        () => FSRSService.getPresetForRetention(FSRSService.getRetention())
+    );
+    // Committed preset snapshot — captured at hydrate time so dirty-tracking is
+    // not affected if module-level retention changes mid-session.
+    const [committedPresetId, setCommittedPresetId] = useState<RetentionPreset>(
+        () => FSRSService.getPresetForRetention(FSRSService.getRetention())
+    );
+    const [fsrsCards, setFsrsCards] = useState<Record<string, FSRSCardData>>({});
     const [linkedAccounts, setLinkedAccountsDraft] = useState<LinkedAccount[]>(() => getLinkedAccounts());
     const [newAccountUsername, setNewAccountUsername] = useState('');
     const [newAccountPlatform, setNewAccountPlatform] = useState<Platform>('lichess');
@@ -55,13 +68,15 @@ const SettingsPage: React.FC = () => {
                 if (!username || !hashedPassword) return;
 
                 const dal = createDataAccessLayer(username, hashedPassword);
-                await dal.retrieveRepertoireData(); // normalize() hydrates module vars
+                const repertoire = await dal.retrieveRepertoireData(); // normalize() hydrates module vars
 
                 if (cancelled) return;
                 // Refresh draft state from freshly-hydrated module vars
                 setContextDepth(TrainingEngine.getContextDepth());
-                setRetention(FSRSService.getRetention());
-                setMaxInterval(FSRSService.getMaxInterval());
+                const hydratedPreset = FSRSService.getPresetForRetention(FSRSService.getRetention());
+                setPresetId(hydratedPreset);
+                setCommittedPresetId(hydratedPreset);
+                setFsrsCards(repertoire.fsrsCards ?? {});
                 setLinkedAccountsDraft(getLinkedAccounts());
             } catch (err: unknown) {
                 if (cancelled) return;
@@ -84,15 +99,13 @@ const SettingsPage: React.FC = () => {
             JSON.stringify(linkedAccounts) !== JSON.stringify(committedAccounts);
         const trainingChanged =
             contextDepth !== TrainingEngine.getContextDepth() ||
-            retention !== FSRSService.getRetention() ||
-            maxInterval !== FSRSService.getMaxInterval();
+            presetId !== committedPresetId;
         setIsDirty(accountsChanged || trainingChanged);
-    }, [contextDepth, retention, maxInterval, linkedAccounts, loading]);
+    }, [contextDepth, presetId, committedPresetId, linkedAccounts, loading]);
 
     const handleDiscard = () => {
         setContextDepth(TrainingEngine.getContextDepth());
-        setRetention(FSRSService.getRetention());
-        setMaxInterval(FSRSService.getMaxInterval());
+        setPresetId(committedPresetId);
         setLinkedAccountsDraft(getLinkedAccounts());
         removedAccountsRef.current = [];
         setIsDirty(false);
@@ -101,8 +114,7 @@ const SettingsPage: React.FC = () => {
 
     const handleReset = () => {
         setContextDepth(2);
-        setRetention(0.97);
-        setMaxInterval(90);
+        setPresetId(DEFAULT_RETENTION_PRESET);
         setLinkedAccountsDraft([]);
         // Mark all current committed accounts as removed for cleanup on save
         for (const account of getLinkedAccounts()) {
@@ -128,14 +140,17 @@ const SettingsPage: React.FC = () => {
             const dal = createDataAccessLayer(username, hashedPassword);
             const current = await dal.retrieveRepertoireData();
 
+            // Resolve preset → (retention, maxInterval) for both backend persistence and runtime.
+            const presetCfg = FSRSService.getPresetConfig(presetId);
+
             // Build settings from draft values (don't mutate globals until save succeeds)
             const updated = {
                 ...current,
                 settings: {
                     ...(current.settings ?? {}),
                     contextDepth,
-                    retention,
-                    maxInterval,
+                    retention: presetCfg.retention,
+                    maxInterval: presetCfg.maxInterval,
                     linkedAccounts,
                 },
             };
@@ -144,9 +159,10 @@ const SettingsPage: React.FC = () => {
 
             // Apply draft to in-memory services only after save succeeds
             TrainingEngine.setContextDepth(contextDepth);
-            FSRSService.setRetention(retention);
-            FSRSService.setMaxInterval(maxInterval);
+            FSRSService.setRetention(presetCfg.retention);
+            FSRSService.setMaxInterval(presetCfg.maxInterval);
             setLinkedAccounts(linkedAccounts);
+            setCommittedPresetId(presetId);
 
             // Clean up local data for removed accounts after successful save
             for (const removed of removedAccountsRef.current) {
@@ -228,6 +244,38 @@ const SettingsPage: React.FC = () => {
         }
     };
 
+    // Live detail panel below the preset selector. Shows the static spec
+    // (target recall, miss rate, max interval) plus a deck-based steady-state
+    // estimate of daily reviews and mistakes for the selected preset.
+    const presetDetails = useMemo(() => {
+        const cfg = FSRSService.getPresetConfig(presetId);
+        const recallPct = Math.round(cfg.retention * 100);
+        const missPct = Math.round((1 - cfg.retention) * 100);
+        const load = FSRSService.estimateDailyLoad(fsrsCards, cfg.retention, cfg.maxInterval);
+        const hasCards = Object.keys(fsrsCards).length > 0;
+        const reviewsDisplay = load.reviewsPerDay >= 10
+            ? Math.round(load.reviewsPerDay).toString()
+            : load.reviewsPerDay.toFixed(1);
+        return (
+            <div className="review-intensity-details">
+                <div className="review-intensity-spec">
+                    Target recall <b>{recallPct}%</b>
+                    <span className="review-intensity-sep">·</span>
+                    Expected miss rate <b>{missPct}%</b>
+                    <span className="review-intensity-sep">·</span>
+                    Max <b>{cfg.maxInterval} days</b> between reviews
+                </div>
+                {hasCards && (
+                    <div className="review-intensity-estimate">
+                        ≈ <b>{reviewsDisplay}</b> reviews/day
+                        <span className="review-intensity-sep">·</span>
+                        ≈ <b>{load.mistakesPerDay.toFixed(1)}</b> mistakes/day on your repertoire
+                    </div>
+                )}
+            </div>
+        );
+    }, [presetId, fsrsCards]);
+
     return (
         <div className="settings-page">
             <div className="settings-card">
@@ -268,46 +316,34 @@ const SettingsPage: React.FC = () => {
                     Number of your moves shown as warm-up/cool-down around each target position.
                 </p>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
-                    <label htmlFor="retention" style={{ fontWeight: 500 }}>Target Retention:</label>
-                    <input
-                        id="retention"
-                        type="range"
-                        min="0.80"
-                        max="0.99"
-                        step="0.01"
-                        value={retention}
-                        onChange={(e) => setRetention(parseFloat(e.target.value))}
-                        style={{ flex: 1 }}
-                    />
-                    <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
-                        {Math.round(retention * 100)}%
-                    </span>
+                <div style={{ marginTop: '1.25rem' }}>
+                    <label style={{ fontWeight: 500, display: 'block', marginBottom: '0.5rem' }}>
+                        Review Intensity:
+                    </label>
+                    <div
+                        className="review-intensity-presets"
+                        role="radiogroup"
+                        aria-label="Review intensity"
+                    >
+                        {RETENTION_PRESETS.map(p => (
+                            <label
+                                key={p.id}
+                                className={`review-intensity-preset${presetId === p.id ? ' selected' : ''}`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="review-intensity"
+                                    value={p.id}
+                                    checked={presetId === p.id}
+                                    onChange={() => setPresetId(p.id)}
+                                    aria-label={p.label}
+                                />
+                                <span>{p.label}</span>
+                            </label>
+                        ))}
+                    </div>
+                    {presetDetails}
                 </div>
-                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-                    Desired probability of recalling a move at review time.
-                    Higher values mean shorter intervals and more frequent reviews.
-                </p>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.75rem' }}>
-                    <label htmlFor="max-interval" style={{ fontWeight: 500 }}>Max Interval:</label>
-                    <input
-                        id="max-interval"
-                        type="range"
-                        min="7"
-                        max="365"
-                        step="1"
-                        value={maxInterval}
-                        onChange={(e) => setMaxInterval(Math.max(7, Math.min(365, parseInt(e.target.value, 10))))}
-                        style={{ flex: 1 }}
-                    />
-                    <span style={{ minWidth: '3rem', textAlign: 'center', fontWeight: 600, fontSize: '1.1rem' }}>
-                        {maxInterval}d
-                    </span>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
-                    Maximum number of days before a card is reviewed again.
-                </p>
 
                 {/* ── Linked Accounts ── */}
                 <hr style={{ border: 'none', borderTop: '1px solid #e0e0e0', margin: '1.5rem 0' }} />

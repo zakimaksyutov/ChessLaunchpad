@@ -33,11 +33,6 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-.status-bar-autoplay {
-    background-color: rgba(100, 140, 180, 0.15);
-    color: #4a6a8a;
-}
-
 .status-bar-teaching {
     background-color: rgba(76, 175, 80, 0.15);
     color: #2e7d32;

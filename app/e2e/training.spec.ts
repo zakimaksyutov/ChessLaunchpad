@@ -896,3 +896,153 @@ test.describe('Training page — incorrect moves then correct (1. e4 e5 2. Nf3)'
   });
 
 });
+
+// ── Bug repro: opposite-orientation PGN annotations leak into review ────
+
+/**
+ * Poll for `durationMs`, asserting on every iteration that no green
+ * annotation arrow is visible on the board.
+ *
+ * Playwright's auto-retrying negative assertions (e.g.
+ * `await expect(loc).toHaveCount(0)`) would PASS even if an annotation
+ * appeared briefly and then disappeared. This polling loop fails as
+ * soon as a flash is observed.
+ */
+async function expectNoAnnotationArtifacts(page: Page, durationMs: number) {
+  const arrows = page.locator(
+    '.arrow-layer line[stroke="#15781B"]:not([display="none"])',
+  );
+  const interval = 50;
+  const iterations = Math.max(1, Math.ceil(durationMs / interval));
+  for (let i = 0; i < iterations; i++) {
+    expect(await arrows.count(), `green annotation arrow visible at iteration ${i}`).toBe(0);
+    await page.waitForTimeout(interval);
+  }
+}
+
+/**
+ * Two variants share the same FEN after `2. Nf3`, but only the BLACK
+ * variant carries a PGN comment with annotations at that position.
+ *
+ * Cards setup:
+ * - All four user-side moves (e4 white, Nf3 white, e5 black, Nc6 black)
+ *   are pre-rated Good × 3 → Review state, due ~13 days out.
+ * - White's Nf3 is then rated Again → Learning, due in ~1 minute.
+ *
+ * After advancing 2 minutes, only white's Nf3 is due. The traversal
+ * planner picks the white variant → white-orientation review with
+ * e4 as a warm-up step and Nf3 as the target.
+ *
+ *
+ * Helper rationale (rateGoodNTimesAt):
+ *   Simulate Good × n on a fresh card, with all `n` reviews stamped at
+ *   a single timestamp `msAgo` in the past.
+ *
+ *   Why not use the natural iterative scheduling (`due = card.due`)?
+ *   That advances each subsequent review to the card's scheduled `due`
+ *   date — by the third Good rating the review is dated 2 days *into
+ *   the future*. When the test then calls `advanceTime(page, 2 minutes)`
+ *   and the engine re-rates the card, ts-fsrs computes a negative
+ *   `delta_t` and throws "Invalid delta_t -2".
+ *
+ *   Stamping every review at the same past timestamp keeps
+ *   `last_review` firmly in the past while still progressing the card
+ *   to a Review state (sufficient for the queue to keep it un-due).
+ */
+function rateGoodNTimesAt(n: number, msAgo: number): FSRSCardData {
+  const scheduler = fsrs({ enable_short_term: true });
+  const reviewTime = new Date(Date.now() - msAgo);
+  let card = createEmptyCard(reviewTime);
+  for (let i = 0; i < n; i++) {
+    card = scheduler.next(card, reviewTime, Rating.Good).card;
+  }
+  return FSRSService.serialize(card);
+}
+
+const orientationLeakFixture = (() => {
+  const f = buildRepertoireData([
+    { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
+    { pgn: '1. e4 e5 2. Nf3 {[%cal Ge5d6]} Nc6', orientation: 'black' },
+  ]);
+  const e4Key  = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
+  const nf3Key = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
+  const e5Key  = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1::e5';
+  const nc6Key = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 1::Nc6';
+  const HOUR = 60 * 60 * 1000;
+  f.fsrsCards = {
+    [e4Key]:  rateGoodNTimesAt(3, HOUR),
+    [nf3Key]: rateAgainOnce(),
+    [e5Key]:  rateGoodNTimesAt(3, HOUR),
+    [nc6Key]: rateGoodNTimesAt(3, HOUR),
+  };
+  return f;
+})();
+
+test.describe('Training page — PGN annotations from opposite-orientation variant must not leak (REPRO)', () => {
+
+  /**
+   * Currently expected to FAIL on `main`: a known bug renders
+   * black-PGN annotations during a white-orientation review when both
+   * variants share the same FEN. Test added per request to keep
+   * failing until a fix is implemented in a follow-up PR.
+   */
+  test('white-orientation review of 2. Nf3 does not show annotations attached to the black variant', async ({ page }) => {
+    const { saves } = await setupMockEnvironment(page, orientationLeakFixture);
+
+    // Advance time so the Again-rated Nf3 (~1 min) is the only due card.
+    // The Good × 3 cards are due ~13 days out, well past this advance.
+    await advanceTime(page, 2);
+    await page.goto('/#/training');
+
+    const board = page.locator('[data-testid="chessboard"]');
+    await expect(board).toBeVisible({ timeout: 10_000 });
+
+    // Cards are Review/Learning, not New — should NOT be in teaching mode.
+    const teachingBar = page.locator('.status-bar-teaching');
+    await expect(teachingBar).not.toBeVisible({ timeout: 3_000 });
+
+    // The only due card is white-orientation Nf3 → board oriented for white.
+    // When oriented for white, a1 sits in the bottom-left corner (left = 0).
+    const a1Left = await page.evaluate(() => {
+      const a1 = document.querySelector('[data-square="a1"]') as HTMLElement | null;
+      return a1 ? parseFloat(a1.style.left) : null;
+    });
+    expect(a1Left).toBe(0); // sanity: not flipped to black orientation
+
+    await expectStartingPosition(page);
+    const { boardBox } = await getBoardInfo(page);
+
+    // 1. e4 — user warm-up (within contextDepth of the Nf3 target).
+    await dragPiece(page, boardBox, 'e2', 'e4');
+
+    // Engine autoplays 1…e5.
+    await expectPiece(page, 'e5', 'bp');
+
+    // 2. Nf3 — user plays the target card. This is the last user-turn
+    // edge in the white-orientation path. The path planner uses
+    // orientation-filtered edges, so it does NOT extend past Nf3
+    // into Nc6 (which only exists in the black variant). As a result,
+    // the traversal ends immediately after Nf3 lands.
+    await dragPiece(page, boardBox, 'g1', 'f3');
+    await expectPiece(page, 'f3', 'wn');
+
+    // ── Bug window ──────────────────────────────────────────────────
+    // On `isEndOfTraversal`, TrainingPageControl calls
+    // `eng.getEndOfTraversalAnnotations()`, which returns
+    // `this.annotations.get(lastStep.destFen)` from a FEN-keyed map.
+    // That map is populated from ALL PGNs without orientation filter,
+    // so the black variant's comment `{[%cal Ge5d6]}` — attached to
+    // the post-Nf3 FEN — leaks into the white-orientation review and
+    // is rendered as a green arrow.
+    //
+    // Expected (post-fix): no annotations should appear at any point
+    // during this white-orientation review. The poll window covers
+    // the end-of-traversal annotation pause plus the gap before the
+    // next save fires.
+    await expectNoAnnotationArtifacts(page, 800);
+
+    // Traversal completes → save fires.
+    await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+  });
+
+});

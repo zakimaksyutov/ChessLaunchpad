@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { State } from 'ts-fsrs';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
-import { FSRSService } from '../services/FSRSService';
+import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
 import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy } from '../utils/FormatUtils';
 import './DashboardPage.css';
@@ -94,6 +94,9 @@ const DashboardPage: React.FC = () => {
     const currentStreak = getCurrentStreak(activity);
     const bestStreak = getBestStreak(activity);
 
+    const presetId = FSRSService.getPresetForRetention(FSRSService.getRetention());
+    const preset = RETENTION_PRESETS.find(p => p.id === presetId) ?? RETENTION_PRESETS[2];
+
     return (
         <div className="dashboard">
             {/* Call to Action */}
@@ -149,6 +152,16 @@ const DashboardPage: React.FC = () => {
                         <StatRow label="Learning" value={cards.learning} />
                         <StatRow label="Due review" value={cards.reviewDue} />
                         <StatRow label="Mastered" value={cards.mastered} />
+                        <div className="stat-row">
+                            <span className="stat-label">Training intensity</span>
+                            <Link
+                                to="/settings"
+                                className="stat-value training-intensity-link"
+                                title="Click to change in Settings"
+                            >
+                                {preset.label}
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -141,6 +141,69 @@ describe('RepertoireDataUtils', () => {
             expect(repertoireData.fsrsCards).toBeDefined();
             expect(Object.keys(repertoireData.fsrsCards!)).toHaveLength(0);
         });
+
+        describe('preset recalibration', () => {
+            // The settings recalibration mutates module-level FSRS state.
+            // Restore Standard after each test so we don't leak into others.
+            afterEach(async () => {
+                const { FSRSService } = await import('../services/FSRSService');
+                FSRSService.setRetention(0.97);
+                FSRSService.setMaxInterval(90);
+            });
+
+            it('snaps stored retention/maxInterval to the closest preset on hydrate', async () => {
+                const { FSRSService } = await import('../services/FSRSService');
+                const repertoireData: Partial<RepertoireData> = {
+                    settings: { retention: 0.974, maxInterval: 300 },
+                } as unknown as Partial<RepertoireData>;
+
+                RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+                // 0.974 → Standard preset (0.97 / 90); stored maxInterval=300 is ignored.
+                expect(FSRSService.getRetention()).toBe(0.97);
+                expect(FSRSService.getMaxInterval()).toBe(90);
+            });
+
+            it('legacy low retention (0.85) snaps to Casual preset', async () => {
+                const { FSRSService } = await import('../services/FSRSService');
+                const repertoireData: Partial<RepertoireData> = {
+                    settings: { retention: 0.85, maxInterval: 30 },
+                } as unknown as Partial<RepertoireData>;
+
+                RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+                expect(FSRSService.getRetention()).toBe(0.95);
+                expect(FSRSService.getMaxInterval()).toBe(180);
+            });
+
+            it('high retention (0.99) snaps to Tournament preset', async () => {
+                const { FSRSService } = await import('../services/FSRSService');
+                const repertoireData: Partial<RepertoireData> = {
+                    settings: { retention: 0.99, maxInterval: 100 },
+                } as unknown as Partial<RepertoireData>;
+
+                RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+                expect(FSRSService.getRetention()).toBe(0.99);
+                expect(FSRSService.getMaxInterval()).toBe(30);
+            });
+
+            it('missing retention leaves current settings unchanged', async () => {
+                const { FSRSService } = await import('../services/FSRSService');
+                // Seed a non-default state to detect any unintended mutation.
+                FSRSService.setRetention(0.98);
+                FSRSService.setMaxInterval(45);
+
+                const repertoireData: Partial<RepertoireData> = {
+                    settings: { maxInterval: 200 },
+                } as unknown as Partial<RepertoireData>;
+
+                RepertoireDataUtils.normalize(repertoireData as RepertoireData);
+
+                expect(FSRSService.getRetention()).toBe(0.98);
+                expect(FSRSService.getMaxInterval()).toBe(45);
+            });
+        });
     });
 
     describe('convertToVariantData', () => {

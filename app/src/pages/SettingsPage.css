@@ -280,6 +280,81 @@
   color: #1e7e34;
 }
 
+/* Review Intensity preset selector */
+.review-intensity-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.review-intensity-preset {
+  flex: 1 1 0;
+  min-width: 80px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid #b7c2d0;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: center;
+  transition: background-color 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.review-intensity-preset input[type="radio"] {
+  /* Visually hide but keep accessible to keyboard / screen readers. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+}
+
+.review-intensity-preset:hover {
+  border-color: rgb(0, 130, 210);
+}
+
+.review-intensity-preset:focus-within {
+  outline: none;
+  border-color: rgb(0, 130, 210);
+  box-shadow: 0 0 0 2px rgba(0, 130, 210, 0.25);
+}
+
+.review-intensity-preset.selected {
+  background: rgb(0, 130, 210);
+  border-color: rgb(0, 130, 210);
+  color: #fff;
+  font-weight: 600;
+}
+
+.review-intensity-details {
+  background: #f5f7fb;
+  border: 1px solid #e1e6ed;
+  border-radius: 4px;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.review-intensity-spec {
+  line-height: 1.5;
+}
+
+.review-intensity-estimate {
+  margin-top: 0.25rem;
+  color: #666;
+  line-height: 1.5;
+}
+
+.review-intensity-sep {
+  margin: 0 0.4rem;
+  color: #b7c2d0;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .settings-page {
@@ -338,5 +413,15 @@
   .linked-accounts-add-btn {
     width: 100%;
     text-align: center;
+  }
+
+  .review-intensity-preset {
+    flex: 1 1 calc(33% - 0.3rem);
+    font-size: 0.85rem;
+    padding: 0.5rem 0.4rem;
+  }
+
+  .review-intensity-sep {
+    margin: 0 0.25rem;
   }
 }

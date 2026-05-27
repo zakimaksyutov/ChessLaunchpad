@@ -87,6 +87,16 @@
     color: #333;
 }
 
+/* Training intensity row link */
+.training-intensity-link {
+    color: rgb(0, 130, 210);
+    text-decoration: none;
+}
+
+.training-intensity-link:hover {
+    text-decoration: underline;
+}
+
 /* Activity Feed */
 .dashboard-activity {
     background: #f9f9f9;
