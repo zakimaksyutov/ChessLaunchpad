@@ -31,6 +31,7 @@ interface TrainingPageControlProps {
 }
 
 const AUTOPLAY_MOVE_DELAY_MS = 250;
+const OPPONENT_MOVE_DELAY_MS = 500;
 const ANNOTATION_DELAY_BASE_IN_MS = 200;
 const ANNOTATION_DELAY_GROWTH = 1.26;
 
@@ -58,6 +59,11 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const onQueueStatsRef = useRef(onQueueStats);
     const onCardRatedRef = useRef(onCardRated);
     const correctCardsCountRef = useRef(0);
+    // Tracks whether the current traversal has left the initial autoplay prefix
+    // (i.e. the engine has surfaced a non-autoplay phase that expects user input).
+    // Opponent moves during the prefix play fast; once the user has been
+    // engaged, subsequent opponent autoplay moves use the slower normal pace.
+    const pastPrefixRef = useRef(false);
 
     useEffect(() => { onTraversalCompleteRef.current = onTraversalComplete; }, [onTraversalComplete]);
     useEffect(() => { onQueueStatsRef.current = onQueueStats; }, [onQueueStats]);
@@ -99,6 +105,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         if (!eng) return;
 
         correctCardsCountRef.current = 0;
+        pastPrefixRef.current = false;
         chessRef.current = new Chess();
         setFen(chessRef.current.fen());
         setPgn('');
@@ -172,7 +179,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             setPgnAnnotations(status.annotations);
 
             const annotations = status.annotations;
-            const delay = AUTOPLAY_MOVE_DELAY_MS + getAnnotationDelayMs(annotations);
+            const baseDelay = pastPrefixRef.current ? OPPONENT_MOVE_DELAY_MS : AUTOPLAY_MOVE_DELAY_MS;
+            const delay = baseDelay + getAnnotationDelayMs(annotations);
 
             timeoutRef.current = setTimeout(() => {
                 timeoutRef.current = null;
@@ -180,6 +188,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             }, delay);
             return;
         }
+
+        // Any non-autoplay interactive phase marks the end of the prefix:
+        // subsequent opponent autoplay moves should use the slower normal pace.
+        pastPrefixRef.current = true;
 
         if (status.phase === 'teaching') {
             setPgnAnnotations([]);
