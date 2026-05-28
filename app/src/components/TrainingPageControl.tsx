@@ -50,6 +50,10 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const [statusMessage, setStatusMessage] = useState<string>('');
     const [hintAnnotations, setHintAnnotations] = useState<Annotation[]>([]);
     const [pgnAnnotations, setPgnAnnotations] = useState<Annotation[]>([]);
+    // Mirrors pastPrefixRef so the Hint button can remain mounted across the
+    // brief opponent-autoplay transitions between user turns (prevents the
+    // button from flickering out of and back into the DOM).
+    const [pastPrefix, setPastPrefix] = useState(false);
 
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const mountedRef = useRef(true);
@@ -106,6 +110,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         correctCardsCountRef.current = 0;
         pastPrefixRef.current = false;
+        setPastPrefix(false);
         chessRef.current = new Chess();
         setFen(chessRef.current.fen());
         setPgn('');
@@ -192,6 +197,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         // Any non-autoplay interactive phase marks the end of the prefix:
         // subsequent opponent autoplay moves should use the slower normal pace.
         pastPrefixRef.current = true;
+        setPastPrefix(true);
 
         if (status.phase === 'teaching') {
             setPgnAnnotations([]);
@@ -357,6 +363,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const handleHintRequest = () => {
         const eng = engineRef.current;
         if (!eng) return;
+        // Silently ignore clicks during opponent autoplay between user turns:
+        // the engine's "current step" is the opponent's move, so requesting a
+        // hint here would surface the opponent's move and is meaningless.
+        // We avoid disabling the button visually (which would flicker on every
+        // opponent reply) and instead just drop the click.
+        if (eng.getStatus().phase === 'autoplay') return;
 
         const hint = eng.requestHint();
         if (hint) {
@@ -436,19 +448,30 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 </div>
             )}
 
-            {/* Hint button — available during user play and recall */}
-            {(phase === 'awaiting_user' || phase === 'recalling' || phase === 'ahead_of_schedule') && (
+            {/* Hint button — visible throughout active training.
+                Disabled (and dimmed) during the initial autoplay prefix; once
+                the user has had their first turn the button stays visually
+                enabled across opponent-autoplay transitions to avoid a
+                jarring dim/un-dim flicker on every opponent reply. Clicks
+                during opponent autoplay are silently ignored by
+                handleHintRequest. */}
+            {(phase === 'awaiting_user' ||
+              phase === 'recalling' ||
+              phase === 'ahead_of_schedule' ||
+              phase === 'autoplay') && (
                 <button
                     className="hint-button"
                     onClick={handleHintRequest}
+                    disabled={phase === 'autoplay' && !pastPrefix}
                     style={{
                         marginTop: '0.3rem',
                         padding: '0.3rem 1rem',
                         fontSize: '0.85rem',
-                        cursor: 'pointer',
+                        cursor: (phase === 'autoplay' && !pastPrefix) ? 'default' : 'pointer',
                         border: '1px solid #ccc',
                         borderRadius: '4px',
                         background: '#f9f9f9',
+                        opacity: (phase === 'autoplay' && !pastPrefix) ? 0.5 : 1,
                     }}
                 >
                     💡 Hint
