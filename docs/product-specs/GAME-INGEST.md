@@ -10,7 +10,7 @@ The Games page is unaffected: it continues to maintain its own per-device cache 
 
 ## 1. Data Shape
 
-A new top-level property `games` on the synced repertoire blob holds per-account ingest state, keyed by `"${platform}:${usernameLower}"`.
+A new top-level property `games` on the synced repertoire blob holds per-account ingest state, keyed by `"${platform}:${usernameLower}"`. The backend whitelists `games` as a free-form object (`docs/BACKEND_API_CONTRACT.md` root schema); inner shape is enforced client-side.
 
 ```jsonc
 "games": {
@@ -133,7 +133,7 @@ Add a "Played" line to the per-day rendering, appearing when `games.ingested > 0
 
 ## 7. Out of Scope
 
-- Storing raw (full-game) PGNs on the backend. Truncated mistake-game persistence is in §9 Backlog.
+- Storing raw (full-game) PGNs on the backend. Truncated mistake-game persistence is in §8 Backlog.
 - Rendering per-game annotations on the Dashboard (lives on the Games page).
 - Unrated games, variants, bullet, daily/correspondence.
 - Back-filling ratings for historical games when a repertoire variant is added later — `watermarkMs` advances one-way.
@@ -141,21 +141,9 @@ Add a "Played" line to the per-day rendering, appearing when `games.ingested > 0
 
 ---
 
-## 8. Backend Contract Change (separate session)
+## 8. Backlog
 
-**Rollout order:** backend schema deployment MUST land before any frontend rollout. Until the backend accepts the new `games` root property, any client PUT including it is rejected.
-
-Add one whitelisted optional root-level property to the variants endpoint schema:
-
-- `games` — `object | null`, free-form, may be `null` or omitted. Modeled after the existing `activity` field (`docs/BACKEND_API_CONTRACT.md` root schema). Inner shape is enforced client-side; the backend treats it as an opaque object.
-
-The new `activity.practiceLog[].games` sub-object (§6.1) requires **no backend change** — `activity` is already free-form, so nested additions pass through.
-
----
-
-## 9. Backlog
-
-### 9.1 Mistake-game replay
+### 8.1 Mistake-game replay
 
 When ingest classifies a game as a deviation, persist a truncated PGN (moves 1 through the deviation move, inclusive) on the backend. The Training page can then occasionally select positions from these stored games as a training source — letting the user replay through their own historical mistakes up to the choice point.
 
