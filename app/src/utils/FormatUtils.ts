@@ -32,3 +32,36 @@ export function formatAccuracy(accuracy: number | null): string {
     if (accuracy === null) return '—';
     return `${Math.round(accuracy * 100)}%`;
 }
+
+/**
+ * Format a future point in time as a human-friendly relative string.
+ * Examples: "in < 1 min", "in 15 min", "in 3 hr", "in 1 hr 20 min",
+ *           "in 2 days", "in 1 day 4 hr"
+ * Returns "now" defensively when target is at or before now.
+ *
+ * Matches the unit style of formatDuration ("min", "hr") and pluralizes
+ * "day"/"days" since that unit appears with the count.
+ */
+export function formatTimeUntil(target: Date, now: Date = new Date()): string {
+    const diffMs = target.getTime() - now.getTime();
+    if (diffMs <= 0) return 'now';
+
+    const totalSeconds = Math.floor(diffMs / 1000);
+    if (totalSeconds < 60) return 'in < 1 min';
+
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    if (totalMinutes < 60) return `in ${totalMinutes} min`;
+
+    const totalHours = Math.floor(totalMinutes / 60);
+    if (totalHours < 24) {
+        const minutes = totalMinutes % 60;
+        if (minutes === 0) return `in ${totalHours} hr`;
+        return `in ${totalHours} hr ${minutes} min`;
+    }
+
+    const totalDays = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const dayLabel = totalDays === 1 ? 'day' : 'days';
+    if (hours === 0) return `in ${totalDays} ${dayLabel}`;
+    return `in ${totalDays} ${dayLabel} ${hours} hr`;
+}
