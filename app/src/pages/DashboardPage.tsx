@@ -107,83 +107,100 @@ const DashboardPage: React.FC = () => {
     const presetId = FSRSService.getPresetForRetention(FSRSService.getRetention());
     const preset = RETENTION_PRESETS.find(p => p.id === presetId) ?? RETENTION_PRESETS[2];
 
+    const version = import.meta.env.VITE_BUILD_VERSION;
+
     return (
         <div className="dashboard">
-            {/* Call to Action */}
-            <div className="dashboard-cta">
-                <button
-                    className="dashboard-cta-button"
-                    onClick={() => navigate('/training')}
-                >
-                    {cards.dueNow > 0
-                        ? `🚀 Start Training (${cards.dueNow} due)`
-                        : '🚀 Start Training'}
-                </button>
-            </div>
-
-            <div className="dashboard-grid">
-                {/* Today's Session */}
-                <div className="dashboard-widget">
-                    <h3 className="widget-title">📅 Today's Session</h3>
-                    {today && (today.reviewed + today.mistakes + today.learned > 0) ? (
-                        <div className="widget-stats">
-                            <StatRow label="Reviewed" value={today.reviewed} />
-                            <StatRow label="Mistakes" value={today.mistakes} />
-                            <StatRow label="Learned" value={today.learned} />
-                            <StatRow label="Traversals" value={today.traversals} />
-                            <StatRow label="Time" value={formatDuration(today.timeSeconds)} />
-                            <StatRow label="Cards due" value={cards.dueNow} />
-                        </div>
-                    ) : (
-                        <p className="widget-empty">No training yet today. Start a session!</p>
-                    )}
+            <div>
+                {/* Call to Action */}
+                <div className="dashboard-cta">
+                    <button
+                        className="dashboard-cta-button"
+                        onClick={() => navigate('/training')}
+                    >
+                        {cards.dueNow > 0
+                            ? `🚀 Start Training (${cards.dueNow} due)`
+                            : '🚀 Start Training'}
+                    </button>
                 </div>
 
-                {/* Lifetime Stats */}
-                <div className="dashboard-widget">
-                    <h3 className="widget-title">📊 Lifetime Stats</h3>
-                    <div className="widget-stats">
-                        <StatRow label="Total reviewed" value={activity.lifetime.reviewed} />
-                        <StatRow label="Total mistakes" value={activity.lifetime.mistakes} />
-                        <StatRow label="Total learned" value={activity.lifetime.learned} />
-                        <StatRow label="Total traversals" value={activity.lifetime.traversals} />
-                        <StatRow label="Total time" value={formatDuration(activity.lifetime.timeSeconds)} />
-                        <StatRow label="Current streak" value={`${currentStreak} day${currentStreak !== 1 ? 's' : ''}`} />
-                        <StatRow label="Best streak" value={`${bestStreak} day${bestStreak !== 1 ? 's' : ''}`} />
-                    </div>
-                </div>
-
-                {/* Repertoire Summary */}
-                <div className="dashboard-widget">
-                    <h3 className="widget-title">📚 Repertoire</h3>
-                    <div className="widget-stats">
-                        <StatRow label="Total cards" value={cards.total} />
-                        <StatRow label="New" value={cards.newCount} />
-                        <StatRow label="Learning" value={cards.learning} />
-                        <StatRow label="Due review" value={cards.reviewDue} />
-                        <StatRow label="Mastered" value={cards.mastered} />
-                        {cards.dueNow === 0 && cards.nextDueAt && (
-                            <StatRow label="Next due" value={formatTimeUntil(cards.nextDueAt)} />
+                <div className="dashboard-grid">
+                    {/* Today's Session */}
+                    <div className="dashboard-widget">
+                        <h3 className="widget-title">📅 Today's Session</h3>
+                        {today && (today.reviewed + today.mistakes + today.learned > 0) ? (
+                            <div className="widget-stats">
+                                <StatRow label="Reviewed" value={today.reviewed} />
+                                <StatRow label="Mistakes" value={today.mistakes} />
+                                <StatRow label="Learned" value={today.learned} />
+                                <StatRow label="Traversals" value={today.traversals} />
+                                <StatRow label="Time" value={formatDuration(today.timeSeconds)} />
+                                <StatRow label="Cards due" value={cards.dueNow} />
+                            </div>
+                        ) : (
+                            <p className="widget-empty">No training yet today. Start a session!</p>
                         )}
-                        <div className="stat-row">
-                            <span className="stat-label">Training intensity</span>
-                            <Link
-                                to="/settings"
-                                className="stat-value training-intensity-link"
-                                title="Click to change in Settings"
-                            >
-                                {preset.label}
-                            </Link>
+                    </div>
+
+                    {/* Lifetime Stats */}
+                    <div className="dashboard-widget">
+                        <h3 className="widget-title">📊 Lifetime Stats</h3>
+                        <div className="widget-stats">
+                            <StatRow label="Total reviewed" value={activity.lifetime.reviewed} />
+                            <StatRow label="Total mistakes" value={activity.lifetime.mistakes} />
+                            <StatRow label="Total learned" value={activity.lifetime.learned} />
+                            <StatRow label="Total traversals" value={activity.lifetime.traversals} />
+                            <StatRow label="Total time" value={formatDuration(activity.lifetime.timeSeconds)} />
+                            <StatRow label="Current streak" value={`${currentStreak} day${currentStreak !== 1 ? 's' : ''}`} />
+                            <StatRow label="Best streak" value={`${bestStreak} day${bestStreak !== 1 ? 's' : ''}`} />
+                        </div>
+                    </div>
+
+                    {/* Repertoire Summary */}
+                    <div className="dashboard-widget">
+                        <h3 className="widget-title">📚 Repertoire</h3>
+                        <div className="widget-stats">
+                            <StatRow label="Total cards" value={cards.total} />
+                            <StatRow label="New" value={cards.newCount} />
+                            <StatRow label="Learning" value={cards.learning} />
+                            <StatRow label="Due review" value={cards.reviewDue} />
+                            <StatRow label="Mastered" value={cards.mastered} />
+                            {cards.dueNow === 0 && cards.nextDueAt && (
+                                <StatRow label="Next due" value={formatTimeUntil(cards.nextDueAt)} />
+                            )}
+                            <div className="stat-row">
+                                <span className="stat-label">Training intensity</span>
+                                <Link
+                                    to="/settings"
+                                    className="stat-value training-intensity-link"
+                                    title="Click to change in Settings"
+                                >
+                                    {preset.label}
+                                </Link>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                {/* Activity Feed */}
+                <div className="dashboard-activity">
+                    <h3 className="widget-title">📈 Activity</h3>
+                    <ActivityFeed entries={[...activity.practiceLog].reverse()} />
+                </div>
             </div>
 
-            {/* Activity Feed */}
-            <div className="dashboard-activity">
-                <h3 className="widget-title">📈 Activity</h3>
-                <ActivityFeed entries={[...activity.practiceLog].reverse()} />
-            </div>
+            {version && (
+              <div style={{
+                fontSize: '0.7rem',
+                color: '#666',
+                fontStyle: 'italic',
+                textAlign: 'center',
+                paddingTop: '1rem',
+                paddingBottom: '0.5rem'
+              }}>
+                Build version: {version}
+              </div>
+            )}
         </div>
     );
 };
