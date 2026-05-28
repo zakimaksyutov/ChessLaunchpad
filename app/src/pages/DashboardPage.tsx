@@ -6,19 +6,26 @@ import { RepertoireData, PracticeLogEntry, Activity } from '../models/Repertoire
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
 import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString } from '../services/ActivityService';
-import { formatDuration, formatDateHeader, formatAccuracy } from '../utils/FormatUtils';
+import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
     total: number; newCount: number; learning: number; reviewDue: number; mastered: number; dueNow: number;
+    nextDueAt: Date | null;
 } {
     let total = 0, newCount = 0, learning = 0, reviewDue = 0, mastered = 0, dueNow = 0;
+    let nextDueMs: number | null = null;
     const now = new Date();
+    const nowMs = now.getTime();
 
     for (const card of Object.values(fsrsCards)) {
         total++;
         const due = FSRSService.computeDueDate(card);
-        const isDue = now >= due;
+        const dueMs = due.getTime();
+        const isDue = nowMs >= dueMs;
+        if (!isDue && (nextDueMs === null || dueMs < nextDueMs)) {
+            nextDueMs = dueMs;
+        }
         switch (card.st as State) {
             case State.New: newCount++; dueNow++; break;
             case State.Learning: learning++; if (isDue) dueNow++; break;
@@ -30,7 +37,10 @@ function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
         }
     }
 
-    return { total, newCount, learning, reviewDue, mastered, dueNow };
+    return {
+        total, newCount, learning, reviewDue, mastered, dueNow,
+        nextDueAt: nextDueMs === null ? null : new Date(nextDueMs),
+    };
 }
 
 function getAccuracyColor(accuracy: number | null): string {
@@ -152,6 +162,9 @@ const DashboardPage: React.FC = () => {
                         <StatRow label="Learning" value={cards.learning} />
                         <StatRow label="Due review" value={cards.reviewDue} />
                         <StatRow label="Mastered" value={cards.mastered} />
+                        {cards.dueNow === 0 && cards.nextDueAt && (
+                            <StatRow label="Next due" value={formatTimeUntil(cards.nextDueAt)} />
+                        )}
                         <div className="stat-row">
                             <span className="stat-label">Training intensity</span>
                             <Link
