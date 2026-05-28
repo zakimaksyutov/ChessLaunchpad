@@ -27,7 +27,7 @@ A new top-level property `games` on the synced repertoire blob holds per-account
 ```
 
 - `watermarkMs` — only games with `createdAt > watermarkMs` are eligible.
-- `recentIds` — ring of up to **50** most recent processed game IDs; absorbs out-of-order arrival and concurrent-client overlap.
+- `recentIds` — ring of up to **50** most recent processed game IDs. **Boundary dedup only** — catches games sharing the watermark `createdAt` ms and concurrent-client overlap. Games strictly older than `watermarkMs` are excluded by watermark monotonicity and need not be remembered here.
 - `providerCursor` *(optional, provider-defined)* — opaque hint that lets the client short-circuit unchanged fetches. Chess.com uses `{ month, etag }` to issue a conditional `If-None-Match` against the current monthly archive. Not used by Lichess.
 
 ---
@@ -53,6 +53,8 @@ A game that produces no rating matches (e.g. no repertoire FENs hit) is still co
 
 First-time sync ingests only games from the last 5 days; there is no full-history backfill.
 
+**On account unlink:** the corresponding `games["${platform}:${user}"]` entry is removed from the synced blob. Re-linking later starts fresh and ingests the most recent 5 days.
+
 ---
 
 ## 4. Annotation → Rating
@@ -65,12 +67,13 @@ The existing repertoire annotation drives ratings:
 | Deviation (first user move out of repertoire) | Again | **Every** repertoire card at that FEN |
 | `out-of-repertoire-response`, `out-of-theory`, opponent moves | ignored | — |
 
-Ratings are timestamped with `game.createdAt`, not wall-clock time.
+Ratings are timestamped with `game.createdAt`, not wall-clock time. FENs are normalized using the same scheme as FSRS cards (halfmove clock reset).
 
 Each ingested game also updates Dashboard activity counters, attributed to the date of `game.createdAt` (see §6 below):
 
 - Every processed game increments `gamesIngested` for that date, regardless of whether it produced any ratings.
-- Each Good rating increments `gameReviewed`; each Again rating increments `gameMistakes`. Lifetime mirrors are updated in parallel.
+- `gameReviewed` increments **once per Good rating** issued during the game (one per in-repertoire user move).
+- `gameMistakes` increments **once per deviating game** — even if multiple sibling cards at the deviation FEN receive Again, the day-level mistake count increments by one. The per-card FSRS state of each sibling still updates individually.
 
 These counters are tracked separately from the manual-training `reviewed` / `mistakes` counters.
 
@@ -98,12 +101,14 @@ Add to the practice-log entry schema:
 | Field           | Type   | Description                                                                                      |
 | --------------- | ------ | ------------------------------------------------------------------------------------------------ |
 | `gamesIngested` | number | Games ingested from linked accounts whose `createdAt` falls on this date.                        |
-| `gameReviewed`  | number | Card ratings of Good originating from those games. Counted separately from `reviewed`.           |
-| `gameMistakes`  | number | Card ratings of Again originating from those games. Counted separately from `mistakes`.          |
+| `gameReviewed`  | number | Count of Good ratings issued from ingested games on this date (one per in-repertoire user move). |
+| `gameMistakes`  | number | Count of deviating games on this date (one per game with at least one Again rating, regardless of sibling fan-out). |
 
-Add a lifecycle bullet:
+Add lifecycle bullets:
 
-> Game ingest may also create or update entries for past dates within the log window — each ingested game is attributed to its play date, not the sync date.
+> Game ingest may also create or update entries for past dates within the log window — each ingested game is attributed to its play date, not the sync date. The `practiceLog` is therefore no longer strictly append-only: ingest uses a `getOrCreateEntryByDate(date)` helper that maintains date-sorted order. The existing `getTodayEntry()` lookup becomes "find entry where `date == today`" rather than "last entry."
+
+**Streak rule:** game-only days (where `gamesIngested > 0` but `reviewed + mistakes + learned == 0`) do **not** count toward `currentStreak` or `bestStreak`. Streaks remain a measure of deliberate practice. `bestStreak` stays monotonic — ingest cannot decrement it, and retroactive past-date writes never revise it downward.
 
 ### 6.2 New lifetime fields (DASHBOARD.md §2.2 Lifetime totals)
 
@@ -121,10 +126,11 @@ Add a "Played" line to the per-day rendering, appearing when `gamesIngested > 0`
 25 MAY 2026
   🎯  Trained 42 positions  ·  38 correct  ·  4 mistakes  ·  90% accuracy
        5 traversals  ·  12 min
-  ⚔️  Played 3 games  ·  8 positions reviewed  ·  2 errors
+  ⚔️  Played 3 games  ·  8 correct  ·  2 mistakes
 ```
 
-- Shows games played, total positions rated from those games (`gameReviewed + gameMistakes`), and errors (`gameMistakes`).
+- Shows games played (`gamesIngested`), in-repertoire moves (`gameReviewed`), and deviating games (`gameMistakes`).
+- "Mistakes" here counts games-with-a-deviation, not cards-Again'd, so the number aligns with the user's intuition ("I made 2 mistakes in 3 games").
 - Emoji choice is open (⚔️ / ♟️ / 🎮); pick whichever fits the existing visual style.
 
 ---
@@ -140,6 +146,8 @@ Add a "Played" line to the per-day rendering, appearing when `gamesIngested > 0`
 ---
 
 ## 8. Backend Contract Change (separate session)
+
+**Rollout order:** backend schema deployment MUST land before any frontend rollout. Until the backend accepts the new `games` root property, any client PUT including it is rejected.
 
 Update the variants endpoint schema:
 
