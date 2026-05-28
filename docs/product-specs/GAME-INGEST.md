@@ -28,6 +28,8 @@ A new top-level property `games` on the synced repertoire blob holds per-account
 
 - `watermarkMs` — only games with `createdAt > watermarkMs` are eligible.
 - `recentIds` — ring of up to **50** most recent processed game IDs. **Boundary dedup only** — catches games sharing the watermark `createdAt` ms and concurrent-client overlap. Games strictly older than `watermarkMs` are excluded by watermark monotonicity and need not be remembered here.
+  - **ID format:** raw provider id with no prefix — Lichess `id`, Chess.com `uuid` — so independent clients agree on dedup keys.
+  - **Eviction order:** sorted by `createdAt` descending, ties broken by id ascending; entries past index 49 are dropped. Deterministic ordering is required so concurrent clients converge on the same retained set.
 - `providerCursor` *(optional, provider-defined)* — opaque hint that lets the client short-circuit unchanged fetches. Chess.com uses `{ month, etag }` for a conditional `If-None-Match` against that month's archive; `month` tracks only the most recently fetched archive. When the 5-day window straddles a month boundary, the prior month is fetched unconditionally (cost is bounded — at most a few days per boundary). Not used by Lichess.
 
 ---
@@ -69,13 +71,13 @@ The existing repertoire annotation drives ratings:
 
 Ratings are timestamped with `game.createdAt`, not wall-clock time. FENs are normalized using the same scheme as FSRS cards (halfmove clock reset).
 
-Each ingested game also updates Dashboard activity counters, attributed to the date of `game.createdAt` (see §6 below):
+Each ingested game also updates per-day activity counters, attributed to the date of `game.createdAt`. The counters live in a single `games` sub-object on the per-day `practiceLog` entry (see §6 below), kept separate from the manual-training `reviewed` / `mistakes` / `learned` counters:
 
-- Every processed game increments `gamesIngested` for that date, regardless of whether it produced any ratings.
-- `gameReviewed` increments **once per Good rating** issued during the game (one per in-repertoire user move).
-- `gameMistakes` increments **once per deviating game** — even if multiple sibling cards at the deviation FEN receive Again, the day-level mistake count increments by one. The per-card FSRS state of each sibling still updates individually.
+- Every processed game increments `games.ingested` for that date, regardless of whether it produced any ratings.
+- `games.reviewed` increments **once per Good rating** issued during the game (one per in-repertoire user move).
+- `games.mistakes` increments **once per deviating game** — even if multiple sibling cards at the deviation FEN receive Again, the day-level mistake count increments by one. The per-card FSRS state of each sibling still updates individually.
 
-These counters are tracked separately from the manual-training `reviewed` / `mistakes` counters.
+Date attribution uses the user's **local timezone**, matching the existing `ActivityService.getTodayDateString()` semantics.
 
 ---
 
@@ -94,33 +96,27 @@ Ingest must be idempotent across devices.
 
 The implementing agent should move these into `docs/product-specs/DASHBOARD.md` (sections referenced below).
 
-### 6.1 New per-day fields (DASHBOARD.md §2.1 Practice log)
+### 6.1 New per-day field (DASHBOARD.md §2.1 Practice log)
 
-Add to the practice-log entry schema:
+Add a single optional `games` sub-object to the `activity.practiceLog` entry schema. (This is unrelated to the root-level `games` map in §1 — same word, different scope: root `games` holds per-account ingest state; `activity.practiceLog[].games` holds per-day counters.)
 
-| Field           | Type   | Description                                                                                      |
-| --------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| `gamesIngested` | number | Games ingested from linked accounts whose `createdAt` falls on this date.                        |
-| `gameReviewed`  | number | Count of Good ratings issued from ingested games on this date (one per in-repertoire user move). |
-| `gameMistakes`  | number | Count of deviating games on this date (one per game with at least one Again rating, regardless of sibling fan-out). |
+| Field             | Type   | Description                                                                                                          |
+| ----------------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| `games.ingested`  | number | Games ingested from linked accounts whose `createdAt` falls on this date.                                            |
+| `games.reviewed`  | number | Count of Good ratings issued from ingested games on this date (one per in-repertoire user move).                     |
+| `games.mistakes`  | number | Count of deviating games on this date (one per game with at least one Again rating, regardless of sibling fan-out).  |
+
+The sub-object is absent on days with no ingest activity; readers should treat missing as `{ ingested: 0, reviewed: 0, mistakes: 0 }`. Game-ingest counters are **not** mirrored to any lifetime totals — they live only on per-day entries and are surfaced only via the Activity Feed.
 
 Add lifecycle bullets:
 
 > Game ingest may also create or update entries for past dates within the log window — each ingested game is attributed to its play date, not the sync date. The `practiceLog` is therefore no longer strictly append-only: ingest uses a `getOrCreateEntryByDate(date)` helper that maintains date-sorted order. The existing `getTodayEntry()` lookup becomes "find entry where `date == today`" rather than "last entry."
 
-**Streak rule:** game-only days (where `gamesIngested > 0` but `reviewed + mistakes + learned == 0`) do **not** count toward `currentStreak` or `bestStreak`. Streaks remain a measure of deliberate practice. `bestStreak` stays monotonic — ingest cannot decrement it, and retroactive past-date writes never revise it downward.
+**Streak rule:** game-only days (where `games.ingested > 0` but `reviewed + mistakes + learned == 0`) do **not** count toward `currentStreak` or `bestStreak`. Streaks remain a measure of deliberate practice. `bestStreak` stays monotonic — ingest cannot decrement it, and retroactive past-date writes never revise it downward.
 
-### 6.2 New lifetime fields (DASHBOARD.md §2.2 Lifetime totals)
+### 6.2 New activity feed line (DASHBOARD.md §1.4 Activity Feed)
 
-| Field           | Type   | Description                                       |
-| --------------- | ------ | ------------------------------------------------- |
-| `gamesIngested` | number | All-time games ingested from linked accounts.     |
-| `gameReviewed`  | number | All-time Good ratings from ingested games.        |
-| `gameMistakes`  | number | All-time Again ratings from ingested games.       |
-
-### 6.3 New activity feed line (DASHBOARD.md §1.4 Activity Feed)
-
-Add a "Played" line to the per-day rendering, appearing when `gamesIngested > 0`:
+Add a "Played" line to the per-day rendering, appearing when `games.ingested > 0`. The line always renders all three counts, even when `games.reviewed == 0 && games.mistakes == 0`:
 
 ```
 25 MAY 2026
@@ -129,7 +125,7 @@ Add a "Played" line to the per-day rendering, appearing when `gamesIngested > 0`
   ⚔️  Played 3 games  ·  8 correct  ·  2 mistakes
 ```
 
-- Shows games played (`gamesIngested`), in-repertoire moves (`gameReviewed`), and deviating games (`gameMistakes`).
+- Shows games played (`games.ingested`), in-repertoire moves (`games.reviewed`), and deviating games (`games.mistakes`).
 - "Mistakes" here counts games-with-a-deviation, not cards-Again'd, so the number aligns with the user's intuition ("I made 2 mistakes in 3 games").
 - Emoji choice is open (⚔️ / ♟️ / 🎮); pick whichever fits the existing visual style.
 
@@ -149,12 +145,11 @@ Add a "Played" line to the per-day rendering, appearing when `gamesIngested > 0`
 
 **Rollout order:** backend schema deployment MUST land before any frontend rollout. Until the backend accepts the new `games` root property, any client PUT including it is rejected.
 
-Update the variants endpoint schema:
+Add one whitelisted optional root-level property to the variants endpoint schema:
 
-- Allow optional root-level `games` object.
-- Map keys: non-empty string, max 256 chars.
-- Value object: `{ watermarkMs: number, recentIds: string[], providerCursor?: object }`.
-- Limits: ≤ **20** accounts; `recentIds` ≤ **50** entries, each non-empty string ≤ 64 chars; `providerCursor` ≤ 256 bytes serialized.
+- `games` — `object | null`, free-form, may be `null` or omitted. Modeled after the existing `activity` field (`docs/BACKEND_API_CONTRACT.md` root schema). Inner shape is enforced client-side; the backend treats it as an opaque object.
+
+The new `activity.practiceLog[].games` sub-object (§6.1) requires **no backend change** — `activity` is already free-form, so nested additions pass through.
 
 ---
 
