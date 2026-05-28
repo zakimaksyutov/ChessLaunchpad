@@ -28,13 +28,13 @@ A new top-level property `games` on the synced repertoire blob holds per-account
 
 - `watermarkMs` — only games with `createdAt > watermarkMs` are eligible.
 - `recentIds` — ring of up to **50** most recent processed game IDs. **Boundary dedup only** — catches games sharing the watermark `createdAt` ms and concurrent-client overlap. Games strictly older than `watermarkMs` are excluded by watermark monotonicity and need not be remembered here.
-- `providerCursor` *(optional, provider-defined)* — opaque hint that lets the client short-circuit unchanged fetches. Chess.com uses `{ month, etag }` to issue a conditional `If-None-Match` against the current monthly archive. Not used by Lichess.
+- `providerCursor` *(optional, provider-defined)* — opaque hint that lets the client short-circuit unchanged fetches. Chess.com uses `{ month, etag }` for a conditional `If-None-Match` against that month's archive; `month` tracks only the most recently fetched archive. When the 5-day window straddles a month boundary, the prior month is fetched unconditionally (cost is bounded — at most a few days per boundary). Not used by Lichess.
 
 ---
 
 ## 2. Trigger
 
-- Runs automatically each time the Dashboard mounts.
+- Runs automatically each time the Dashboard mounts. There is no throttle between successive runs; concurrent runs across tabs are serialized by the ETag/If-Match flow (see §5).
 - Successful ingestion is surfaced via the Activity Feed: counts land on the day each game was played (see §6 below).
 - Errors are silent in the UI (telemetry only).
 
@@ -84,7 +84,7 @@ These counters are tracked separately from the manual-training `reviewed` / `mis
 Ingest must be idempotent across devices.
 
 - The blob's existing ETag / If-Match optimistic concurrency is the only coordination mechanism.
-- On `412`: re-fetch the blob, recompute the set of still-unprocessed games against the freshest `watermarkMs` + `recentIds`, re-apply ratings to the fresh FSRS state, retry the PUT.
+- On `412`: re-fetch the blob, recompute the set of still-unprocessed games against the freshest `watermarkMs` + `recentIds`, re-apply ratings to the fresh FSRS state, and re-derive activity counter deltas from the recomputed set. Never `+=` previously-captured deltas onto a freshly-read entry. Retry the PUT.
 - The watermark and `recentIds` advance **only on successful PUT**.
 - Games present in `recentIds` are skipped even if `createdAt > watermarkMs`.
 
