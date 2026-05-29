@@ -17,7 +17,7 @@ Supported platforms:
 - Stored on the user's repertoire blob under `settings.linkedAccounts` (persisted via the backend; not localStorage).
 - Managed on the **Settings** page: a "Linked Accounts" section with a platform dropdown, text input + "Add" button, and a list of existing accounts each with a "Remove" button.
 - Removing an account also clears its sync watermark from `localStorage` and **deletes** the account's cached games from IndexedDB.
-- **Clear Cache** button (in Settings, visible when accounts are linked) deletes all downloaded games from IndexedDB and resets all sync timestamps so the next sync performs a fresh initial fetch.
+- **Clear Cache** button (in Settings, visible when accounts are linked) deletes all downloaded games from IndexedDB and the Masters Explorer cache. Per-account sync timestamps are **not** reset, so the next sync remains incremental — to force a full re-fetch, unlink and re-link the account.
 - **Logout** clears all Games data: IndexedDB game store, the in-memory linked-accounts cache, and the per-account sync timestamps in `localStorage`.
 
 ```ts

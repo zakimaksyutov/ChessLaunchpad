@@ -29,15 +29,17 @@ A new top-level property `games` on the synced repertoire blob holds per-account
 - `watermarkMs` — only games with `createdAt > watermarkMs` are eligible.
 - `recentIds` — ring of up to **50** most recent processed game IDs. **Boundary dedup only** — catches games sharing the watermark `createdAt` ms and concurrent-client overlap. Games strictly older than `watermarkMs` are excluded by watermark monotonicity and need not be remembered here.
   - **ID format:** raw provider id with no prefix — Lichess `id`, Chess.com `uuid` — so independent clients agree on dedup keys.
-  - **Eviction order:** sorted by `createdAt` descending, ties broken by id ascending; entries past index 49 are dropped. Deterministic ordering is required so concurrent clients converge on the same retained set.
+  - **Eviction order:** sorted by `createdAt` descending, ties broken by id ascending; entries past index 49 are dropped. Deterministic ordering is required so concurrent clients converge on the same retained set. Previously-stored IDs (whose true `createdAt` is not persisted) are merged with a synthetic timestamp equal to the prior `watermarkMs`; freshly-processed IDs use their actual `createdAt` and therefore always sort ahead of the carry-over set.
 - `providerCursor` *(optional, provider-defined)* — opaque hint that lets the client short-circuit unchanged fetches. Chess.com uses `{ month, etag }` for a conditional `If-None-Match` against that month's archive; `month` tracks only the most recently fetched archive. When the 5-day window straddles a month boundary, the prior month is fetched unconditionally (cost is bounded — at most a few days per boundary). Not used by Lichess.
 
 ---
 
 ## 2. Trigger
 
-- Runs automatically each time the Dashboard mounts. There is no throttle between successive runs; concurrent runs across tabs are serialized by the ETag/If-Match flow (see §5).
-- Successful ingestion is surfaced via the Activity Feed: counts land on the day each game was played (see §6 below).
+- Runs automatically each time the Dashboard mounts. There is no throttle between successive runs; concurrent runs in the same tab are guarded by an in-process lock, and cross-tab runs are serialized by the ETag/If-Match flow (see §5).
+- A manual **Sync** button on the Dashboard runs the same pipeline on demand; both the auto-trigger and the button share the same lock so they can never overlap.
+- Successful ingestion is surfaced via the Activity Feed: counts land on the day each game was played (see §6).
+- An in-progress run is surfaced via a sync-status indicator next to the Activity header (see §6).
 - Errors are silent in the UI (telemetry only).
 
 ---
@@ -50,6 +52,7 @@ A game is ingested only if **all** hold:
 - Time class is blitz or rapid.
 - `createdAt > watermarkMs` **and** `id ∉ recentIds`.
 - **Game age:** `now − createdAt ≤ 5 days` (inclusive). Older games are never ingested.
+- **Not future-dated:** `createdAt ≤ now`. Defends against clock skew between the client and the provider (a future-dated game would otherwise be impossible to age out).
 
 A game that produces no rating matches (e.g. no repertoire FENs hit) is still considered processed: it advances `watermarkMs` and joins `recentIds` like any other.
 
@@ -71,11 +74,13 @@ The existing repertoire annotation drives ratings:
 
 Ratings are timestamped with `game.createdAt`, not wall-clock time. FENs are normalized using the same scheme as FSRS cards (halfmove clock reset).
 
-Each ingested game also updates per-day activity counters, attributed to the date of `game.createdAt`. The counters live in a single `games` sub-object on the per-day `practiceLog` entry (see §6 below), kept separate from the manual-training `reviewed` / `mistakes` / `learned` counters:
+**Per-card idempotence guard.** A rating (Good or Again) is **skipped** for a card whose `last_review` (`lr`) is strictly **after** `game.createdAt`. Applying it would move FSRS state backward in time. This guard is what lets repeated runs and concurrent clients converge safely: a more-recent training-pass review of the same card is never overwritten by a re-processed older game, and a game that has already been ingested produces a no-op when processed again.
 
-- Every processed game increments `games.ingested` for that date, regardless of whether it produced any ratings.
-- `games.reviewed` increments **once per Good rating** issued during the game (one per in-repertoire user move).
-- `games.mistakes` increments **once per deviating game** — even if multiple sibling cards at the deviation FEN receive Again, the day-level mistake count increments by one. The per-card FSRS state of each sibling still updates individually.
+Each ingested game also updates per-day activity counters, attributed to the date of `game.createdAt`. The counters live in a single `games` sub-object on the per-day `practiceLog` entry (see §6), kept separate from the manual-training `reviewed` / `mistakes` / `learned` counters:
+
+- `games.ingested` — increments for each eligible game whose **user color can be resolved** from the game metadata, regardless of whether the game produced any ratings. Games where the user cannot be identified as a player (malformed metadata, etc.) still advance the watermark / `recentIds` so dedup keeps working, but they do not contribute to this counter.
+- `games.reviewed` — increments **once per Good rating actually applied** during the game (one per in-repertoire user move whose card passes the idempotence guard).
+- `games.mistakes` — increments **once per game with a detected first deviation**, regardless of how many sibling cards exist at the deviation FEN and regardless of whether the per-card guard ends up skipping every sibling. The intuition is "I made a mistake in this game"; the per-card FSRS state of each sibling updates individually (subject to the guard above).
 
 Date attribution uses the user's **local timezone**, matching the existing `ActivityService.getTodayDateString()` semantics.
 
@@ -87,47 +92,32 @@ Ingest must be idempotent across devices.
 
 - The blob's existing ETag / If-Match optimistic concurrency is the only coordination mechanism.
 - On `412`: re-fetch the blob, recompute the set of still-unprocessed games against the freshest `watermarkMs` + `recentIds`, re-apply ratings to the fresh FSRS state, and re-derive activity counter deltas from the recomputed set. Never `+=` previously-captured deltas onto a freshly-read entry. Retry the PUT.
+- **Retry cap:** up to **3 attempts** total per run. If all attempts conflict the run aborts silently (telemetry only) and the next Dashboard mount will pick up where it left off.
 - The watermark and `recentIds` advance **only on successful PUT**.
 - Games present in `recentIds` are skipped even if `createdAt > watermarkMs`.
+- **Cursor-only writes.** A run that produces zero eligible games but observes a changed chess.com `providerCursor.etag` (or a missing → present transition) still issues a PUT so the cursor is persisted. Without this, every subsequent run would re-validate the same archive against a stale or absent ETag.
 
 ---
 
-## 6. Dashboard Surface (changes to DASHBOARD.md)
+## 6. Dashboard Surface
 
-The implementing agent should move these into `docs/product-specs/DASHBOARD.md` (sections referenced below).
+The user-visible surface of ingest lives on the Dashboard. The per-day schema and feed wording are documented in [`DASHBOARD.md`](./DASHBOARD.md):
 
-### 6.1 New per-day field (DASHBOARD.md §2.1 Practice log)
+- **§1.4 Activity Feed** — the "Played" line rendering (one per day with `games.ingested > 0`).
+- **§2.1 Practice log** — the `games` sub-object schema, the `getOrCreateEntryByDate` lifecycle (game-ingest may write to past-date entries within the 5-day window), and the streak rule (game-only days do **not** extend `currentStreak` / `bestStreak`).
 
-Add a single optional `games` sub-object to the `activity.practiceLog` entry schema. (This is unrelated to the root-level `games` map in §1 — same word, different scope: root `games` holds per-account ingest state; `activity.practiceLog[].games` holds per-day counters.)
+### 6.1 UI feedback during a run
 
-| Field             | Type   | Description                                                                                                          |
-| ----------------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
-| `games.ingested`  | number | Games ingested from linked accounts whose `createdAt` falls on this date.                                            |
-| `games.reviewed`  | number | Count of Good ratings issued from ingested games on this date (one per in-repertoire user move).                     |
-| `games.mistakes`  | number | Count of deviating games on this date (one per game with at least one Again rating, regardless of sibling fan-out).  |
+The ingest service exposes a typed progress callback (`IngestProgress` events):
 
-The sub-object is absent on days with no ingest activity; readers should treat missing as `{ ingested: 0, reviewed: 0, mistakes: 0 }`. Game-ingest counters are **not** mirrored to any lifetime totals — they live only on per-day entries and are surfaced only via the Activity Feed.
+- A `fetching` event is emitted before each per-account fetch (`accountIndex` is 1-based; on a 412 retry the pipeline restarts and these events are re-emitted from 1).
+- A single `done` event is emitted at the end with the count of games processed in the final attempt — even when ingest swallows an error internally (the caller cannot distinguish "nothing new" from "silent failure," matching the silent-error contract).
+- **No events are emitted at all when the user has no linked accounts.** Consumers must treat "callback never fires" as a valid, normal state.
 
-Add lifecycle bullets:
+The Dashboard uses these events to drive:
 
-> Game ingest may also create or update entries for past dates within the log window — each ingested game is attributed to its play date, not the sync date. The `practiceLog` is therefore no longer strictly append-only: ingest uses a `getOrCreateEntryByDate(date)` helper that maintains date-sorted order. The existing `getTodayEntry()` lookup becomes "find entry where `date == today`" rather than "last entry."
-
-**Streak rule:** game-only days (where `games.ingested > 0` but `reviewed + mistakes + learned == 0`) do **not** count toward `currentStreak` or `bestStreak`. Streaks remain a measure of deliberate practice. `bestStreak` stays monotonic — ingest cannot decrement it, and retroactive past-date writes never revise it downward.
-
-### 6.2 New activity feed line (DASHBOARD.md §1.4 Activity Feed)
-
-Add a "Played" line to the per-day rendering, appearing when `games.ingested > 0`. The line always renders all three counts, even when `games.reviewed == 0 && games.mistakes == 0`:
-
-```
-25 MAY 2026
-  🎯  Trained 42 positions  ·  38 correct  ·  4 mistakes  ·  90% accuracy
-       5 traversals  ·  12 min
-  ⚔️  Played 3 games  ·  8 correct  ·  2 mistakes
-```
-
-- Shows games played (`games.ingested`), in-repertoire moves (`games.reviewed`), and deviating games (`games.mistakes`).
-- "Mistakes" here counts games-with-a-deviation, not cards-Again'd, so the number aligns with the user's intuition ("I made 2 mistakes in 3 games").
-- Emoji choice is open (⚔️ / ♟️ / 🎮); pick whichever fits the existing visual style.
+- A status indicator beside the Activity heading: "Syncing games…" while a run is in flight, "Synced @ HH:MM" once `done` fires. Per-account `fetching` events are intentionally coalesced into a single "Syncing…" state.
+- A manual **Sync** button that re-runs the pipeline on demand. The indicator and the button render only after the first progress event fires for the session, so a user with no linked accounts sees no sync chrome at all.
 
 ---
 

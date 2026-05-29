@@ -38,7 +38,7 @@ A reverse-chronological timeline grouped by date (inspired by Lichess profile ac
 25 MAY 2026
   🎯  Trained 42 positions  ·  38 correct  ·  4 mistakes  ·  90% accuracy
        5 traversals  ·  12 min
-  ⚔️  Played 6 games  ·  18 reviewed  ·  2 mistakes
+  ⚔️  Played 6 games  ·  18 correct  ·  2 mistakes
 
 24 MAY 2026
   🎯  Trained 30 positions  ·  25 correct  ·  5 mistakes  ·  83% accuracy
@@ -49,7 +49,7 @@ A reverse-chronological timeline grouped by date (inspired by Lichess profile ac
   📘  Learned 12 new positions
 
 22 MAY 2026
-  ⚔️  Played 3 games  ·  9 reviewed  ·  1 mistake
+  ⚔️  Played 3 games  ·  9 correct  ·  1 mistake
 ```
 
 - Days with no activity (no training counters and no `games.ingested`) are omitted; gaps are visible from date headers.
