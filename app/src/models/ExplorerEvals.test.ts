@@ -69,13 +69,4 @@ describe('ExplorerEvals', () => {
         expect(evals.lookupAll('8/8/8/8/8/8/8/8 w -')).toBeNull();
     });
 
-    it('handles legacy plain-number format (wrapped as single-element array)', () => {
-        const legacyData: Record<string, number> = {
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq': 19,
-        };
-        const evals = ExplorerEvals.fromRecord(legacyData);
-        expect(evals.lookup('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq')).toBe(19);
-        expect(evals.lookupAll('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq'))
-            .toEqual([19]);
-    });
 });

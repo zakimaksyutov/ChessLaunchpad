@@ -32,12 +32,13 @@ When a logged-in user lands on the home page, show a dashboard that surfaces pra
 
 ### 1.4 Activity Feed
 
-A reverse-chronological timeline grouped by date (inspired by Lichess profile activity). Each day that has practice data shows a dated header and one summary line with key stats at a glance:
+A reverse-chronological timeline grouped by date (inspired by Lichess profile activity). Each day that has any activity shows a dated header followed by one or more summary lines (Trained, Learned, Played) — any subset of these may render on a given day:
 
 ```
 25 MAY 2026
   🎯  Trained 42 positions  ·  38 correct  ·  4 mistakes  ·  90% accuracy
        5 traversals  ·  12 min
+  ⚔️  Played 6 games  ·  18 correct  ·  2 mistakes
 
 24 MAY 2026
   🎯  Trained 30 positions  ·  25 correct  ·  5 mistakes  ·  83% accuracy
@@ -46,11 +47,15 @@ A reverse-chronological timeline grouped by date (inspired by Lichess profile ac
 
 23 MAY 2026
   📘  Learned 12 new positions
+
+22 MAY 2026
+  ⚔️  Played 3 games  ·  9 correct  ·  1 mistake
 ```
 
-- Days with no activity are omitted (gaps are visible from date headers).
-- "Trained" line appears when `reviewed + mistakes > 0`; shows correct/mistake counts and accuracy badge (color-coded: green ≥ 90%, yellow ≥ 70%, red < 70%).
+- Days with no activity (no training counters and no `games.ingested`) are omitted; gaps are visible from date headers.
+- "Trained" line appears when `reviewed + mistakes > 0`; shows correct count (`reviewed`), mistake count, and accuracy badge (color-coded: green ≥ 90%, yellow ≥ 70%, red < 70%).
 - "Learned" line appears when `learned > 0`.
+- "Played" line appears when `games.ingested > 0`. It renders **independently** of the training counters — a day whose only activity is game-ingest still shows a date header and the Played line. Shows how many games were ingested from linked accounts and the review/mistake counts those games contributed (see [`GAME-INGEST.md`](./GAME-INGEST.md) for the ingest pipeline).
 - Time is shown as human-friendly duration (e.g., "12 min", "1 hr 5 min").
 
 ### 1.5 Call to Action
@@ -82,18 +87,31 @@ activity: {
 | `learned`     | number | New positions that completed the teaching → recall flow.                                         |
 | `traversals`  | number | Number of completed traversals (full root-to-leaf runs).                                         |
 | `timeSeconds` | number | Active training seconds for the day (see §2.3 Time tracking).                                    |
+| `games`       | object | *(Optional)* Per-day game-ingest counters. See below.                                            |
+
+The optional `games` sub-object aggregates ratings produced by the game-ingest pipeline (see [`GAME-INGEST.md`](./GAME-INGEST.md)):
+
+| Field       | Type   | Description                                                                       |
+| ----------- | ------ | --------------------------------------------------------------------------------- |
+| `ingested`  | number | Total games processed by ingest on this date (one per eligible game).             |
+| `reviewed`  | number | In-repertoire user moves rated Good via ingest. Distinct from top-level `reviewed`. |
+| `mistakes`  | number | Game-ingest deviations rated Again. Counted **once per game**, not per sibling card. |
+
+Top-level `reviewed`/`mistakes` (training) and `games.reviewed`/`games.mistakes` (ingest) are **separate counters** — they never double-count. Accuracy and streak calculations use only the top-level training counters.
 
 #### Derived metrics (computed from practiceLog + lifetime)
 
 - **Total positions** — `reviewed + mistakes + learned`.
-- **Accuracy** — `reviewed / (reviewed + mistakes)` (exclude `learned`; recall-pass Again is not an error).
-- **Current streak** — consecutive days (including today) with total > 0. Persisted in `lifetime.currentStreak` so it survives the 30-entry log eviction; the log-based value is used unless the streak spans the full capped window, in which case the persisted value is preferred.
+- **Accuracy** — `reviewed / (reviewed + mistakes)` (exclude `learned`; recall-pass Again is not an error). Game-ingest counters are excluded.
+- **Current streak** — consecutive days with **training** activity (`reviewed + mistakes + learned > 0`), counted up to and **including yesterday** when today has no entry or no training activity yet. (If today has training activity, today is included.) Days whose only activity is game-ingest (`games.ingested > 0` but training counters are all zero) **do not** extend the streak. Persisted in `lifetime.currentStreak` so it survives the 30-entry log eviction; the log-based value is used unless the streak spans the full capped window, in which case the persisted value is preferred.
 - **Best streak** — longest such run. Persisted in `lifetime.bestStreak` (monotonically increasing) so it survives log eviction.
 
 #### Lifecycle
 
-- The latest entry in `practiceLog` represents today's session. On each save, update it in place.
-- On day-boundary reset (when `lastPlayedDate` rolls to a new day), append a new entry for the new date. If the log already has 30 entries, drop the oldest.
+- `practiceLog` is **not** strictly append-only. The latest training-session save still updates today's entry in place. Game-ingest, however, may target any of the most recent ~5 days (the eligibility window) — including past dates if a game's `createdAt` falls there. A helper `getOrCreateEntryByDate(activity, date)` is used: it finds the existing entry for `date` (regardless of position), or inserts a new one in date-sorted order.
+- The log is kept sorted ascending by `date` after every mutation so streak code can walk backward deterministically.
+- When the log reaches 30 entries, the oldest is dropped.
+- Empty entries (all counters zero, including `games`) are not retained.
 
 ### 2.2 Lifetime totals
 

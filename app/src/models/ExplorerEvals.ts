@@ -21,30 +21,21 @@ export class ExplorerEvals {
         if (!response.ok) {
             throw new Error(`Failed to load explorer evals: ${response.status}`);
         }
-        const data: Record<string, number | number[]> = await response.json();
+        const data: Record<string, number[]> = await response.json();
         return new ExplorerEvals(ExplorerEvals.parseEntries(data));
     }
 
     /** Build from an in-memory record (useful for tests). */
-    static fromRecord(data: Record<string, number | number[]>): ExplorerEvals {
+    static fromRecord(data: Record<string, number[]>): ExplorerEvals {
         return new ExplorerEvals(ExplorerEvals.parseEntries(data));
     }
 
     /**
-     * Parse entries that are either:
-     * - plain numbers (legacy: single cp, wrapped as [n])
-     * - number arrays (current: [cp1, cp2] from 2 deepest entries)
+     * Parse entries: each value is an array of up to 2 centipawn values
+     * from the 2 deepest Stockfish entries (single-entry positions produce `[cp]`).
      */
-    private static parseEntries(data: Record<string, number | number[]>): Map<string, number[]> {
-        const map = new Map<string, number[]>();
-        for (const [fen, val] of Object.entries(data)) {
-            if (Array.isArray(val)) {
-                map.set(fen, val);
-            } else {
-                map.set(fen, [val]);
-            }
-        }
-        return map;
+    private static parseEntries(data: Record<string, number[]>): Map<string, number[]> {
+        return new Map(Object.entries(data));
     }
 
     get size(): number {

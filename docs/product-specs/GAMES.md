@@ -14,11 +14,11 @@ Supported platforms:
 - **Lichess** — public NDJSON API
 - **Chess.com** — public archives API
 
-- Stored in `localStorage` as a JSON array under key `chesslaunchpad:linkedAccounts`.
+- Stored on the user's repertoire blob under `settings.linkedAccounts` (persisted via the backend; not localStorage).
 - Managed on the **Settings** page: a "Linked Accounts" section with a platform dropdown, text input + "Add" button, and a list of existing accounts each with a "Remove" button.
 - Removing an account also clears its sync watermark from `localStorage` and **deletes** the account's cached games from IndexedDB.
-- **Clear Cache** button (in Settings, visible when accounts are linked) deletes all downloaded games from IndexedDB and resets all sync timestamps so the next sync performs a fresh initial fetch.
-- **Logout** clears all Games data: IndexedDB game store, linked accounts list, and all per-account sync timestamps (both legacy and current key formats).
+- **Clear Cache** button (in Settings, visible when accounts are linked) deletes all downloaded games from IndexedDB and the Masters Explorer cache. Per-account sync timestamps are **not** reset, so the next sync remains incremental — to force a full re-fetch, unlink and re-link the account.
+- **Logout** clears all Games data: IndexedDB game store, the in-memory linked-accounts cache, and the per-account sync timestamps in `localStorage`.
 
 ```ts
 type Platform = 'lichess' | 'chess.com';
@@ -27,8 +27,7 @@ interface LinkedAccount {
   platform: Platform;
   username: string;
 }
-// localStorage key: 'chesslaunchpad:linkedAccounts'
-// value: JSON.stringify(LinkedAccount[])
+// Persisted as part of the repertoire blob: RepertoireData.settings.linkedAccounts
 ```
 
 ## 2. Game Download
@@ -84,8 +83,6 @@ Watermarks are stored per account as:
 ```
 localStorage key: chesslaunchpad:lastSyncTimestamp:{platform}:{username}
 ```
-
-Legacy Lichess keys (`chesslaunchpad:lastSyncTimestamp:{username}`) are read as fallback and migrated on next sync.
 
 Download is triggered manually via a **"Sync Games"** button on the Games page. A progress indicator shows "Downloading… N games" while the stream is active. Sync runs for all linked accounts across both platforms.
 

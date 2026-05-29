@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { deriveEotPositions, annotateGame, type GameAnnotation } from '../services/GameAnnotationService';
 import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
-import { ExplorerEvals } from '../models/ExplorerEvals';
 
 /**
  * Helper: build a Lichess-style game data object from a move string and player names.

@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { State } from 'ts-fsrs';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
-import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString } from '../services/ActivityService';
+import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString, findEntryByDate, entryHasAnyActivity } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
+import { runIngest, IngestProgress } from '../services/GameIngestService';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -50,11 +51,33 @@ function getAccuracyColor(accuracy: number | null): string {
     return '#f44336';
 }
 
+function formatSyncTime(d: Date): string {
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+type SyncState =
+    | { phase: 'syncing' }
+    | { phase: 'synced'; at: Date };
+
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
+
+    // Stays true while the component is mounted; flipped to false on real
+    // unmount and explicitly re-set to true on every effect run so that
+    // React.StrictMode's synthetic mount→unmount→remount cycle doesn't leave
+    // the ref stuck at false (refs are preserved across the synthetic cycle).
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    // Lock against overlapping sync cycles (auto + manual button + double-click).
+    const syncInFlightRef = useRef(false);
 
     const dal: IDataAccessLayer | null = useMemo(() => {
         const username = localStorage.getItem('username');
@@ -63,8 +86,42 @@ const DashboardPage: React.FC = () => {
         return createDataAccessLayer(username, hashedPassword);
     }, []);
 
+    const runSyncCycle = useCallback(async () => {
+        if (!dal || !mountedRef.current) return;
+        if (syncInFlightRef.current) return;
+        syncInFlightRef.current = true;
+
+        const handleProgress = (progress: IngestProgress) => {
+            if (!mountedRef.current) return;
+            if (progress.phase === 'fetching') {
+                // Coalesce all per-account fetching events into a single "syncing"
+                // state — the widget header has limited width and the i/N suffix
+                // is more noise than signal for the typical single-account user.
+                setSyncStatus(prev => (prev?.phase === 'syncing' ? prev : { phase: 'syncing' }));
+                return;
+            }
+            // 'done' — both success-with-imports and success-empty/failure are
+            // treated the same: stamp the time and show "Synced @ HH:MM". This
+            // matches the existing silent-error contract (rare failures aren't
+            // worth a distinct "Sync failed" badge here).
+            setSyncStatus({ phase: 'synced', at: new Date() });
+        };
+
+        try {
+            const summary = await runIngest(dal, handleProgress);
+            if (!mountedRef.current || !summary.didWrite) return;
+            const refreshed = await dal.retrieveRepertoireData();
+            if (!mountedRef.current) return;
+            ensureActivity(refreshed);
+            setRepertoireData(refreshed);
+        } catch {
+            // Ingest errors must never disrupt the UI.
+        } finally {
+            syncInFlightRef.current = false;
+        }
+    }, [dal]);
+
     useEffect(() => {
-        let cancelled = false;
         if (!dal) {
             setLoading(false);
             return;
@@ -73,19 +130,25 @@ const DashboardPage: React.FC = () => {
         (async () => {
             try {
                 const data = await dal.retrieveRepertoireData();
-                if (cancelled) return;
+                if (!mountedRef.current) return;
                 ensureActivity(data);
                 setRepertoireData(data);
+                setLoading(false);
+
+                // Chain ingest after the initial load resolves. Sequencing here
+                // serves two purposes:
+                //   (1) avoids a race where the initial load resolves *after*
+                //       the post-ingest refresh and overwrites it with stale data;
+                //   (2) ensures the linked-accounts cache has been hydrated by
+                //       the blob load before any consumer might rely on it.
+                runSyncCycle();
             } catch (e: any) {
-                if (cancelled) return;
+                if (!mountedRef.current) return;
                 setError(e.message || 'Failed to load data');
-            } finally {
-                if (!cancelled) setLoading(false);
+                setLoading(false);
             }
         })();
-
-        return () => { cancelled = true; };
-    }, [dal]);
+    }, [dal, runSyncCycle]);
 
     if (loading) return <div className="dashboard-loading">Loading dashboard…</div>;
     if (error) return <div className="dashboard-error">Error: {error}</div>;
@@ -95,11 +158,9 @@ const DashboardPage: React.FC = () => {
     const fsrsCards = repertoireData.fsrsCards ?? {};
     const cards = computeCardBreakdown(fsrsCards);
 
-    // Today's entry — only use the last log entry if it actually belongs to today
-    const lastEntry = activity.practiceLog.length > 0
-        ? activity.practiceLog[activity.practiceLog.length - 1]
-        : null;
-    const today = lastEntry && lastEntry.date === getTodayDateString() ? lastEntry : null;
+    // Today's entry — look up by date so newly-ingested games on past dates
+    // don't shift the "today" detection.
+    const today = findEntryByDate(activity, getTodayDateString());
 
     const currentStreak = getCurrentStreak(activity);
     const bestStreak = getBestStreak(activity);
@@ -184,7 +245,24 @@ const DashboardPage: React.FC = () => {
 
                 {/* Activity Feed */}
                 <div className="dashboard-activity">
-                    <h3 className="widget-title">📈 Activity</h3>
+                    <h3 className="widget-title widget-title-row">
+                        <span>📈 Activity</span>
+                        {syncStatus && (
+                            <span className="widget-sync-controls">
+                                <SyncStatusIndicator status={syncStatus} />
+                                <button
+                                    type="button"
+                                    className="widget-sync-button"
+                                    onClick={() => runSyncCycle()}
+                                    disabled={syncStatus.phase === 'syncing'}
+                                    title="Sync games now"
+                                    aria-label="Sync games now"
+                                >
+                                    ↻
+                                </button>
+                            </span>
+                        )}
+                    </h3>
                     <ActivityFeed entries={[...activity.practiceLog].reverse()} />
                 </div>
             </div>
@@ -207,6 +285,32 @@ const DashboardPage: React.FC = () => {
 
 // ── Sub-components ──────────────────────────────────────────────────
 
+const SyncStatusIndicator: React.FC<{ status: SyncState }> = ({ status }) => {
+    if (status.phase === 'syncing') {
+        return (
+            <span
+                className="widget-sync-status widget-sync-status-active"
+                role="status"
+                aria-live="polite"
+                title="Syncing games from linked accounts"
+            >
+                <span className="widget-sync-spinner" aria-hidden="true" />
+                <span>Syncing games…</span>
+            </span>
+        );
+    }
+    return (
+        <span
+            className="widget-sync-status"
+            role="status"
+            aria-live="polite"
+            title={`Last sync at ${status.at.toLocaleString()}`}
+        >
+            Synced @ {formatSyncTime(status.at)}
+        </span>
+    );
+};
+
 const StatRow: React.FC<{ label: string; value: string | number; color?: string }> = ({ label, value, color }) => (
     <div className="stat-row">
         <span className="stat-label">{label}</span>
@@ -215,7 +319,7 @@ const StatRow: React.FC<{ label: string; value: string | number; color?: string 
 );
 
 const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) => {
-    const activeEntries = entries.filter(e => e.reviewed + e.mistakes + e.learned > 0);
+    const activeEntries = entries.filter(entryHasAnyActivity);
 
     if (activeEntries.length === 0) {
         return <p className="widget-empty">No activity yet. Start training to build your history!</p>;
@@ -226,6 +330,8 @@ const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) =>
             {activeEntries.map(entry => {
                 const hasTraining = entry.reviewed + entry.mistakes > 0;
                 const hasLearned = entry.learned > 0;
+                const gameIngested = entry.games?.ingested ?? 0;
+                const hasGames = gameIngested > 0;
 
                 const accuracy = computeAccuracy(entry.reviewed, entry.mistakes);
 
@@ -258,6 +364,16 @@ const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) =>
                             <div className="activity-line">
                                 <span>📘</span>
                                 <span>Learned {entry.learned} new position{entry.learned !== 1 ? 's' : ''}</span>
+                            </div>
+                        )}
+                        {hasGames && (
+                            <div className="activity-line">
+                                <span>⚔️</span>
+                                <span>
+                                    Played {gameIngested} game{gameIngested !== 1 ? 's' : ''}
+                                    {' · '}{entry.games!.reviewed} correct
+                                    {' · '}{entry.games!.mistakes} mistake{entry.games!.mistakes !== 1 ? 's' : ''}
+                                </span>
                             </div>
                         )}
                     </div>

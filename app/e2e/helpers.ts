@@ -121,3 +121,89 @@ export async function advanceTime(page: Page, minutes: number) {
     globalThis.Date.UTC = RealDate.UTC;
   }, offsetMs);
 }
+
+// ── Lichess game-ingest mocks ────────────────────────────────────────
+
+export interface LichessGameOpts {
+  id: string;
+  createdAtMs: number;
+  userIsWhite: boolean;
+  /** Space-separated SAN move list, e.g. "e4 e5 Nf3". */
+  moves: string;
+  /** Defaults to the lichess username being mocked. */
+  username: string;
+  rated?: boolean;
+  speed?: 'blitz' | 'rapid';
+}
+
+/**
+ * Build a single Lichess game object in the shape that GameIngestService's
+ * Lichess parser expects (matches the production NDJSON format closely
+ * enough for fetch + parse + userColor detection + PGN reconstruction).
+ */
+export function buildLichessGame(opts: LichessGameOpts): Record<string, unknown> {
+  const me = opts.username.toLowerCase();
+  const opp = 'lichess_opponent';
+  return {
+    id: opts.id,
+    createdAt: opts.createdAtMs,
+    rated: opts.rated ?? true,
+    speed: opts.speed ?? 'blitz',
+    variant: 'standard',
+    players: {
+      white: { user: { id: opts.userIsWhite ? me : opp, name: opts.userIsWhite ? me : opp } },
+      black: { user: { id: opts.userIsWhite ? opp : me, name: opts.userIsWhite ? opp : me } },
+    },
+    moves: opts.moves,
+  };
+}
+
+export interface LichessMock {
+  /** Number of /api/games/user/... requests intercepted so far. */
+  callCount: () => number;
+  /**
+   * Make the NEXT (and only the next) intercepted call return the given
+   * games as NDJSON. Subsequent calls revert to returning empty NDJSON.
+   * This lets the test control exactly which sync sees which games,
+   * regardless of how many mount-time syncs StrictMode/effects trigger.
+   */
+  armNext: (games: Record<string, unknown>[]) => void;
+}
+
+/**
+ * Intercept Lichess `/api/games/user/{username}` and return NDJSON.
+ *
+ * By default every call returns an empty NDJSON body (no games). Use
+ * `armNext(games)` to make the next call return a specific batch.
+ */
+export async function setupMockLichess(
+  page: Page,
+  username: string,
+): Promise<LichessMock> {
+  let calls = 0;
+  let armed: Record<string, unknown>[] | null = null;
+
+  const usernameLower = username.toLowerCase();
+  // Lichess fetcher hits https://lichess.org/api/games/user/{username}?...
+  // Match anything pointing at this user's games endpoint.
+  const urlRegex = new RegExp(
+    `^https://lichess\\.org/api/games/user/${usernameLower}(\\?|$)`,
+  );
+
+  await page.route(urlRegex, async (route) => {
+    calls += 1;
+    const games = armed ?? [];
+    armed = null;
+    const ndjson = games.map(g => JSON.stringify(g)).join('\n');
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/x-ndjson',
+      body: ndjson,
+    });
+  });
+
+  return {
+    callCount: () => calls,
+    armNext: (games) => { armed = games; },
+  };
+}

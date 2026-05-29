@@ -6,6 +6,7 @@ import {
     LinkedAccount,
     Platform,
     cleanupRemovedAccount,
+    getAccountKey,
 } from '../services/LinkedAccountsService';
 import { clearGames } from '../data/GamesDB';
 import { clearMastersCache } from '../services/MastersExplorerService';
@@ -143,6 +144,16 @@ const SettingsPage: React.FC = () => {
             // Resolve preset → (retention, maxInterval) for both backend persistence and runtime.
             const presetCfg = FSRSService.getPresetConfig(presetId);
 
+            // When an account is unlinked, drop its per-account ingest state from
+            // the games map so the next ingest run doesn't keep tracking it.
+            let nextGames = current.games;
+            if (removedAccountsRef.current.length > 0 && current.games) {
+                nextGames = { ...current.games };
+                for (const removed of removedAccountsRef.current) {
+                    delete nextGames[getAccountKey(removed.platform, removed.username)];
+                }
+            }
+
             // Build settings from draft values (don't mutate globals until save succeeds)
             const updated = {
                 ...current,
@@ -153,6 +164,7 @@ const SettingsPage: React.FC = () => {
                     maxInterval: presetCfg.maxInterval,
                     linkedAccounts,
                 },
+                games: nextGames,
             };
 
             await dal.storeRepertoireData(updated);

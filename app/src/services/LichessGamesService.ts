@@ -1,27 +1,15 @@
 import { StoredGame, storeGames } from '../data/GamesDB';
 import { getSyncTimestampKey } from './LinkedAccountsService';
 
-const LEGACY_SYNC_TIMESTAMP_PREFIX = 'chesslaunchpad:lastSyncTimestamp:';
 const BATCH_SIZE = 100;
 
 function getLastSyncTimestamp(username: string): number | null {
-    // Try new key format first
-    const newKey = getSyncTimestampKey('lichess', username);
-    const newRaw = localStorage.getItem(newKey);
-    if (newRaw) return parseInt(newRaw, 10);
-    // Fall back to legacy key
-    const legacyRaw = localStorage.getItem(LEGACY_SYNC_TIMESTAMP_PREFIX + username);
-    return legacyRaw ? parseInt(legacyRaw, 10) : null;
+    const raw = localStorage.getItem(getSyncTimestampKey('lichess', username));
+    return raw ? parseInt(raw, 10) : null;
 }
 
 function setLastSyncTimestamp(username: string, timestamp: number): void {
-    const newKey = getSyncTimestampKey('lichess', username);
-    localStorage.setItem(newKey, timestamp.toString());
-    // Remove legacy key if present
-    const legacyKey = LEGACY_SYNC_TIMESTAMP_PREFIX + username;
-    if (localStorage.getItem(legacyKey)) {
-        localStorage.removeItem(legacyKey);
-    }
+    localStorage.setItem(getSyncTimestampKey('lichess', username), timestamp.toString());
 }
 
 export interface SyncProgress {

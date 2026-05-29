@@ -22,9 +22,8 @@ export class RepertoireDataUtils {
             // If it was sent as a string, re-hydrate into a real Date
             repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
         }
-        if (!repertoireData.dailyPlayCount) {
-            repertoireData.dailyPlayCount = 0;
-        }
+        // V1 stub — always reset to 0
+        repertoireData.dailyPlayCount = 0;
 
         // Normalize the data — stub V1 fields
         for (const variant of repertoireData.data) {
@@ -67,8 +66,12 @@ export class RepertoireDataUtils {
                 FSRSService.setRetention(cfg.retention);
                 FSRSService.setMaxInterval(cfg.maxInterval);
             }
-            if (Array.isArray(s.linkedAccounts)) setLinkedAccounts(s.linkedAccounts);
         }
+        // Always reset the LinkedAccountsService cache on every normalize() so a
+        // logout → login flow in the same SPA process cannot carry the previous
+        // user's accounts into the new user's session. If the new blob has no
+        // linkedAccounts at all, reset to an empty array.
+        setLinkedAccounts(Array.isArray(s?.linkedAccounts) ? s.linkedAccounts : []);
 
         // Migrate: ensure we use `settings` going forward
         if (repertoireData.trainingSettings && !repertoireData.settings) {
@@ -129,6 +132,7 @@ export class RepertoireDataUtils {
             fsrsCards: fsrsCards ?? {},
             settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
             activity: existingData?.activity,
+            games: existingData?.games,
         };
     }
 
