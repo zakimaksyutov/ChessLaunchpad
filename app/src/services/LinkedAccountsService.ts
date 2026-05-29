@@ -66,9 +66,6 @@ export function cleanupRemovedAccount(username: string, platform: Platform): voi
     const normalized = username.toLowerCase();
     try {
         localStorage.removeItem(getSyncTimestampKey(platform, normalized));
-        if (platform === 'lichess') {
-            localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${normalized}`);
-        }
     } catch { /* localStorage unavailable */ }
     deleteGamesForAccount(platform, normalized).catch(() => { /* best-effort cleanup */ });
 }

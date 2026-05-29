@@ -62,30 +62,13 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         clearGames().catch(() => { /* best-effort */ });
 
         // Per-account sync watermarks live in localStorage and are keyed by
-        // platform+username. Iterate the current in-memory LinkedAccountsService
-        // cache (the source of truth for the active session) and also any
-        // residual legacy localStorage list, so we clean up regardless of
-        // which write path created them.
-        const accountsToClean: Array<{ platform: string; username: string }> = [];
+        // platform+username. Iterate the in-memory LinkedAccountsService cache
+        // (the authoritative source for the active session) and clear each
+        // account's watermark so a different user logging into this browser
+        // doesn't inherit them.
         for (const a of getLinkedAccounts()) {
-            accountsToClean.push({ platform: a.platform, username: a.username });
-        }
-        const linkedRaw = localStorage.getItem('chesslaunchpad:linkedAccounts');
-        if (linkedRaw) {
-            try {
-                const legacy = JSON.parse(linkedRaw) as { platform?: string; username: string }[];
-                for (const a of legacy) {
-                    accountsToClean.push({ platform: a.platform || 'lichess', username: a.username });
-                }
-            } catch { /* ignore malformed */ }
-        }
-        for (const a of accountsToClean) {
-            // Remove new-format watermark
             localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${a.platform}:${a.username}`);
-            // Remove legacy-format watermark
-            localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${a.username}`);
         }
-        localStorage.removeItem('chesslaunchpad:linkedAccounts');
 
         // Reset the in-memory LinkedAccountsService cache so a subsequent
         // login as a different user does not inherit the previous user's
