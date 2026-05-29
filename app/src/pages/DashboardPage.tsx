@@ -5,8 +5,9 @@ import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
-import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString } from '../services/ActivityService';
+import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString, findEntryByDate, entryHasAnyActivity } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
+import { runIngest } from '../services/GameIngestService';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -76,11 +77,28 @@ const DashboardPage: React.FC = () => {
                 if (cancelled) return;
                 ensureActivity(data);
                 setRepertoireData(data);
+                setLoading(false);
+
+                // Chain ingest after the initial load resolves. Sequencing here
+                // serves two purposes:
+                //   (1) avoids a race where the initial load resolves *after*
+                //       the post-ingest refresh and overwrites it with stale data;
+                //   (2) ensures the linked-accounts cache has been hydrated by
+                //       the blob load before any consumer might rely on it.
+                try {
+                    const summary = await runIngest(dal);
+                    if (cancelled || !summary.didWrite) return;
+                    const refreshed = await dal.retrieveRepertoireData();
+                    if (cancelled) return;
+                    ensureActivity(refreshed);
+                    setRepertoireData(refreshed);
+                } catch {
+                    // Ingest errors must never disrupt the UI.
+                }
             } catch (e: any) {
                 if (cancelled) return;
                 setError(e.message || 'Failed to load data');
-            } finally {
-                if (!cancelled) setLoading(false);
+                setLoading(false);
             }
         })();
 
@@ -95,11 +113,9 @@ const DashboardPage: React.FC = () => {
     const fsrsCards = repertoireData.fsrsCards ?? {};
     const cards = computeCardBreakdown(fsrsCards);
 
-    // Today's entry — only use the last log entry if it actually belongs to today
-    const lastEntry = activity.practiceLog.length > 0
-        ? activity.practiceLog[activity.practiceLog.length - 1]
-        : null;
-    const today = lastEntry && lastEntry.date === getTodayDateString() ? lastEntry : null;
+    // Today's entry — look up by date so newly-ingested games on past dates
+    // don't shift the "today" detection.
+    const today = findEntryByDate(activity, getTodayDateString());
 
     const currentStreak = getCurrentStreak(activity);
     const bestStreak = getBestStreak(activity);
@@ -215,7 +231,7 @@ const StatRow: React.FC<{ label: string; value: string | number; color?: string 
 );
 
 const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) => {
-    const activeEntries = entries.filter(e => e.reviewed + e.mistakes + e.learned > 0);
+    const activeEntries = entries.filter(entryHasAnyActivity);
 
     if (activeEntries.length === 0) {
         return <p className="widget-empty">No activity yet. Start training to build your history!</p>;
@@ -226,6 +242,8 @@ const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) =>
             {activeEntries.map(entry => {
                 const hasTraining = entry.reviewed + entry.mistakes > 0;
                 const hasLearned = entry.learned > 0;
+                const gameIngested = entry.games?.ingested ?? 0;
+                const hasGames = gameIngested > 0;
 
                 const accuracy = computeAccuracy(entry.reviewed, entry.mistakes);
 
@@ -258,6 +276,16 @@ const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) =>
                             <div className="activity-line">
                                 <span>📘</span>
                                 <span>Learned {entry.learned} new position{entry.learned !== 1 ? 's' : ''}</span>
+                            </div>
+                        )}
+                        {hasGames && (
+                            <div className="activity-line">
+                                <span>⚔️</span>
+                                <span>
+                                    Played {gameIngested} game{gameIngested !== 1 ? 's' : ''}
+                                    {' · '}{entry.games!.reviewed} correct
+                                    {' · '}{entry.games!.mistakes} mistake{entry.games!.mistakes !== 1 ? 's' : ''}
+                                </span>
                             </div>
                         )}
                     </div>

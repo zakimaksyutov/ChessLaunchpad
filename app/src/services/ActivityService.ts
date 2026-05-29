@@ -1,4 +1,4 @@
-import { RepertoireData, Activity, PracticeLogEntry, LifetimeStats } from '../models/RepertoireData';
+import { RepertoireData, Activity, PracticeLogEntry, LifetimeStats, PracticeLogGameCounters } from '../models/RepertoireData';
 
 const MAX_LOG_ENTRIES = 30;
 
@@ -16,20 +16,57 @@ function createEntry(date: string): PracticeLogEntry {
 
 /** Get today's date string in YYYY-MM-DD (local time). */
 export function getTodayDateString(): string {
-    const d = new Date();
+    return getDateStringForTimestamp(Date.now());
+}
+
+/** Get YYYY-MM-DD (local time) for a given timestamp in milliseconds. */
+export function getDateStringForTimestamp(ms: number): string {
+    const d = new Date(ms);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 }
 
-/** Returns true when every activity counter in an entry is zero. */
+/** Default zero counters when a practice-log entry has no `games` sub-object. */
+export const EMPTY_GAME_COUNTERS: PracticeLogGameCounters = Object.freeze({
+    ingested: 0,
+    reviewed: 0,
+    mistakes: 0,
+});
+
+/** Read the games sub-object as zeros when absent. */
+export function getGameCounters(entry: PracticeLogEntry): PracticeLogGameCounters {
+    return entry.games ?? EMPTY_GAME_COUNTERS;
+}
+
+/** Returns true when an entry contributes to the manual-training streak. */
+export function entryHasTrainingActivity(entry: PracticeLogEntry): boolean {
+    return (entry.reviewed ?? 0) + (entry.mistakes ?? 0) + (entry.learned ?? 0) > 0;
+}
+
+/** Returns true when an entry has any visible activity (training OR game ingest). */
+export function entryHasAnyActivity(entry: PracticeLogEntry): boolean {
+    if (entryHasTrainingActivity(entry)) return true;
+    const g = entry.games;
+    if (!g) return false;
+    return (g.ingested ?? 0) > 0 || (g.reviewed ?? 0) > 0 || (g.mistakes ?? 0) > 0;
+}
+
+/** Returns true when every counter on the entry (training + games) is zero. */
 function isEmptyEntry(e: PracticeLogEntry): boolean {
-    return (e.reviewed ?? 0) === 0
-        && (e.mistakes ?? 0) === 0
-        && (e.learned ?? 0) === 0
-        && (e.traversals ?? 0) === 0
-        && (e.timeSeconds ?? 0) === 0;
+    if ((e.reviewed ?? 0) !== 0) return false;
+    if ((e.mistakes ?? 0) !== 0) return false;
+    if ((e.learned ?? 0) !== 0) return false;
+    if ((e.traversals ?? 0) !== 0) return false;
+    if ((e.timeSeconds ?? 0) !== 0) return false;
+    const g = e.games;
+    if (g) {
+        if ((g.ingested ?? 0) !== 0) return false;
+        if ((g.reviewed ?? 0) !== 0) return false;
+        if ((g.mistakes ?? 0) !== 0) return false;
+    }
+    return true;
 }
 
 /**
@@ -38,6 +75,11 @@ function isEmptyEntry(e: PracticeLogEntry): boolean {
  */
 function stripEmptyEntries(activity: Activity): void {
     activity.practiceLog = activity.practiceLog.filter(e => !isEmptyEntry(e));
+}
+
+/** Sort the practice log ascending by date (YYYY-MM-DD lexicographic == chronological). */
+function sortLog(activity: Activity): void {
+    activity.practiceLog.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /**
@@ -74,31 +116,56 @@ export function ensureActivity(data: RepertoireData): Activity {
     // Strip blank entries so they don't consume the 30-entry cap
     stripEmptyEntries(data.activity);
 
+    // Keep log sorted by date — game ingest may insert past-date entries
+    sortLog(data.activity);
+
     return data.activity;
 }
 
 /**
- * Get (or create) today's practice log entry.
- * If the latest entry is not for today, appends a new one (capping at 30).
+ * Get (or create) the practice-log entry for the given date (YYYY-MM-DD).
+ * If absent, inserts in date-sorted position; if log exceeds MAX_LOG_ENTRIES, drops the oldest.
  */
-export function getTodayEntry(activity: Activity): PracticeLogEntry {
-    const today = getTodayDateString();
+export function getOrCreateEntryByDate(activity: Activity, date: string): PracticeLogEntry {
     const log = activity.practiceLog;
-
-    if (log.length > 0 && log[log.length - 1].date === today) {
-        return log[log.length - 1];
+    // Linear scan — log is at most 30 entries.
+    for (let i = 0; i < log.length; i++) {
+        if (log[i].date === date) return log[i];
     }
 
-    // New day — append entry
-    const entry = createEntry(today);
-    log.push(entry);
+    const entry = createEntry(date);
+    // Find insertion index that keeps the log sorted ascending by date.
+    let insertAt = log.length;
+    for (let i = 0; i < log.length; i++) {
+        if (log[i].date > date) {
+            insertAt = i;
+            break;
+        }
+    }
+    log.splice(insertAt, 0, entry);
 
-    // Cap at MAX_LOG_ENTRIES
+    // Cap at MAX_LOG_ENTRIES — drop the oldest.
     while (log.length > MAX_LOG_ENTRIES) {
         log.shift();
     }
 
     return entry;
+}
+
+/**
+ * Get (or create) today's practice log entry.
+ * Looks up by date (not "last entry") — game ingest may have inserted past-date entries.
+ */
+export function getTodayEntry(activity: Activity): PracticeLogEntry {
+    return getOrCreateEntryByDate(activity, getTodayDateString());
+}
+
+/** Get the practice-log entry for today if one exists; otherwise null (no mutation). */
+export function findEntryByDate(activity: Activity, date: string): PracticeLogEntry | null {
+    for (const entry of activity.practiceLog) {
+        if (entry.date === date) return entry;
+    }
+    return null;
 }
 
 export interface TraversalStats {
@@ -110,12 +177,8 @@ export interface TraversalStats {
 /** Compute today's play count from the practice log (single source of truth). */
 export function getTodayPlayCount(data: RepertoireData): number {
     if (!data.activity) return 0;
-    const today = getTodayDateString();
-    const log = data.activity.practiceLog;
-    if (log.length > 0 && log[log.length - 1].date === today) {
-        return log[log.length - 1].reviewed;
-    }
-    return 0;
+    const today = findEntryByDate(data.activity, getTodayDateString());
+    return today?.reviewed ?? 0;
 }
 
 /**

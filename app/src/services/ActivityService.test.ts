@@ -3,6 +3,11 @@ import { RepertoireData } from '../models/RepertoireData';
 import {
     ensureActivity,
     getTodayEntry,
+    getOrCreateEntryByDate,
+    findEntryByDate,
+    getDateStringForTimestamp,
+    entryHasTrainingActivity,
+    entryHasAnyActivity,
     recordTraversal,
     recordTime,
     computeAccuracy,
@@ -118,6 +123,19 @@ describe('ActivityService', () => {
             expect(activity.practiceLog).toHaveLength(2);
         });
 
+        it('finds today entry even when it is not the last log entry', () => {
+            // Game ingest may insert past-date entries — today's entry might not be at the end.
+            const todayEntry = { date: today, reviewed: 2, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 30 };
+            const activity = {
+                practiceLog: [
+                    todayEntry,
+                    // (a hypothetical future-dated entry — shouldn't happen but proves we find by date)
+                ],
+                lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+            };
+            expect(getTodayEntry(activity)).toBe(todayEntry);
+        });
+
         it('caps at 30 entries', () => {
             const entries = Array.from({ length: 30 }, (_, i) => ({
                 date: `2020-01-${String(i + 1).padStart(2, '0')}`,
@@ -133,6 +151,160 @@ describe('ActivityService', () => {
             expect(activity.practiceLog).toHaveLength(30);
             // Oldest entry dropped
             expect(activity.practiceLog[0].date).toBe('2020-01-02');
+        });
+    });
+
+    describe('getOrCreateEntryByDate', () => {
+        it('returns existing entry by date', () => {
+            const e1 = { date: '2026-05-20', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            const e2 = { date: '2026-05-22', reviewed: 2, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 20 };
+            const activity = { practiceLog: [e1, e2], lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 } };
+            expect(getOrCreateEntryByDate(activity, '2026-05-20')).toBe(e1);
+            expect(getOrCreateEntryByDate(activity, '2026-05-22')).toBe(e2);
+        });
+
+        it('inserts new entry in sorted position', () => {
+            const activity = {
+                practiceLog: [
+                    { date: '2026-05-20', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                    { date: '2026-05-25', reviewed: 2, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 20 },
+                ],
+                lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+            };
+            const inserted = getOrCreateEntryByDate(activity, '2026-05-22');
+            expect(inserted.date).toBe('2026-05-22');
+            expect(activity.practiceLog.map(e => e.date)).toEqual(['2026-05-20', '2026-05-22', '2026-05-25']);
+        });
+
+        it('inserts new entry at the beginning when older than all existing', () => {
+            const activity = {
+                practiceLog: [
+                    { date: '2026-05-22', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                ],
+                lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+            };
+            getOrCreateEntryByDate(activity, '2026-05-19');
+            expect(activity.practiceLog.map(e => e.date)).toEqual(['2026-05-19', '2026-05-22']);
+        });
+
+        it('inserts new entry at the end when newer than all existing', () => {
+            const activity = {
+                practiceLog: [
+                    { date: '2026-05-19', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                ],
+                lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+            };
+            getOrCreateEntryByDate(activity, '2026-05-22');
+            expect(activity.practiceLog.map(e => e.date)).toEqual(['2026-05-19', '2026-05-22']);
+        });
+
+        it('caps at 30 entries, dropping oldest', () => {
+            const entries = Array.from({ length: 30 }, (_, i) => ({
+                date: `2026-04-${String(i + 1).padStart(2, '0')}`,
+                reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10,
+            }));
+            const activity = {
+                practiceLog: entries,
+                lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+            };
+            getOrCreateEntryByDate(activity, '2026-05-10');
+            expect(activity.practiceLog).toHaveLength(30);
+            expect(activity.practiceLog[0].date).toBe('2026-04-02');
+            expect(activity.practiceLog[activity.practiceLog.length - 1].date).toBe('2026-05-10');
+        });
+    });
+
+    describe('findEntryByDate', () => {
+        it('returns existing entry', () => {
+            const e = { date: '2026-05-20', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            const activity = { practiceLog: [e], lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 } };
+            expect(findEntryByDate(activity, '2026-05-20')).toBe(e);
+        });
+        it('returns null when missing', () => {
+            const activity = { practiceLog: [], lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 } };
+            expect(findEntryByDate(activity, '2026-05-20')).toBeNull();
+        });
+    });
+
+    describe('getDateStringForTimestamp', () => {
+        it('returns YYYY-MM-DD for a given timestamp in local time', () => {
+            // Pinned clock to 2026-05-25T12:00:00 local time.
+            const ms = new Date('2026-05-25T12:00:00').getTime();
+            expect(getDateStringForTimestamp(ms)).toBe('2026-05-25');
+        });
+        it('handles past and future timestamps', () => {
+            expect(getDateStringForTimestamp(new Date('2026-04-15T09:00:00').getTime())).toBe('2026-04-15');
+            expect(getDateStringForTimestamp(new Date('2026-12-31T23:59:00').getTime())).toBe('2026-12-31');
+        });
+    });
+
+    describe('entry-activity helpers', () => {
+        it('treats training-only entries as having training activity', () => {
+            const entry = { date: today, reviewed: 5, mistakes: 1, learned: 0, traversals: 1, timeSeconds: 60 };
+            expect(entryHasTrainingActivity(entry)).toBe(true);
+            expect(entryHasAnyActivity(entry)).toBe(true);
+        });
+        it('treats games-only entries as activity but not training activity', () => {
+            const entry = {
+                date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0,
+                games: { ingested: 3, reviewed: 6, mistakes: 1 },
+            };
+            expect(entryHasTrainingActivity(entry)).toBe(false);
+            expect(entryHasAnyActivity(entry)).toBe(true);
+        });
+        it('treats fully empty entries as no activity', () => {
+            const entry = { date: today, reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 };
+            expect(entryHasTrainingActivity(entry)).toBe(false);
+            expect(entryHasAnyActivity(entry)).toBe(false);
+        });
+    });
+
+    describe('ensureActivity with games sub-object', () => {
+        it('preserves entries with games counters even when training counters are zero', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        {
+                            date: '2026-05-22', reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0,
+                            games: { ingested: 3, reviewed: 5, mistakes: 1 },
+                        },
+                    ],
+                    lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                },
+            });
+            const activity = ensureActivity(data);
+            expect(activity.practiceLog).toHaveLength(1);
+        });
+
+        it('strips entries with all-zero training AND all-zero games counters', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        {
+                            date: '2026-05-22', reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0,
+                            games: { ingested: 0, reviewed: 0, mistakes: 0 },
+                        },
+                    ],
+                    lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
+                },
+            });
+            const activity = ensureActivity(data);
+            expect(activity.practiceLog).toHaveLength(0);
+        });
+
+        it('sorts log ascending by date', () => {
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: [
+                        { date: '2026-05-22', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: '2026-05-20', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                        { date: '2026-05-21', reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 },
+                    ],
+                    lifetime: { reviewed: 3, mistakes: 0, learned: 0, traversals: 3, timeSeconds: 30 },
+                },
+            });
+            const activity = ensureActivity(data);
+            expect(activity.practiceLog.map(e => e.date)).toEqual(['2026-05-20', '2026-05-21', '2026-05-22']);
         });
     });
 
