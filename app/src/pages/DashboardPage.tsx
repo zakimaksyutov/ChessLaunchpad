@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { State } from 'ts-fsrs';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
@@ -66,6 +66,19 @@ const DashboardPage: React.FC = () => {
     const [error, setError] = useState('');
     const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
 
+    // Stays true while the component is mounted; flipped to false on real
+    // unmount and explicitly re-set to true on every effect run so that
+    // React.StrictMode's synthetic mount→unmount→remount cycle doesn't leave
+    // the ref stuck at false (refs are preserved across the synthetic cycle).
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
+    // Lock against overlapping sync cycles (auto + manual button + double-click).
+    const syncInFlightRef = useRef(false);
+
     const dal: IDataAccessLayer | null = useMemo(() => {
         const username = localStorage.getItem('username');
         const hashedPassword = localStorage.getItem('hashedPassword');
@@ -73,15 +86,13 @@ const DashboardPage: React.FC = () => {
         return createDataAccessLayer(username, hashedPassword);
     }, []);
 
-    useEffect(() => {
-        let cancelled = false;
-        if (!dal) {
-            setLoading(false);
-            return;
-        }
+    const runSyncCycle = useCallback(async () => {
+        if (!dal || !mountedRef.current) return;
+        if (syncInFlightRef.current) return;
+        syncInFlightRef.current = true;
 
         const handleProgress = (progress: IngestProgress) => {
-            if (cancelled) return;
+            if (!mountedRef.current) return;
             if (progress.phase === 'fetching') {
                 // Coalesce all per-account fetching events into a single "syncing"
                 // state — the widget header has limited width and the i/N suffix
@@ -96,10 +107,30 @@ const DashboardPage: React.FC = () => {
             setSyncStatus({ phase: 'synced', at: new Date() });
         };
 
+        try {
+            const summary = await runIngest(dal, handleProgress);
+            if (!mountedRef.current || !summary.didWrite) return;
+            const refreshed = await dal.retrieveRepertoireData();
+            if (!mountedRef.current) return;
+            ensureActivity(refreshed);
+            setRepertoireData(refreshed);
+        } catch {
+            // Ingest errors must never disrupt the UI.
+        } finally {
+            syncInFlightRef.current = false;
+        }
+    }, [dal]);
+
+    useEffect(() => {
+        if (!dal) {
+            setLoading(false);
+            return;
+        }
+
         (async () => {
             try {
                 const data = await dal.retrieveRepertoireData();
-                if (cancelled) return;
+                if (!mountedRef.current) return;
                 ensureActivity(data);
                 setRepertoireData(data);
                 setLoading(false);
@@ -110,25 +141,14 @@ const DashboardPage: React.FC = () => {
                 //       the post-ingest refresh and overwrites it with stale data;
                 //   (2) ensures the linked-accounts cache has been hydrated by
                 //       the blob load before any consumer might rely on it.
-                try {
-                    const summary = await runIngest(dal, handleProgress);
-                    if (cancelled || !summary.didWrite) return;
-                    const refreshed = await dal.retrieveRepertoireData();
-                    if (cancelled) return;
-                    ensureActivity(refreshed);
-                    setRepertoireData(refreshed);
-                } catch {
-                    // Ingest errors must never disrupt the UI.
-                }
+                runSyncCycle();
             } catch (e: any) {
-                if (cancelled) return;
+                if (!mountedRef.current) return;
                 setError(e.message || 'Failed to load data');
                 setLoading(false);
             }
         })();
-
-        return () => { cancelled = true; };
-    }, [dal]);
+    }, [dal, runSyncCycle]);
 
     if (loading) return <div className="dashboard-loading">Loading dashboard…</div>;
     if (error) return <div className="dashboard-error">Error: {error}</div>;
@@ -227,7 +247,21 @@ const DashboardPage: React.FC = () => {
                 <div className="dashboard-activity">
                     <h3 className="widget-title widget-title-row">
                         <span>📈 Activity</span>
-                        {syncStatus && <SyncStatusIndicator status={syncStatus} />}
+                        {syncStatus && (
+                            <span className="widget-sync-controls">
+                                <SyncStatusIndicator status={syncStatus} />
+                                <button
+                                    type="button"
+                                    className="widget-sync-button"
+                                    onClick={() => runSyncCycle()}
+                                    disabled={syncStatus.phase === 'syncing'}
+                                    title="Sync games now"
+                                    aria-label="Sync games now"
+                                >
+                                    ↻
+                                </button>
+                            </span>
+                        )}
                     </h3>
                     <ActivityFeed entries={[...activity.practiceLog].reverse()} />
                 </div>
