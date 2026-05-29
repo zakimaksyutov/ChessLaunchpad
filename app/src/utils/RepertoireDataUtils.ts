@@ -22,9 +22,8 @@ export class RepertoireDataUtils {
             // If it was sent as a string, re-hydrate into a real Date
             repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
         }
-        if (!repertoireData.dailyPlayCount) {
-            repertoireData.dailyPlayCount = 0;
-        }
+        // V1 stub — always reset to 0
+        repertoireData.dailyPlayCount = 0;
 
         // Normalize the data — stub V1 fields
         for (const variant of repertoireData.data) {

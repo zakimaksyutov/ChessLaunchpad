@@ -44,7 +44,7 @@ function buildRepertoireFens(moveSequences: string[][]): Set<string> {
  * Helper: build an ExplorerEvals from full FENs mapped to centipawn values.
  * Converts full FENs to 3-field compact FENs internally.
  */
-function makeEvals(entries: Record<string, number | number[]>): ExplorerEvals {
+function makeEvals(entries: Record<string, number[]>): ExplorerEvals {
     return ExplorerEvals.fromRecord(entries);
 }
 

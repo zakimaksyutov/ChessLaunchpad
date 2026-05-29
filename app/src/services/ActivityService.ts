@@ -220,9 +220,6 @@ export function recordTraversal(
     } else {
         activity.lifetime.currentStreak = logCurrentStreak;
     }
-
-    // Backward compat: backend requires this field, always 0
-    data.dailyPlayCount = 0;
 }
 
 /**
