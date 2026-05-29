@@ -17,6 +17,7 @@ import { getUserColor, buildPgn } from './GameAnnotationService';
 import {
     RepertoireData,
     GameIngestState,
+    RecentGameId,
     ChesscomProviderCursor,
     GamesIngestMap,
 } from '../models/RepertoireData';
@@ -218,7 +219,7 @@ function composeEligibleGames(
     for (const af of fetches) {
         const state = gamesMap?.[af.accountKey];
         const watermarkMs = state?.watermarkMs ?? 0;
-        const recentIds = new Set(state?.recentIds ?? []);
+        const recentIds = new Set((state?.recentIds ?? []).map(r => r.id));
         for (const g of af.games) {
             if (g.createdAt <= watermarkMs) continue;
             if (recentIds.has(g.id)) continue;
@@ -377,13 +378,12 @@ function updateAccountStates(
             if (g.createdAt > newWatermark) newWatermark = g.createdAt;
         }
 
-        // Merge recentIds. Old IDs get a synthetic timestamp == previous watermark
-        // (we don't know their true createdAt — backend stores only the IDs).
-        // New IDs use their actual createdAt. Sort by (createdAt desc, id asc) for
-        // deterministic eviction across concurrent clients.
+        // Merge recentIds: carry over the prior ring + add freshly-processed entries.
+        // Each entry carries its real `createdAt`, so eviction by (ts desc, id asc) is
+        // deterministic across concurrent clients without needing any synthetic stamp.
         const recentMap = new Map<string, number>();
-        for (const id of prev.recentIds) {
-            recentMap.set(id, prev.watermarkMs);
+        for (const r of prev.recentIds) {
+            recentMap.set(r.id, r.ts);
         }
         for (const g of processed) {
             recentMap.set(g.id, g.createdAt);
@@ -396,7 +396,9 @@ function updateAccountStates(
             return idA < idB ? -1 : idA > idB ? 1 : 0;
         });
 
-        const recentIds = sorted.slice(0, MAX_RECENT_IDS).map(([id]) => id);
+        const recentIds: RecentGameId[] = sorted
+            .slice(0, MAX_RECENT_IDS)
+            .map(([id, ts]) => ({ id, ts }));
 
         const next: GameIngestState = {
             watermarkMs: newWatermark,

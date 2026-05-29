@@ -210,7 +210,7 @@ describe('GameIngestService', () => {
         const accountState = dal.data.games?.[acctKey];
         expect(accountState).toBeDefined();
         expect(accountState!.watermarkMs).toBe(game.createdAt);
-        expect(accountState!.recentIds).toEqual(['g1']);
+        expect(accountState!.recentIds).toEqual([{ id: 'g1', ts: game.createdAt }]);
     });
 
     it('rates Again on deviation across every sibling card sharing fenBefore', async () => {
@@ -389,7 +389,7 @@ describe('GameIngestService', () => {
         const gameCreatedAt = FAKE_NOW.getTime() - 60 * 60 * 1000;
         const acctKey = getAccountKey('lichess', 'me');
         data.games = {
-            [acctKey]: { watermarkMs: gameCreatedAt - 1000, recentIds: ['g9'] },
+            [acctKey]: { watermarkMs: gameCreatedAt - 1000, recentIds: [{ id: 'g9', ts: gameCreatedAt }] },
         };
 
         const game = lichessGame({
@@ -447,7 +447,7 @@ describe('GameIngestService', () => {
         const state = dal.data.games![acctKey];
         expect(state.recentIds).toHaveLength(50);
         // Top of list is the most recent (last-numbered) game
-        expect(state.recentIds[0]).toBe('g054');
+        expect(state.recentIds[0]).toEqual({ id: 'g054', ts: baseMs + 54 * 1000 });
         // Watermark should be the last game's createdAt
         expect(state.watermarkMs).toBe(baseMs + 54 * 1000);
     });

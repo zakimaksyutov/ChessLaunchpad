@@ -18,12 +18,19 @@ export interface PracticeLogEntry {
     games?: PracticeLogGameCounters;
 }
 
+/** One entry in the per-account `recentIds` ring (most-recent processed game IDs). */
+export interface RecentGameId {
+    id: string;
+    /** Game creation timestamp (ms). Used for deterministic eviction. */
+    ts: number;
+}
+
 /** Per-account ingest state on the synced blob, keyed by `${platform}:${usernameLower}`. */
 export interface GameIngestState {
     /** Most recent processed game timestamp (ms). Only games with createdAt > watermarkMs are eligible. */
     watermarkMs: number;
-    /** Up to 50 most-recent processed game IDs, sorted createdAt desc / id asc. */
-    recentIds: string[];
+    /** Up to 50 most-recent processed game IDs with their createdAt, sorted (ts desc, id asc). */
+    recentIds: RecentGameId[];
     /** Optional provider-defined cursor — chess.com uses { month, etag } for If-None-Match. */
     providerCursor?: ChesscomProviderCursor;
 }

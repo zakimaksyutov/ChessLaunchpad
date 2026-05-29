@@ -16,20 +16,26 @@ A new top-level property `games` on the synced repertoire blob holds per-account
 "games": {
   "lichess:nykterstein": {
     "watermarkMs": 1748000000000,
-    "recentIds": ["abc123", "def456", "…"]
+    "recentIds": [
+      { "id": "abc123", "ts": 1748000000000 },
+      { "id": "def456", "ts": 1747999990000 }
+    ]
   },
   "chess.com:erik": {
     "watermarkMs": 1748000000000,
-    "recentIds": ["uuid-1", "uuid-2", "…"],
+    "recentIds": [
+      { "id": "uuid-1", "ts": 1748000000000 },
+      { "id": "uuid-2", "ts": 1747999950000 }
+    ],
     "providerCursor": { "month": "2026-05", "etag": "W/\"…\"" }
   }
 }
 ```
 
 - `watermarkMs` — only games with `createdAt > watermarkMs` are eligible.
-- `recentIds` — ring of up to **50** most recent processed game IDs. **Boundary dedup only** — catches games sharing the watermark `createdAt` ms and concurrent-client overlap. Games strictly older than `watermarkMs` are excluded by watermark monotonicity and need not be remembered here.
+- `recentIds` — ring of up to **50** most-recent processed games. Each entry is `{ id, ts }` where `ts` is the game's `createdAt`. **Boundary dedup only** — catches games sharing the watermark `createdAt` ms and concurrent-client overlap. Games strictly older than `watermarkMs` are excluded by watermark monotonicity and need not be remembered here.
   - **ID format:** raw provider id with no prefix — Lichess `id`, Chess.com `uuid` — so independent clients agree on dedup keys.
-  - **Eviction order:** sorted by `createdAt` descending, ties broken by id ascending; entries past index 49 are dropped. Deterministic ordering is required so concurrent clients converge on the same retained set. Previously-stored IDs (whose true `createdAt` is not persisted) are merged with a synthetic timestamp equal to the prior `watermarkMs`; freshly-processed IDs use their actual `createdAt` and therefore always sort ahead of the carry-over set.
+  - **Eviction order:** sorted by `ts` descending, ties broken by `id` ascending; entries past index 49 are dropped. Deterministic ordering is required so concurrent clients converge on the same retained set.
 - `providerCursor` *(optional, provider-defined)* — opaque hint that lets the client short-circuit unchanged fetches. Chess.com uses `{ month, etag }` for a conditional `If-None-Match` against that month's archive; `month` tracks only the most recently fetched archive. When the 5-day window straddles a month boundary, the prior month is fetched unconditionally (cost is bounded — at most a few days per boundary). Not used by Lichess.
 
 ---
