@@ -7,7 +7,7 @@ import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
 import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString, findEntryByDate, entryHasAnyActivity } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
-import { runIngest } from '../services/GameIngestService';
+import { runIngest, IngestProgress } from '../services/GameIngestService';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -51,11 +51,20 @@ function getAccuracyColor(accuracy: number | null): string {
     return '#f44336';
 }
 
+function formatSyncTime(d: Date): string {
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+type SyncState =
+    | { phase: 'syncing' }
+    | { phase: 'synced'; at: Date };
+
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
 
     const dal: IDataAccessLayer | null = useMemo(() => {
         const username = localStorage.getItem('username');
@@ -70,6 +79,22 @@ const DashboardPage: React.FC = () => {
             setLoading(false);
             return;
         }
+
+        const handleProgress = (progress: IngestProgress) => {
+            if (cancelled) return;
+            if (progress.phase === 'fetching') {
+                // Coalesce all per-account fetching events into a single "syncing"
+                // state — the widget header has limited width and the i/N suffix
+                // is more noise than signal for the typical single-account user.
+                setSyncStatus(prev => (prev?.phase === 'syncing' ? prev : { phase: 'syncing' }));
+                return;
+            }
+            // 'done' — both success-with-imports and success-empty/failure are
+            // treated the same: stamp the time and show "Synced @ HH:MM". This
+            // matches the existing silent-error contract (rare failures aren't
+            // worth a distinct "Sync failed" badge here).
+            setSyncStatus({ phase: 'synced', at: new Date() });
+        };
 
         (async () => {
             try {
@@ -86,7 +111,7 @@ const DashboardPage: React.FC = () => {
                 //   (2) ensures the linked-accounts cache has been hydrated by
                 //       the blob load before any consumer might rely on it.
                 try {
-                    const summary = await runIngest(dal);
+                    const summary = await runIngest(dal, handleProgress);
                     if (cancelled || !summary.didWrite) return;
                     const refreshed = await dal.retrieveRepertoireData();
                     if (cancelled) return;
@@ -200,7 +225,10 @@ const DashboardPage: React.FC = () => {
 
                 {/* Activity Feed */}
                 <div className="dashboard-activity">
-                    <h3 className="widget-title">📈 Activity</h3>
+                    <h3 className="widget-title widget-title-row">
+                        <span>📈 Activity</span>
+                        {syncStatus && <SyncStatusIndicator status={syncStatus} />}
+                    </h3>
                     <ActivityFeed entries={[...activity.practiceLog].reverse()} />
                 </div>
             </div>
@@ -222,6 +250,32 @@ const DashboardPage: React.FC = () => {
 };
 
 // ── Sub-components ──────────────────────────────────────────────────
+
+const SyncStatusIndicator: React.FC<{ status: SyncState }> = ({ status }) => {
+    if (status.phase === 'syncing') {
+        return (
+            <span
+                className="widget-sync-status widget-sync-status-active"
+                role="status"
+                aria-live="polite"
+                title="Syncing games from linked accounts"
+            >
+                <span className="widget-sync-spinner" aria-hidden="true" />
+                <span>Syncing games…</span>
+            </span>
+        );
+    }
+    return (
+        <span
+            className="widget-sync-status"
+            role="status"
+            aria-live="polite"
+            title={`Last sync at ${status.at.toLocaleString()}`}
+        >
+            Synced @ {formatSyncTime(status.at)}
+        </span>
+    );
+};
 
 const StatRow: React.FC<{ label: string; value: string | number; color?: string }> = ({ label, value, color }) => (
     <div className="stat-row">

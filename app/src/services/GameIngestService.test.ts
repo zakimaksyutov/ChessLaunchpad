@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Chess } from 'chess.js';
-import { runIngest } from './GameIngestService';
+import { runIngest, IngestProgress } from './GameIngestService';
 import { setLinkedAccounts, getAccountKey } from './LinkedAccountsService';
 import { RepertoireData, OpeningVariantData } from '../models/RepertoireData';
 import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
@@ -677,6 +677,104 @@ describe('GameIngestService', () => {
         const result = await runIngest(dal);
         expect(result.didWrite).toBe(true);
         expect(dal.data.games![acctKey].providerCursor!.etag).toBe('new-etag');
+    });
+
+    // ── Progress callback ─────────────────────────────────────────────
+
+    it('emits no progress events when there are no linked accounts', async () => {
+        const data = makeData();
+        const dal = new MockDal(data);
+        const events: IngestProgress[] = [];
+        await runIngest(dal, (p) => events.push(p));
+        expect(events).toEqual([]);
+    });
+
+    it('emits a fetching event per linked account then a single done with gamesProcessed', async () => {
+        // White repertoire: 1. e4 e5 2. Nf3
+        const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+        const data = makeData([variant]);
+
+        // Two linked accounts: one lichess (1 in-window game), one chess.com (1 in-window game)
+        const lichessGameData = lichessGame({
+            id: 'g-li',
+            createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+            userIsWhite: true,
+            moves: 'e4 e5 Nf3',
+        });
+        mockLichessOnce([lichessGameData]);
+
+        const chesscomGameData = buildChesscomGame({
+            uuid: 'g-cc',
+            endTimeSec: Math.floor((FAKE_NOW.getTime() - 30 * 60 * 1000) / 1000),
+            userIsWhite: true,
+            moves: '1. e4 e5 2. Nf3',
+        });
+        (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers({ 'ETag': 'cc-etag' }),
+            text: async () => '',
+            json: async () => ({ games: [chesscomGameData] }),
+        } as unknown as Response);
+
+        setAccounts(data, [
+            { platform: 'lichess', username: 'me' },
+            { platform: 'chess.com', username: 'me' },
+        ]);
+        const dal = new MockDal(data);
+
+        const events: IngestProgress[] = [];
+        const result = await runIngest(dal, (p) => events.push(p));
+
+        expect(result.didWrite).toBe(true);
+        expect(result.gamesProcessed).toBe(2);
+
+        // Exactly 3 events: 2 fetching (one per account, in order) + 1 done.
+        expect(events.length).toBe(3);
+        expect(events[0]).toEqual({
+            phase: 'fetching',
+            accountIndex: 1,
+            accountTotal: 2,
+            platform: 'lichess',
+            username: 'me',
+        });
+        expect(events[1]).toEqual({
+            phase: 'fetching',
+            accountIndex: 2,
+            accountTotal: 2,
+            platform: 'chess.com',
+            username: 'me',
+        });
+        expect(events[2]).toEqual({ phase: 'done', gamesProcessed: 2 });
+    });
+
+    it('emits done with gamesProcessed=0 when fetches succeed but nothing is in window', async () => {
+        const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+        const data = makeData([variant]);
+
+        // Pre-existing watermark ahead of any returned games — nothing eligible.
+        const acctKey = getAccountKey('lichess', 'me');
+        data.games = { [acctKey]: { watermarkMs: FAKE_NOW.getTime(), recentIds: [] } };
+
+        // Return a game older than the watermark.
+        mockLichessOnce([lichessGame({
+            id: 'old',
+            createdAt: FAKE_NOW.getTime() - 24 * 60 * 60 * 1000,
+            userIsWhite: true,
+            moves: 'e4 e5 Nf3',
+        })]);
+
+        setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+        const dal = new MockDal(data);
+
+        const events: IngestProgress[] = [];
+        const result = await runIngest(dal, (p) => events.push(p));
+
+        expect(result.didWrite).toBe(false);
+        expect(events.length).toBe(2);
+        expect(events[0].phase).toBe('fetching');
+        expect(events[1]).toEqual({ phase: 'done', gamesProcessed: 0 });
     });
 });
 

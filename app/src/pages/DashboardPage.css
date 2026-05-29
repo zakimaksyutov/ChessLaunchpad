@@ -63,6 +63,47 @@
     color: #333;
 }
 
+/* Widget title with a right-aligned status (e.g. sync indicator). */
+.widget-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+/* Inline sync status anchored to a widget header — no layout shift. */
+.widget-sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #888;
+    white-space: nowrap;
+}
+
+.widget-sync-status-active {
+    color: #2c5d8f;
+}
+
+.widget-sync-spinner {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 2px solid #b6cee6;
+    border-top-color: #2c5d8f;
+    border-radius: 50%;
+    animation: widget-sync-spin 0.8s linear infinite;
+}
+
+@keyframes widget-sync-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .widget-sync-spinner { animation: none; }
+}
+
 .widget-empty {
     color: #999;
     font-size: 0.85rem;

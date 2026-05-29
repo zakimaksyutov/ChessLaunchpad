@@ -51,6 +51,23 @@ export interface IngestSummary {
 }
 
 /**
+ * Progress events emitted by runIngest for UI feedback (e.g. Dashboard banner).
+ *
+ * - `fetching`: emitted before each per-account fetch. accountIndex is 1-based.
+ *   On 412 retries the pipeline restarts and these events are re-emitted from 1.
+ * - `done`: emitted exactly once at the end, even on caught failures
+ *   (gamesProcessed == 0 in that case). Callers can treat "done with 0" as a
+ *   silent no-op since failures and "nothing new" are indistinguishable here.
+ *
+ * Never emitted at all when the user has no linked accounts.
+ */
+export type IngestProgress =
+    | { phase: 'fetching'; accountIndex: number; accountTotal: number; platform: Platform; username: string }
+    | { phase: 'done'; gamesProcessed: number };
+
+export type IngestProgressCallback = (progress: IngestProgress) => void;
+
+/**
  * Top-level entry — Dashboard calls this on mount.
  *
  * Pipeline:
@@ -66,22 +83,37 @@ export interface IngestSummary {
  *
  * Never throws — all errors are logged and swallowed.
  */
-export async function runIngest(dal: IDataAccessLayer): Promise<IngestSummary> {
-    const summary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
+export async function runIngest(
+    dal: IDataAccessLayer,
+    onProgress?: IngestProgressCallback,
+): Promise<IngestSummary> {
+    const failureSummary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
     const runNowMs = Date.now();
+    let result: IngestSummary = failureSummary;
+    let emittedAny = false;
+    const wrappedProgress: IngestProgressCallback | undefined = onProgress
+        ? (p) => { emittedAny = true; onProgress(p); }
+        : undefined;
     try {
-        return await runIngestInternal(dal, runNowMs);
+        result = await runIngestInternal(dal, runNowMs, wrappedProgress);
     } catch (e) {
         // Telemetry only — never surface to UI.
         // eslint-disable-next-line no-console
         console.error('GameIngest: failed', e);
-        return summary;
+        result = failureSummary;
     }
+    // Only emit `done` if we ever emitted `fetching` — preserves the
+    // "no linked accounts → never notify" contract.
+    if (onProgress && emittedAny) {
+        onProgress({ phase: 'done', gamesProcessed: result.gamesProcessed });
+    }
+    return result;
 }
 
 async function runIngestInternal(
     dal: IDataAccessLayer,
     runNowMs: number,
+    onProgress?: IngestProgressCallback,
 ): Promise<IngestSummary> {
     const summary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
 
@@ -99,7 +131,7 @@ async function runIngestInternal(
         }));
         if (linkedAccounts.length === 0) return summary;
 
-        const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs);
+        const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress);
 
         const eligible = composeEligibleGames(data.games, fetches, runNowMs);
         const hasCursorChange = fetches.some(af => providerCursorChanged(data.games?.[af.accountKey], af));
@@ -135,11 +167,20 @@ async function fetchAllAccounts(
     accounts: LinkedAccount[],
     gamesMap: GamesIngestMap | undefined,
     runNowMs: number,
+    onProgress?: IngestProgressCallback,
 ): Promise<AccountFetchResult[]> {
     const results: AccountFetchResult[] = [];
-    for (const acct of accounts) {
+    for (let i = 0; i < accounts.length; i++) {
+        const acct = accounts[i];
         const accountKey = getAccountKey(acct.platform, acct.username);
         const state = gamesMap?.[accountKey];
+        onProgress?.({
+            phase: 'fetching',
+            accountIndex: i + 1,
+            accountTotal: accounts.length,
+            platform: acct.platform,
+            username: acct.username,
+        });
         try {
             if (acct.platform === 'lichess') {
                 const games = await fetchLichessGames(acct.username, state, runNowMs);
