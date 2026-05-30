@@ -225,3 +225,8 @@
 .accuracy-badge {
     font-weight: 600;
 }
+
+.repertoire-mistake {
+    font-weight: 700;
+    color: #d32f2f;
+}

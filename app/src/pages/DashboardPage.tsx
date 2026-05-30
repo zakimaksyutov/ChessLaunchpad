@@ -372,7 +372,14 @@ const ActivityFeed: React.FC<{ entries: PracticeLogEntry[] }> = ({ entries }) =>
                                 <span>
                                     Played {gameIngested} game{gameIngested !== 1 ? 's' : ''}
                                     {' · '}{entry.games!.reviewed} correct
-                                    {' · '}{entry.games!.mistakes} mistake{entry.games!.mistakes !== 1 ? 's' : ''}
+                                    {' · '}
+                                    {entry.games!.mistakes > 0 ? (
+                                        <span className="repertoire-mistake">
+                                            {entry.games!.mistakes} repertoire mistake{entry.games!.mistakes !== 1 ? 's' : ''}
+                                        </span>
+                                    ) : (
+                                        <>{entry.games!.mistakes} repertoire mistakes</>
+                                    )}
                                 </span>
                             </div>
                         )}
