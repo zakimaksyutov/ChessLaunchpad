@@ -37,16 +37,15 @@ export class PathPlanner {
         const { fen: targetFen, san: targetSan } = FSRSService.parseCardKey(targetCardKey);
         const orientation = this.graph.getOrientationForCard(targetCardKey);
 
-        // Find best path from root to the target edge
-        const paths = this.graph.getPathsToEdge(
+        // Find best path from root to the target edge — prefers paths crossing
+        // the most due user-turn cards, with shorter length as the tiebreak.
+        let path = this.graph.findBestPathToEdge(
             targetFen,
             targetSan,
             (key) => dueCardKeys.has(key),
-            orientation
+            orientation,
         );
-
-        if (paths.length === 0) return null;
-        let path = paths[0];
+        if (!path) return null;
 
         // Extend path beyond target if there are more due cards deeper
         path = this.extendPath(path, dueCardKeys, orientation);
@@ -69,9 +68,10 @@ export class PathPlanner {
         const { fen: targetFen, san: targetSan } = FSRSService.parseCardKey(newCardKey);
         const orientation = this.graph.getOrientationForCard(newCardKey);
 
-        const paths = this.graph.getPathsToEdge(targetFen, targetSan, undefined, orientation);
-        if (paths.length === 0) return null;
-        let path = paths[0];
+        // With no isDue check, findBestPathToEdge collapses to "shortest path"
+        // — same selection criterion the previous DFS used here.
+        let path = this.graph.findBestPathToEdge(targetFen, targetSan, undefined, orientation);
+        if (!path) return null;
 
         // Extend to include consecutive new cards deeper on the same branch
         path = this.extendForNewCards(path, allNewCardKeys, orientation);
