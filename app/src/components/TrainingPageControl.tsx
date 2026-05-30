@@ -355,6 +355,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 chessRef.current = new Chess();
                 setFen(chessRef.current.fen());
                 setPgn('');
+                // Recall conceptually starts a fresh prefix replay, so reset
+                // the past-prefix flag — otherwise the recall prefix would
+                // play at the slow opponent-reply cadence instead of the
+                // fast prefix cadence used at the start of a traversal.
+                pastPrefixRef.current = false;
+                setPastPrefix(false);
                 scheduleNextAction(eng);
                 onQueueStatsRef.current(eng.getQueueStats());
             }, TEACHING_TO_RECALL_PAUSE_MS);
@@ -492,14 +498,18 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 </div>
             )}
 
-            {/* Hint button — visible throughout active training.
-                Disabled (and dimmed) during the initial autoplay prefix; once
-                the user has had their first turn the button stays visually
-                enabled across opponent-autoplay transitions to avoid a
-                jarring dim/un-dim flicker on every opponent reply. Clicks
+            {/* Hint button — stays mounted throughout active training so it
+                never flickers in and out of the DOM. Hidden entirely during
+                the teaching pass (including its prefix, opponent replies,
+                and the teach→recall pause) because the green hint arrow is
+                shown automatically during teaching. Disabled (and dimmed)
+                during the initial autoplay prefix of regular/recall passes;
+                once the user has had their first turn the button stays
+                visually enabled across opponent-autoplay transitions to
+                avoid a dim/un-dim flicker on every opponent reply. Clicks
                 during opponent autoplay are silently ignored by
                 handleHintRequest. */}
-            {(phase === 'awaiting_user' ||
+            {!isTeaching && (phase === 'awaiting_user' ||
               phase === 'recalling' ||
               phase === 'ahead_of_schedule' ||
               phase === 'autoplay') && (
