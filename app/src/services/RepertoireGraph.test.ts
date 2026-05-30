@@ -290,5 +290,38 @@ describe('RepertoireGraph', () => {
             const path = graph.findBestPathToEdge(startFen, 'e4', undefined, 'black');
             expect(path).toBeNull();
         });
+
+        it('head-to-head transposition: prefers the route with more due cards when both are the same length', () => {
+            // Two transposition routes to the same target Bc4 — both 5 edges long:
+            //   Route A: 1. e4 e5 2. Nf3 Nc6 3. Bc4   (white user moves: e4, Nf3, Bc4)
+            //   Route B: 1. Nf3 e5 2. e4 Nc6 3. Bc4   (white user moves: Nf3, e4, Bc4)
+            //
+            // The post-1.e4-e5-2.Nf3 position == post-1.Nf3-e5-2.e4 position via
+            // transposition, so both routes converge on the same node before move 3.
+            //
+            // Mark only the "e4-from-root" cardKey as due. Route A passes through
+            // it (e4 played at move 1 from the start FEN); Route B's e4 is played
+            // from a different FEN (post-1.Nf3-e5) and has a different cardKey.
+            // Both routes have length 5, but Route A has dueCount = 1 vs. Route B
+            // with dueCount = 0, so Route A must win.
+            const graph = new RepertoireGraph([
+                { pgn: '1. e4 e5 2. Nf3 Nc6 3. Bc4', orientation: 'white' },
+                { pgn: '1. Nf3 e5 2. e4 Nc6 3. Bc4', orientation: 'white' },
+            ]);
+            const e4FromRoot = FSRSService.makeCardKey(startFen, 'e4');
+
+            const fenBeforeBc4 = getFenAfterMoves(['e4', 'e5', 'Nf3', 'Nc6']);
+            const path = graph.findBestPathToEdge(
+                fenBeforeBc4,
+                'Bc4',
+                (k) => k === e4FromRoot,
+                'white',
+            );
+
+            expect(path).not.toBeNull();
+            // First edge must be e4 from the root (Route A), not Nf3 (Route B).
+            expect(path![0].san).toBe('e4');
+            expect(path!.map(e => e.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']);
+        });
     });
 });
