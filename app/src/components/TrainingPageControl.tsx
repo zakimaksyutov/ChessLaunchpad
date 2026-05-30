@@ -46,6 +46,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const [pgn, setPgn] = useState<string>('');
     const [orientation, setOrientation] = useState<'white' | 'black'>('white');
     const [phase, setPhase] = useState<EnginePhase>('idle');
+    // Engine *mode* flags. Unlike `phase` (which flips to 'autoplay' during the
+    // prefix replay and between user turns), these stay true for the entire
+    // duration of a teach/recall pass. They drive the persistent banners so
+    // they don't flicker every time an opponent autoplay move happens.
+    const [isTeaching, setIsTeaching] = useState<boolean>(false);
+    const [isRecalling, setIsRecalling] = useState<boolean>(false);
     const [roundId, setRoundId] = useState<string>('');
     const [statusMessage, setStatusMessage] = useState<string>('');
     const [hintAnnotations, setHintAnnotations] = useState<Annotation[]>([]);
@@ -122,12 +128,16 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         const status = eng.startTraversal();
         if (!status) {
             setPhase('empty');
+            setIsTeaching(false);
+            setIsRecalling(false);
             setStatusMessage('No cards to train.');
             return;
         }
 
         setOrientation(status.orientation);
         setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
         onQueueStatsRef.current(eng.getQueueStats());
 
         if (status.phase === 'empty') {
@@ -165,6 +175,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         const status = eng.getStatus();
         setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
 
         if (status.phase === 'complete') {
             handleTraversalComplete(eng).catch(console.error);
@@ -233,6 +245,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
                 const status = eng.advanceAutoplay();
                 setPhase(status.phase);
+                setIsTeaching(status.isTeaching);
+                setIsRecalling(status.isRecalling);
                 scheduleNextAction(eng);
             }
         } catch (e) {
@@ -320,6 +334,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         // Advance to next action
         const status = eng.getStatus();
         setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
 
         // Board reset for teaching → recall transition
         // Use isRecalling (mode) instead of phase, since the first recall step
@@ -399,11 +415,16 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
     const allAnnotations = [...(pgnAnnotations || []), ...hintAnnotations];
 
-    const boardContainerClass = phase === 'autoplay'
-        ? 'board-wrapper board-glow-autoplay'
-        : phase === 'teaching'
-            ? 'board-wrapper board-glow-teaching'
-            : 'board-wrapper';
+    // Glow priority: the persistent mode glows (teaching / recall) win over
+    // the per-step autoplay glow so the board stays a constant color for the
+    // entire duration of a teach or recall pass, matching the banner.
+    const boardContainerClass = isTeaching
+        ? 'board-wrapper board-glow-teaching'
+        : isRecalling
+            ? 'board-wrapper board-glow-recall'
+            : phase === 'autoplay'
+                ? 'board-wrapper board-glow-autoplay'
+                : 'board-wrapper';
 
     const isInteractive = phase !== 'autoplay' && phase !== 'complete' && phase !== 'empty';
 
@@ -426,13 +447,17 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 />
             </div>
 
-            {/* Status messages */}
-            {phase === 'teaching' && (
+            {/* Status messages.
+                The teaching/recall banners are driven by the engine *mode*
+                flags (not by `phase`) so they remain stable through the
+                initial autoplay prefix and through each opponent autoplay
+                between user turns, rather than flickering in and out. */}
+            {isTeaching && (
                 <div className="status-bar status-bar-teaching">
                     📖 New moves — play the highlighted move
                 </div>
             )}
-            {phase === 'recalling' && (
+            {isRecalling && (
                 <div className="status-bar status-bar-recall">
                     🔁 Recall pass — try to remember the moves
                 </div>

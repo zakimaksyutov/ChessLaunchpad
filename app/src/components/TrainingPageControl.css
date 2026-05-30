@@ -57,6 +57,10 @@
     box-shadow: 0 0 12px 3px rgba(76, 175, 80, 0.6);
 }
 
+.board-glow-recall {
+    box-shadow: 0 0 12px 3px rgba(255, 152, 0, 0.6);
+}
+
 .table {
     border-collapse: collapse;
     width: 100%;
