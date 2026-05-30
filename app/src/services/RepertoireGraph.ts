@@ -124,6 +124,119 @@ export class RepertoireGraph {
     }
 
     /**
+     * Find the single best path from root to a specific edge (fen, move), where
+     * "best" means the path that crosses the most due user-turn cards (for the
+     * given orientation), with shorter length as the tiebreak.
+     *
+     * Uses a topological-sort DP on the orientation-filtered subgraph reachable
+     * from root — runs in O(V + E), with no path-enumeration cap, and always
+     * returns the optimum. If a cycle is detected in the reachable subgraph
+     * (extremely rare in real repertoires — would require an exact position
+     * recurrence), falls back to the bounded `getPathsToEdge` DFS.
+     */
+    findBestPathToEdge(
+        targetFen: string,
+        targetSan: string,
+        isDueCheck?: (cardKey: string) => boolean,
+        orientation?: 'white' | 'black',
+    ): GraphEdge[] | null {
+        const targetEdge = this.getEdge(targetFen, targetSan);
+        if (!targetEdge) return null;
+        if (orientation && !targetEdge.orientations.has(orientation)) return null;
+
+        // 1. Find every node reachable from root via orientation-filtered edges.
+        const reachable = new Set<string>();
+        reachable.add(this.rootFen);
+        const stack: string[] = [this.rootFen];
+        while (stack.length) {
+            const fen = stack.pop()!;
+            for (const e of this.getEdges(fen, orientation)) {
+                if (!reachable.has(e.to)) {
+                    reachable.add(e.to);
+                    stack.push(e.to);
+                }
+            }
+        }
+        if (!reachable.has(targetFen)) return null;
+
+        // 2. Compute in-degrees within the reachable subgraph.
+        const inDegree = new Map<string, number>();
+        for (const fen of reachable) inDegree.set(fen, 0);
+        for (const fen of reachable) {
+            for (const e of this.getEdges(fen, orientation)) {
+                if (reachable.has(e.to)) {
+                    inDegree.set(e.to, (inDegree.get(e.to) ?? 0) + 1);
+                }
+            }
+        }
+
+        // 3. Topological order via Kahn's algorithm. Root should be the only
+        // in-degree-0 node in a well-formed repertoire; we seed with all of
+        // them defensively.
+        const order: string[] = [];
+        const ready: string[] = [];
+        for (const [fen, d] of inDegree) {
+            if (d === 0) ready.push(fen);
+        }
+        while (ready.length) {
+            const fen = ready.shift()!;
+            order.push(fen);
+            for (const e of this.getEdges(fen, orientation)) {
+                if (!reachable.has(e.to)) continue;
+                const d = (inDegree.get(e.to) ?? 0) - 1;
+                inDegree.set(e.to, d);
+                if (d === 0) ready.push(e.to);
+            }
+        }
+
+        // Cycle detected → fall back to the bounded DFS path enumeration.
+        if (order.length !== reachable.size) {
+            const paths = this.getPathsToEdge(targetFen, targetSan, isDueCheck, orientation);
+            return paths[0] ?? null;
+        }
+
+        // 4. DP over topological order. State at each node is the best path
+        // from root ending at that node, scored by (dueCount, -pathLen).
+        type State = { dueCount: number; pathLen: number; parentEdge: GraphEdge | null };
+        const dp = new Map<string, State>();
+        dp.set(this.rootFen, { dueCount: 0, pathLen: 0, parentEdge: null });
+
+        for (const fen of order) {
+            const cur = dp.get(fen);
+            if (!cur) continue;
+            const isUserHere = orientation ? isUserTurnForOrientation(fen, orientation) : false;
+            for (const e of this.getEdges(fen, orientation)) {
+                const edgeDue = (isUserHere && isDueCheck && isDueCheck(e.cardKey)) ? 1 : 0;
+                const newDue = cur.dueCount + edgeDue;
+                const newLen = cur.pathLen + 1;
+                const existing = dp.get(e.to);
+                if (!existing
+                    || newDue > existing.dueCount
+                    || (newDue === existing.dueCount && newLen < existing.pathLen)) {
+                    dp.set(e.to, { dueCount: newDue, pathLen: newLen, parentEdge: e });
+                }
+            }
+        }
+
+        // 5. Reconstruct the path by walking parentEdges from targetFen back
+        // to the root, then append the target edge.
+        const reversed: GraphEdge[] = [];
+        let cur = targetFen;
+        for (let safety = 0; safety < 10_000; safety++) {
+            if (cur === this.rootFen) break;
+            const state = dp.get(cur);
+            if (!state || !state.parentEdge) return null;
+            reversed.push(state.parentEdge);
+            cur = state.parentEdge.from;
+        }
+        if (cur !== this.rootFen) return null;
+
+        reversed.reverse();
+        reversed.push(targetEdge);
+        return reversed;
+    }
+
+    /**
      * Returns all user-turn card keys that are descendants of a given position,
      * useful for determining opponent branch density of due cards.
      * If orientation is provided, only follows edges belonging to that orientation.

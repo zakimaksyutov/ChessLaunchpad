@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { State } from 'ts-fsrs';
 import { PathPlanner } from './PathPlanner';
 import { RepertoireGraph } from './RepertoireGraph';
 import { FSRSService } from './FSRSService';
+import { ReviewQueue } from './ReviewQueue';
+import { FSRSCardData } from '../models/FSRSCardData';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { Chess } from 'chess.js';
 
@@ -154,6 +157,235 @@ describe('PathPlanner', () => {
                 s => s.isUserTurn && s.role === 'target'
             );
             expect(userTargetSteps.length).toBe(1);
+        });
+    });
+
+    // Characterization tests for the queue → planner interaction with two due
+    // cards on the same variant. These do NOT assert what the algorithm "should"
+    // do — they pin down current behavior so a future change is visible.
+    //
+    // Scenario from the user's repertoire:
+    //   1. e4 g6  2. d4 Bg7  3. Nc3 d6  4. Be3 c6  5. Qd2 b5  6. Bd3 Nd7
+    //   7. Nf3 Qc7  8. Ne2
+    // White's user moves (by index in the SAN array):
+    //   0: e4,  2: d4,  4: Nc3,  6: Be3,  8: Qd2,  10: Bd3,  12: Nf3,  14: Ne2
+    // Be3 and Ne2 are both "due". Qd2/Bd3/Nf3 etc. are New (priority 3, so they
+    // are NOT in the dueKeys set passed to the planner).
+    describe('queue-driven target selection (two due cards on same variant)', () => {
+        const longPgn = '1. e4 g6 2. d4 Bg7 3. Nc3 d6 4. Be3 c6 5. Qd2 b5 6. Bd3 Nd7 7. Nf3 Qc7 8. Ne2';
+        const longMoves = ['e4', 'g6', 'd4', 'Bg7', 'Nc3', 'd6', 'Be3', 'c6', 'Qd2', 'b5', 'Bd3', 'Nd7', 'Nf3', 'Qc7', 'Ne2'];
+
+        // Build a Learning-state card with explicit days-past-due. For Learning
+        // state, FSRSService.getOverdueness returns daysPastDue directly from
+        // `d`, with no FSRS interval math — so ordering is deterministic.
+        function learningCardOverdueBy(daysOverdue: number): FSRSCardData {
+            return {
+                d: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
+                s: 1, di: 5, e: 0, sd: 1, ls: 0, r: 1, l: 0,
+                st: State.Learning,
+            };
+        }
+
+        function setup(be3DaysOverdue: number, ne2DaysOverdue: number) {
+            const cards: Record<string, FSRSCardData> = {};
+            const graph = new RepertoireGraph([{ pgn: longPgn, orientation: 'white' }]);
+            const be3Key = makeCardKey(longMoves, 6);
+            const ne2Key = makeCardKey(longMoves, 14);
+
+            // All graph cards start as New (priority 3, included in queue but
+            // NOT in dueKeys because TrainingEngine filters out State.New).
+            const service = new FSRSService(cards);
+            for (const key of graph.getCardKeys()) service.ensureCard(key);
+
+            // Replace Be3 and Ne2 with Learning cards at controlled overdueness.
+            cards[be3Key] = learningCardOverdueBy(be3DaysOverdue);
+            cards[ne2Key] = learningCardOverdueBy(ne2DaysOverdue);
+
+            return { graph, service, be3Key, ne2Key };
+        }
+
+        // Mirrors TrainingEngine.startRegularTraversal: take all non-New
+        // entries from the queue as the dueKeys set.
+        function buildDueKeysFromQueue(service: FSRSService, graph: RepertoireGraph): { queue: ReviewQueue; dueKeys: Set<string> } {
+            const queue = new ReviewQueue();
+            queue.build(service, graph.getCardKeys(), new Date());
+            const dueKeys = new Set<string>();
+            for (const e of queue.getEntries()) {
+                if (e.state !== State.New) dueKeys.add(e.cardKey);
+            }
+            return { queue, dueKeys };
+        }
+
+        it('Ne2 (deeper) more overdue: queue pops Ne2, planner builds ONE variant covering both Be3 and Ne2 as targets', () => {
+            const { graph, service, be3Key, ne2Key } = setup(/* be3Days */ 1, /* ne2Days */ 30);
+
+            const { queue, dueKeys } = buildDueKeysFromQueue(service, graph);
+
+            // Sanity: both cards are in the queue, Ne2 first because more overdue.
+            expect(queue.peek()!.cardKey).toBe(ne2Key);
+            expect(dueKeys).toEqual(new Set([be3Key, ne2Key]));
+
+            const planner = new PathPlanner(graph, service, 2);
+            const plan = planner.planTraversal(ne2Key, dueKeys);
+
+            expect(plan).not.toBeNull();
+            const userSteps = plan!.steps.filter(s => s.isUserTurn);
+            const targetMoves = userSteps.filter(s => s.role === 'target').map(s => s.expectedMove);
+
+            // Both Be3 and Ne2 are reached and marked as targets in the SAME variant.
+            expect(targetMoves).toEqual(['Be3', 'Ne2']);
+
+            // The variant reaches all the way to Ne2 (move 8).
+            const allUserMoves = userSteps.map(s => s.expectedMove);
+            expect(allUserMoves).toEqual(['e4', 'd4', 'Nc3', 'Be3', 'Qd2', 'Bd3', 'Nf3', 'Ne2']);
+        });
+
+        it('Be3 (shallower) more overdue: queue pops Be3, planner still builds ONE variant covering both Be3 and Ne2 — extension dives toward the deeper due card', () => {
+            const { graph, service, be3Key, ne2Key } = setup(/* be3Days */ 30, /* ne2Days */ 1);
+
+            const { queue, dueKeys } = buildDueKeysFromQueue(service, graph);
+
+            // Sanity: both cards are in the queue, Be3 first because more overdue.
+            expect(queue.peek()!.cardKey).toBe(be3Key);
+            expect(dueKeys).toEqual(new Set([be3Key, ne2Key]));
+
+            const planner = new PathPlanner(graph, service, 2);
+            const plan = planner.planTraversal(be3Key, dueKeys);
+
+            expect(plan).not.toBeNull();
+            const userSteps = plan!.steps.filter(s => s.isUserTurn);
+            const targetMoves = userSteps.filter(s => s.role === 'target').map(s => s.expectedMove);
+
+            // Both Be3 and Ne2 are targets in the SAME variant. extendPath now
+            // dives toward the deeper due descendant (Ne2) even when the next
+            // user-turn edges (Qd2, Bd3, Nf3) aren't themselves due — so the
+            // outcome no longer depends on which one the queue popped first.
+            expect(targetMoves).toEqual(['Be3', 'Ne2']);
+
+            const allUserMoves = userSteps.map(s => s.expectedMove);
+            expect(allUserMoves).toEqual(['e4', 'd4', 'Nc3', 'Be3', 'Qd2', 'Bd3', 'Nf3', 'Ne2']);
+        });
+    });
+
+    // Chain extension: 3+ due cards on the same line, each separated by
+    // filler (non-due) user-turn moves wider than contextDepth.
+    describe('extendPath: chain extension across multiple non-due gaps', () => {
+        // Closed Ruy Lopez (Tchigorin-ish):
+        //   1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7 6.Re1 b5 7.Bb3 d6 8.c3 O-O 9.h3 Nb8
+        // White user moves (by index in the SAN array):
+        //   0:e4, 2:Nf3, 4:Bb5, 6:Ba4, 8:O-O, 10:Re1, 12:Bb3, 14:c3, 16:h3
+        // Targets at indices 0 (e4), 8 (O-O), 16 (h3). Between each successive
+        // target pair there are 3 non-due user-turn moves — wider than
+        // contextDepth=2, so the OLD cool-down rule would have stopped before
+        // reaching the next target.
+        const longPgn = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8';
+        const longMoves = ['e4','e5','Nf3','Nc6','Bb5','a6','Ba4','Nf6','O-O','Be7','Re1','b5','Bb3','d6','c3','O-O','h3','Nb8'];
+
+        function learningCardOverdueBy(daysOverdue: number) {
+            return {
+                d: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
+                s: 1, di: 5, e: 0, sd: 1, ls: 0, r: 1, l: 0,
+                st: State.Learning,
+            };
+        }
+
+        it('picks up three non-adjacent due cards on the same line in a single traversal', () => {
+            const cards: Record<string, FSRSCardData> = {};
+            const graph = new RepertoireGraph([{ pgn: longPgn, orientation: 'white' }]);
+            // Sanity-check the PGN actually loaded (catches typos that would
+            // otherwise silently produce an empty graph).
+            expect(graph.getCardKeys().length).toBe(9);
+
+            const e4Key = makeCardKey(longMoves, 0);
+            const ooKey = makeCardKey(longMoves, 8);
+            const h3Key = makeCardKey(longMoves, 16);
+
+            const service = new FSRSService(cards);
+            for (const key of graph.getCardKeys()) service.ensureCard(key);
+            cards[e4Key] = learningCardOverdueBy(30);   // most overdue → popped first
+            cards[ooKey] = learningCardOverdueBy(10);
+            cards[h3Key] = learningCardOverdueBy(5);
+
+            const queue = new ReviewQueue();
+            queue.build(service, graph.getCardKeys(), new Date());
+            expect(queue.peek()!.cardKey).toBe(e4Key);
+
+            const dueKeys = new Set<string>();
+            for (const e of queue.getEntries()) {
+                if (e.state !== State.New) dueKeys.add(e.cardKey);
+            }
+
+            const planner = new PathPlanner(graph, service, 2);
+            const plan = planner.planTraversal(e4Key, dueKeys);
+
+            expect(plan).not.toBeNull();
+            const userSteps = plan!.steps.filter(s => s.isUserTurn);
+            const targetMoves = userSteps.filter(s => s.role === 'target').map(s => s.expectedMove);
+
+            // All three due cards reach 🎯 in the same variant despite gaps > contextDepth.
+            expect(targetMoves).toEqual(['e4', 'O-O', 'h3']);
+
+            // Variant walks the full PGN — the last target is the last user
+            // move in the graph, so there is no cool-down to append.
+            const allUserMoves = userSteps.map(s => s.expectedMove);
+            expect(allUserMoves).toEqual([
+                'e4', 'Nf3', 'Bb5', 'Ba4', 'O-O', 'Re1', 'Bb3', 'c3', 'h3',
+            ]);
+        });
+    });
+
+    // Verifies the overdueness tiebreak in pickBranchWithMostDue: when two
+    // opponent branches have the same number of due descendants, the branch
+    // holding the most-overdue card should win.
+    describe('extendPath: opponent-branch overdueness tiebreak', () => {
+        function learningCardOverdueBy(daysOverdue: number) {
+            return {
+                d: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
+                s: 1, di: 5, e: 0, sd: 1, ls: 0, r: 1, l: 0,
+                st: State.Learning,
+            };
+        }
+
+        it('picks the opponent branch containing the more-overdue descendant when due counts tie', () => {
+            // Two opponent responses to 1.e4 (c5, e5), each with one due white follow-up.
+            // Both branches have due-count = 1. Bc4 is much more overdue than Nf3,
+            // so the e5 branch must be selected over the c5 branch.
+            const cards: Record<string, FSRSCardData> = {};
+            const graph = new RepertoireGraph([
+                { pgn: '1. e4 c5 2. Nf3', orientation: 'white' },
+                { pgn: '1. e4 e5 2. Bc4', orientation: 'white' },
+            ]);
+            const e4Key = makeCardKey(['e4'], 0);
+            const nf3Key = makeCardKey(['e4', 'c5', 'Nf3'], 2);
+            const bc4Key = makeCardKey(['e4', 'e5', 'Bc4'], 2);
+
+            const service = new FSRSService(cards);
+            for (const key of graph.getCardKeys()) service.ensureCard(key);
+            cards[e4Key] = learningCardOverdueBy(30);  // popped first; the target
+            cards[nf3Key] = learningCardOverdueBy(1);
+            cards[bc4Key] = learningCardOverdueBy(20);
+
+            const queue = new ReviewQueue();
+            queue.build(service, graph.getCardKeys(), new Date());
+            expect(queue.peek()!.cardKey).toBe(e4Key);
+
+            const dueKeys = new Set<string>();
+            for (const e of queue.getEntries()) {
+                if (e.state !== State.New) dueKeys.add(e.cardKey);
+            }
+
+            const planner = new PathPlanner(graph, service, 2);
+            const plan = planner.planTraversal(e4Key, dueKeys);
+
+            expect(plan).not.toBeNull();
+            const allUserMoves = plan!.steps.filter(s => s.isUserTurn).map(s => s.expectedMove);
+
+            // The opponent-fork tiebreak should send us down the e5 branch
+            // because Bc4 is more overdue than Nf3, even though both branches
+            // have the same dueCount = 1.
+            expect(allUserMoves).toContain('Bc4');
+            expect(allUserMoves).not.toContain('Nf3');
+            expect(allUserMoves).toEqual(['e4', 'Bc4']);
         });
     });
 });
