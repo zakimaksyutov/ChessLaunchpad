@@ -34,6 +34,10 @@ const AUTOPLAY_MOVE_DELAY_MS = 250;
 const OPPONENT_MOVE_DELAY_MS = 500;
 const ANNOTATION_DELAY_BASE_IN_MS = 200;
 const ANNOTATION_DELAY_GROWTH = 1.26;
+// Beat held at the end of a teaching pass before the recall pass begins, so
+// the user can register that they completed the new-moves phase before the
+// banner/glow flip to recall and the board resets to replay the line.
+const TEACHING_TO_RECALL_PAUSE_MS = 1200;
 
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     variants,
@@ -46,6 +50,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const [pgn, setPgn] = useState<string>('');
     const [orientation, setOrientation] = useState<'white' | 'black'>('white');
     const [phase, setPhase] = useState<EnginePhase>('idle');
+    // Engine *mode* flags. Unlike `phase` (which flips to 'autoplay' during the
+    // prefix replay and between user turns), these stay true for the entire
+    // duration of a teach/recall pass. They drive the persistent banners so
+    // they don't flicker every time an opponent autoplay move happens.
+    const [isTeaching, setIsTeaching] = useState<boolean>(false);
+    const [isRecalling, setIsRecalling] = useState<boolean>(false);
     const [roundId, setRoundId] = useState<string>('');
     const [statusMessage, setStatusMessage] = useState<string>('');
     const [hintAnnotations, setHintAnnotations] = useState<Annotation[]>([]);
@@ -122,12 +132,16 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         const status = eng.startTraversal();
         if (!status) {
             setPhase('empty');
+            setIsTeaching(false);
+            setIsRecalling(false);
             setStatusMessage('No cards to train.');
             return;
         }
 
         setOrientation(status.orientation);
         setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
         onQueueStatsRef.current(eng.getQueueStats());
 
         if (status.phase === 'empty') {
@@ -165,6 +179,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         const status = eng.getStatus();
         setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
 
         if (status.phase === 'complete') {
             handleTraversalComplete(eng).catch(console.error);
@@ -233,6 +249,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
                 const status = eng.advanceAutoplay();
                 setPhase(status.phase);
+                setIsTeaching(status.isTeaching);
+                setIsRecalling(status.isRecalling);
                 scheduleNextAction(eng);
             }
         } catch (e) {
@@ -319,16 +337,39 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         // Advance to next action
         const status = eng.getStatus();
-        setPhase(status.phase);
 
-        // Board reset for teaching → recall transition
-        // Use isRecalling (mode) instead of phase, since the first recall step
-        // may be 'autoplay' (e.g., opponent's e4 for black variants).
+        // Teaching → recall transition: hold the final teaching position
+        // (with the green banner/glow still visible) for a brief pause so the
+        // user can register that they completed the new-moves phase before
+        // the orange recall pass takes over and the board resets. We detect
+        // the transition by comparing the engine's new mode against the
+        // stale `phase` from the current render.
         if (status.isRecalling && phase === 'teaching') {
-            chessRef.current = new Chess();
-            setFen(chessRef.current.fen());
-            setPgn('');
+            playSound(soundSuccess);
+            timeoutRef.current = setTimeout(() => {
+                timeoutRef.current = null;
+                if (!mountedRef.current) return;
+                setPhase(status.phase);
+                setIsTeaching(status.isTeaching);
+                setIsRecalling(status.isRecalling);
+                chessRef.current = new Chess();
+                setFen(chessRef.current.fen());
+                setPgn('');
+                // Recall conceptually starts a fresh prefix replay, so reset
+                // the past-prefix flag — otherwise the recall prefix would
+                // play at the slow opponent-reply cadence instead of the
+                // fast prefix cadence used at the start of a traversal.
+                pastPrefixRef.current = false;
+                setPastPrefix(false);
+                scheduleNextAction(eng);
+                onQueueStatsRef.current(eng.getQueueStats());
+            }, TEACHING_TO_RECALL_PAUSE_MS);
+            return true;
         }
+
+        setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
 
         scheduleNextAction(eng);
         onQueueStatsRef.current(eng.getQueueStats());
@@ -399,11 +440,16 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
     const allAnnotations = [...(pgnAnnotations || []), ...hintAnnotations];
 
-    const boardContainerClass = phase === 'autoplay'
-        ? 'board-wrapper board-glow-autoplay'
-        : phase === 'teaching'
-            ? 'board-wrapper board-glow-teaching'
-            : 'board-wrapper';
+    // Glow priority: the persistent mode glows (teaching / recall) win over
+    // the per-step autoplay glow so the board stays a constant color for the
+    // entire duration of a teach or recall pass, matching the banner.
+    const boardContainerClass = isTeaching
+        ? 'board-wrapper board-glow-teaching'
+        : isRecalling
+            ? 'board-wrapper board-glow-recall'
+            : phase === 'autoplay'
+                ? 'board-wrapper board-glow-autoplay'
+                : 'board-wrapper';
 
     const isInteractive = phase !== 'autoplay' && phase !== 'complete' && phase !== 'empty';
 
@@ -426,13 +472,17 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 />
             </div>
 
-            {/* Status messages */}
-            {phase === 'teaching' && (
+            {/* Status messages.
+                The teaching/recall banners are driven by the engine *mode*
+                flags (not by `phase`) so they remain stable through the
+                initial autoplay prefix and through each opponent autoplay
+                between user turns, rather than flickering in and out. */}
+            {isTeaching && (
                 <div className="status-bar status-bar-teaching">
                     📖 New moves — play the highlighted move
                 </div>
             )}
-            {phase === 'recalling' && (
+            {isRecalling && (
                 <div className="status-bar status-bar-recall">
                     🔁 Recall pass — try to remember the moves
                 </div>
@@ -448,14 +498,18 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 </div>
             )}
 
-            {/* Hint button — visible throughout active training.
-                Disabled (and dimmed) during the initial autoplay prefix; once
-                the user has had their first turn the button stays visually
-                enabled across opponent-autoplay transitions to avoid a
-                jarring dim/un-dim flicker on every opponent reply. Clicks
+            {/* Hint button — stays mounted throughout active training so it
+                never flickers in and out of the DOM. Hidden entirely during
+                the teaching pass (including its prefix, opponent replies,
+                and the teach→recall pause) because the green hint arrow is
+                shown automatically during teaching. Disabled (and dimmed)
+                during the initial autoplay prefix of regular/recall passes;
+                once the user has had their first turn the button stays
+                visually enabled across opponent-autoplay transitions to
+                avoid a dim/un-dim flicker on every opponent reply. Clicks
                 during opponent autoplay are silently ignored by
                 handleHintRequest. */}
-            {(phase === 'awaiting_user' ||
+            {!isTeaching && (phase === 'awaiting_user' ||
               phase === 'recalling' ||
               phase === 'ahead_of_schedule' ||
               phase === 'autoplay') && (
