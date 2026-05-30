@@ -34,6 +34,10 @@ const AUTOPLAY_MOVE_DELAY_MS = 250;
 const OPPONENT_MOVE_DELAY_MS = 500;
 const ANNOTATION_DELAY_BASE_IN_MS = 200;
 const ANNOTATION_DELAY_GROWTH = 1.26;
+// Beat held at the end of a teaching pass before the recall pass begins, so
+// the user can register that they completed the new-moves phase before the
+// banner/glow flip to recall and the board resets to replay the line.
+const TEACHING_TO_RECALL_PAUSE_MS = 1200;
 
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     variants,
@@ -333,18 +337,33 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         // Advance to next action
         const status = eng.getStatus();
+
+        // Teaching → recall transition: hold the final teaching position
+        // (with the green banner/glow still visible) for a brief pause so the
+        // user can register that they completed the new-moves phase before
+        // the orange recall pass takes over and the board resets. We detect
+        // the transition by comparing the engine's new mode against the
+        // stale `phase` from the current render.
+        if (status.isRecalling && phase === 'teaching') {
+            playSound(soundSuccess);
+            timeoutRef.current = setTimeout(() => {
+                timeoutRef.current = null;
+                if (!mountedRef.current) return;
+                setPhase(status.phase);
+                setIsTeaching(status.isTeaching);
+                setIsRecalling(status.isRecalling);
+                chessRef.current = new Chess();
+                setFen(chessRef.current.fen());
+                setPgn('');
+                scheduleNextAction(eng);
+                onQueueStatsRef.current(eng.getQueueStats());
+            }, TEACHING_TO_RECALL_PAUSE_MS);
+            return true;
+        }
+
         setPhase(status.phase);
         setIsTeaching(status.isTeaching);
         setIsRecalling(status.isRecalling);
-
-        // Board reset for teaching → recall transition
-        // Use isRecalling (mode) instead of phase, since the first recall step
-        // may be 'autoplay' (e.g., opponent's e4 for black variants).
-        if (status.isRecalling && phase === 'teaching') {
-            chessRef.current = new Chess();
-            setFen(chessRef.current.fen());
-            setPgn('');
-        }
 
         scheduleNextAction(eng);
         onQueueStatsRef.current(eng.getQueueStats());
