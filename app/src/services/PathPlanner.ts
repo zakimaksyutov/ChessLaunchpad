@@ -109,6 +109,15 @@ export class PathPlanner {
         let currentFen = path[path.length - 1].to;
         const visited = new Set<string>(path.map(e => e.from));
 
+        // Snapshot overdueness for every due card up front so branch tiebreaks
+        // can prefer the branch holding the most-overdue descendant. Captured
+        // once per call so tiebreaks are stable across the whole extension.
+        const now = new Date();
+        const overduenessByCard = new Map<string, number>();
+        for (const key of dueCardKeys) {
+            overduenessByCard.set(key, this.fsrsService.getOverdueness(key, now));
+        }
+
         // Keep extending while there are due cards ahead
         for (let safety = 0; safety < 200; safety++) {
             const edges = this.graph.getEdges(currentFen, orientation);
@@ -119,7 +128,7 @@ export class PathPlanner {
 
             if (!isUserTurnHere && edges.length > 0) {
                 // Opponent move: pick branch with most due cards
-                const bestOpponent = this.pickBranchWithMostDue(edges, dueCardKeys, orientation);
+                const bestOpponent = this.pickBranchWithMostDue(edges, dueCardKeys, orientation, overduenessByCard);
                 if (!bestOpponent || visited.has(bestOpponent.to)) break;
                 visited.add(bestOpponent.from);
                 extended.push(bestOpponent);
@@ -137,7 +146,24 @@ export class PathPlanner {
                     continue;
                 }
 
-                // No more due cards, but add cool-down edges
+                // No immediate due edge — but if some descendant is still due,
+                // dive toward the branch with the most due descendants. This
+                // lets a single traversal sweep up multiple due cards on the
+                // same line (mirrors the opponent-turn behavior above).
+                const towardDue = this.pickBranchWithMostDue(edges, dueCardKeys, orientation, overduenessByCard);
+                if (towardDue && !visited.has(towardDue.to)) {
+                    const reachableDue = this.graph
+                        .getDescendantCardKeys(towardDue.to, orientation)
+                        .some(k => dueCardKeys.has(k));
+                    if (reachableDue) {
+                        visited.add(towardDue.from);
+                        extended.push(towardDue);
+                        currentFen = towardDue.to;
+                        continue;
+                    }
+                }
+
+                // No more due cards anywhere ahead — add cool-down edges
                 const anyEdge = edges[0];
                 if (!visited.has(anyEdge.to)) {
                     visited.add(anyEdge.from);
@@ -276,18 +302,39 @@ export class PathPlanner {
         return steps;
     }
 
-    private pickBranchWithMostDue(edges: GraphEdge[], dueCardKeys: Set<string>, orientation: 'white' | 'black'): GraphEdge | null {
+    private pickBranchWithMostDue(
+        edges: GraphEdge[],
+        dueCardKeys: Set<string>,
+        orientation: 'white' | 'black',
+        overduenessByCard?: Map<string, number>,
+    ): GraphEdge | null {
         if (edges.length === 0) return null;
 
         let best: GraphEdge | null = null;
         let bestCount = -1;
+        let bestMaxOverdueness = -Infinity;
 
         for (const edge of edges) {
             const descendants = this.graph.getDescendantCardKeys(edge.to, orientation);
-            const count = descendants.filter(k => dueCardKeys.has(k)).length;
-            if (count > bestCount || (count === bestCount && Math.random() < 0.5)) {
+            let count = 0;
+            let maxOverdueness = 0;
+            for (const k of descendants) {
+                if (!dueCardKeys.has(k)) continue;
+                count++;
+                const o = overduenessByCard?.get(k) ?? 0;
+                if (o > maxOverdueness) maxOverdueness = o;
+            }
+
+            // Primary: most due descendants.
+            // Tiebreak: branch holding the most-overdue descendant.
+            // Strict comparisons leave the original edge order as the final tiebreak.
+            if (
+                count > bestCount ||
+                (count === bestCount && maxOverdueness > bestMaxOverdueness)
+            ) {
                 best = edge;
                 bestCount = count;
+                bestMaxOverdueness = maxOverdueness;
             }
         }
 

@@ -240,7 +240,7 @@ describe('PathPlanner', () => {
             expect(allUserMoves).toEqual(['e4', 'd4', 'Nc3', 'Be3', 'Qd2', 'Bd3', 'Nf3', 'Ne2']);
         });
 
-        it('Be3 (shallower) more overdue: queue pops Be3, planner builds variant that ONLY targets Be3 — Ne2 is never reached and stays in the queue', () => {
+        it('Be3 (shallower) more overdue: queue pops Be3, planner still builds ONE variant covering both Be3 and Ne2 — extension dives toward the deeper due card', () => {
             const { graph, service, be3Key, ne2Key } = setup(/* be3Days */ 30, /* ne2Days */ 1);
 
             const { queue, dueKeys } = buildDueKeysFromQueue(service, graph);
@@ -256,21 +256,14 @@ describe('PathPlanner', () => {
             const userSteps = plan!.steps.filter(s => s.isUserTurn);
             const targetMoves = userSteps.filter(s => s.role === 'target').map(s => s.expectedMove);
 
-            // Only Be3 is a target in this plan — Ne2 is also due but never
-            // reached because extendPath only chases due edges, and Qd2/Bd3/Nf3
-            // are not due. Cool-down stops after contextDepth=2 user moves.
-            expect(targetMoves).toEqual(['Be3']);
+            // Both Be3 and Ne2 are targets in the SAME variant. extendPath now
+            // dives toward the deeper due descendant (Ne2) even when the next
+            // user-turn edges (Qd2, Bd3, Nf3) aren't themselves due — so the
+            // outcome no longer depends on which one the queue popped first.
+            expect(targetMoves).toEqual(['Be3', 'Ne2']);
 
-            // The plan stops well before Ne2 (move 8). Be3 is followed by at
-            // most contextDepth=2 cool-down user moves (Qd2, Bd3).
             const allUserMoves = userSteps.map(s => s.expectedMove);
-            expect(allUserMoves).not.toContain('Ne2');
-            expect(allUserMoves).not.toContain('Nf3');
-            expect(allUserMoves).toEqual(['e4', 'd4', 'Nc3', 'Be3', 'Qd2', 'Bd3']);
-
-            // Ne2 must therefore still be in the queue (in a real session it
-            // would require a second, separate traversal).
-            expect(queue.getEntries().some(e => e.cardKey === ne2Key)).toBe(true);
+            expect(allUserMoves).toEqual(['e4', 'd4', 'Nc3', 'Be3', 'Qd2', 'Bd3', 'Nf3', 'Ne2']);
         });
     });
 });
