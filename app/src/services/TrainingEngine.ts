@@ -17,6 +17,7 @@ export type EnginePhase =
     | 'branch_point'
     | 'complete'
     | 'ahead_of_schedule'
+    | 'ahead_of_schedule_pending'
     | 'empty';
 
 export interface MoveResult {
@@ -70,6 +71,7 @@ export class TrainingEngine {
     private _isAheadOfSchedule: boolean = false;
     private _isRecalling: boolean = false;
     private _recallPlan: TraversalPlan | null = null; // saved for recall pass after teaching
+    private _pendingAheadPlan: TraversalPlan | null = null; // staged ahead-of-schedule plan awaiting user confirmation
     private hintRequested: boolean = false;
 
     // Annotation lookup from PGN variants, keyed by `${orientation}::${fen}`
@@ -137,10 +139,17 @@ export class TrainingEngine {
         this._isAheadOfSchedule = false;
         this._isRecalling = false;
         this._recallPlan = null;
+        this._pendingAheadPlan = null;
         this.hintRequested = false;
+        // Clear stale traversal state explicitly so the pending phase reports
+        // a clean status (totalSteps=0, getCurrentStep()=null) and any later
+        // call that accidentally hits stale plan data fails safely.
+        this.plan = null;
+        this.stepIndex = 0;
 
         if (this.queue.isEmpty()) {
-            // All cards reviewed — enter ahead-of-schedule mode
+            // All cards reviewed — stage an ahead-of-schedule traversal but
+            // wait for explicit user confirmation before executing it.
             const weakest = this.fsrsService.getWeakestCards(cardKeys, now, 1);
             if (weakest.length === 0) {
                 this.phase = 'empty';
@@ -149,15 +158,14 @@ export class TrainingEngine {
 
             const dueKeys = new Set<string>();
             dueKeys.add(weakest[0]);
-            this.plan = this.planner.planTraversal(weakest[0], dueKeys);
-            if (!this.plan) {
+            const aheadPlan = this.planner.planTraversal(weakest[0], dueKeys);
+            if (!aheadPlan) {
                 this.phase = 'empty';
                 return this.getStatus();
             }
-            this._isAheadOfSchedule = true;
-            this.phase = 'ahead_of_schedule';
-            this.stepIndex = 0;
-            return this.advanceToNextAction();
+            this._pendingAheadPlan = aheadPlan;
+            this.phase = 'ahead_of_schedule_pending';
+            return this.getStatus();
         }
 
         const entry = this.queue.peek()!;
@@ -167,6 +175,24 @@ export class TrainingEngine {
         }
 
         return this.startRegularTraversal(entry.cardKey);
+    }
+
+    /**
+     * Confirm and begin the staged ahead-of-schedule traversal. Called by the
+     * UI after the user clicks "Practice ahead of schedule" on the session-
+     * complete panel. Returns null if no pending plan exists (callers should
+     * only invoke this when `phase === 'ahead_of_schedule_pending'`).
+     */
+    acceptAheadOfSchedule(): EngineStatus | null {
+        if (!this._pendingAheadPlan || this.phase !== 'ahead_of_schedule_pending') {
+            return null;
+        }
+        this.plan = this._pendingAheadPlan;
+        this._pendingAheadPlan = null;
+        this.stepIndex = 0;
+        this._isAheadOfSchedule = true;
+        this.phase = 'ahead_of_schedule';
+        return this.advanceToNextAction();
     }
 
     /**
@@ -181,6 +207,13 @@ export class TrainingEngine {
      * Handle a user's move attempt. Returns result indicating acceptance, rating, etc.
      */
     handleUserMove(fromSq: string, toSq: string, chess: Chess): MoveResult {
+        // Hard guard: no plan exists yet in pending phase. Avoid the
+        // "step null → isEndOfTraversal: true" path below which would
+        // trigger the UI's traversal-complete flow and re-enter pending.
+        if (this.phase === 'ahead_of_schedule_pending') {
+            return { accepted: false, isEndOfTraversal: false };
+        }
+
         const step = this.getCurrentStep();
         if (!step) return { accepted: false, isEndOfTraversal: true };
 

@@ -141,19 +141,58 @@ The Dashboard uses these events to drive:
 
 ### 8.1 Mistake-game replay
 
-When ingest classifies a game as a deviation, persist a truncated PGN (moves 1 through the deviation move, inclusive) on the backend. The Training page can then occasionally select positions from these stored games as a training source — letting the user replay through their own historical mistakes up to the choice point.
+When ingest classifies a game as a deviation, persist a truncated PGN (moves 1 through the deviation move, inclusive) on the backend so the Training page can later replay the user through their own historical mistake up to the choice point.
 
-**Per stored mistake-game (sketch):**
+#### 8.1.1 User experience
 
-- Truncated PGN.
-- Source reference (platform, account, original game ID, `createdAt`).
-- Replay count — how many times this game has been used as a training source.
-- Deviation FEN + expected repertoire move(s), for fast lookup and dedup.
+- A stored mistake-game becomes a candidate training source for the position the user deviated at. Surface, frequency, and selection policy live with the Training page and are out of scope here.
+- A mistake-game is **only** offered while it is still a mistake against the live repertoire:
+  - If the line was removed from the repertoire, the position is no longer offered.
+  - If the user later added the played move to the repertoire (it is no longer a mistake), that specific game is no longer offered.
+- When the user **unlinks** a Lichess or Chess.com account, all stored mistake-games from that account are dropped. Re-linking does **not** restore them (only games newer than the post-unlink ingest watermark are eligible).
+- Storage is bounded (see §8.1.3); once full, older games are evicted in favor of newer ones.
 
-**Open design questions for that session:**
+#### 8.1.2 Backend contract
 
-- Storage location (likely sibling on the synced blob) and per-user cap.
-- Eviction policy (FIFO? by replay count? once the deviation card is FSRS-mastered?).
-- Training UX: dedicated mode, interleaved with regular review, or surfaced as a Dashboard suggestion?
-- Dedup across multiple games sharing the same deviation FEN.
-- Whether to also keep the game's full PGN reference (link out) without storing it.
+A new top-level property **`mistakeGames`** on the synced repertoire blob, sibling to `games` / `activity` / `settings`. The backend whitelists it as `array | null`, free-form items, validated client-side — same treatment `games` gets today.
+
+> **This requires a backend schema change.** `docs/BACKEND_API_CONTRACT.md` is a read-only mirror of the backend repo; the backend must ship the whitelist before the frontend writes the field. Until then, frontend writes are gated off and the rest of the ingest payload (FSRS ratings, activity counters, `games` cursors) continues to land on every PUT.
+
+Shape persisted to the backend — a flat array of entries:
+
+```jsonc
+"mistakeGames": [
+  {
+    "pgn": "1. e4 c5 2. Bc4",      // moves 1..deviation inclusive, SAN, no headers/comments/NAGs
+    "orientation": "white",         // which side the user played
+    "platform": "lichess",          // "lichess" | "chess.com"
+    "account": "nykterstein",       // usernameLower — same keying as games[]
+    "id": "abc123",                 // raw provider game id — same keying as recentIds
+    "createdAt": 1748000000000,     // ms epoch
+    "replayCount": 0,               // # times this game has been used as a training source
+    "lastReplayMs": null            // ms epoch of last replay, or null
+  }
+]
+```
+
+Field rules that are part of the contract:
+
+- The deviation FEN and the deviation move are **not stored** — both are derivable by replaying the PGN. Consumers (the Training page) build whatever in-memory FEN index they need.
+- `orientation` **is** stored explicitly because the headerless PGN by itself does not say which side is the user.
+- `pgn` is capped at **1024 chars** (matching the existing repertoire `pgn` cap). If the deviation prefix would exceed the cap the entry is **skipped, not truncated** — clients never persist a syntactically broken PGN.
+- The system-wide dedup key for an entry is the tuple `(platform, account, id)`. `id` alone is not unique across platforms / accounts.
+- The provider game URL is not stored; it can be reconstructed from `platform + id` (e.g. `https://lichess.org/${id}`, `https://www.chess.com/game/live/${id}`).
+
+#### 8.1.3 Cap
+
+A single bound, in the same spirit as `recentIds` (50) and `practiceLog` (30):
+
+- At most **20** entries in the `mistakeGames` array. Worst-case footprint ≈ 10 KB on the blob.
+
+When the cap is exceeded, the oldest entries by `createdAt` are dropped.
+
+#### 8.1.4 Out of scope for this slice
+
+- Training UX: dedicated mode vs. interleaved review vs. Dashboard suggestion — decided when the Training page integration is scoped.
+- Storing full (un-truncated) PGNs on the backend.
+- Mastery-based eviction (drop entries once their deviation card reaches a high-stability FSRS state). The cap-based policy in §8.1.3 is sufficient for v1; revisit if it proves too aggressive or too lax in practice.

@@ -28,6 +28,8 @@ interface TrainingPageControlProps {
     onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
     onQueueStats: (stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => void;
     onCardRated: () => void;
+    reviewedToday: number;
+    onDone: () => void;
 }
 
 const AUTOPLAY_MOVE_DELAY_MS = 250;
@@ -45,6 +47,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     onTraversalComplete,
     onQueueStats,
     onCardRated,
+    reviewedToday,
+    onDone,
 }) => {
     const [fen, setFen] = useState<string>(() => new Chess().fen());
     const [pgn, setPgn] = useState<string>('');
@@ -113,7 +117,12 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         engineRef.current = engine;
     }, [engine]);
 
-    // Start traversal on mount / engine change
+    // Start traversal on mount / engine change. Note: this function only ever
+    // calls `eng.startTraversal()` (the default, no-confirm path). If all due
+    // cards are reviewed the engine returns `'ahead_of_schedule_pending'` —
+    // we surface the session-complete panel and wait for the user to either
+    // exit or confirm via `acceptAheadOfSchedule`. We do NOT auto-roll into
+    // ahead-of-schedule autoplay.
     const startNewTraversal = useCallback(() => {
         const eng = engineRef.current;
         if (!eng) return;
@@ -149,12 +158,58 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             return;
         }
 
+        if (status.phase === 'ahead_of_schedule_pending') {
+            // Render the session-complete panel and wait for user input.
+            // Do NOT schedule any autoplay — the engine has not built a
+            // live plan and getCurrentStep() returns null.
+            return;
+        }
+
         if (status.phase === 'ahead_of_schedule') {
             setStatusMessage('All due cards reviewed — practicing ahead of schedule');
         }
 
         scheduleNextAction(eng);
     }, []);
+
+    // User confirmed they want to keep training past their due queue.
+    // Adopts the engine's pre-staged ahead-of-schedule plan and resumes
+    // normal scheduling.
+    const acceptAhead = useCallback(() => {
+        const eng = engineRef.current;
+        if (!eng) return;
+
+        correctCardsCountRef.current = 0;
+        pastPrefixRef.current = false;
+        setPastPrefix(false);
+        chessRef.current = new Chess();
+        setFen(chessRef.current.fen());
+        setPgn('');
+        setStatusMessage('');
+        setHintAnnotations([]);
+        setPgnAnnotations([]);
+        setRoundId(Math.random().toString(36).substring(7));
+
+        const status = eng.acceptAheadOfSchedule();
+        if (!status) {
+            // Shouldn't happen if button is only shown in pending phase, but
+            // be defensive: fall back to the regular start flow.
+            startNewTraversal();
+            return;
+        }
+
+        setOrientation(status.orientation);
+        setPhase(status.phase);
+        setIsTeaching(status.isTeaching);
+        setIsRecalling(status.isRecalling);
+        onQueueStatsRef.current(eng.getQueueStats());
+
+        if (status.phase === 'ahead_of_schedule') {
+            setStatusMessage('All due cards reviewed — practicing ahead of schedule');
+        }
+
+        scheduleNextAction(eng);
+    }, [startNewTraversal]);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -189,6 +244,13 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
 
         if (status.phase === 'empty') {
             setStatusMessage('No cards to train.');
+            return;
+        }
+
+        // Defensive: never schedule work in the pending phase. The session-
+        // complete panel is rendered from the phase state and the user must
+        // click a button to proceed.
+        if (status.phase === 'ahead_of_schedule_pending') {
             return;
         }
 
@@ -262,8 +324,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         const eng = engineRef.current;
         if (!eng) return false;
 
-        // Guard against clicks during autoplay (race condition)
-        if (phase === 'autoplay' || phase === 'complete' || phase === 'empty') return false;
+        // Guard against clicks during autoplay (race condition) and during
+        // the session-complete (pending) panel where no plan exists.
+        if (phase === 'autoplay' || phase === 'complete' || phase === 'empty' || phase === 'ahead_of_schedule_pending') return false;
 
         const chess = chessRef.current;
         const result = eng.handleUserMove(orig, dest, chess);
@@ -410,6 +473,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         // We avoid disabling the button visually (which would flicker on every
         // opponent reply) and instead just drop the click.
         if (eng.getStatus().phase === 'autoplay') return;
+        // Defensive: hint button shouldn't be rendered in pending, but guard
+        // against any leaked invocation.
+        if (eng.getStatus().phase === 'ahead_of_schedule_pending') return;
 
         const hint = eng.requestHint();
         if (hint) {
@@ -451,7 +517,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 ? 'board-wrapper board-glow-autoplay'
                 : 'board-wrapper';
 
-    const isInteractive = phase !== 'autoplay' && phase !== 'complete' && phase !== 'empty';
+    const isInteractive = phase !== 'autoplay' && phase !== 'complete' && phase !== 'empty' && phase !== 'ahead_of_schedule_pending';
 
     return (
         <div style={{
@@ -485,6 +551,35 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             {isRecalling && (
                 <div className="status-bar status-bar-recall">
                     🔁 Recall pass — try to remember the moves
+                </div>
+            )}
+            {phase === 'ahead_of_schedule_pending' && (
+                <div className="session-complete-panel">
+                    <h3 className="session-complete-title">✅ All due cards reviewed!</h3>
+                    <p className="session-complete-stats">
+                        {reviewedToday === 1
+                            ? '1 card reviewed today'
+                            : `${reviewedToday} cards reviewed today`}
+                    </p>
+                    <p className="session-complete-prompt">
+                        You can stop here or keep practicing your weakest cards ahead of schedule.
+                    </p>
+                    <div className="session-complete-actions">
+                        <button
+                            type="button"
+                            className="session-complete-primary"
+                            onClick={onDone}
+                        >
+                            Done for today
+                        </button>
+                        <button
+                            type="button"
+                            className="session-complete-secondary"
+                            onClick={acceptAhead}
+                        >
+                            Practice ahead of schedule
+                        </button>
+                    </div>
                 </div>
             )}
             {phase === 'ahead_of_schedule' && (
