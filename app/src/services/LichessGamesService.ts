@@ -19,6 +19,45 @@ export interface SyncProgress {
 }
 
 /**
+ * Parse one NDJSON game payload and push it into `games`.
+ * Updates `state.maxTimestamp` and (optionally) reports progress.
+ * Silently ignores malformed JSON.
+ */
+function pushGame(
+    rawJson: string,
+    username: string,
+    games: StoredGame[],
+    state: { maxTimestamp: number },
+    onProgress?: (progress: SyncProgress) => void
+): void {
+    try {
+        const gameData = JSON.parse(rawJson);
+        const createdAt = gameData.createdAt as number;
+        const gameId = gameData.id as string;
+
+        games.push({
+            id: gameId,
+            createdAt,
+            username: username.toLowerCase(),
+            platform: 'lichess',
+            data: gameData,
+        });
+
+        if (createdAt > state.maxTimestamp) {
+            state.maxTimestamp = createdAt;
+        }
+
+        onProgress?.({
+            username,
+            gamesDownloaded: games.length,
+            done: false,
+        });
+    } catch {
+        // Skip malformed JSON
+    }
+}
+
+/**
  * Download recent games for a Lichess user via the NDJSON streaming API.
  * Stores results in IndexedDB and tracks sync timestamps for incremental fetches.
  */
@@ -65,7 +104,7 @@ export async function syncGamesForUser(
     const decoder = new TextDecoder();
     let buffer = '';
     const games: StoredGame[] = [];
-    let maxTimestamp = lastSync ?? 0;
+    const state = { maxTimestamp: lastSync ?? 0 };
 
     try {
         while (true) {
@@ -82,56 +121,15 @@ export async function syncGamesForUser(
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed) continue;
-
-                try {
-                    const gameData = JSON.parse(trimmed);
-                    const createdAt = gameData.createdAt as number;
-                    const gameId = gameData.id as string;
-
-                    games.push({
-                        id: gameId,
-                        createdAt,
-                        username: username.toLowerCase(),
-                        platform: 'lichess',
-                        data: gameData,
-                    });
-
-                    if (createdAt > maxTimestamp) {
-                        maxTimestamp = createdAt;
-                    }
-
-                    onProgress?.({
-                        username,
-                        gamesDownloaded: games.length,
-                        done: false,
-                    });
-                } catch {
-                    // Skip malformed lines
-                }
+                pushGame(trimmed, username, games, state, onProgress);
             }
         }
 
-        // Process any remaining data in buffer
-        if (buffer.trim()) {
-            try {
-                const gameData = JSON.parse(buffer.trim());
-                const createdAt = gameData.createdAt as number;
-                const gameId = gameData.id as string;
-
-                games.push({
-                    id: gameId,
-                    createdAt,
-                    username: username.toLowerCase(),
-                    platform: 'lichess',
-                    data: gameData,
-                });
-
-                if (createdAt > maxTimestamp) {
-                    maxTimestamp = createdAt;
-                }
-            } catch {
-                // Skip malformed data
-            }
+        // Process any remaining data in buffer (no progress callback — final
+        // progress event is emitted below with done:true)
+        const tail = buffer.trim();
+        if (tail) {
+            pushGame(tail, username, games, state);
         }
     } finally {
         reader.cancel().catch(() => { /* best-effort cleanup */ });
@@ -140,7 +138,7 @@ export async function syncGamesForUser(
     // Batched write to IndexedDB
     if (games.length > 0) {
         await storeGames(games);
-        setLastSyncTimestamp(username, maxTimestamp);
+        setLastSyncTimestamp(username, state.maxTimestamp);
     }
 
     onProgress?.({

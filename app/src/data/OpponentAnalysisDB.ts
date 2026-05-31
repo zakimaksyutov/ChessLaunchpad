@@ -65,11 +65,6 @@ export async function saveOpponentAnalysis(result: OpponentAnalysisResult): Prom
     await db.put(STORE_NAME, result);
 }
 
-export async function getOpponentAnalysis(gameId: string): Promise<OpponentAnalysisResult | undefined> {
-    const db = await getDB();
-    return db.get(STORE_NAME, gameId);
-}
-
 export async function getAllOpponentAnalyses(): Promise<OpponentAnalysisResult[]> {
     const db = await getDB();
     return db.getAll(STORE_NAME);

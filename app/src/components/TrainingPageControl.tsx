@@ -117,16 +117,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         engineRef.current = engine;
     }, [engine]);
 
-    // Start traversal on mount / engine change. Note: this function only ever
-    // calls `eng.startTraversal()` (the default, no-confirm path). If all due
-    // cards are reviewed the engine returns `'ahead_of_schedule_pending'` —
-    // we surface the session-complete panel and wait for the user to either
-    // exit or confirm via `acceptAheadOfSchedule`. We do NOT auto-roll into
-    // ahead-of-schedule autoplay.
-    const startNewTraversal = useCallback(() => {
-        const eng = engineRef.current;
-        if (!eng) return;
-
+    // Reset all UI state at the start of a new traversal (called by both the
+    // standard start and the ahead-of-schedule acceptance paths).
+    const resetTraversalUiState = useCallback(() => {
         correctCardsCountRef.current = 0;
         pastPrefixRef.current = false;
         setPastPrefix(false);
@@ -137,6 +130,19 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         setHintAnnotations([]);
         setPgnAnnotations([]);
         setRoundId(Math.random().toString(36).substring(7));
+    }, []);
+
+    // Start traversal on mount / engine change. Note: this function only ever
+    // calls `eng.startTraversal()` (the default, no-confirm path). If all due
+    // cards are reviewed the engine returns `'ahead_of_schedule_pending'` —
+    // we surface the session-complete panel and wait for the user to either
+    // exit or confirm via `acceptAheadOfSchedule`. We do NOT auto-roll into
+    // ahead-of-schedule autoplay.
+    const startNewTraversal = useCallback(() => {
+        const eng = engineRef.current;
+        if (!eng) return;
+
+        resetTraversalUiState();
 
         const status = eng.startTraversal();
         if (!status) {
@@ -170,7 +176,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         }
 
         scheduleNextAction(eng);
-    }, []);
+    }, [resetTraversalUiState]);
 
     // User confirmed they want to keep training past their due queue.
     // Adopts the engine's pre-staged ahead-of-schedule plan and resumes
@@ -179,16 +185,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         const eng = engineRef.current;
         if (!eng) return;
 
-        correctCardsCountRef.current = 0;
-        pastPrefixRef.current = false;
-        setPastPrefix(false);
-        chessRef.current = new Chess();
-        setFen(chessRef.current.fen());
-        setPgn('');
-        setStatusMessage('');
-        setHintAnnotations([]);
-        setPgnAnnotations([]);
-        setRoundId(Math.random().toString(36).substring(7));
+        resetTraversalUiState();
 
         const status = eng.acceptAheadOfSchedule();
         if (!status) {
@@ -209,7 +206,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         }
 
         scheduleNextAction(eng);
-    }, [startNewTraversal]);
+    }, [resetTraversalUiState, startNewTraversal]);
 
     useEffect(() => {
         mountedRef.current = true;

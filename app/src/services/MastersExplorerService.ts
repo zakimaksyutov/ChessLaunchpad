@@ -232,6 +232,22 @@ export async function fetchMastersPosition(
 // MastersLookup — query interface for GameAnnotationService
 // ---------------------------------------------------------------------------
 
+/** Compute per-move stats from a fetched position result. */
+function computeMoveStats(posResult: MastersPositionResult, moveSan: string): MoveStats {
+    const moveData = posResult.moves.find(m => m.san === moveSan);
+    const moveGames = moveData ? moveData.total : 0;
+    const totalGames = posResult.totalGames;
+    const percentage = totalGames > 0 ? (moveGames / totalGames) * 100 : 0;
+    return { moveGames, totalGames, percentage };
+}
+
+/** Classify a move as out-of-theory (true), in-theory (false), or unknown (null) from its stats. */
+function classifyOutOfTheory(stats: MoveStats | null): boolean | null {
+    if (stats === null) return null;
+    if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
+    return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
+}
+
 export class MastersLookup {
     private results = new Map<string, MastersPositionResult>();
 
@@ -245,16 +261,8 @@ export class MastersLookup {
      * Returns null if the position hasn't been fetched.
      */
     getMoveStats(fen: string, moveSan: string): MoveStats | null {
-        const key = toMastersCacheKey(fen);
-        const posResult = this.results.get(key);
-        if (!posResult) return null;
-
-        const moveData = posResult.moves.find(m => m.san === moveSan);
-        const moveGames = moveData ? moveData.total : 0;
-        const totalGames = posResult.totalGames;
-        const percentage = totalGames > 0 ? (moveGames / totalGames) * 100 : 0;
-
-        return { moveGames, totalGames, percentage };
+        const posResult = this.results.get(toMastersCacheKey(fen));
+        return posResult ? computeMoveStats(posResult, moveSan) : null;
     }
 
     /**
@@ -262,11 +270,7 @@ export class MastersLookup {
      * Returns true if the move is out of theory, false if in theory, null if no data.
      */
     isOutOfTheory(fen: string, moveSan: string): boolean | null {
-        const stats = this.getMoveStats(fen, moveSan);
-        if (stats === null) return null;
-
-        if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
-        return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
+        return classifyOutOfTheory(this.getMoveStats(fen, moveSan));
     }
 }
 
@@ -310,18 +314,11 @@ export class MastersCache {
      * Returns null if the position isn't cached.
      */
     getMoveStats(fen: string, moveSan: string): MoveStats | null {
-        const key = toMastersCacheKey(fen);
-        const entry = this.entries.get(key);
+        const entry = this.entries.get(toMastersCacheKey(fen));
         if (!entry) return null;
 
         entry.hitCount++;
-
-        const moveData = entry.result.moves.find(m => m.san === moveSan);
-        const moveGames = moveData ? moveData.total : 0;
-        const totalGames = entry.result.totalGames;
-        const percentage = totalGames > 0 ? (moveGames / totalGames) * 100 : 0;
-
-        return { moveGames, totalGames, percentage };
+        return computeMoveStats(entry.result, moveSan);
     }
 
     /**
@@ -330,11 +327,7 @@ export class MastersCache {
      * Note: hitCount is incremented by the underlying getMoveStats call.
      */
     isOutOfTheory(fen: string, moveSan: string): boolean | null {
-        const stats = this.getMoveStats(fen, moveSan);
-        if (stats === null) return null;
-
-        if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
-        return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
+        return classifyOutOfTheory(this.getMoveStats(fen, moveSan));
     }
 
     /** Check whether a position is cached (does NOT increment hitCount). */

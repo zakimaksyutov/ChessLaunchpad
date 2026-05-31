@@ -1,4 +1,4 @@
-import { RepertoireData, Activity, PracticeLogEntry, LifetimeStats, PracticeLogGameCounters } from '../models/RepertoireData';
+import { RepertoireData, Activity, PracticeLogEntry, LifetimeStats } from '../models/RepertoireData';
 
 const MAX_LOG_ENTRIES = 30;
 
@@ -26,18 +26,6 @@ export function getDateStringForTimestamp(ms: number): string {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-}
-
-/** Default zero counters when a practice-log entry has no `games` sub-object. */
-export const EMPTY_GAME_COUNTERS: PracticeLogGameCounters = Object.freeze({
-    ingested: 0,
-    reviewed: 0,
-    mistakes: 0,
-});
-
-/** Read the games sub-object as zeros when absent. */
-export function getGameCounters(entry: PracticeLogEntry): PracticeLogGameCounters {
-    return entry.games ?? EMPTY_GAME_COUNTERS;
 }
 
 /** Returns true when an entry contributes to the manual-training streak. */
