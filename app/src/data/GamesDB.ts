@@ -52,32 +52,9 @@ export async function getAllGames(): Promise<StoredGame[]> {
     return all.reverse(); // Most recent first
 }
 
-export async function getGamesForUser(username: string): Promise<StoredGame[]> {
-    const db = await getDB();
-    const games = await db.getAllFromIndex(STORE_NAME, 'username', username);
-    return games.sort((a, b) => b.createdAt - a.createdAt);
-}
-
-export async function getGameCount(): Promise<number> {
-    const db = await getDB();
-    return db.count(STORE_NAME);
-}
-
 export async function clearGames(): Promise<void> {
     const db = await getDB();
     await db.clear(STORE_NAME);
-}
-
-export async function deleteGamesForUser(username: string): Promise<void> {
-    const db = await getDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const index = tx.store.index('username');
-    let cursor = await index.openCursor(username);
-    while (cursor) {
-        await cursor.delete();
-        cursor = await cursor.continue();
-    }
-    await tx.done;
 }
 
 export async function deleteGamesForAccount(platform: Platform, username: string): Promise<void> {

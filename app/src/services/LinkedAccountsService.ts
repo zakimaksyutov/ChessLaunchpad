@@ -29,14 +29,6 @@ export function setLinkedAccounts(accounts: LinkedAccount[]): void {
     }));
 }
 
-export function addLinkedAccount(username: string, platform: Platform): LinkedAccount[] {
-    const normalized = username.trim().toLowerCase();
-    if (!normalized) return _linkedAccounts;
-    if (_linkedAccounts.some(a => a.platform === platform && a.username === normalized)) return _linkedAccounts;
-    _linkedAccounts = [..._linkedAccounts, { platform, username: normalized }];
-    return _linkedAccounts;
-}
-
 /**
  * Advance the sync watermark for an account to at least `timestamp`.
  * Used after grooming to prevent re-fetching deleted games.
@@ -51,12 +43,6 @@ export function advanceSyncWatermark(platform: Platform, username: string, times
             localStorage.setItem(key, timestamp.toString());
         }
     } catch { /* localStorage unavailable */ }
-}
-
-export function removeLinkedAccount(username: string, platform: Platform): LinkedAccount[] {
-    const normalized = username.toLowerCase();
-    _linkedAccounts = _linkedAccounts.filter(a => !(a.platform === platform && a.username === normalized));
-    return _linkedAccounts;
 }
 
 /**
