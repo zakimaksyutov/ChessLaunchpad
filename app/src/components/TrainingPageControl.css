@@ -53,6 +53,76 @@
     color: #1565c0;
 }
 
+/* Session-complete panel shown when all due cards have been reviewed and
+   the user must choose between stopping or practicing ahead of schedule. */
+.session-complete-panel {
+    width: 100%;
+    max-width: 704px;
+    margin: 12px auto 0;
+    padding: 20px 24px;
+    background-color: rgba(76, 175, 80, 0.08);
+    border: 1px solid rgba(76, 175, 80, 0.35);
+    border-radius: 8px;
+    text-align: center;
+    animation: status-bar-fade-in 0.25s ease-out;
+}
+
+.session-complete-title {
+    margin: 0 0 6px 0;
+    font-size: 1.25rem;
+    color: #2e7d32;
+    font-weight: 600;
+}
+
+.session-complete-stats {
+    margin: 0 0 4px 0;
+    font-size: 0.95rem;
+    color: #424242;
+}
+
+.session-complete-prompt {
+    margin: 0 0 16px 0;
+    font-size: 0.9rem;
+    color: #616161;
+}
+
+.session-complete-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.session-complete-actions button {
+    padding: 8px 16px;
+    font-size: 0.95rem;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.session-complete-secondary {
+    background-color: #fafafa;
+    border-color: #bdbdbd !important;
+    color: #424242;
+}
+
+.session-complete-secondary:hover {
+    background-color: #f0f0f0;
+}
+
+.session-complete-primary {
+    background-color: #2e7d32;
+    color: #ffffff;
+    border-color: #2e7d32 !important;
+}
+
+.session-complete-primary:hover {
+    background-color: #266b29;
+    border-color: #266b29 !important;
+}
+
 .board-glow-teaching {
     box-shadow: 0 0 12px 3px rgba(76, 175, 80, 0.6);
 }

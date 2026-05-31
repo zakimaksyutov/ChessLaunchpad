@@ -430,7 +430,7 @@ describe('TrainingEngine', () => {
     });
 
     describe('ahead-of-schedule mode', () => {
-        it('should enter ahead_of_schedule when all cards are reviewed', () => {
+        it('should enter ahead_of_schedule_pending when all cards are reviewed', () => {
             TrainingEngine.setContextDepth(0);
 
             const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
@@ -447,8 +447,72 @@ describe('TrainingEngine', () => {
             const status = engine.startTraversal();
 
             expect(status).not.toBeNull();
-            // Should be in ahead_of_schedule (not empty, not teaching)
-            expect(status!.phase).toBe('ahead_of_schedule');
+            // Pending phase — do NOT auto-start the ahead traversal; the UI
+            // must confirm via acceptAheadOfSchedule() first.
+            expect(status!.phase).toBe('ahead_of_schedule_pending');
+            // No plan should be active in pending phase.
+            expect(status!.totalSteps).toBe(0);
+            expect(engine.getCurrentStep()).toBeNull();
+        });
+
+        it('acceptAheadOfSchedule transitions pending into active ahead-of-schedule', () => {
+            TrainingEngine.setContextDepth(0);
+
+            const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
+            const cardKey = `${startFen}::e4`;
+            const futureDue = new Date(Date.now() + 86400000).toISOString();
+            const fsrsCards: Record<string, any> = {};
+            fsrsCards[cardKey] = {
+                d: futureDue, s: 10, di: 5, e: 1, sd: 10, ls: 0, r: 5, l: 0, st: 2, lr: new Date().toISOString()
+            };
+
+            const engine = makeEngine([makePgnInput('1. e4 e5', 'white')], fsrsCards);
+            engine.startTraversal();
+
+            const status = engine.acceptAheadOfSchedule();
+            expect(status).not.toBeNull();
+            // After confirm the engine reports active ahead-of-schedule
+            // (phase may be 'autoplay' if the plan starts with an opponent
+            // move, or 'ahead_of_schedule' for a user-turn first step).
+            expect(['ahead_of_schedule', 'autoplay']).toContain(status!.phase);
+            expect(status!.totalSteps).toBeGreaterThan(0);
+        });
+
+        it('handleUserMove is a no-op during pending phase and does NOT signal end-of-traversal', () => {
+            TrainingEngine.setContextDepth(0);
+
+            const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
+            const cardKey = `${startFen}::e4`;
+            const futureDue = new Date(Date.now() + 86400000).toISOString();
+            const fsrsCards: Record<string, any> = {};
+            fsrsCards[cardKey] = {
+                d: futureDue, s: 10, di: 5, e: 1, sd: 10, ls: 0, r: 5, l: 0, st: 2, lr: new Date().toISOString()
+            };
+
+            const engine = makeEngine([makePgnInput('1. e4 e5', 'white')], fsrsCards);
+            engine.startTraversal();
+
+            const result = engine.handleUserMove('e2', 'e4', new Chess());
+            // Hard guard: reject the move without claiming end-of-traversal
+            // (otherwise the UI would re-enter pending and loop).
+            expect(result.accepted).toBe(false);
+            expect(result.isEndOfTraversal).toBe(false);
+        });
+
+        it('acceptAheadOfSchedule returns null when not in pending phase', () => {
+            TrainingEngine.setContextDepth(0);
+            const engine = makeEngine([makePgnInput('1. e4', 'white')]);
+            engine.startTraversal();
+            // Engine is in teaching/regular phase, not pending.
+            const result = engine.acceptAheadOfSchedule();
+            expect(result).toBeNull();
+        });
+
+        it('returns empty (not pending) when the repertoire has no cards', () => {
+            TrainingEngine.setContextDepth(0);
+            const engine = makeEngine([]);
+            const status = engine.startTraversal();
+            expect(status!.phase).toBe('empty');
         });
     });
 

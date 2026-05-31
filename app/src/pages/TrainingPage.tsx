@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import TrainingPageControl from '../components/TrainingPageControl';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData } from '../models/RepertoireData';
@@ -8,6 +9,7 @@ import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/
 import BadgeRow from '../components/BadgeRow';
 
 const TrainingPage: React.FC = () => {
+    const navigate = useNavigate();
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(true);
@@ -151,6 +153,8 @@ const TrainingPage: React.FC = () => {
                 onTraversalComplete={handleTraversalComplete}
                 onQueueStats={handleQueueStats}
                 onCardRated={handleCardRated}
+                reviewedToday={reviewedToday}
+                onDone={() => navigate('/')}
             />
         </div>
     );
