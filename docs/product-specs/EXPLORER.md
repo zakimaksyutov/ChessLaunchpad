@@ -56,8 +56,12 @@ variants.
 The chessboard occupies the entire left column of the page (as tall and
 wide as the available space allows). The right column holds, top to
 bottom: "How you got here", the opening name, then the move list
-("Your moves from here" / "Opponent's replies"). On narrow viewports
-the right column reflows underneath the board.
+("Your moves from here" / "Opponent's replies").
+
+On narrow viewports the page reflows to a single vertical column in
+this order: **board → opening name + move list → "How you got here" →
+Find-position input**. The board stays square and scales to the
+viewport width.
 
 ### Orientation toggle
 
@@ -163,10 +167,13 @@ For each row:
   continuation underneath.
 
 - An **opening label** next to the move, shown only when playing this
-  move changes the classification compared to the current position —
-  either switching to a different opening or specializing into a named
-  sub-variation (e.g. *Najdorf*, *Old Sicilian*). If the classification
-  is unchanged, no label.
+  move changes the classification. Compute the most-specific opening
+  for **(current PGN)** and for **(current PGN + this move)** via
+  `DatabaseOpeningsUtils.ClassifyOpening`. Show the after-label if the
+  **opening name OR ECO code** differs (this covers both switching to
+  a different opening and specializing within the same one, e.g.
+  *Najdorf*, *Old Sicilian*). If the after side has no classification,
+  show no label.
 - Underneath the move: a **PGN continuation** that extends as far as
   it is unambiguous. The rule applies the same way to every next ply —
   yours or the opponent's:
