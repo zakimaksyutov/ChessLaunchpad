@@ -42,12 +42,12 @@ variants.
 │ │     column)          │  ● Nc6   Mastered  due in 14d   R 92%         │
 │ │                      │          12 reps · 2 lapses · last 5d ago     │
 │ │                      │          → Old Sicilian                        │
-│ │                      │    2…Nc6 3.d4 cxd4 4.Nxd4 (Nf6, e6, a6)       │
+│ │                      │    3.d4 cxd4 4.Nxd4 (4…Nf6, 4…e6, 4…a6)       │
 │ │                      │                                               │
 │ │                      │  ● d6    Due now   R 71%                      │
 │ │                      │          8 reps · 1 lapse · last 22d ago      │
 │ │                      │          → Najdorf                             │
-│ │                      │    2…d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 (a6, g6)   │
+│ │                      │    3.d4 cxd4 4.Nxd4 Nf6 5.Nc3 (5…a6, 5…g6)    │
 │ └──────────────────────┘                                               │
 │ [ Paste FEN or PGN to jump… ]                                          │
 └───────────────────────────────────────────────────────────────────────┘
@@ -175,26 +175,32 @@ For each row:
   *Najdorf*, *Old Sicilian*). If the after side has no classification,
   show no label.
 - Underneath the move: a **PGN continuation** that extends as far as
-  it is unambiguous. The rule applies the same way to every next ply —
-  yours or the opponent's:
+  it is unambiguous. The row's own move is **not repeated** in the
+  continuation — it starts with the next ply. The rule applies the
+  same way to every next ply — yours or the opponent's:
   - **Extend** as long as the repertoire holds exactly one move at the
     next ply.
   - **Stop on a branch** when the next ply has ≥2 moves in the
     repertoire, and list the alternatives in parentheses after the
-    last unambiguous move
-    (e.g. `2…Nc6 3.d4 cxd4 4.Nxd4 (Nf6, e6, a6)`).
+    last unambiguous move. Each alternative carries its own move
+    number prefix so the depth is unambiguous
+    (e.g. `3.d4 cxd4 4.Nxd4 (4…Nf6, 4…e6, 4…a6)`).
   - **Stop at end of line** when the next ply has 0 moves in the
-    repertoire, and append the marker *(end of line)* so the user can
-    tell a leaf apart from a branch.
+    repertoire. No explicit end-of-line marker is rendered — the
+    absence of further plies and of a parenthesized branch is itself
+    the signal.
   - **Immediate branch** is fine: if the row's own move lands straight
-    on a branching node, the continuation is just that move followed
-    by the alternatives (e.g. `1.e4 (c5, e5, c6, e6)`).
+    on a branching node, the continuation is just the parenthesized
+    alternatives (e.g. for a row showing `1.e4` from the start
+    position: `(1…c5, 1…e5, 1…c6, 1…e6)`).
 
 ### Clicking any ply
 
 Any ply shown anywhere on the page — in "How you got here", in a
 continuation line, or in a parenthesized branch list — is clickable.
-Clicking it navigates the Explorer to the position after that ply.
+The clickable hit area is the **SAN only** (e.g. `e4`, `Nbd7`); the
+move number prefix (e.g. `1.`, `3…`) renders adjacent to it as plain
+text. Clicking navigates the Explorer to the position after that ply.
 
 ### Navigating back / refresh / sharing
 

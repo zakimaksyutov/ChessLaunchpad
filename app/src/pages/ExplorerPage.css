@@ -6,12 +6,9 @@
 }
 
 .explorer-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 1rem;
   max-width: 1280px;
   width: 100%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 0.5rem 0;
   position: relative;
 }
 
@@ -255,10 +252,36 @@
 }
 
 .explorer-move-row-cont {
-  margin-top: 0.25rem;
+  margin-top: 0.2rem;
+  margin-left: 1.5rem;
   color: #4a505a;
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.explorer-move-row-cont:empty {
+  display: none;
+}
+
+/* Prefix + button wrapper, so the move number and SAN read as a single token. */
+.explorer-ply-token {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+/* Non-clickable move-number prefix (e.g., "1.", "3…") shown beside the SAN. */
+.explorer-ply-prefix {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #6e7783;
+  font-size: inherit;
+}
+
+/* Same as .explorer-ply-prefix but sized to the row heading. */
+.explorer-move-row-prefix {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #6e7783;
 }
 
 /* Per-row primary move "button" (clickable SAN) */
@@ -361,7 +384,7 @@
   border: none;
   cursor: pointer;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.88rem;
+  font-size: inherit;
   color: #324050;
   padding: 0;
 }
@@ -369,12 +392,6 @@
 .explorer-ply:hover {
   text-decoration: underline;
   color: rgb(0, 130, 210);
-}
-
-/* On the row, the heading ply should not look like a regular continuation ply */
-.explorer-move-row .explorer-continuation-line .explorer-ply:first-child {
-  color: #1b2733;
-  font-weight: 600;
 }
 
 /* ===== Mobile reflow ===== */

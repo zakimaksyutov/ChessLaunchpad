@@ -663,27 +663,38 @@ export function formatPly(san: string, plyDepth: number): string {
  * Returns an array of labels aligned 1:1 with the input plyDepths.
  */
 export function formatPlyLabels(plyDepths: number[], sans: string[]): string[] {
-    const out: string[] = [];
+    return formatPlyLabelParts(plyDepths, sans).map(p => p.prefix + p.san);
+}
+
+/**
+ * Like `formatPlyLabels`, but returns each ply pre-split into a non-clickable
+ * `prefix` (e.g. "1.", "3…", or "") and the SAN. UI code uses this so that the
+ * clickable hit area can be just the SAN while the move number remains visible
+ * as plain text.
+ */
+export function formatPlyLabelParts(
+    plyDepths: number[],
+    sans: string[],
+): { prefix: string; san: string }[] {
+    const out: { prefix: string; san: string }[] = [];
     for (let i = 0; i < plyDepths.length; i++) {
         const depth = plyDepths[i];
         const isWhite = depth % 2 === 1;
         const moveNumber = Math.ceil(depth / 2);
+        let prefix: string;
         if (i === 0) {
-            out.push(formatPly(sans[i], depth));
-            continue;
-        }
-        if (isWhite) {
-            out.push(`${moveNumber}.${sans[i]}`);
+            prefix = isWhite ? `${moveNumber}.` : `${moveNumber}\u2026`;
+        } else if (isWhite) {
+            prefix = `${moveNumber}.`;
         } else {
             // Drop the move number on a black move that immediately follows the
             // matching white move in this sequence.
             const prevDepth = plyDepths[i - 1];
-            if (prevDepth === depth - 1 && prevDepth % 2 === 1) {
-                out.push(sans[i]);
-            } else {
-                out.push(`${moveNumber}\u2026${sans[i]}`);
-            }
+            prefix = prevDepth === depth - 1 && prevDepth % 2 === 1
+                ? ''
+                : `${moveNumber}\u2026`;
         }
+        out.push({ prefix, san: sans[i] });
     }
     return out;
 }

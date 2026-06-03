@@ -9,7 +9,7 @@ import {
     Orientation,
     Path,
     Continuation,
-    formatPlyLabels,
+    formatPlyLabelParts,
 } from '../services/ExplorerService';
 import {
     DatabaseOpening,
@@ -87,32 +87,39 @@ function moveNumberOf(depth: number): number {
 // ── Subcomponents ────────────────────────────────────────────────────
 
 interface ClickablePlyProps {
-    label: string;
+    /** Non-clickable prefix (e.g. "1.", "3…"). Empty string renders nothing. */
+    prefix?: string;
+    /** Clickable SAN (e.g. "e4", "Nbd7"). */
+    san: string;
     targetFen: string;
     onJump: (fen: string) => void;
     className?: string;
 }
 
-const ClickablePly: React.FC<ClickablePlyProps> = ({ label, targetFen, onJump, className }) => (
-    <button
-        type="button"
-        className={`explorer-ply ${className ?? ''}`}
-        onClick={() => onJump(targetFen)}
-    >
-        {label}
-    </button>
+const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJump, className }) => (
+    <span className="explorer-ply-token">
+        {prefix ? <span className="explorer-ply-prefix">{prefix}</span> : null}
+        <button
+            type="button"
+            className={`explorer-ply ${className ?? ''}`}
+            onClick={() => onJump(targetFen)}
+        >
+            {san}
+        </button>
+    </span>
 );
 
 /**
  * Renders the canonical-form PGN of a path with each ply clickable. Plies
- * land on the position AFTER they are played.
+ * land on the position AFTER they are played. The move number prefix is
+ * rendered as plain text outside the click target.
  */
 const PathLine: React.FC<{
     path: Path;
     onJump: (fen: string) => void;
 }> = ({ path, onJump }) => {
     if (path.length === 0) return <span className="explorer-empty-path">(starting position)</span>;
-    const labels = formatPlyLabels(
+    const parts = formatPlyLabelParts(
         path.map((_, i) => i + 1),
         path.map(e => e.san),
     );
@@ -121,7 +128,8 @@ const PathLine: React.FC<{
             {path.map((edge, i) => (
                 <ClickablePly
                     key={i}
-                    label={labels[i]}
+                    prefix={parts[i].prefix}
+                    san={parts[i].san}
                     targetFen={edge.to}
                     onJump={onJump}
                 />
@@ -130,7 +138,11 @@ const PathLine: React.FC<{
     );
 };
 
-/** Render the canonical continuation underneath a move row. */
+/**
+ * Render the canonical continuation underneath a move row. We deliberately
+ * skip the row's own ply (which is already shown in the heading), so the
+ * continuation starts with the next ply.
+ */
 const ContinuationLine: React.FC<{
     continuation: Continuation;
     onJump: (fen: string) => void;
@@ -138,17 +150,20 @@ const ContinuationLine: React.FC<{
     const { plies, tail } = continuation;
     const elements: React.ReactNode[] = [];
 
-    const labels = formatPlyLabels(
-        plies.map(p => p.plyDepth),
-        plies.map(p => p.san),
+    // Skip plies[0] — it is the row's own move, already shown in the heading.
+    const displayPlies = plies.slice(1);
+    const parts = formatPlyLabelParts(
+        displayPlies.map(p => p.plyDepth),
+        displayPlies.map(p => p.san),
     );
 
-    for (let i = 0; i < plies.length; i++) {
-        const p = plies[i];
+    for (let i = 0; i < displayPlies.length; i++) {
+        const p = displayPlies[i];
         elements.push(
             <ClickablePly
                 key={`ply-${i}`}
-                label={labels[i]}
+                prefix={parts[i].prefix}
+                san={parts[i].san}
                 targetFen={p.toFen}
                 onJump={onJump}
             />
@@ -156,13 +171,18 @@ const ContinuationLine: React.FC<{
     }
 
     if (tail.kind === 'branch') {
+        // Each alternative is a child edge from `tail.afterFen` and lives at the
+        // depth right after the last walked ply. Render each with its own move
+        // number prefix so the user can see the depth at a glance.
+        const altDepth = plies.length > 0 ? plies[plies.length - 1].plyDepth + 1 : 1;
+        const altIsWhite = altDepth % 2 === 1;
+        const altMoveNumber = Math.ceil(altDepth / 2);
+        const altPrefix = altIsWhite ? `${altMoveNumber}.` : `${altMoveNumber}\u2026`;
+
         elements.push(
-            <span key="alt-open" className="explorer-alt-paren">{' ('}</span>
+            <span key="alt-open" className="explorer-alt-paren">{'('}</span>
         );
         tail.alternatives.forEach((san, idx) => {
-            // Each alternative is a child edge of `tail.afterFen`. We need the
-            // afterFen to know "the position AFTER this alternative is played"
-            // for navigation. Compute it from afterFen + san.
             const chess = new Chess(tail.afterFen);
             try {
                 chess.move(san);
@@ -176,7 +196,8 @@ const ContinuationLine: React.FC<{
             elements.push(
                 <ClickablePly
                     key={`alt-${idx}`}
-                    label={san}
+                    prefix={altPrefix}
+                    san={san}
                     targetFen={childFen}
                     onJump={onJump}
                 />
@@ -185,10 +206,6 @@ const ContinuationLine: React.FC<{
         elements.push(
             <span key="alt-close" className="explorer-alt-paren">{')'}</span>
         );
-    } else if (tail.kind === 'end') {
-        elements.push(
-            <span key="end" className="explorer-end-marker"> (end of line)</span>
-        );
     } else if (tail.kind === 'open') {
         // The continuation was truncated by the defensive depth cap. Tell the
         // user the line continues so they don't mistake it for an end-of-line.
@@ -196,6 +213,8 @@ const ContinuationLine: React.FC<{
             <span key="open" className="explorer-end-marker"> …</span>
         );
     }
+    // tail.kind === 'end' renders nothing extra — the absence of a marker is
+    // itself the end-of-line signal.
 
     return <span className="explorer-continuation-line">{elements}</span>;
 };
@@ -234,23 +253,25 @@ const MoveRow: React.FC<MoveRowProps> = ({
         [service, currentPgn, edge.san],
     );
 
-    const rowMoveNumber = moveNumberOf(currentDepth + 1);
-    const isWhitePly = (currentDepth + 1) % 2 === 1;
-    const rowMoveLabel = isWhitePly
-        ? `${rowMoveNumber}.${edge.san}`
-        : `${rowMoveNumber}\u2026${edge.san}`;
+    const rowDepth = currentDepth + 1;
+    const rowMoveNumber = moveNumberOf(rowDepth);
+    const isWhitePly = rowDepth % 2 === 1;
+    const rowPrefix = isWhitePly ? `${rowMoveNumber}.` : `${rowMoveNumber}\u2026`;
 
     return (
         <div className={`explorer-move-row ${isUserMove ? '' : 'opponent'}`}>
             <div className="explorer-move-row-head">
-                <button
-                    type="button"
-                    className={`explorer-move-san ${card ? `state-${card.status.toLowerCase()}` : ''}`}
-                    onClick={() => onJump(edge.to)}
-                    title={`Jump to position after ${edge.san}`}
-                >
-                    {rowMoveLabel}
-                </button>
+                <span className="explorer-ply-token">
+                    <span className="explorer-move-row-prefix">{rowPrefix}</span>
+                    <button
+                        type="button"
+                        className={`explorer-move-san ${card ? `state-${card.status.toLowerCase()}` : ''}`}
+                        onClick={() => onJump(edge.to)}
+                        title={`Jump to position after ${edge.san}`}
+                    >
+                        {edge.san}
+                    </button>
+                </span>
                 {card && card.status === 'New' && (
                     <span className="explorer-state-pill state-new">New</span>
                 )}
