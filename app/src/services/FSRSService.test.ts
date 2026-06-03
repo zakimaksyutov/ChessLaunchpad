@@ -358,6 +358,66 @@ describe('FSRSService', () => {
             it('caps interval at maxInterval for very high stability', () => {
                 expect(FSRSService.intervalFromStability(10000, 0.95, 21)).toBe(21);
             });
+
+            // ── Decay/forgetting-curve consistency ──────────────────────────
+            //
+            // Regression guard for the FSRS-5/FSRS-6 decay mismatch we hit in
+            // June 2026. The contract of FSRS is: an interval is the time for
+            // retrievability to drop from 1.0 to the request_retention. If
+            // `intervalFromStability` and the scheduler's forgetting curve use
+            // different decay constants, `dueAt` and `getRetrievability` drift
+            // apart — a card can read "due in 3d" while R has already fallen
+            // below target, producing a contradictory "Due · due in 3d" pill.
+            //
+            // The invariant: at exactly `lastReview + intervalFromStability(s, R, …)`
+            // days, the scheduler's R(t) must equal the request_retention up
+            // to small rounding noise. Under the bug R landed ~0.004–0.006
+            // below target across realistic stability/retention ranges, well
+            // outside the integer-day rounding noise (~0.0003) that remains
+            // under the fix.
+            it.each([
+                { stability: 50,  target: 0.95 },
+                { stability: 200, target: 0.95 },
+                { stability: 100, target: 0.97 },
+                { stability: 94,  target: 0.98 },
+                { stability: 200, target: 0.98 },
+            ])(
+                'intervalFromStability lands on the target retention at the computed dueAt (s=$stability, R=$target)',
+                ({ stability, target }) => {
+                    const lr = new Date('2026-01-01T00:00:00Z');
+                    const maxInterval = 365;
+
+                    const intervalDays = FSRSService.intervalFromStability(stability, target, maxInterval);
+                    const dueAt = new Date(lr.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+
+                    // Build a scheduler that mirrors the one FSRSService uses, then
+                    // ask it for R at the dueAt we just computed.
+                    const scheduler = fsrs({
+                        request_retention: target,
+                        maximum_interval: maxInterval,
+                        enable_fuzz: true,
+                        enable_short_term: true,
+                    });
+                    const card = {
+                        due: dueAt,
+                        stability,
+                        difficulty: 5,
+                        elapsed_days: intervalDays,
+                        scheduled_days: intervalDays,
+                        learning_steps: 0,
+                        reps: 1,
+                        lapses: 0,
+                        state: State.Review,
+                        last_review: lr,
+                    };
+                    const R = scheduler.get_retrievability(card, dueAt, false) as number;
+
+                    // Tolerance covers integer-day rounding (~0.0003). The bug
+                    // produced ~0.004–0.006 of drift, so ±0.002 cleanly catches
+                    // any decay-constant mismatch while accepting normal noise.
+                    expect(Math.abs(R - target)).toBeLessThan(0.002);
+                },
+            );
         });
     });
 });
