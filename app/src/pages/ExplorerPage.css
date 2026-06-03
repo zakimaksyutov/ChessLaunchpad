@@ -1,0 +1,405 @@
+/* ===== Page shell ===== */
+.explorer-page {
+  display: flex;
+  justify-content: center;
+  padding: 0 0.5rem;
+}
+
+.explorer-card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  max-width: 1280px;
+  width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  position: relative;
+}
+
+.explorer-loading,
+.explorer-error {
+  padding: 2rem;
+  text-align: center;
+  color: #555;
+}
+
+.explorer-error {
+  color: #8a1c1c;
+  background: #ffe3e3;
+  border: 1px solid #ff9a9a;
+  border-radius: 6px;
+  margin: 1rem;
+}
+
+/* ===== Toast ===== */
+.explorer-toast {
+  position: sticky;
+  top: 0.5rem;
+  margin-bottom: 0.75rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff7d6;
+  border: 1px solid #f0d265;
+  border-radius: 6px;
+  color: #6b5500;
+  font-size: 0.9rem;
+}
+
+.explorer-toast-dismiss {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #6b5500;
+  padding: 0 0.25rem;
+}
+
+/* ===== Orientation toggle ===== */
+.explorer-orientation-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.explorer-toggle {
+  background: #f0f0f0;
+  border: 1px solid #d0d6df;
+  border-radius: 999px;
+  padding: 0.25rem 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.explorer-toggle.active {
+  background: rgb(0, 130, 210);
+  color: #fff;
+  border-color: rgb(0, 130, 210);
+}
+
+.explorer-toggle-sep {
+  color: #888;
+  font-size: 1rem;
+}
+
+/* ===== Two-column body via grid-areas ===== */
+.explorer-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "board   right"
+    "find    right";
+  grid-template-rows: auto auto;
+  gap: 0.6rem 1.25rem;
+  align-items: start;
+}
+
+.explorer-board-col { grid-area: board; min-width: 0; width: 100%; max-width: 704px; }
+.explorer-find      { grid-area: find;  min-width: 0; }
+.explorer-right-col {
+  grid-area: right;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* ===== Find form ===== */
+.explorer-find {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 704px;
+}
+
+.explorer-find-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid #b7c2d0;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.explorer-find-input:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 1px;
+  border-color: rgb(0, 130, 210);
+}
+
+.explorer-find-submit {
+  background: rgb(0, 130, 210);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.explorer-find-error {
+  flex-basis: 100%;
+  color: #b03434;
+  font-size: 0.85rem;
+}
+
+.explorer-section-title {
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6e7783;
+  margin-bottom: 0.3rem;
+}
+
+.explorer-empty-path {
+  color: #888;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+/* ===== "How you got here" ===== */
+.explorer-paths {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.explorer-paths li {
+  font-size: 0.92rem;
+  color: #333;
+  word-break: break-word;
+}
+
+.explorer-paths-more {
+  color: #888;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.explorer-path-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.25rem;
+}
+
+/* ===== Opening label ===== */
+.explorer-opening-current {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid #eef0f3;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.explorer-opening-eco {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  color: #6e7783;
+  background: #f1f4f8;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.explorer-opening-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #2b3038;
+}
+
+/* ===== Moves list ===== */
+.explorer-moves-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.explorer-moves-empty {
+  color: #888;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.explorer-move-row {
+  border: 1px solid #eef0f3;
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  background: #fff;
+}
+
+.explorer-move-row.opponent {
+  background: #fafbfd;
+}
+
+.explorer-move-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.explorer-move-row-cont {
+  margin-top: 0.25rem;
+  color: #4a505a;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+/* Per-row primary move "button" (clickable SAN) */
+.explorer-move-san {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #1b2733;
+  padding: 0;
+}
+
+.explorer-move-san:hover {
+  text-decoration: underline;
+  color: rgb(0, 130, 210);
+}
+
+/* State pills */
+.explorer-state-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.explorer-state-pill.state-mastered {
+  background: #e3f6e8;
+  color: #207537;
+  border-color: #b9e2c5;
+}
+
+.explorer-state-pill.state-due {
+  background: #fde2e2;
+  color: #a52e2e;
+  border-color: #f3b9b9;
+}
+
+.explorer-state-pill.state-learning {
+  background: #fff4d6;
+  color: #8a5a00;
+  border-color: #f0d57f;
+}
+
+.explorer-state-pill.state-relearning {
+  background: #f5e1ff;
+  color: #6a2393;
+  border-color: #d9bbeb;
+}
+
+.explorer-state-pill.state-new {
+  background: #dceffd;
+  color: #155a91;
+  border-color: #b0d4ee;
+}
+
+/* Inline metadata (R %, reps, last reviewed) */
+.explorer-meta {
+  font-size: 0.78rem;
+  color: #6e7783;
+  white-space: nowrap;
+}
+
+/* Opening chip on a row when classification changes */
+.explorer-opening-chip {
+  font-size: 0.78rem;
+  color: #4a4a4a;
+  background: #f1f4f8;
+  border: 1px solid #dde2ea;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* Continuation rendering */
+.explorer-continuation-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.25rem;
+  align-items: baseline;
+}
+
+.explorer-alt-paren,
+.explorer-alt-sep {
+  color: #6e7783;
+}
+
+.explorer-end-marker {
+  color: #888;
+  font-style: italic;
+}
+
+/* Generic clickable ply */
+.explorer-ply {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88rem;
+  color: #324050;
+  padding: 0;
+}
+
+.explorer-ply:hover {
+  text-decoration: underline;
+  color: rgb(0, 130, 210);
+}
+
+/* On the row, the heading ply should not look like a regular continuation ply */
+.explorer-move-row .explorer-continuation-line .explorer-ply:first-child {
+  color: #1b2733;
+  font-weight: 600;
+}
+
+/* ===== Mobile reflow ===== */
+@media (max-width: 800px) {
+  .explorer-card {
+    padding: 0.5rem;
+  }
+
+  /* Single column: board → right column → find. Then within the right column,
+     reorder so opening + moves precede "How you got here" per spec. */
+  .explorer-body {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "board"
+      "right"
+      "find";
+    gap: 0.6rem;
+  }
+
+  .explorer-board-col,
+  .explorer-find {
+    max-width: none;
+  }
+
+  .explorer-right-col .explorer-how-you-got-here { order: 3; }
+  .explorer-right-col .explorer-opening-current  { order: 1; }
+  .explorer-right-col .explorer-moves            { order: 2; }
+}
