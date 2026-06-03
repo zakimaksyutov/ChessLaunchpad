@@ -215,6 +215,42 @@ position.
 - Existing per-user data: repertoires, FSRS card history, exports.
 - The backend.
 
+## Implementation Decisions
+
+These are locked in to avoid divergent inventions; everything else is
+the implementer's call.
+
+- **Single source of truth, read-only.** The Explorer reads the same
+  `RepertoireData` blob via `IDataAccessLayer.retrieveRepertoireData`
+  that `/repertoire` and `/training` use, and **never calls
+  `storeRepertoireData`**.
+- **Minimize changes to `/repertoire`.** It will be deprecated in
+  later iterations; the Explorer should ship without modifying the
+  existing page so the rollout carries no risk to it.
+- **Reuse shared infrastructure where convenient** (these are
+  app-wide modules, not `/repertoire`-specific):
+  - `RepertoireGraph` — DAG, `getPathsToEdge`, `getDescendantCardKeys`.
+  - `FSRSService` — card state, due, retrievability.
+  - `DatabaseOpeningsUtils.ClassifyOpening` — opening name + ECO.
+  - `normalizeFenResetHalfmoveClock` — FEN normalization.
+  - `ChessboardControl` — board (non-interactive mode with arrows
+    displayed).
+  - `ProtectedRoute` — auth gating.
+- **Cross-tab freshness.** Re-fetch the blob on page mount and when
+  the tab regains visibility, so edits made in another tab on
+  `/repertoire/variant` show up when the user returns. No live sync,
+  no optimistic concurrency.
+- **Find-position input parsing.** Accept either a FEN (detected via
+  `isLikelyFen`) or a PGN (parse via `chess.js loadPgn`); in both
+  cases compute the resulting FEN and normalize it. Look the FEN up in
+  the **active orientation first**; if not found, fall back to the
+  other orientation and **switch the toggle** if it's found there (so
+  a Black-rep position pasted while viewing the White rep just works).
+  If it's in neither, show the inline error.
+- **Header nav.** Add an "Explorer" link in the global header
+  alongside the other page links so the page is discoverable.
+- The backend.
+
 ## Deferred (not in v1)
 
 - Tree-shaped visualization of the repertoire.
