@@ -29,7 +29,7 @@ variants.
 ## What the Page Looks Like
 
 ```
-┌── White ⇄ Black ──────────────────────────────────────────── Train ──┐
+┌── White ⇄ Black ──────────────────────────────────────────────────────┐
 │ ┌──────────────────────┐  How you got here:                           │
 │ │                      │    1.e4 c5 2.Nf3                             │
 │ │                      │    1.Nf3 c5 2.e4                             │
@@ -59,6 +59,24 @@ bottom: "How you got here", the opening name, then the move list
 ("Your moves from here" / "Opponent's replies"). On narrow viewports
 the right column reflows underneath the board.
 
+### Orientation toggle
+
+The toggle defaults to White on first load (persisted per user across
+sessions); toggling keeps the current position if it is also reachable
+in the other orientation's repertoire, otherwise snaps to the start
+position; for an empty repertoire the start position renders normally
+with an empty move list and a "no lines in your {orientation}
+repertoire yet" hint.
+
+### URL format
+
+`HashRouter` route `#/explorer?o={white|black}&fen={normalizedFen}`.
+Both params are optional: `o` defaults to White, `fen` defaults to the
+start position. `fen` is always the **normalized FEN** (halfmove clock
+reset to 0, fullmove reset to 1 — same normalization as FSRS card keys
+and the rest of the app); the Find-position input normalizes raw FENs
+before navigating.
+
 ### Top: "How you got here"
 
 - Shows the PGN path(s) from the starting position to the current FEN
@@ -72,9 +90,10 @@ the right column reflows underneath the board.
 - Occupies the **entire left column** of the page, as large as the
   available space allows.
 - Shows the current position.
-- Arrow annotations attached to this position are rendered. Arrows are
-  drawn with the existing right-click-drag gesture. **No text notes in
-  v1** — arrows only.
+- Arrow annotations attached to this position are **displayed**.
+  Arrows are **read-only** in v1; to add or edit arrows, use the
+  existing `/repertoire/variant` editor. **No text notes in v1** —
+  arrows only.
 - Directly **under the board**, a small **"Find position"** input
   accepts either a FEN or a PGN line. The input is aligned to the
   board's width (does **not** stretch across the full page). Submitting
@@ -84,16 +103,22 @@ the right column reflows underneath the board.
 
 ### Bottom: "Your moves from here" / "Opponent's replies"
 
+The heading is **"Your moves from here"** when the side to move in the
+current FEN matches the active orientation, otherwise **"Opponent's
+replies"**.
+
 Just above the move list, show the **opening name** classified from
 the current PGN path (e.g. *Sicilian Defense (B27)*). If no opening
 matches, the line is omitted.
 
 One row per move present in the repertoire from the current position.
+If there are none, show a single-line empty state: *"No move in your
+repertoire from here yet."* for your-turn positions, or *"No prepared
+reply from here yet."* for opponent-turn positions.
 
 For each row:
 
-- The move's SAN. For **opponent** moves, no FSRS info is shown
-  (opponent moves don't have cards).
+- The move's SAN.
 - For **your** moves, an inline cluster of FSRS stats that together
   answer "how well do I know this and when do I need to see it again":
 
@@ -109,16 +134,30 @@ For each row:
   + small grey metadata strip) versus a two-line block, but all five
   pieces should be visible without hover.
 
+  **Opponent rows skip the FSRS cluster entirely** (opponent moves
+  don't have cards) — they show only SAN, opening label, and the
+  continuation underneath.
+
 - An **opening label** next to the move, shown only when playing this
   move changes the classification compared to the current position —
   either switching to a different opening or specializing into a named
   sub-variation (e.g. *Najdorf*, *Old Sicilian*). If the classification
   is unchanged, no label.
 - Underneath the move: a **PGN continuation** that extends as far as
-  it is unambiguous — keep appending the next ply as long as there is
-  exactly one move in the repertoire at that ply. When more than one
-  choice exists, stop and list the available next moves in parentheses
-  (e.g. `2…Nc6 3.d4 cxd4 4.Nxd4 (Nf6, e6, a6)`).
+  it is unambiguous. The rule applies the same way to every next ply —
+  yours or the opponent's:
+  - **Extend** as long as the repertoire holds exactly one move at the
+    next ply.
+  - **Stop on a branch** when the next ply has ≥2 moves in the
+    repertoire, and list the alternatives in parentheses after the
+    last unambiguous move
+    (e.g. `2…Nc6 3.d4 cxd4 4.Nxd4 (Nf6, e6, a6)`).
+  - **Stop at end of line** when the next ply has 0 moves in the
+    repertoire, and append the marker *(end of line)* so the user can
+    tell a leaf apart from a branch.
+  - **Immediate branch** is fine: if the row's own move lands straight
+    on a branching node, the continuation is just that move followed
+    by the alternatives (e.g. `1.e4 (c5, e5, c6, e6)`).
 
 ### Clicking any ply
 
@@ -153,6 +192,8 @@ position.
 - Adding/deleting moves directly inside the Explorer — v1 is
   read-and-navigate only. Editing still happens on the existing
   `/repertoire/variant` page.
+- Train button / "train from this position" inside the Explorer — use
+  the existing `/training` page.
 - Filter / opening-name jump.
 - Import / Export buttons on the Explorer toolbar (use `/repertoire`
   for those).
