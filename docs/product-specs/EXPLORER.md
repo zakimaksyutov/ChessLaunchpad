@@ -77,13 +77,25 @@ reset to 0, fullmove reset to 1 — same normalization as FSRS card keys
 and the rest of the app); the Find-position input normalizes raw FENs
 before navigating.
 
+If the URL's `fen` is not in the active orientation's repertoire (e.g.
+a shared link, or a position the user has since removed), the Explorer
+**snaps to the start position** and shows a one-time toast: *"That
+position isn't in your {orientation} repertoire — opened the starting
+position instead."* The Explorer never renders an off-repertoire
+position.
+
 ### Top: "How you got here"
 
 - Shows the PGN path(s) from the starting position to the current FEN
   through this orientation's repertoire.
+- **Ordering:** shortest path first, ties broken lexicographically by
+  the SAN sequence.
 - If there are multiple paths (transpositions), show up to **3** of
   them, one per row.
 - If there are more than 3, append a single line **"… N more ways"**.
+- **Enumeration cap:** stop searching after **20 paths**. If the cap is
+  hit, the counter reads *"… 17+ more ways"* so the page never hangs on
+  pathological transposition-heavy positions.
 
 ### Middle: chessboard (left column)
 
@@ -97,9 +109,12 @@ before navigating.
 - Directly **under the board**, a small **"Find position"** input
   accepts either a FEN or a PGN line. The input is aligned to the
   board's width (does **not** stretch across the full page). Submitting
-  it navigates the Explorer to that position. If the input cannot be
-  parsed, the field shows an inline error and the board does not move.
-  Placeholder: *"Paste FEN or PGN to jump…"*.
+  it navigates the Explorer to that position **only if** the position
+  exists in the active orientation's repertoire. Otherwise — whether
+  the input fails to parse or the position simply isn't in the tree —
+  the field shows an inline error (e.g. *"Not in your White
+  repertoire."*) and the board does not move. Placeholder: *"Paste FEN
+  or PGN to jump…"*.
 
 ### Bottom: "Your moves from here" / "Opponent's replies"
 
@@ -133,6 +148,15 @@ For each row:
   The implementer is free to lay these out as a single tight line (pill
   + small grey metadata strip) versus a two-line block, but all five
   pieces should be visible without hover.
+
+  **Mastered** is a derived label (not an FSRS state): `state=Review` ∧
+  not due ∧ retrievability ≥ target retention (same rule as autoplay in
+  `ARCHITECTURE.md`). Otherwise Review = **Due**; Learning, Relearning,
+  New map 1:1.
+
+  **New rows** show only the state pill, opening label, and
+  continuation — the other four stats (Next due, R%, reps/lapses, last
+  reviewed) are omitted.
 
   **Opponent rows skip the FSRS cluster entirely** (opponent moves
   don't have cards) — they show only SAN, opening label, and the
