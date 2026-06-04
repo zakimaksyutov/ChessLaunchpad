@@ -1,9 +1,22 @@
-import { createEmptyCard, fsrs, Rating, State, FSRS, Card, FSRS5_DEFAULT_DECAY, computeDecayFactor } from 'ts-fsrs';
+import { createEmptyCard, fsrs, Rating, State, FSRS, Card, computeDecayFactor, default_w } from 'ts-fsrs';
 import { FSRSCardData } from '../models/FSRSCardData';
 
-const AUTOPLAY_RETRIEVABILITY_THRESHOLD = 0.97;
-
-const { decay: DECAY, factor: FACTOR } = computeDecayFactor(FSRS5_DEFAULT_DECAY);
+// Decay/factor for our standalone interval math (`intervalFromStability`,
+// `computeInterval`). These MUST stay in lockstep with the decay the scheduler
+// uses for its forgetting curve — otherwise `dueAt` and `getRetrievability`
+// disagree about when R crosses the retention target.
+//
+// The ts-fsrs scheduler binds its forgetting curve to `param.w[20]` (the
+// per-user-learnable decay weight in FSRS-6). We don't customize `w` anywhere
+// in this codebase, so the scheduler always uses the library's `default_w`,
+// and we derive DECAY/FACTOR from the same source. `computeDecayFactor` reads
+// `decayOrParams[20]` when given an array, so this is exactly the same
+// computation the scheduler runs internally.
+//
+// If we ever start tuning `w` per user, the scheduler will need to be
+// reconstructed with the new weights AND DECAY/FACTOR will need to be
+// recomputed from those weights at the same time.
+const { decay: DECAY, factor: FACTOR } = computeDecayFactor(default_w);
 
 export type RetentionPreset = 'casual' | 'light' | 'standard' | 'sharp' | 'tournament';
 
@@ -54,26 +67,6 @@ export class FSRSService {
     static parseCardKey(key: string): { fen: string; san: string } {
         const idx = key.indexOf('::');
         return { fen: key.substring(0, idx), san: key.substring(idx + 2) };
-    }
-
-    shouldAutoplay(normalizedFen: string, moveSan: string, now: Date): boolean {
-        const key = FSRSService.makeCardKey(normalizedFen, moveSan);
-        const cardData = this.cards[key];
-        if (!cardData) return false;
-
-        // Must be in Review state
-        if (cardData.st !== State.Review) return false;
-
-        // Must not be due
-        const due = FSRSService.computeDueDate(cardData);
-        if (now >= due) return false;
-
-        // Retrievability must be >= threshold
-        const card = this.hydrate(cardData);
-        const R = this.scheduler.get_retrievability(card, now, false);
-        if (R < AUTOPLAY_RETRIEVABILITY_THRESHOLD) return false;
-
-        return true;
     }
 
     rateCard(normalizedFen: string, moveSan: string, correct: boolean, now: Date): void {

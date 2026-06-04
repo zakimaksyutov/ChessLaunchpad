@@ -70,6 +70,9 @@ yarn dev
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
   - `product-specs/FSRS.md` — FSRS training system specification
   - `product-specs/GAMES.md` — Games page product specification
+  - `product-specs/GAME-INGEST.md` — Game ingestion pipeline specification
+  - `product-specs/DASHBOARD.md` — Dashboard page product specification
+  - `product-specs/EXPLORER.md` — Explorer page (`/explorer`) product specification
   - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
 ## Backend API

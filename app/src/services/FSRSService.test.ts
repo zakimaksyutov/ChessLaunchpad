@@ -1,6 +1,6 @@
 import { FSRSService, RETENTION_PRESETS, DEFAULT_RETENTION_PRESET } from './FSRSService';
 import { FSRSCardData } from '../models/FSRSCardData';
-import { createEmptyCard, fsrs, Rating, State } from 'ts-fsrs';
+import { fsrs, State } from 'ts-fsrs';
 
 describe('FSRSService', () => {
 
@@ -44,103 +44,6 @@ describe('FSRSService', () => {
 
             const card = service.getCards()['fen1::Nf3'];
             expect(card.lr).toBe('2026-04-20T12:00:00.000Z');
-        });
-
-        it('should handle card without last_review', () => {
-            const cardData: FSRSCardData = {
-                d: '2026-04-20T00:00:00.000Z',
-                s: 0, di: 0, e: 0, sd: 0, ls: 0, r: 0, l: 0, st: State.New
-            };
-            const service = new FSRSService({ 'fen::e4': cardData });
-            // Should not throw when checking autoplay
-            const result = service.shouldAutoplay('fen', 'e4', new Date('2026-04-20T00:00:00Z'));
-            expect(result).toBe(false); // New state → not autoplayable
-        });
-    });
-
-    describe('shouldAutoplay', () => {
-        let scheduler: ReturnType<typeof fsrs>;
-
-        beforeEach(() => {
-            scheduler = fsrs({
-                request_retention: 0.97,
-                maximum_interval: 90,
-                enable_fuzz: false,
-                enable_short_term: true
-            });
-        });
-
-        function buildReviewCard(reviewDate: Date): FSRSCardData {
-            // Build a card in Review state with high stability
-            let card = createEmptyCard(reviewDate);
-            // Progress through learning to Review
-            card = scheduler.next(card, reviewDate, Rating.Good).card;
-            card = scheduler.next(card, new Date(card.due), Rating.Good).card;
-            // Now in Review state
-            expect(card.state).toBe(State.Review);
-            return FSRSService.serialize(card);
-        }
-
-        it('should return false when no card exists', () => {
-            const service = new FSRSService();
-            expect(service.shouldAutoplay('fen', 'e4', new Date())).toBe(false);
-        });
-
-        it('should return false when card is New', () => {
-            const cardData: FSRSCardData = {
-                d: '2026-04-20T00:00:00.000Z',
-                s: 0, di: 0, e: 0, sd: 0, ls: 0, r: 0, l: 0, st: State.New
-            };
-            const service = new FSRSService({ 'fen::e4': cardData });
-            expect(service.shouldAutoplay('fen', 'e4', new Date('2026-04-19T00:00:00Z'))).toBe(false);
-        });
-
-        it('should return false when card is Learning', () => {
-            const cardData: FSRSCardData = {
-                d: '2026-05-01T00:00:00.000Z',
-                s: 2, di: 5, e: 0, sd: 0, ls: 1, r: 1, l: 0, st: State.Learning
-            };
-            const service = new FSRSService({ 'fen::e4': cardData });
-            expect(service.shouldAutoplay('fen', 'e4', new Date('2026-04-20T00:00:00Z'))).toBe(false);
-        });
-
-        it('should return false when card is Relearning', () => {
-            const cardData: FSRSCardData = {
-                d: '2026-05-01T00:00:00.000Z',
-                s: 2, di: 5, e: 0, sd: 0, ls: 1, r: 5, l: 1, st: State.Relearning
-            };
-            const service = new FSRSService({ 'fen::e4': cardData });
-            expect(service.shouldAutoplay('fen', 'e4', new Date('2026-04-20T00:00:00Z'))).toBe(false);
-        });
-
-        it('should return false when card is due (now >= due)', () => {
-            const reviewDate = new Date('2026-04-01T00:00:00Z');
-            const cardData = buildReviewCard(reviewDate);
-
-            const service = new FSRSService({ 'fen::e4': cardData });
-            const atDue = new Date(cardData.d);
-            expect(service.shouldAutoplay('fen', 'e4', atDue)).toBe(false);
-        });
-
-        it('should return false when retrievability is below threshold', () => {
-            const reviewDate = new Date('2026-04-01T00:00:00Z');
-            const cardData = buildReviewCard(reviewDate);
-
-            const service = new FSRSService({ 'fen::e4': cardData });
-            // At due date, R equals request_retention (0.97) which meets the 0.97 autoplay threshold
-            // To get R below threshold, check slightly past due
-            const pastDue = new Date(new Date(cardData.d).getTime() + 24 * 60 * 60 * 1000);
-            expect(service.shouldAutoplay('fen', 'e4', pastDue)).toBe(false);
-        });
-
-        it('should return true when card is Review, not due, and R >= 0.97', () => {
-            const reviewDate = new Date('2026-04-01T00:00:00Z');
-            const cardData = buildReviewCard(reviewDate);
-
-            const service = new FSRSService({ 'fen::e4': cardData });
-            // Right after review, R should be ~1.0
-            const justAfterReview = new Date(new Date(cardData.lr!).getTime() + 1000);
-            expect(service.shouldAutoplay('fen', 'e4', justAfterReview)).toBe(true);
         });
     });
 
@@ -358,6 +261,66 @@ describe('FSRSService', () => {
             it('caps interval at maxInterval for very high stability', () => {
                 expect(FSRSService.intervalFromStability(10000, 0.95, 21)).toBe(21);
             });
+
+            // ── Decay/forgetting-curve consistency ──────────────────────────
+            //
+            // Regression guard for the FSRS-5/FSRS-6 decay mismatch we hit in
+            // June 2026. The contract of FSRS is: an interval is the time for
+            // retrievability to drop from 1.0 to the request_retention. If
+            // `intervalFromStability` and the scheduler's forgetting curve use
+            // different decay constants, `dueAt` and `getRetrievability` drift
+            // apart — a card can read "due in 3d" while R has already fallen
+            // below target, producing a contradictory "Due · due in 3d" pill.
+            //
+            // The invariant: at exactly `lastReview + intervalFromStability(s, R, …)`
+            // days, the scheduler's R(t) must equal the request_retention up
+            // to small rounding noise. Under the bug R landed ~0.004–0.006
+            // below target across realistic stability/retention ranges, well
+            // outside the integer-day rounding noise (~0.0003) that remains
+            // under the fix.
+            it.each([
+                { stability: 50,  target: 0.95 },
+                { stability: 200, target: 0.95 },
+                { stability: 100, target: 0.97 },
+                { stability: 94,  target: 0.98 },
+                { stability: 200, target: 0.98 },
+            ])(
+                'intervalFromStability lands on the target retention at the computed dueAt (s=$stability, R=$target)',
+                ({ stability, target }) => {
+                    const lr = new Date('2026-01-01T00:00:00Z');
+                    const maxInterval = 365;
+
+                    const intervalDays = FSRSService.intervalFromStability(stability, target, maxInterval);
+                    const dueAt = new Date(lr.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+
+                    // Build a scheduler that mirrors the one FSRSService uses, then
+                    // ask it for R at the dueAt we just computed.
+                    const scheduler = fsrs({
+                        request_retention: target,
+                        maximum_interval: maxInterval,
+                        enable_fuzz: true,
+                        enable_short_term: true,
+                    });
+                    const card = {
+                        due: dueAt,
+                        stability,
+                        difficulty: 5,
+                        elapsed_days: intervalDays,
+                        scheduled_days: intervalDays,
+                        learning_steps: 0,
+                        reps: 1,
+                        lapses: 0,
+                        state: State.Review,
+                        last_review: lr,
+                    };
+                    const R = scheduler.get_retrievability(card, dueAt, false) as number;
+
+                    // Tolerance covers integer-day rounding (~0.0003). The bug
+                    // produced ~0.004–0.006 of drift, so ±0.002 cleanly catches
+                    // any decay-constant mismatch while accepting normal noise.
+                    expect(Math.abs(R - target)).toBeLessThan(0.002);
+                },
+            );
         });
     });
 });
