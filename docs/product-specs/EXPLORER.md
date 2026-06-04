@@ -118,10 +118,13 @@ position.
 - Directly **under the board**, a small **"Find position"** input
   accepts either a FEN or a PGN line. The input is aligned to the
   board's width (does **not** stretch across the full page). Submitting
-  it navigates the Explorer to that position **only if** the position
-  exists in the active orientation's repertoire. Otherwise — whether
-  the input fails to parse or the position simply isn't in the tree —
-  the field shows an inline error (e.g. *"Not in your White
+  it navigates the Explorer to that position if it is reachable in
+  *either* orientation's repertoire — the active orientation is tried
+  first, and on miss the other orientation is tried with the toggle
+  switched automatically (see *Find-position input parsing* under
+  Implementation Decisions). If the position is in neither orientation
+  — whether the input failed to parse or the position simply isn't in
+  the tree — the field shows an inline error (e.g. *"Not in your White
   repertoire."*) and the board does not move. Placeholder: *"Paste FEN
   or PGN to jump…"*.
 
@@ -260,7 +263,6 @@ the implementer's call.
   If it's in neither, show the inline error.
 - **Header nav.** Add an "Explorer" link in the global header
   alongside the other page links so the page is discoverable.
-- The backend.
 
 ## Deferred (not in v1)
 

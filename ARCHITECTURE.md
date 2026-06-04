@@ -57,6 +57,7 @@ See `docs/product-specs/FSRS.md` for the full behavioral specification.
 | `/training`         | Interactive board training (FSRS-driven)        |
 | `/repertoire`       | Browse / manage imported variants               |
 | `/repertoire/variant` | View a single variant's PGN and annotations   |
+| `/explorer`         | Browse the repertoire as positions (read-only navigation, FSRS status per move) |
 | `/games`            | Annotated game history from linked Lichess and Chess.com accounts |
 | `/settings`         | FSRS tuning, linked accounts, and account settings |
 
