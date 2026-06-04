@@ -189,7 +189,29 @@
 .explorer-path-line {
   display: inline-flex;
   flex-wrap: wrap;
+  align-items: baseline;
   gap: 0.1rem 0.25rem;
+}
+
+/* "start" jump button at the beginning of each "How you got here" row.
+   Styled subtly so it reads as a navigation affordance rather than a ply. */
+.explorer-path-start {
+  background: #f1f4f8;
+  border: 1px solid #dde2ea;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: #4a505a;
+  padding: 0 6px;
+  line-height: 1.4;
+  align-self: baseline;
+}
+
+.explorer-path-start:hover {
+  background: #e3edf8;
+  color: rgb(0, 130, 210);
+  border-color: #b0d4ee;
 }
 
 /* ===== Opening label ===== */

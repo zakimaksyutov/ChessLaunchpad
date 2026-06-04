@@ -116,8 +116,9 @@ const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJ
  */
 const PathLine: React.FC<{
     path: Path;
+    rootFen: string;
     onJump: (fen: string) => void;
-}> = ({ path, onJump }) => {
+}> = ({ path, rootFen, onJump }) => {
     if (path.length === 0) return <span className="explorer-empty-path">(starting position)</span>;
     const parts = formatPlyLabelParts(
         path.map((_, i) => i + 1),
@@ -125,6 +126,15 @@ const PathLine: React.FC<{
     );
     return (
         <span className="explorer-path-line">
+            <button
+                type="button"
+                className="explorer-path-start"
+                onClick={() => onJump(rootFen)}
+                aria-label="Go to starting position"
+                title="Go to starting position"
+            >
+                start
+            </button>
             {path.map((edge, i) => (
                 <ClickablePly
                     key={i}
@@ -616,7 +626,7 @@ const ExplorerPage: React.FC = () => {
                                 <ul className="explorer-paths">
                                     {summary.shown.map((p, i) => (
                                         <li key={i}>
-                                            <PathLine path={p} onJump={fen => jumpTo(fen, undefined, true)} />
+                                            <PathLine path={p} rootFen={service.getRootFen()} onJump={fen => jumpTo(fen, undefined, true)} />
                                         </li>
                                     ))}
                                     {summary.moreCount > 0 && (

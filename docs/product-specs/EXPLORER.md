@@ -100,6 +100,8 @@ position.
 - **Enumeration cap:** stop searching after **20 paths**. If the cap is
   hit, the counter reads *"… 17+ more ways"* so the page never hangs on
   pathological transposition-heavy positions.
+- Each row begins with a small **start** affordance that jumps the
+  Explorer back to the starting position.
 
 ### Middle: chessboard (left column)
 
