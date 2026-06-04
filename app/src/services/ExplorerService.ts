@@ -46,7 +46,7 @@ export interface ContinuationPly {
     toFen: string;
     /**
      * 1-based ply depth in the canonical path that contains this ply.
-     * Used to format `N.SAN` or `N…SAN`. Even ply = white move, odd = black move.
+     * Used to format `N.SAN` or `N…SAN`. Odd ply = white move, even ply = black move.
      */
     plyDepth: number;
 }
