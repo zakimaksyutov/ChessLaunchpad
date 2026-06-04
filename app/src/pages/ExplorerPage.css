@@ -214,6 +214,16 @@
   border-color: #b0d4ee;
 }
 
+/* Static variant — used when the Explorer is already at the starting
+   position. Looks identical but is not interactive. */
+.explorer-path-start-static,
+.explorer-path-start-static:hover {
+  background: #f1f4f8;
+  color: #4a505a;
+  border-color: #dde2ea;
+  cursor: default;
+}
+
 /* ===== Opening label ===== */
 .explorer-opening-current {
   display: flex;

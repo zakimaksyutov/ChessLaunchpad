@@ -114,18 +114,14 @@ const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJ
  * land on the position AFTER they are played. The move number prefix is
  * rendered as plain text outside the click target.
  */
-const PathLine: React.FC<{
-    path: Path;
-    rootFen: string;
-    onJump: (fen: string) => void;
-}> = ({ path, rootFen, onJump }) => {
-    if (path.length === 0) return <span className="explorer-empty-path">(starting position)</span>;
-    const parts = formatPlyLabelParts(
-        path.map((_, i) => i + 1),
-        path.map(e => e.san),
-    );
-    return (
-        <span className="explorer-path-line">
+/**
+ * "start" pill — renders as an interactive button when `onJump` is provided
+ * (jumps to `rootFen`), or as a static visual badge when the Explorer is
+ * already at the starting position.
+ */
+const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string }> = ({ onJump, rootFen }) => {
+    if (onJump && rootFen) {
+        return (
             <button
                 type="button"
                 className="explorer-path-start"
@@ -135,6 +131,32 @@ const PathLine: React.FC<{
             >
                 start
             </button>
+        );
+    }
+    return (
+        <span
+            className="explorer-path-start explorer-path-start-static"
+            aria-label="Starting position"
+            title="Starting position"
+        >
+            start
+        </span>
+    );
+};
+
+const PathLine: React.FC<{
+    path: Path;
+    rootFen: string;
+    onJump: (fen: string) => void;
+}> = ({ path, rootFen, onJump }) => {
+    if (path.length === 0) return <StartPill />;
+    const parts = formatPlyLabelParts(
+        path.map((_, i) => i + 1),
+        path.map(e => e.san),
+    );
+    return (
+        <span className="explorer-path-line">
+            <StartPill onJump={onJump} rootFen={rootFen} />
             {path.map((edge, i) => (
                 <ClickablePly
                     key={i}
@@ -613,12 +635,13 @@ const ExplorerPage: React.FC = () => {
                         <section className="explorer-how-you-got-here">
                             <div className="explorer-section-title">How you got here</div>
                             {currentFen === service.getRootFen() ? (
-                                <div className="explorer-empty-path">
-                                    (starting position
-                                    {repertoireEmpty
-                                        ? ` — no lines in your ${resolvedOrientation} repertoire yet`
-                                        : ''}
-                                    )
+                                <div className="explorer-path-line explorer-path-line--current">
+                                    <StartPill />
+                                    {repertoireEmpty && (
+                                        <span className="explorer-empty-path">
+                                            — no lines in your {resolvedOrientation} repertoire yet
+                                        </span>
+                                    )}
                                 </div>
                             ) : summary.shown.length === 0 ? (
                                 <div className="explorer-empty-path">(not reachable)</div>

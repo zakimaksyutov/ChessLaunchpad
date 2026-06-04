@@ -101,7 +101,10 @@ position.
   hit, the counter reads *"… 17+ more ways"* so the page never hangs on
   pathological transposition-heavy positions.
 - Each row begins with a small **start** affordance that jumps the
-  Explorer back to the starting position.
+  Explorer back to the starting position. When the Explorer is already
+  at the starting position, the same pill is shown as a non-interactive
+  badge in place of the path list (followed by "— no lines in your
+  {orientation} repertoire yet" when the repertoire is empty).
 
 ### Middle: chessboard (left column)
 
