@@ -635,14 +635,18 @@ const ExplorerPage: React.FC = () => {
                         <section className="explorer-how-you-got-here">
                             <div className="explorer-section-title">How you got here</div>
                             {currentFen === service.getRootFen() ? (
-                                <div className="explorer-path-line explorer-path-line--current">
-                                    <StartPill />
-                                    {repertoireEmpty && (
-                                        <span className="explorer-empty-path">
-                                            — no lines in your {resolvedOrientation} repertoire yet
+                                <ul className="explorer-paths">
+                                    <li>
+                                        <span className="explorer-path-line">
+                                            <StartPill />
+                                            {repertoireEmpty && (
+                                                <span className="explorer-empty-path">
+                                                    — no lines in your {resolvedOrientation} repertoire yet
+                                                </span>
+                                            )}
                                         </span>
-                                    )}
-                                </div>
+                                    </li>
+                                </ul>
                             ) : summary.shown.length === 0 ? (
                                 <div className="explorer-empty-path">(not reachable)</div>
                             ) : (
