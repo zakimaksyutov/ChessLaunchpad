@@ -1,8 +1,6 @@
 import { createEmptyCard, fsrs, Rating, State, FSRS, Card, computeDecayFactor, default_w } from 'ts-fsrs';
 import { FSRSCardData } from '../models/FSRSCardData';
 
-const AUTOPLAY_RETRIEVABILITY_THRESHOLD = 0.97;
-
 // Decay/factor for our standalone interval math (`intervalFromStability`,
 // `computeInterval`). These MUST stay in lockstep with the decay the scheduler
 // uses for its forgetting curve — otherwise `dueAt` and `getRetrievability`
@@ -69,26 +67,6 @@ export class FSRSService {
     static parseCardKey(key: string): { fen: string; san: string } {
         const idx = key.indexOf('::');
         return { fen: key.substring(0, idx), san: key.substring(idx + 2) };
-    }
-
-    shouldAutoplay(normalizedFen: string, moveSan: string, now: Date): boolean {
-        const key = FSRSService.makeCardKey(normalizedFen, moveSan);
-        const cardData = this.cards[key];
-        if (!cardData) return false;
-
-        // Must be in Review state
-        if (cardData.st !== State.Review) return false;
-
-        // Must not be due
-        const due = FSRSService.computeDueDate(cardData);
-        if (now >= due) return false;
-
-        // Retrievability must be >= threshold
-        const card = this.hydrate(cardData);
-        const R = this.scheduler.get_retrievability(card, now, false);
-        if (R < AUTOPLAY_RETRIEVABILITY_THRESHOLD) return false;
-
-        return true;
     }
 
     rateCard(normalizedFen: string, moveSan: string, correct: boolean, now: Date): void {
