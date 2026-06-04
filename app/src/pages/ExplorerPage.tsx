@@ -480,6 +480,14 @@ const ExplorerPage: React.FC = () => {
         writePersistedOrientation(resolvedOrientation);
     }, [resolvedOrientation]);
 
+    // Auto-dismiss the off-repertoire snap toast after a few seconds so it
+    // doesn't linger (position: sticky) as the user navigates the repertoire.
+    useEffect(() => {
+        if (!snapToast) return;
+        const id = window.setTimeout(() => setSnapToast(null), 4000);
+        return () => window.clearTimeout(id);
+    }, [snapToast]);
+
     const jumpTo = useCallback((fen: string, orientation?: Orientation, push = true) => {
         const next = new URLSearchParams(searchParams);
         const targetOrientation = orientation ?? resolvedOrientation;
