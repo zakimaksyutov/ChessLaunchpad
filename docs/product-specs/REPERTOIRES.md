@@ -132,7 +132,7 @@ The transform is confined to the persistence boundary
       "name": "White",
       "orientation": "white",
       "positions": {
-        "<hash(FEN)>": {                          // 12-char base64url SHA-1
+        "<hash(FEN)>": {                          // 12-char base64url MurmurHash3-x86-128
           "annotations": [ ... ],                 // unchanged
           "moves": {
             "e4": { "card": [d, s, di, e, sd, ls, r, l, st, lr?] },

@@ -45,7 +45,7 @@ export interface PersistedPositionEntryV2 {
 export interface PersistedRepertoireEntryV2 {
     name: string;
     orientation: 'white' | 'black';
-    /** Keyed by 12-char base64url SHA-1 of the normalized FEN. */
+    /** Keyed by 12-char base64url MurmurHash3-x86-128 of the normalized FEN. */
     positions: Record<string, PersistedPositionEntryV2>;
 }
 
