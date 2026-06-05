@@ -141,6 +141,11 @@ Returns `200 OK` with CORS headers. No `Authorization` required.
 
 ## Repertoire JSON Schema
 
+> **⚠️ Note:** Full schema validation is currently **disabled** to allow fast iteration.
+> The server only checks that the body is valid JSON. The detailed constraints below
+> will be re-enforced before the project is opened to the public.
+> See `RepertoireValidation.cs` for the implementation (marked with `// TODO`).
+
 A newly created user starts with `{}`. After the first update, the repertoire must conform to the following schema.
 
 ### Root Object

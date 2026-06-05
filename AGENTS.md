@@ -73,6 +73,7 @@ yarn dev
   - `product-specs/GAME-INGEST.md` — Game ingestion pipeline specification
   - `product-specs/DASHBOARD.md` — Dashboard page product specification
   - `product-specs/EXPLORER.md` — Explorer page (`/explorer`) product specification
+  - `product-specs/REPERTOIRES.md` — Position-based repertoires storage (replaces variant-centric blob) specification
   - `INSTRUMENTATION.md` — Instrumentation and telemetry reference
 
 ## Backend API
