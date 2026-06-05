@@ -393,6 +393,57 @@ describe('BlobCodec', () => {
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/malformed packed card/);
         });
+
+        // Each non-finite value below would crash with "RangeError: Invalid time value"
+        // (from `new Date(...).toISOString()`) without an explicit guard — that error
+        // gives the caller no clue where the bad data came from. The dedicated
+        // "malformed packed card" message names the offending element index and value.
+        for (const badValue of [NaN, Infinity, -Infinity, null, undefined, '123', true]) {
+            it(`decode throws "malformed packed card" on non-finite element (${
+                JSON.stringify(badValue)
+            }) instead of "Invalid time value"`, () => {
+                const root = startFen();
+                const rootHash = hashFen(root);
+                // d (element 0) is non-finite; rest are valid
+                const card = [badValue, 1, 1, 0, 1, 0, 1, 0, 2] as unknown as never;
+                const blob: PersistedBlobV2 = {
+                    v: PERSISTED_BLOB_VERSION,
+                    repertoires: [
+                        {
+                            name: 'White', orientation: 'white',
+                            positions: {
+                                [rootHash]: { moves: { e4: { card } } },
+                                [hashFen(fenAfter(['e4']))]: { moves: {} },
+                            },
+                        },
+                        { name: 'Black', orientation: 'black', positions: {} },
+                    ],
+                    currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                };
+                expect(() => decodePersistedBlob(blob)).toThrow(/malformed packed card.*element 0/);
+            });
+        }
+
+        it('decode throws "malformed packed card" with the offending element index for lr (element 9)', () => {
+            const root = startFen();
+            const rootHash = hashFen(root);
+            const card = [Date.parse('2030-01-01'), 1, 1, 0, 1, 0, 1, 0, 2, NaN] as unknown as never;
+            const blob: PersistedBlobV2 = {
+                v: PERSISTED_BLOB_VERSION,
+                repertoires: [
+                    {
+                        name: 'White', orientation: 'white',
+                        positions: {
+                            [rootHash]: { moves: { e4: { card } } },
+                            [hashFen(fenAfter(['e4']))]: { moves: {} },
+                        },
+                    },
+                    { name: 'Black', orientation: 'black', positions: {} },
+                ],
+                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+            };
+            expect(() => decodePersistedBlob(blob)).toThrow(/malformed packed card.*element 9/);
+        });
     });
 
     describe('v1 pass-through', () => {

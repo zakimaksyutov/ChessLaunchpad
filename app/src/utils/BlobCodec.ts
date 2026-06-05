@@ -212,6 +212,15 @@ function unpackCard(packed: unknown): FSRSCardData {
             Array.isArray(packed) ? packed.length : typeof packed
         })`);
     }
+    for (let i = 0; i < packed.length; i++) {
+        if (!Number.isFinite(packed[i])) {
+            throw new Error(
+                `BlobCodec: malformed packed card (element ${i} is not a finite number: ${
+                    JSON.stringify(packed[i])
+                })`
+            );
+        }
+    }
     const [d, s, di, e, sd, ls, r, l, st, lr] = packed as number[];
     const out: FSRSCardData = {
         d: epochMsToISO(d),
@@ -386,12 +395,18 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
         const startHash = hashFen(start);
 
         const outPositions: Record<string, PositionEntry> = {};
-        const visited = new Set<string>();
+        // Track both FENs (for cycle detection during the walk) and hashes
+        // (for the orphan check at the end). We always know both at insertion
+        // time, so maintaining the hash set in parallel avoids a second
+        // hashing pass over every visited FEN.
+        const visitedFens = new Set<string>();
+        const visitedHashes = new Set<string>();
 
         const seedEntry = rep.positions[startHash];
         const queue: { fen: string; hash: string }[] = [];
         if (seedEntry) {
-            visited.add(start);
+            visitedFens.add(start);
+            visitedHashes.add(startHash);
             queue.push({ fen: start, hash: startHash });
         }
 
@@ -413,10 +428,11 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
                 }
                 if (!moved) continue;
                 const childFen = normalizeFenResetHalfmoveClock(chess.fen());
-                if (visited.has(childFen)) continue;
+                if (visitedFens.has(childFen)) continue;
                 const childHash = hashFen(childFen);
                 if (!rep.positions[childHash]) continue;
-                visited.add(childFen);
+                visitedFens.add(childFen);
+                visitedHashes.add(childHash);
                 queue.push({ fen: childFen, hash: childHash });
             }
 
@@ -430,10 +446,6 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
         // Check that we visited every persisted hash. Anything left over is
         // an orphan we cannot map back to a full FEN — refuse silently
         // dropping it on round-trip.
-        const visitedHashes = new Set<string>();
-        for (const fen of visited) {
-            visitedHashes.add(hashFen(fen));
-        }
         for (const hash of Object.keys(rep.positions)) {
             if (!visitedHashes.has(hash)) {
                 throw new Error(
