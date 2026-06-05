@@ -24,6 +24,7 @@ import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import {
     bootstrapRepertoiresFromLegacy,
 } from '../utils/RepertoiresSerde';
+import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
 
 const SettingsPage: React.FC = () => {
@@ -290,8 +291,9 @@ const SettingsPage: React.FC = () => {
             const dal = createDataAccessLayer(username, hashedPassword);
             const current = await dal.retrieveRepertoireData();
             const blob = RepertoireDataUtils.prepareDataForSave(current);
+            const persisted = encodePersistedBlob(blob);
 
-            const json = JSON.stringify(blob);
+            const json = JSON.stringify(persisted);
             const file = new Blob([json], { type: 'application/json' });
 
             const positionCount = (blob.repertoires ?? []).reduce(
@@ -323,9 +325,15 @@ const SettingsPage: React.FC = () => {
 
         let parsed: RepertoireData;
         try {
-            parsed = JSON.parse(text) as RepertoireData;
-        } catch {
-            alert('Failed to import: file is not valid JSON.');
+            const raw = JSON.parse(text);
+            // `decodePersistedBlob` is the single entry point for both v1
+            // legacy shape (pass-through) and v2 wire shape (hashed FENs +
+            // packed cards). After this, `parsed` is in the in-memory
+            // shape that `normalize()` expects.
+            parsed = decodePersistedBlob(raw);
+        } catch (ex: unknown) {
+            const msg = ex instanceof Error ? ex.message : String(ex);
+            alert(`Failed to import: ${msg || 'file is not valid JSON.'}`);
             return;
         }
 

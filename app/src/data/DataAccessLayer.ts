@@ -1,5 +1,6 @@
 import { RepertoireData } from "../models/RepertoireData";
 import { RepertoireDataUtils } from "../utils/RepertoireDataUtils";
+import { encodePersistedBlob, decodePersistedBlob } from "../utils/BlobCodec";
 
 export interface IDataAccessLayer {
     createAccount(): Promise<void>;
@@ -110,7 +111,8 @@ class DataAccessLayer implements IDataAccessLayer {
                 this.etag = etagHeader;
             }
 
-            const remoteData: RepertoireData = await response.json();
+            const rawData: unknown = await response.json();
+            const remoteData: RepertoireData = decodePersistedBlob(rawData);
             RepertoireDataUtils.normalize(remoteData);
 
             return remoteData;
@@ -122,6 +124,7 @@ class DataAccessLayer implements IDataAccessLayer {
 
     public async storeRepertoireData(data: RepertoireData): Promise<void> {
         try {
+            const persisted = encodePersistedBlob(data);
             const response = await fetch(
                 `${this.ApiEndpointUri}/${this.username}/variants`,
                 {
@@ -131,7 +134,7 @@ class DataAccessLayer implements IDataAccessLayer {
                         "Content-Type": "application/json",
                         "If-Match": this.etag || "etag-not-found",
                     },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(persisted)
                 }
             );
 
