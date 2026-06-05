@@ -291,7 +291,7 @@ const SettingsPage: React.FC = () => {
             const current = await dal.retrieveRepertoireData();
             const blob = RepertoireDataUtils.prepareDataForSave(current);
 
-            const json = JSON.stringify(blob, null, 2);
+            const json = JSON.stringify(blob);
             const file = new Blob([json], { type: 'application/json' });
 
             const positionCount = (blob.repertoires ?? []).reduce(
