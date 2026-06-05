@@ -102,6 +102,9 @@ back the new client would surface an empty repertoire to users.
 - `/repertoire/variant` page (variant editor).
 - Header "Repertoire" link and its route registration.
 - "Train with filter" handoff from the variant table.
+- **Paste PGN** functionality (the textarea on the variant editor that
+  loaded a PGN line into the editor). Not relocated. To add new lines
+  in v1, users round-trip a `.chess` file through Import / Export.
 
 ### Relocated
 
