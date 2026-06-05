@@ -79,8 +79,8 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         // ----------------------------------------------------------------------------
         const updatedData = await dal.retrieveRepertoireData();
         expect(Array.isArray(updatedData.data)).toBe(true);
-        expect(updatedData.data.length).toBe(1);
-        expect(updatedData.data[0].pgn).toBe("1. e4 e5");
+        expect(updatedData.data?.length).toBe(1);
+        expect(updatedData.data?.[0].pgn).toBe("1. e4 e5");
 
         // ----------------------------------------------------------------------------
         // 8. Optionally, let's do a second update to show If-Match changes.
@@ -101,8 +101,8 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
 
         // Now retrieve a final time
         const finalData = await dal.retrieveRepertoireData();
-        expect(finalData.data.length).toBe(1);
-        expect(finalData.data[0].pgn).toBe("1. d4 d5");
+        expect(finalData.data?.length).toBe(1);
+        expect(finalData.data?.[0].pgn).toBe("1. d4 d5");
 
         // ----------------------------------------------------------------------------
         // 9. Delete the "UnitTest" user account with the random password

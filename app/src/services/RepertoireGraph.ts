@@ -1,6 +1,7 @@
 import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock, isUserTurnForOrientation } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
+import { RepertoireEntry } from '../models/Repertoires';
 
 export interface GraphEdge {
     from: string;       // normalized FEN before the move
@@ -36,6 +37,56 @@ export class RepertoireGraph {
         for (const { pgn, orientation } of pgns) {
             this.addPgn(pgn, orientation);
         }
+    }
+
+    /**
+     * Build a graph directly from the position-centric `repertoires` shape.
+     * Each `from` node + SAN gives us the edge; the `to` FEN is derived by
+     * replaying the SAN through chess.js (the spec deliberately doesn't
+     * persist `to`-FENs so they can't drift). Edges shared between the two
+     * orientations are merged on `(from, san, to)` and accumulate both
+     * orientations.
+     */
+    static fromRepertoires(repertoires: RepertoireEntry[]): RepertoireGraph {
+        const graph = new RepertoireGraph([]);
+        for (const rep of repertoires) {
+            for (const [fen, pos] of Object.entries(rep.positions)) {
+                graph.ensureNode(fen);
+                for (const san of Object.keys(pos.moves)) {
+                    let toFen: string;
+                    try {
+                        const chess = new Chess(fen);
+                        const move = chess.move(san);
+                        if (!move) continue;
+                        toFen = normalizeFenResetHalfmoveClock(chess.fen());
+                    } catch {
+                        continue;
+                    }
+                    graph.ensureNode(toFen);
+                    const isUserTurn = isUserTurnForOrientation(fen, rep.orientation);
+                    const cardKey = FSRSService.makeCardKey(fen, san);
+                    const node = graph.nodes.get(fen)!;
+                    const existing = node.edges.find(e => e.san === san && e.to === toFen);
+                    if (existing) {
+                        existing.orientations.add(rep.orientation);
+                        if (isUserTurn) existing.hasCard = true;
+                    } else {
+                        node.edges.push({
+                            from: fen,
+                            to: toFen,
+                            san,
+                            hasCard: isUserTurn,
+                            cardKey,
+                            orientations: new Set([rep.orientation]),
+                        });
+                    }
+                    if (isUserTurn) {
+                        graph.orientations.set(cardKey, rep.orientation);
+                    }
+                }
+            }
+        }
+        return graph;
     }
 
     getRootFen(): string {

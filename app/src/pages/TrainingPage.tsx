@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import TrainingPageControl from '../components/TrainingPageControl';
 import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData } from '../models/RepertoireData';
-import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
 import BadgeRow from '../components/BadgeRow';
@@ -50,7 +49,11 @@ const TrainingPage: React.FC = () => {
                 repertoireDataRef.current = data;
                 setReviewedToday(getTodayPlayCount(data));
 
-                console.log(`DAL: Loaded ${data.data.length} variants.`);
+                const repertoireCount = data.repertoires?.length ?? 0;
+                const positionCount = (data.repertoires ?? []).reduce(
+                    (sum, r) => sum + Object.keys(r.positions).length, 0,
+                );
+                console.log(`DAL: Loaded ${repertoireCount} repertoires, ${positionCount} positions.`);
             } catch (e: any) {
                 if (cancelled) return;
                 const msg = `Failed to load variants: ${e.message || 'Unknown error'}`;
@@ -68,16 +71,9 @@ const TrainingPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Convert repertoire data to variants for the engine
-    const variants = useMemo(() => {
-        if (!repertoireData) return [];
-        return RepertoireDataUtils.convertToVariantData(repertoireData);
-    }, [repertoireData]);
-
     // Handle traversal completion: save updated FSRS cards + activity stats
     const handleTraversalComplete = useCallback(async (
         correctCardsRated: number,
-        updatedCards: Record<string, FSRSCardData>,
         traversalStats: TraversalStats,
         elapsedSeconds: number,
     ) => {
@@ -88,20 +84,15 @@ const TrainingPage: React.FC = () => {
             // Record activity (recordTraversal calls ensureActivity internally)
             recordTraversal(currentData, traversalStats, elapsedSeconds);
 
-            const newData = RepertoireDataUtils.convertToRepertoireData(
-                RepertoireDataUtils.convertToVariantData(currentData),
-                updatedCards,
-                currentData.settings,
-                currentData,
-            );
+            // FSRSService has already mutated currentData.fsrsCards in-place
+            // (it's the same flat map reference). prepareDataForSave projects
+            // it back into the position dict and produces the persistence blob.
+            const blobForSave = RepertoireDataUtils.prepareDataForSave(currentData);
 
-            // Update ref immediately but don't trigger engine recreation via setRepertoireData
-            repertoireDataRef.current = newData;
-            // Reconcile UI with persisted value
-            setReviewedToday(getTodayPlayCount(newData));
-            await dal.storeRepertoireData(newData);
+            setReviewedToday(getTodayPlayCount(currentData));
+            await dal.storeRepertoireData(blobForSave);
 
-            console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(newData)} (+${correctCardsRated})`);
+            console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(currentData)} (+${correctCardsRated})`);
         } catch (e: any) {
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);
@@ -126,7 +117,8 @@ const TrainingPage: React.FC = () => {
         return <div style={{ color: "red" }}>Error: {error}</div>;
     }
 
-    if (!repertoireData || variants.length === 0) {
+    const hasContent = (repertoireData?.repertoires ?? []).some(r => Object.keys(r.positions).length > 0);
+    if (!repertoireData || !hasContent) {
         return <div>No variants available.</div>;
     }
 
@@ -148,7 +140,7 @@ const TrainingPage: React.FC = () => {
                 animationTrigger={animationTrigger}
             />
             <TrainingPageControl
-                variants={variants}
+                repertoires={repertoireData.repertoires ?? []}
                 fsrsCards={repertoireData.fsrsCards ?? {}}
                 onTraversalComplete={handleTraversalComplete}
                 onQueueStats={handleQueueStats}

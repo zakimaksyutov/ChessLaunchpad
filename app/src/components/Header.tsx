@@ -97,7 +97,6 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
             {username && (
                 <nav className="header-nav">
                     <Link to="/training" className="header-nav-link">Training</Link>
-                    <Link to="/repertoire" className="header-nav-link">Repertoire</Link>
                     <Link to="/explorer" className="header-nav-link">Explorer</Link>
                     <Link to="/games" className="header-nav-link">Games</Link>
                 </nav>

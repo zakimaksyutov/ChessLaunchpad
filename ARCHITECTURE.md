@@ -55,11 +55,9 @@ See `docs/product-specs/FSRS.md` for the full behavioral specification.
 | `/`                 | Dashboard (logged-in) / Landing page (anonymous) |
 | `/login`            | Authentication                                  |
 | `/training`         | Interactive board training (FSRS-driven)        |
-| `/repertoire`       | Browse / manage imported variants               |
-| `/repertoire/variant` | View a single variant's PGN and annotations   |
 | `/explorer`         | Browse the repertoire as positions (read-only navigation, FSRS status per move) |
 | `/games`            | Annotated game history from linked Lichess and Chess.com accounts |
-| `/settings`         | FSRS tuning, linked accounts, and account settings |
+| `/settings`         | FSRS tuning, linked accounts, repertoire import/export, and account settings |
 
 ## Tech Stack
 
@@ -86,7 +84,7 @@ The analysis popover fetches position evaluations from the public Lichess Cloud 
 
 ### Eval-Drop Highlighting
 
-The Repertoire page highlights moves whose Lichess cloud evaluation drops significantly compared to the previous position. Thresholds (centipawn loss):
+The Explorer and Games pages highlight moves whose Lichess cloud evaluation drops significantly compared to the previous position. Thresholds (centipawn loss):
 
 | Category   | Drop ≥ | Color  |
 | ---------- | ------ | ------ |
@@ -102,7 +100,7 @@ Evaluations are precomputed per-position (see `models/ExplorerEvals.ts`) with up
 Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 ```
 
-The entire repertoire (variants + FSRS cards + settings + activity) is stored as a single JSON blob with ETag-based optimistic concurrency. Legacy variant-level stats (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `currentEpoch`) remain in the payload for backward compatibility but are zeroed on load and not used for scheduling. See `docs/BACKEND_API_CONTRACT.md`.
+The entire repertoire (positions + FSRS cards + annotations + settings + activity) is stored as a single JSON blob with ETag-based optimistic concurrency. Storage is **position-centric**: a top-level `repertoires` field holds two named entries (`White`, `Black`), each with a dict of normalized FENs to position entries that carry inline FSRS cards on user-turn moves. See `docs/product-specs/REPERTOIRES.md` for the full schema and `docs/BACKEND_API_CONTRACT.md` for the wire contract. Legacy variant-centric blobs (`data: [...]` + flat `fsrsCards`) are converted on first read via a one-time bootstrap in `utils/RepertoiresSerde.ts`.
 
 ### Games Page Data Flow
 

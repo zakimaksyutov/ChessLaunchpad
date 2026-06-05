@@ -7,6 +7,8 @@ import { ReviewQueue } from './ReviewQueue';
 import { PathPlanner, TraversalPlan, TraversalStep } from './PathPlanner';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { Annotation } from '../models/Annotation';
+import { RepertoireEntry } from '../models/Repertoires';
+import { extractAnnotationsFromRepertoires } from '../utils/RepertoiresSerde';
 
 export type EnginePhase =
     | 'idle'
@@ -52,10 +54,10 @@ let _contextDepth: number = DEFAULT_CONTEXT_DEPTH;
  * Manages queue building, path planning, move handling, rating, and phase transitions.
  */
 export class TrainingEngine {
-    private graph: RepertoireGraph;
-    private fsrsService: FSRSService;
-    private queue: ReviewQueue;
-    private planner: PathPlanner;
+    private graph!: RepertoireGraph;
+    private fsrsService!: FSRSService;
+    private queue!: ReviewQueue;
+    private planner!: PathPlanner;
 
     private plan: TraversalPlan | null = null;
     private stepIndex: number = 0;
@@ -83,26 +85,88 @@ export class TrainingEngine {
         pgns: { pgn: string; orientation: 'white' | 'black'; annotations?: Record<string, Annotation[]> }[],
         fsrsCards: Record<string, FSRSCardData>
     ) {
-        this.graph = new RepertoireGraph(pgns);
-        this.fsrsService = new FSRSService(fsrsCards);
-        this.queue = new ReviewQueue();
-        const contextDepth = TrainingEngine.getContextDepth();
-        this.planner = new PathPlanner(this.graph, this.fsrsService, contextDepth);
-
-        // Ensure all graph cards exist in FSRS service (defensive reconciliation)
-        for (const key of this.graph.getCardKeys()) {
-            this.fsrsService.ensureCard(key);
-        }
-
+        const graph = new RepertoireGraph(pgns);
         // Merge annotations from all PGNs, partitioned by orientation
+        const annotations = new Map<string, Annotation[]>();
         for (const p of pgns) {
             if (p.annotations) {
                 for (const [fen, anns] of Object.entries(p.annotations)) {
                     const key = `${p.orientation}::${fen}`;
-                    const existing = this.annotations.get(key) ?? [];
-                    this.annotations.set(key, [...existing, ...anns]);
+                    const existing = annotations.get(key) ?? [];
+                    annotations.set(key, [...existing, ...anns]);
                 }
             }
+        }
+        this.init(graph, fsrsCards, annotations);
+    }
+
+    /**
+     * Construct from the position-centric `repertoires` shape. The flat
+     * `fsrsCards` map is the in-memory authority (FSRSService mutates it
+     * directly); annotations come straight from the position dict.
+     *
+     * Both this and the PGN constructor route through `init()` to keep
+     * graph/planner/annotation hydration consistent — any future per-edge
+     * pre-warming added to `init` is automatically picked up by both paths.
+     */
+    static fromRepertoires(
+        repertoires: RepertoireEntry[],
+        fsrsCards: Record<string, FSRSCardData>,
+    ): TrainingEngine {
+        const engine = Object.create(TrainingEngine.prototype) as TrainingEngine;
+        // Re-create the field-initializer defaults that `new` would set —
+        // Object.create bypasses class field initializers entirely, so the
+        // long list below mirrors the field declarations above 1:1.
+        engine.plan = null;
+        engine.stepIndex = 0;
+        engine.phase = 'idle';
+        engine.cardsRated = 0;
+        engine._reviewedCount = 0;
+        engine._mistakeCount = 0;
+        engine._learnedCount = 0;
+        engine.errorFens = new Set();
+        engine.branchAlternativesPlayed = new Set();
+        engine.userMoveTimestamps = [];
+        engine._isTeachingPass = false;
+        engine._isAheadOfSchedule = false;
+        engine._isRecalling = false;
+        engine._recallPlan = null;
+        engine._pendingAheadPlan = null;
+        engine.hintRequested = false;
+        engine.annotations = new Map();
+
+        const graph = RepertoireGraph.fromRepertoires(repertoires);
+        const annotations = new Map<string, Annotation[]>();
+        const per = extractAnnotationsFromRepertoires(repertoires);
+        for (const orientation of ['white', 'black'] as const) {
+            for (const [fen, anns] of per[orientation]) {
+                annotations.set(`${orientation}::${fen}`, [...anns]);
+            }
+        }
+        engine.init(graph, fsrsCards, annotations);
+        return engine;
+    }
+
+    /**
+     * Shared post-construction hydration. Sets up the FSRS service, queue,
+     * planner, annotation map, and runs defensive card reconciliation so
+     * every user-turn edge has a card.
+     */
+    private init(
+        graph: RepertoireGraph,
+        fsrsCards: Record<string, FSRSCardData>,
+        annotations: Map<string, Annotation[]>,
+    ): void {
+        this.graph = graph;
+        this.fsrsService = new FSRSService(fsrsCards);
+        this.queue = new ReviewQueue();
+        const contextDepth = TrainingEngine.getContextDepth();
+        this.planner = new PathPlanner(this.graph, this.fsrsService, contextDepth);
+        this.annotations = annotations;
+
+        // Ensure all graph cards exist in FSRS service (defensive reconciliation)
+        for (const key of this.graph.getCardKeys()) {
+            this.fsrsService.ensureCard(key);
         }
     }
 

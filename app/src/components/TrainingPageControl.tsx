@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import ChessboardControl from './ChessboardControl';
 import { Chess } from "chess.js";
-import { OpeningVariant } from '../models/OpeningVariant';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { TrainingEngine, EnginePhase } from '../services/TrainingEngine';
 import { TraversalStep } from '../services/PathPlanner';
 import { Annotation } from '../models/Annotation';
+import { RepertoireEntry } from '../models/Repertoires';
 import { TraversalStats } from '../services/ActivityService';
-import { extractAnnotations } from '../utils/AnnotationUtils';
-import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import PgnControl from './PgnControl';
 import './TrainingPageControl.css';
 
@@ -23,9 +21,9 @@ const soundError = new Audio(soundErrorFile);
 const soundSuccess = new Audio(soundSuccessFile);
 
 interface TrainingPageControlProps {
-    variants: OpeningVariant[];
+    repertoires: RepertoireEntry[];
     fsrsCards: Record<string, FSRSCardData>;
-    onTraversalComplete: (cardsRated: number, updatedCards: Record<string, FSRSCardData>, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
+    onTraversalComplete: (cardsRated: number, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
     onQueueStats: (stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => void;
     onCardRated: () => void;
     reviewedToday: number;
@@ -42,7 +40,7 @@ const ANNOTATION_DELAY_GROWTH = 1.26;
 const TEACHING_TO_RECALL_PAUSE_MS = 1200;
 
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
-    variants,
+    repertoires,
     fsrsCards,
     onTraversalComplete,
     onQueueStats,
@@ -87,31 +85,16 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     useEffect(() => { onQueueStatsRef.current = onQueueStats; }, [onQueueStats]);
     useEffect(() => { onCardRatedRef.current = onCardRated; }, [onCardRated]);
 
-    // Build engine once on mount or when variants change (not when fsrsCards changes from saves)
+    // Build engine once on mount or when repertoires changes (not when fsrsCards changes from saves).
+    // The fsrsCards ref pins the initial flat-map reference so FSRSService can
+    // mutate it in place; subsequent prop updates from save round-trips would
+    // otherwise rebuild the engine and lose mid-traversal state.
     const initialFsrsCardsRef = useRef(fsrsCards);
     useEffect(() => { initialFsrsCardsRef.current = fsrsCards; }, [fsrsCards]);
     const engine = useMemo<TrainingEngine>(() => {
-        const pgns = variants.map(v => {
-            const anns: Record<string, Annotation[]> = {};
-            const tempChess = new Chess();
-            try {
-                tempChess.loadPgn(v.pgn);
-                for (const comment of tempChess.getComments()) {
-                    // Normalize FEN to match engine's normalized FENs
-                    const normalizedFen = normalizeFenResetHalfmoveClock(comment.fen);
-                    const existing = anns[normalizedFen] ?? [];
-                    anns[normalizedFen] = [...existing, ...extractAnnotations(comment.comment)];
-                }
-            } catch { /* skip bad PGN */ }
-            return {
-                pgn: v.pgn,
-                orientation: v.orientation,
-                annotations: anns,
-            };
-        });
-        return new TrainingEngine(pgns, initialFsrsCardsRef.current);
+        return TrainingEngine.fromRepertoires(repertoires, initialFsrsCardsRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [variants]);
+    }, [repertoires]);
 
     useEffect(() => {
         engineRef.current = engine;
@@ -444,12 +427,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         }
 
         const correctCount = correctCardsCountRef.current;
-        const updatedCards = eng.getFsrsCards();
         const stats = eng.getTraversalStats();
         const elapsed = eng.getTraversalElapsedSeconds();
 
+        // FSRSService has already mutated the flat fsrsCards reference passed
+        // in at construction time, so the parent's repertoireDataRef.current
+        // is already up to date — no need to forward the cards explicitly.
+
         // Await save completion before starting next traversal (prevents ETag race)
-        await onTraversalCompleteRef.current(correctCount, updatedCards, stats, elapsed);
+        await onTraversalCompleteRef.current(correctCount, stats, elapsed);
 
         // Guard against scheduling after unmount (save was in-flight when component unmounted)
         if (!mountedRef.current) return;

@@ -7,6 +7,11 @@ import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
+import {
+    bootstrapRepertoiresFromLegacy,
+    extractFsrsCardsFromRepertoires,
+} from '../utils/RepertoiresSerde';
 
 // ── Test helpers ──────────────────────────────────────────────────────
 
@@ -25,6 +30,9 @@ function makeVariant(pgn: string, orientation: 'white' | 'black'): OpeningVarian
 }
 
 function makeData(variants: OpeningVariantData[] = []): RepertoireData {
+    // Build in the legacy shape, then run normalize() to bootstrap into
+    // the position-centric shape. This matches what the live read path does
+    // for users upgrading from pre-spec blobs.
     const data: RepertoireData = {
         data: variants,
         currentEpoch: 0,
@@ -37,33 +45,7 @@ function makeData(variants: OpeningVariantData[] = []): RepertoireData {
             lifetime: { reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0 },
         },
     };
-
-    // Pre-create cards for every key in the repertoire (matches normalize → reconcileCards behaviour).
-    const fsrs = new FSRSService(data.fsrsCards);
-    const { whiteFens, blackFens } = buildRepertoireFenSets(variants);
-
-    for (const variant of variants) {
-        const chess = new Chess();
-        chess.loadPgn(variant.pgn);
-        chess.deleteComments();
-        const moves = chess.history({ verbose: true });
-        const sim = new Chess();
-        const orientation = variant.orientation;
-        const repSet = orientation === 'white' ? whiteFens : blackFens;
-
-        for (let i = 0; i < moves.length; i++) {
-            const isUserMove = orientation === 'white' ? i % 2 === 0 : i % 2 === 1;
-            const fenBefore = sim.fen();
-            const normFenBefore = normalizeFenResetHalfmoveClock(fenBefore);
-            const move = moves[i];
-            sim.move({ from: move.from, to: move.to, promotion: move.promotion });
-            if (!isUserMove) continue;
-            if (!repSet.has(normFenBefore)) continue;
-            fsrs.ensureCard(FSRSService.makeCardKey(normFenBefore, move.san));
-        }
-    }
-    data.fsrsCards = fsrs.getCards();
-
+    RepertoireDataUtils.normalize(data);
     return data;
 }
 
@@ -230,7 +212,7 @@ describe('GameIngestService', () => {
         mockLichessOnce([game]);
 
         // Find card keys for Nf3 and Bc4 at the e4-e5 position
-        const { whiteFens } = buildRepertoireFenSets([v1, v2]);
+        const { whiteFens } = buildRepertoireFenSets(bootstrapRepertoiresFromLegacy([v1, v2], {}));
         const positionChess = new Chess();
         positionChess.move('e4'); positionChess.move('e5');
         const normFen = normalizeFenResetHalfmoveClock(positionChess.fen());
@@ -245,7 +227,7 @@ describe('GameIngestService', () => {
         const dal = new MockDal(data);
         await runIngest(dal);
 
-        const finalCards = dal.data.fsrsCards!;
+        const finalCards = extractFsrsCardsFromRepertoires(dal.data.repertoires!);
         // Both sibling cards should have advanced (reps > 0) due to Again rating.
         expect(finalCards[nf3Key].r).toBeGreaterThan(0);
         expect(finalCards[bc4Key].r).toBeGreaterThan(0);
@@ -530,8 +512,9 @@ describe('GameIngestService', () => {
         // e4 should be unchanged (skipped). Nf3 should have been rated.
         const sim = new Chess(); sim.move('e4'); sim.move('e5');
         const nf3Key = FSRSService.makeCardKey(normalizeFenResetHalfmoveClock(sim.fen()), 'Nf3');
-        expect(dal.data.fsrsCards![e4Key].r).toBe(e4ReviewedBeforeIngest);
-        expect(dal.data.fsrsCards![nf3Key].r).toBeGreaterThan(0);
+        const savedCards = extractFsrsCardsFromRepertoires(dal.data.repertoires!);
+        expect(savedCards[e4Key].r).toBe(e4ReviewedBeforeIngest);
+        expect(savedCards[nf3Key].r).toBeGreaterThan(0);
     });
 
     it('attributes counters to the date in local timezone', async () => {

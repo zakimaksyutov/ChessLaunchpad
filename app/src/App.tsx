@@ -5,8 +5,6 @@ import LandingPage from './pages/LandingPage';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import TrainingPage from './pages/TrainingPage';
-import RepertoirePage from './pages/RepertoirePage';
-import VariantPage from './pages/VariantPage';
 import SettingsPage from './pages/SettingsPage';
 import GamesPage from './pages/GamesPage';
 import ExplorerPage from './pages/ExplorerPage';
@@ -59,8 +57,6 @@ const App: React.FC = () => {
             <Route path="/" element={username ? <ProtectedRoute><DashboardPage /></ProtectedRoute> : <LandingPage />} />
             <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
             <Route path="/training" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
-            <Route path="/repertoire" element={<ProtectedRoute><RepertoirePage /></ProtectedRoute>} />
-            <Route path="/repertoire/variant" element={<ProtectedRoute><VariantPage /></ProtectedRoute>} />
             <Route path="/explorer" element={<ProtectedRoute><ExplorerPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/games" element={<ProtectedRoute><GamesPage /></ProtectedRoute>} />

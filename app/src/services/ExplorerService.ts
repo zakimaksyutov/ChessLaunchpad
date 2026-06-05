@@ -9,7 +9,11 @@ import {
     isLikelyFen,
     isUserTurnForOrientation,
 } from '../utils/FenUtils';
-import { extractAnnotations } from '../utils/AnnotationUtils';
+import {
+    bootstrapRepertoiresFromLegacy,
+    extractAnnotationsFromRepertoires,
+    extractFsrsCardsFromRepertoires,
+} from '../utils/RepertoiresSerde';
 import {
     DatabaseOpening,
 } from '../utils/DatabaseOpeningsUtils';
@@ -134,16 +138,26 @@ export class ExplorerService {
         data: RepertoireData,
         openings: DatabaseOpening[],
     ) {
-        const pgns = data.data.map(v => ({ pgn: v.pgn, orientation: v.orientation }));
-        this.graph = new RepertoireGraph(pgns);
-        this.fsrs = new FSRSService(data.fsrsCards ?? {});
+        // ExplorerService is invoked directly from page code as well as from
+        // tests (which often hand-craft legacy-shape RepertoireData). Tolerate
+        // both shapes by running the same bootstrap path the normalize() flow
+        // uses for blobs that lack `repertoires`.
+        let repertoires = data.repertoires;
+        let fsrsCards = data.fsrsCards;
+        if (!repertoires) {
+            repertoires = bootstrapRepertoiresFromLegacy(data.data ?? [], data.fsrsCards ?? {});
+            fsrsCards = extractFsrsCardsFromRepertoires(repertoires);
+        }
+
+        this.graph = RepertoireGraph.fromRepertoires(repertoires);
+        this.fsrs = new FSRSService(fsrsCards ?? {});
         this.openings = openings;
 
         this.reachable = {
             white: this.computeReachable('white'),
             black: this.computeReachable('black'),
         };
-        this.annotationsByFen = this.collectAnnotations(data);
+        this.annotationsByFen = this.collectAnnotations(repertoires);
 
         this.canonicalCache = { white: new Map(), black: new Map() };
     }
@@ -594,38 +608,22 @@ export class ExplorerService {
         return reachable;
     }
 
-    private collectAnnotations(data: RepertoireData): Record<Orientation, Map<string, Annotation[]>> {
+    private collectAnnotations(repertoires: import('../models/Repertoires').RepertoireEntry[]): Record<Orientation, Map<string, Annotation[]>> {
+        // Source annotations from the position dict. The Explorer historically
+        // hid square highlights (arrows-only) and we keep that here so the
+        // arrow-overlay UI doesn't gain noisy squares. The persisted shape
+        // still carries both — see RepertoiresSerde for the storage layer.
         const result: Record<Orientation, Map<string, Annotation[]>> = {
             white: new Map(),
             black: new Map(),
         };
-
-        for (const variant of data.data) {
-            const orientation = variant.orientation as Orientation;
-            const dest = result[orientation];
-
-            let chess: Chess;
-            try {
-                chess = new Chess();
-                chess.loadPgn(variant.pgn);
-            } catch {
-                continue;
-            }
-
-            const comments = chess.getComments();
-            for (const c of comments) {
-                const arrows = extractAnnotations(c.comment).filter(a => a.dest);
-                if (arrows.length === 0) continue;
-                const normFen = normalizeFenResetHalfmoveClock(c.fen);
-                const existing = dest.get(normFen) ?? [];
-                // Dedup by (brush, orig, dest).
-                for (const ann of arrows) {
-                    const dup = existing.find(
-                        e => e.brush === ann.brush && e.orig === ann.orig && e.dest === ann.dest,
-                    );
-                    if (!dup) existing.push(ann);
+        const per = extractAnnotationsFromRepertoires(repertoires);
+        for (const orientation of ['white', 'black'] as const) {
+            for (const [fen, anns] of per[orientation]) {
+                const arrows = anns.filter(a => a.dest);
+                if (arrows.length > 0) {
+                    result[orientation].set(fen, arrows);
                 }
-                dest.set(normFen, existing);
             }
         }
         return result;
