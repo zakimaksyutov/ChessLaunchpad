@@ -27,7 +27,10 @@ fully to the new shape.
       "orientation": "white",
       "positions": {
         "<normalizedFEN>": {
-          "arrows": [ { "brush":"G", "orig":"e2", "dest":"e4" } ],
+          "annotations": [
+            { "brush": "G", "orig": "e2", "dest": "e4" },
+            { "brush": "R", "orig": "e5" }
+          ],
           "moves": {
             "e4":  { "card": { ...FSRSCardData } },
             "d4":  { "card": { ... } }
@@ -63,7 +66,9 @@ through the new client they are absent from the blob.
 - The wrapper object on every `moves` entry (`{ "card": ... }` /
   `{}`) leaves a symmetric, extensible home for future per-edge metadata
   on both sides.
-- `arrows` is position-level. Omitted when empty.
+- `annotations` is position-level. Omitted when empty. Each entry is an
+  arrow (`{ brush, orig, dest }`) or a square highlight (`{ brush, orig }`)
+  — matches today's `Annotation` model.
 - The `to`-FEN of an edge is not stored. Recompute by replaying SAN.
 - Names are unique within `repertoires`. v1 hardcodes `"White"` and
   `"Black"`; both entries are always present, even if one's `positions`
@@ -78,7 +83,7 @@ through the new client they are absent from the blob.
 3. Else (initial migration only, before the user's first save):
      Build graph from `data`.
      Hydrate cards from `fsrsCards`.
-     Hydrate arrows from PGN comments (as done today).
+     Hydrate annotations from PGN comments (as done today).
 ```
 
 No reconciliation across sources, no consistency check.
