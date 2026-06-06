@@ -381,11 +381,12 @@ const SettingsPage: React.FC = () => {
             // The DAL holds an internal ETag that is populated by the most
             // recent GET on this instance, and `storeRepertoireData` sends
             // it as `If-Match`. A fresh DAL instance has no ETag, so any
-            // PUT without a prior GET fails with 412. Fetch the current
-            // blob first to obtain the ETag — we discard the response data
-            // (the imported `parsed` is what we're persisting), we only
-            // need the optimistic-concurrency token.
-            await dal.retrieveRepertoireData();
+            // PUT without a prior GET fails with 412. Capture the ETag
+            // without decoding the body — import is the rescue path for
+            // users stranded on an unreadable wire format (e.g., the
+            // skipped v2 blob), so we must not let a stale/corrupt
+            // backend blob block the PUT that's about to overwrite it.
+            await dal.fetchEtagOnly();
             // Now run the full normalization — handles `trainingSettings`
             // -> `settings` migration, snaps retention to the closest
             // preset, hydrates the flat fsrsCards map from the dict, and

@@ -6,6 +6,14 @@ export interface IDataAccessLayer {
     createAccount(): Promise<void>;
     deleteAccount(): Promise<void>;
     retrieveRepertoireData(): Promise<RepertoireData>;
+    /**
+     * Capture the current ETag from the server without decoding the body.
+     * Use this when about to PUT a fresh blob that intentionally overwrites
+     * whatever's currently stored (e.g., the import-rescue flow), so a
+     * corrupt or stale wire format on the server doesn't block the
+     * subsequent PUT's `If-Match` requirement.
+     */
+    fetchEtagOnly(): Promise<void>;
     storeRepertoireData(data: RepertoireData): Promise<void>;
 }
 
@@ -118,6 +126,36 @@ class DataAccessLayer implements IDataAccessLayer {
             return remoteData;
         } catch (error) {
             console.log("Failed to retrieve RepertoireData:", error);
+            throw error;
+        }
+    }
+
+    public async fetchEtagOnly(): Promise<void> {
+        try {
+            const response = await fetch(
+                `${this.ApiEndpointUri}/${this.username}/variants`,
+                {
+                    method: "GET",
+                    headers: {
+                        "Authorization": this.password,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                const msg = await response.text();
+                throw new DataAccessError(msg, response.status);
+            }
+
+            const etagHeader = response.headers.get("ETag");
+            if (etagHeader) {
+                this.etag = etagHeader;
+            }
+            // Intentionally do NOT read response.json() — we want to be
+            // robust to whatever blob version (or corruption) is currently
+            // stored, since the caller is about to overwrite it.
+        } catch (error) {
+            console.log("Failed to fetch ETag:", error);
             throw error;
         }
     }

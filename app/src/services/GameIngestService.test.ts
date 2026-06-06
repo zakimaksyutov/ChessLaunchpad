@@ -65,6 +65,9 @@ class MockDal implements IDataAccessLayer {
         this.retrieveCount += 1;
         return clone(this.data);
     }
+    async fetchEtagOnly(): Promise<void> {
+        this.retrieveCount += 1;
+    }
     async storeRepertoireData(data: RepertoireData): Promise<void> {
         this.storeCount += 1;
         if (this.nextStoreError) {
