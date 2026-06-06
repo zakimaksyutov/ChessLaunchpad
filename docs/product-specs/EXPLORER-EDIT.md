@@ -75,6 +75,25 @@ Totals on the sticky bar match the totals across all rows expanded —
 i.e., `removed` counts every edge in every chain, and `added` does
 the same.
 
+### Transpositions
+
+Transpositions are where the user's mental model ("I'm working on a
+line") and the data model (positions, reachability) diverge most, so
+the Review view calls them out at chain tails:
+
+- **Deleted chain ends at a surviving position.** The cascade
+  stopped because some position downstream is still reachable from
+  another path. The tail row reads e.g. *"stopped at Sicilian Nc3 —
+  still reachable via 1.e4 c5 2.Nc3 e5 3.Nf3."* Tells the user their
+  deeper prep is safe.
+- **Added chain ends at an existing position.** The new edges merged
+  into an already-known subtree rather than building a fresh leaf.
+  The tail row reads e.g. *"joins existing subtree — 24 moves
+  below."* Tells the user they didn't have to re-enter that prep.
+
+Both annotations are computed from the same reachability check that
+drives chain construction; neither requires extra user input.
+
 The view answers the two questions the user has at Save time: "is
 this what I meant to do?" and "did a delete take more of the tree
 with it than I realized?". **Save** writes the new state and returns
