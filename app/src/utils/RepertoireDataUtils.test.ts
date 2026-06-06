@@ -9,7 +9,6 @@ function legacyVariant(pgn: string, orientation: 'white' | 'black'): OpeningVari
     return {
         pgn,
         orientation,
-        classifications: [],
     };
 }
 

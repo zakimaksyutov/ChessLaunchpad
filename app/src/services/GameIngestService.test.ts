@@ -21,7 +21,6 @@ function makeVariant(pgn: string, orientation: 'white' | 'black'): OpeningVarian
     return {
         pgn,
         orientation,
-        classifications: ['test'],
     };
 }
 

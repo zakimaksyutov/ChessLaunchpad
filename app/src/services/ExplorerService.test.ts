@@ -19,7 +19,6 @@ function buildData(variants: Array<{ pgn: string; orientation: 'white' | 'black'
         data: variants.map(v => ({
             pgn: v.pgn,
             orientation: v.orientation,
-            classifications: [],
         })),
         fsrsCards: {},
     };

@@ -61,7 +61,6 @@ export interface Activity {
 export interface OpeningVariantData {
     pgn: string;
     orientation: 'black' | 'white';
-    classifications: string[];
 }
 
 export interface AppSettings {

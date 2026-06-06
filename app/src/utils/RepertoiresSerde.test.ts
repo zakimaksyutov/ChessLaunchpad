@@ -18,7 +18,6 @@ function variant(pgn: string, orientation: 'white' | 'black'): OpeningVariantDat
     return {
         pgn,
         orientation,
-        classifications: [],
     };
 }
 

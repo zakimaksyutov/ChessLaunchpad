@@ -40,7 +40,6 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
             {
                 pgn: "1. e4 e5",
                 orientation: "white",
-                classifications: [],
             }
         ];
 
@@ -83,7 +82,6 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
             {
                 pgn: "1. d4 d5",
                 orientation: "white",
-                classifications: [],
             }
         ];
         updatedData.data = newVariants2;

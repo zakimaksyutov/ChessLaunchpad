@@ -8,7 +8,6 @@ const API_BASE = 'https://chess-prod-function.azurewebsites.net/api/user';
 export interface VariantDef {
   pgn: string;
   orientation: 'white' | 'black';
-  classifications?: string[];
 }
 
 /**
@@ -23,7 +22,6 @@ export function buildRepertoireData(variants: VariantDef[]) {
     data: variants.map(v => ({
       pgn: v.pgn,
       orientation: v.orientation,
-      classifications: v.classifications ?? [],
     })),
     fsrsCards: {},
     settings: {
