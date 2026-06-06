@@ -9,8 +9,12 @@ stays for bulk seed and backup.
 A pill toggle on the Explorer header flips **Read ⇄ Edit**. Read
 mode is byte-for-byte today's Explorer. Edit mode lets the user:
 
-- **Add a move** by playing it on the board.
-- **Delete a move** from the "Your moves from here" row.
+- **Add a move** by playing it on the board. The Explorer
+  auto-navigates onto the resulting position so the user can keep
+  building a line.
+- **Delete a move** from any move row — both *Your moves from here*
+  and *Opponent's replies*. Pruning semantics are identical on
+  either side.
 - **Draw or clear annotations** (arrows and square highlights) on the
   current position, directly on the board.
 
@@ -19,10 +23,22 @@ delta** which the user reviews and commits in a single **Save**.
 
 Deleting a move drops the edge. Any descendant position that is no
 longer reachable from the start position goes with it; transpositions
-keep what they reach.
+keep what they reach. FSRS cards travel with their position: cards
+inside a pruned subtree disappear with it; cards on
+transposition-protected positions survive untouched.
+
+Adding a new user-turn move creates a fresh **New** FSRS card for that
+edge as part of the delta — kept in memory until Save, dropped on
+Discard. This keeps the in-memory invariant "every user-turn edge has
+a card" intact, which the rest of the app relies on.
 
 Annotations are per-position. Editing them does not affect the move
-graph and does not interact with transposition pruning.
+graph and does not interact with transposition pruning. Annotation
+gestures (right-click to draw an arrow, right-click on a square to
+toggle a highlight, modifier keys to pick a brush color, click on an
+existing arrow to clear it) use the chessboard's existing conventions
+— Edit mode simply enables them; Read mode suppresses them as today.
+No separate brush or color picker UI.
 
 ## Review & Save
 
