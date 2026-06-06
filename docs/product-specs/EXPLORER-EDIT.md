@@ -128,9 +128,12 @@ one transaction.
   FSRS card updates from racing on the same blob.
 - **The delta is in-memory.** A hard refresh or closing the tab loses
   it; the browser warns before unload.
-- **Concurrent edits from another tab.** If the blob changed
-  elsewhere since the page loaded, Save is refused and the user is
-  prompted to refresh (which discards local edits).
+- **Concurrent edits from another tab.** Conflict detection uses the
+  blob's existing **ETag / `If-Match`** flow (already supported by
+  `IDataAccessLayer`). The Explorer captures the ETag on load and
+  sends `If-Match` on Save; a 412 response means another writer
+  (other tab, ingestion, training session) updated the blob, and the
+  user is prompted to refresh — which discards local edits.
 
 ## What Doesn't Change
 
