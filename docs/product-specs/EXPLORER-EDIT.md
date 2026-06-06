@@ -40,6 +40,10 @@ existing arrow to clear it) use the chessboard's existing conventions
 — Edit mode simply enables them; Read mode suppresses them as today.
 No separate brush or color picker UI.
 
+Edit mode is available from any Explorer state, including an **empty
+repertoire**: the user toggles into Edit on the start position and
+drops moves directly from there. No special bootstrap path.
+
 ## Review & Save
 
 A sticky bar shows *"N added · K removed · M changed — Review & Save
@@ -126,13 +130,21 @@ entry is the implementer's call as long as that behavior holds.
 
 The unit of work is a session of edits, not an individual edge. The
 user can build a 10-move line, prune a dead branch, and commit it in
-one transaction.
+one transaction. Save is enabled whenever the delta is non-empty,
+regardless of which categories are populated — an annotation-only
+session (only `M changed`) saves through the same path as any other.
 
 ## Constraints
 
 - **Training is disabled while edits are pending.** A tooltip prompts
   the user to Save or Discard first. This keeps repertoire edits and
-  FSRS card updates from racing on the same blob.
+  FSRS card updates from racing on the same blob. **Background game
+  ingestion is *not* gated** — it runs as usual on Dashboard mount or
+  via the manual Sync button. If an ingestion lands while Edit mode
+  is open, it bumps the ETag and the user's Save surfaces the same
+  refresh-or-stay conflict prompt as another-tab edits (below). The
+  cross-page coordination needed to gate ingestion was judged
+  heavier than the ETag safety net it would buy.
 - **The delta is in-memory and tab-local.** A hard refresh, a tab
   close, or navigating to a different route loses it; the browser
   warns before unload. Navigating between positions inside
