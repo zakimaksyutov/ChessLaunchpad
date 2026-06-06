@@ -452,3 +452,485 @@
   .explorer-right-col .explorer-opening-current  { order: 1; }
   .explorer-right-col .explorer-moves            { order: 2; }
 }
+
+/* ===== Mode toggle (Read / Edit) ===== */
+.explorer-mode-sep {
+  color: #c0c8d2;
+  font-size: 1rem;
+  margin: 0 0.1rem;
+}
+
+.explorer-mode-toggle {
+  background: #f0f0f0;
+  color: #444;
+  border-color: #d0d6df;
+}
+
+.explorer-mode-toggle.active {
+  background: #1f7a3a;
+  color: #fff;
+  border-color: #1f7a3a;
+}
+
+/* Read mode pill stays neutral-blue style only via its `.active` parent. */
+.explorer-mode-toggle:not(.active):hover {
+  background: #e4e9f1;
+}
+
+/* ===== Move row delete button (Edit mode only) ===== */
+.explorer-move-delete {
+  margin-left: auto;
+  background: transparent;
+  color: #b03434;
+  border: 1px solid #f3b9b9;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.05rem 0.45rem 0.15rem;
+  font-weight: 700;
+}
+
+.explorer-move-delete:hover {
+  background: #fde2e2;
+  color: #8a1c1c;
+}
+
+.explorer-move-delete:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 1px;
+}
+
+/* ===== "No moves yet" hint in edit mode ===== */
+.explorer-moves-empty-hint {
+  margin-top: 0.35rem;
+  color: #555;
+  font-size: 0.85rem;
+  font-style: normal;
+}
+
+/* ===== Sticky save bar ===== */
+.explorer-save-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  margin: 0.85rem -0.5rem 0;
+  background: #1f7a3a;
+  color: #fff;
+  border-top: 1px solid #186029;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+}
+
+.explorer-save-bar-counts {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.explorer-save-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.explorer-save-bar-review,
+.explorer-save-bar-discard {
+  background: #fff;
+  color: #1f7a3a;
+  border: none;
+  border-radius: 6px;
+  padding: 0.45rem 0.95rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.explorer-save-bar-review:hover:not(:disabled) {
+  background: #e8f4ed;
+}
+
+.explorer-save-bar-discard {
+  background: transparent;
+  color: #fff;
+  border: 1px solid #fff;
+}
+
+.explorer-save-bar-discard:hover:not(:disabled) {
+  background: rgba(255,255,255,0.12);
+}
+
+.explorer-save-bar-review:disabled,
+.explorer-save-bar-discard:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.explorer-save-error {
+  position: relative;
+}
+
+/* ===== Modal dialogs (Discard / Conflict) ===== */
+.explorer-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 32, 0.55);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.explorer-modal {
+  background: #fff;
+  border-radius: 10px;
+  max-width: 440px;
+  width: 100%;
+  padding: 1.25rem 1.4rem;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+}
+
+.explorer-modal h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1b2733;
+}
+
+.explorer-modal p {
+  margin: 0.4rem 0;
+  color: #324050;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.explorer-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.explorer-modal-cancel,
+.explorer-modal-confirm {
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+}
+
+.explorer-modal-cancel {
+  background: #f0f0f0;
+  color: #324050;
+  border-color: #d0d6df;
+}
+
+.explorer-modal-cancel:hover {
+  background: #e4e9f1;
+}
+
+.explorer-modal-confirm {
+  background: #b03434;
+  color: #fff;
+}
+
+.explorer-modal-confirm:hover {
+  background: #8a1c1c;
+}
+
+/* ===== Review view ===== */
+.explorer-review {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.explorer-review-header {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.6rem 0.5rem;
+  margin: 0 -0.5rem 0.4rem;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.explorer-review-back {
+  background: transparent;
+  border: 1px solid #d0d6df;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #324050;
+}
+
+.explorer-review-back:hover {
+  background: #f1f4f8;
+}
+
+.explorer-review-counts {
+  flex: 1 1 auto;
+  font-size: 0.95rem;
+  color: #324050;
+}
+
+.explorer-review-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.explorer-review-save,
+.explorer-review-discard {
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+}
+
+.explorer-review-save {
+  background: #1f7a3a;
+  color: #fff;
+}
+
+.explorer-review-save:hover:not(:disabled) {
+  background: #186029;
+}
+
+.explorer-review-save:disabled,
+.explorer-review-discard:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.explorer-review-discard {
+  background: #fff;
+  color: #b03434;
+  border-color: #f3b9b9;
+}
+
+.explorer-review-discard:hover:not(:disabled) {
+  background: #fde2e2;
+}
+
+.explorer-review-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #6e7783;
+  font-style: italic;
+}
+
+.explorer-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.explorer-review-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2b3038;
+  margin: 0.4rem 0 0.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.explorer-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.explorer-review-chain {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #fff;
+}
+
+.explorer-review-chain-added {
+  border-left: 4px solid #1f7a3a;
+}
+
+.explorer-review-chain-removed {
+  border-left: 4px solid #b03434;
+}
+
+.explorer-review-chain-head {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.explorer-review-mini-board {
+  width: 168px;
+  flex-shrink: 0;
+}
+
+.explorer-review-chain-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.explorer-review-chain-orientation {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6e7783;
+}
+
+.explorer-review-chain-pgn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1b2733;
+  word-break: break-word;
+}
+
+.explorer-review-chain-fen {
+  font-size: 0.8rem;
+  color: #6e7783;
+}
+
+.explorer-review-chain-fen code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  background: #f1f4f8;
+  padding: 1px 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.explorer-review-chain-hint {
+  font-size: 0.85rem;
+  color: #4a505a;
+  background: #f1f4f8;
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.explorer-review-chain-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.explorer-review-chain-expand {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid #b0d4ee;
+  color: rgb(0, 130, 210);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.explorer-review-chain-expand:hover {
+  background: #e3edf8;
+}
+
+.explorer-review-chain-tail {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px dashed #eef0f3;
+  padding-top: 0.55rem;
+}
+
+.explorer-review-edit {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #fff;
+  border-left: 4px solid #d9a82a;
+}
+
+.explorer-review-edit-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+}
+
+.explorer-review-edit-boards {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.explorer-review-edit-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 168px;
+  min-width: 0;
+}
+
+.explorer-review-edit-side-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6e7783;
+}
+
+/* Tighten the mini board on review rows so two side-by-side fits comfortably. */
+.explorer-review-mini-board .chessboard-container {
+  max-width: 168px !important;
+}
+
+/* ===== Mobile review reflow ===== */
+@media (max-width: 800px) {
+  .explorer-review-chain-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .explorer-review-mini-board {
+    width: 100%;
+  }
+  .explorer-review-mini-board .chessboard-container {
+    max-width: 320px !important;
+    margin: 0 auto;
+  }
+  .explorer-review-edit-boards {
+    flex-direction: column;
+  }
+  .explorer-review-edit-side {
+    width: 100%;
+  }
+  /* Sticky save bar pushes hard against the safe-area inset on mobile. */
+  .explorer-save-bar {
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0));
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+  }
+  .explorer-review-header {
+    padding: 0.5rem 0.3rem;
+  }
+}

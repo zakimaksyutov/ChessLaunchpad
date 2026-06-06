@@ -36,6 +36,18 @@
   text-decoration: underline;
 }
 
+/* While Explorer is in Edit mode with unsaved changes, dim the Training
+   link so the user is steered toward Saving or Discarding first. The click
+   itself is still intercepted by ExplorerPage's SPA-nav guard. */
+.header-nav-link-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.header-nav-link-disabled:hover {
+  text-decoration: line-through;
+}
+
 .header-right {
   display: flex;
   align-items: center;
