@@ -100,6 +100,15 @@ Totals on the sticky bar match the totals across all rows expanded —
 i.e., `removed` counts every edge in every chain, and `added` does
 the same.
 
+The three lists, chain decomposition, and the transposition tail
+annotations below are all computed **lazily when Review opens**, as
+pure functions over (base snapshot, current in-memory model). **No
+op log is tracked during the edit session** — the editor only
+maintains the pending model and the base it was snapshotted from.
+The cascade-reachability check Review uses is the same primitive
+that prunes inside the delete path, so the user can never see the
+two disagree.
+
 ### Transpositions
 
 Transpositions are where the user's mental model ("I'm working on a
@@ -127,6 +136,13 @@ to Read mode. **Discard** drops the delta and returns to Read mode.
 mode with the delta intact, and both stay within `/explorer` —
 neither exits the page. Whether the Review view is its own history
 entry is the implementer's call as long as that behavior holds.
+
+**Discard** always prompts for confirmation when the delta is
+non-empty — it's destructive and silent loss is not acceptable.
+**Save**, **Cancel**, and **browser Back** never prompt — they are
+either committing or non-destructive. Tab close, hard refresh, or
+navigation to a different route rely on the browser's
+`beforeunload` warning alone.
 
 The unit of work is a session of edits, not an individual edge. The
 user can build a 10-move line, prune a dead branch, and commit it in
