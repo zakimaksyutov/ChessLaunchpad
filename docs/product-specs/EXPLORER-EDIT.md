@@ -44,11 +44,43 @@ from the saved blob**, not of user clicks:
   Drawing three arrows and clearing one on the same position is one
   change to that position, not four.
 
-**Review** opens a list of the pending changes (added lines, removed
-lines with a per-row breakdown of which descendants were pruned,
-positions with changed annotations) so the user can see *which* lines
-moved and confirm the edits are intentional. **Save** writes the new
-state. **Discard** drops the delta.
+**Review** swaps the Explorer's board and move-list for a full-page
+Review view with three lists — **Added**, **Removed**, **Edited** —
+each scrollable, each empty-list omitted entirely. The page is sized
+to the viewport; this is not a modal dialog (boards with arrows and
+side-by-side annotation comparisons need real estate, and the user
+should be free to take their time).
+
+- **Added** and **Removed** rows have the same shape: a small board
+  showing the position *before* the move, with the move drawn as an
+  arrow, plus the PGN path from the start position and the position's
+  FEN.
+- **Chain collapsing** applies symmetrically to **Added** and
+  **Removed**. A *chain* is a maximal sequence of newly-added (or
+  cascade-pruned) edges along a single path; branching splits into
+  separate chains. A length-1 chain renders as a plain row. A
+  length-≥2 chain renders one row showing the **head**'s parent
+  board + the head's arrow + the PGN of the whole chain, with a
+  **"+N more"** badge and a chevron to expand. Expanded view shows
+  every move in the chain on its own row in the same shape as a
+  length-1 row. For Removed chains the user-clicked deletion is
+  always the head; cascade-pruned descendants are the tail.
+- **Edited** rows render two boards side by side for the same
+  position: the saved annotations on the left, the staged annotations
+  on the right, with the PGN path and FEN above. Annotations are the
+  only thing being compared — the position itself is identical on
+  both sides.
+
+Totals on the sticky bar match the totals across all rows expanded —
+i.e., `removed` counts every edge in every chain, and `added` does
+the same.
+
+The view answers the two questions the user has at Save time: "is
+this what I meant to do?" and "did a delete take more of the tree
+with it than I realized?". **Save** writes the new state and returns
+to Read mode. **Discard** drops the delta and returns to Read mode.
+**Cancel** (or browser Back) returns to Edit mode with the delta
+intact.
 
 The unit of work is a session of edits, not an individual edge. The
 user can build a 10-move line, prune a dead branch, and commit it in
