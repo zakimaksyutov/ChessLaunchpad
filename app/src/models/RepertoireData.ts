@@ -86,7 +86,6 @@ export interface RepertoireData {
      * fields are no longer used in-memory and are never written back.
      */
     data?: OpeningVariantData[];
-    lastPlayedDate: Date;
     /**
      * In-memory flat card map (key = `${fen}::${san}`). Built by `normalize`
      * from `repertoires` and mutated by FSRSService. Re-projected back into

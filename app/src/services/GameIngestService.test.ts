@@ -31,7 +31,6 @@ function makeData(variants: OpeningVariantData[] = []): RepertoireData {
     // for users upgrading from pre-spec blobs.
     const data: RepertoireData = {
         data: variants,
-        lastPlayedDate: new Date(0),
         fsrsCards: {},
         settings: {},
         activity: {

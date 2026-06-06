@@ -157,7 +157,6 @@ array index; identity in memory is the normalized FEN string.
     },
     { "name": "Black", "orientation": "black", "positions": [ ... ] }
   ],
-  "lastPlayedDate": "...",
   "settings": { ... },
   "activity": { ... },
   "games": { ... }
@@ -196,9 +195,9 @@ array index; identity in memory is the normalized FEN string.
   `[d, s, di, e, sd, ls, r, l, st, lr]` (length 10). `d` and `lr` are
   **epoch milliseconds**, not seconds — preserves the sub-second ordering
   `GameIngestService.shouldApplyRating` relies on.
-- **Other date fields are untouched.** Root-level `lastPlayedDate` stays
-  ISO; `activity.practiceLog[].date` stays `YYYY-MM-DD`;
-  `games.watermarkMs` / `recentIds[].ts` stay as already-ms integers.
+- **Other date fields are untouched.** `activity.practiceLog[].date` stays
+  `YYYY-MM-DD`; `games.watermarkMs` / `recentIds[].ts` stay as already-ms
+  integers.
 - **Edge envelope unchanged.** Opponent moves are still `{}`; user moves
   are `{ "card": [...] }`. The symmetric wrapper is preserved to keep
   future per-edge metadata possible on both sides.

@@ -46,7 +46,6 @@ describe('RepertoireDataUtils', () => {
         it('migrates legacy white variant into the White repertoire', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
             };
             RepertoireDataUtils.normalize(data);
 
@@ -78,7 +77,6 @@ describe('RepertoireDataUtils', () => {
             const legacyKey = FSRSService.makeCardKey(startFen(), 'e4');
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
                 fsrsCards: { [legacyKey]: card },
             };
             RepertoireDataUtils.normalize(data);
@@ -97,7 +95,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'White', orientation: 'white', positions: {} },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                lastPlayedDate: new Date(),
             };
             RepertoireDataUtils.normalize(data);
             expect(data.repertoires).toHaveLength(2);
@@ -107,21 +104,9 @@ describe('RepertoireDataUtils', () => {
         it('drops the legacy `data` field after bootstrap', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
             };
             RepertoireDataUtils.normalize(data);
             expect(data.data).toBeUndefined();
-        });
-
-        it('updates lastPlayedDate on new day', () => {
-            const yesterday = RepertoireDataUtils.getCurrentDateOnly();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const data: RepertoireData = {
-                data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: yesterday,
-            };
-            RepertoireDataUtils.normalize(data);
-            expect(data.lastPlayedDate.getTime()).toBe(RepertoireDataUtils.getCurrentDateOnly().getTime());
         });
 
         describe('preset recalibration', () => {
@@ -157,7 +142,6 @@ describe('RepertoireDataUtils', () => {
         it('emits `repertoires` and strips legacy `data` / `fsrsCards`', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
             };
             RepertoireDataUtils.normalize(data);
             const blob = RepertoireDataUtils.prepareDataForSave(data);
@@ -172,7 +156,6 @@ describe('RepertoireDataUtils', () => {
         it('projects in-memory fsrsCards back into the position dict', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
             };
             RepertoireDataUtils.normalize(data);
 
@@ -189,7 +172,6 @@ describe('RepertoireDataUtils', () => {
         it('preserves activity, games, and settings (incl. linkedAccounts)', () => {
             const data: RepertoireData = {
                 data: [],
-                lastPlayedDate: new Date(),
                 activity: {
                     practiceLog: [{ date: '2026-05-25', reviewed: 10, mistakes: 2, learned: 1, traversals: 3, timeSeconds: 300 }],
                     lifetime: { reviewed: 100, mistakes: 20, learned: 10, traversals: 50, timeSeconds: 5000 },
@@ -219,7 +201,6 @@ describe('RepertoireDataUtils', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                lastPlayedDate: new Date(),
             };
 
             const blob = RepertoireDataUtils.prepareDataForSave(importedBlob);
@@ -236,7 +217,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'White', orientation: 'white', positions: {} },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                lastPlayedDate: new Date(),
                 fsrsCards: {},
                 settings: { contextDepth: 7, retention: 0.99, maxInterval: 30, linkedAccounts: [{ platform: 'lichess', username: 'someone' }] },
             };
@@ -258,7 +238,6 @@ describe('RepertoireDataUtils', () => {
             const legacyBlob: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 fsrsCards: { [cardKey]: card },
-                lastPlayedDate: new Date(),
             };
 
             const blob = RepertoireDataUtils.prepareDataForSave(legacyBlob);
@@ -274,7 +253,6 @@ describe('RepertoireDataUtils', () => {
             // settings should survive.
             const data: RepertoireData = {
                 data: [],
-                lastPlayedDate: new Date(),
                 trainingSettings: { contextDepth: 5, retention: 0.96, linkedAccounts: [{ platform: 'lichess', username: 'imported' }] },
             };
             RepertoireDataUtils.normalize(data);
@@ -290,7 +268,6 @@ describe('RepertoireDataUtils', () => {
             // not get dropped on the projection round-trip.
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
                 // No fsrsCards — simulates a legacy export from a user who
                 // never reviewed a card.
             };
@@ -308,7 +285,6 @@ describe('RepertoireDataUtils', () => {
         it('initializes activity on data without it (no eager today entry)', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
             };
             RepertoireDataUtils.normalize(data);
             expect(data.activity).toBeDefined();
@@ -318,7 +294,6 @@ describe('RepertoireDataUtils', () => {
         it('strips blank entries during normalization', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
                 activity: {
                     practiceLog: [
                         { date: '2026-05-20', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 },
@@ -337,7 +312,6 @@ describe('RepertoireDataUtils', () => {
         it('preserves existing activity during normalization', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                lastPlayedDate: new Date(),
                 activity: {
                     practiceLog: [{ date: '2026-05-25', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 }],
                     lifetime: { reviewed: 50, mistakes: 10, learned: 5, traversals: 20, timeSeconds: 3000 },

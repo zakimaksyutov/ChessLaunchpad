@@ -45,7 +45,6 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         ];
 
         repertoireData.data = newVariants1;
-        repertoireData.lastPlayedDate = new Date();
 
         // Store with the fresh DAL -> Expect a "Precondition Failed." error (from server)
         let missingIfMatchError: DataAccessError | undefined;

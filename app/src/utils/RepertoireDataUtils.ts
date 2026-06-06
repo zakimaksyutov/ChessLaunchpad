@@ -34,13 +34,6 @@ export class RepertoireDataUtils {
             repertoireData.repertoires = bootstrapRepertoiresFromLegacy(legacyVariants, legacyCards);
         }
 
-        if (!repertoireData.lastPlayedDate) {
-            repertoireData.lastPlayedDate = new Date(0);
-        } else {
-            // If it was sent as a string, re-hydrate into a real Date
-            repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
-        }
-
         // Build the in-memory FSRS flat map from the position dict. This is
         // the authoritative store FSRSService mutates during training.
         const cardsFromDict = extractFsrsCardsFromRepertoires(repertoireData.repertoires);
@@ -62,12 +55,6 @@ export class RepertoireDataUtils {
         // consumer that still touches it gets an immediate signal. The
         // bootstrap above already pulled everything we need out of it.
         delete repertoireData.data;
-
-        // Check whether we started a new day — update lastPlayedDate.
-        const currentDate = RepertoireDataUtils.getCurrentDateOnly();
-        if (currentDate > repertoireData.lastPlayedDate) {
-            repertoireData.lastPlayedDate = currentDate;
-        }
 
         // Initialize activity structure (does not create a today entry — that
         // only happens when actual activity is recorded, to avoid blank rows
@@ -174,7 +161,6 @@ export class RepertoireDataUtils {
         pruneEmptyAnnotations(repertoires);
         return {
             repertoires,
-            lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
             settings: RepertoireDataUtils.buildCurrentSettings(existingData.settings),
             activity: existingData.activity,
             games: existingData.games,
@@ -187,11 +173,5 @@ export class RepertoireDataUtils {
             data.repertoires = createEmptyRepertoires();
         }
         return data.repertoires;
-    }
-
-    public static getCurrentDateOnly(): Date {
-        const currentDate = new Date();
-        currentDate.setHours(0, 0, 0, 0);
-        return new Date(currentDate.getTime());
     }
 }

@@ -71,7 +71,6 @@ export interface PersistedRepertoireEntryV3 {
 export interface PersistedBlobV3 {
     v: typeof PERSISTED_BLOB_VERSION;
     repertoires: PersistedRepertoireEntryV3[];
-    lastPlayedDate: string;
     settings?: RepertoireData['settings'];
     activity?: RepertoireData['activity'];
     games?: RepertoireData['games'];
@@ -137,12 +136,6 @@ function epochMsToISO(ms: number): string {
     return new Date(ms).toISOString();
 }
 
-function lastPlayedDateToString(value: unknown): string {
-    if (value instanceof Date) return value.toISOString();
-    if (typeof value === 'string') return value;
-    return new Date(0).toISOString();
-}
-
 // ── Encode ──────────────────────────────────────────────────────────────
 
 /**
@@ -175,7 +168,6 @@ export function encodePersistedBlob(data: RepertoireData): PersistedBlobV3 {
     return {
         v: PERSISTED_BLOB_VERSION,
         repertoires: outReps,
-        lastPlayedDate: lastPlayedDateToString(data.lastPlayedDate),
         settings: data.settings,
         activity: data.activity,
         games: data.games,
@@ -304,7 +296,6 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
 
     return {
         repertoires: outReps,
-        lastPlayedDate: persisted.lastPlayedDate as unknown as Date, // normalize() re-hydrates
         settings: persisted.settings,
         activity: persisted.activity,
         games: persisted.games,

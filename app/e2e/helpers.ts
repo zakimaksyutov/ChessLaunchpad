@@ -25,7 +25,6 @@ export function buildRepertoireData(variants: VariantDef[]) {
       orientation: v.orientation,
       classifications: v.classifications ?? [],
     })),
-    lastPlayedDate: new Date().toISOString(),
     fsrsCards: {},
     settings: {
       contextDepth: 2,
@@ -48,7 +47,7 @@ export function buildRepertoireData(variants: VariantDef[]) {
  *   - `body.repertoires` — full-FEN keys, object-shaped cards (in-memory shape)
  *   - `body.fsrsCards`   — flat map hydrated from the position dict
  *
- * Plus all the top-level fields (`lastPlayedDate`, `settings`, `activity`, `games`).
+ * Plus all the top-level fields (`settings`, `activity`, `games`).
  *
  * The raw wire body is kept internally and used to feed subsequent GETs so
  * the app's decode path is exercised on every read.

@@ -21,7 +21,6 @@ function buildData(variants: Array<{ pgn: string; orientation: 'white' | 'black'
             orientation: v.orientation,
             classifications: [],
         })),
-        lastPlayedDate: new Date(0),
         fsrsCards: {},
     };
 }

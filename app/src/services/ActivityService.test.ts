@@ -20,7 +20,6 @@ import {
 function makeRepertoireData(overrides: Partial<RepertoireData> = {}): RepertoireData {
     return {
         data: [],
-        lastPlayedDate: new Date(),
         fsrsCards: {},
         ...overrides,
     };
