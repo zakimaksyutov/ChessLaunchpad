@@ -10,10 +10,6 @@ function legacyVariant(pgn: string, orientation: 'white' | 'black'): OpeningVari
         pgn,
         orientation,
         classifications: [],
-        numberOfTimesPlayed: 0,
-        errorEMA: 0,
-        lastSucceededEpoch: 0,
-        successEMA: 0,
     };
 }
 

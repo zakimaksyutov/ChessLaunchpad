@@ -19,10 +19,6 @@ function variant(pgn: string, orientation: 'white' | 'black'): OpeningVariantDat
         pgn,
         orientation,
         classifications: [],
-        numberOfTimesPlayed: 0,
-        errorEMA: 0,
-        lastSucceededEpoch: 0,
-        successEMA: 0,
     };
 }
 

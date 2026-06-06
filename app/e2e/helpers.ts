@@ -24,11 +24,6 @@ export function buildRepertoireData(variants: VariantDef[]) {
       pgn: v.pgn,
       orientation: v.orientation,
       classifications: v.classifications ?? [],
-      numberOfTimesPlayed: 0,
-      // V1 stubs — backend requires these as numbers
-      errorEMA: 0,
-      lastSucceededEpoch: 0,
-      successEMA: 0,
     })),
     currentEpoch: 0,
     lastPlayedDate: new Date().toISOString(),

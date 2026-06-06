@@ -62,11 +62,6 @@ export interface OpeningVariantData {
     pgn: string;
     orientation: 'black' | 'white';
     classifications: string[];
-    numberOfTimesPlayed: number;
-    // V1 stub fields — always 0, kept because the backend schema requires them.
-    errorEMA: number;
-    lastSucceededEpoch: number;
-    successEMA: number;
 }
 
 export interface AppSettings {

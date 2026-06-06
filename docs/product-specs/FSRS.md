@@ -109,4 +109,4 @@ All settings are synced to the backend and roam across devices.
 
 - Cards are saved to the backend after each traversal completion as part of `RepertoireData.fsrsCards`.
 - A 300 ms inter-traversal delay allows the success sound to finish before the next traversal begins.
-- Legacy variant-level fields (`errorEMA`, `successEMA`, `lastSucceededEpoch`, `currentEpoch`) remain in the backend payload for backward compatibility but are zeroed on load and not used for scheduling.
+- `currentEpoch` remains in the v3 payload as a zeroed top-level stub for backward compatibility but is not used for scheduling.

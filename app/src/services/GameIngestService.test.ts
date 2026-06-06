@@ -22,10 +22,6 @@ function makeVariant(pgn: string, orientation: 'white' | 'black'): OpeningVarian
         pgn,
         orientation,
         classifications: ['test'],
-        numberOfTimesPlayed: 0,
-        errorEMA: 0,
-        lastSucceededEpoch: 0,
-        successEMA: 0,
     };
 }
 
