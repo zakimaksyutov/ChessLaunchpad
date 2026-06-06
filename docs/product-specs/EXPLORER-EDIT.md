@@ -38,8 +38,11 @@ from the saved blob**, not of user clicks:
 - `added` counts each new move; building a 10-ply line one drop at a
   time shows as `10 added`.
 - `changed` counts positions whose annotation set differs from the
-  saved state — drawing three arrows and clearing one on the same
-  position is one change to that position, not four.
+  saved state. **Annotations are compared as a set** — order doesn't
+  matter and duplicates are collapsed, so clearing the annotations
+  and redrawing the same ones in a different order is not a change.
+  Drawing three arrows and clearing one on the same position is one
+  change to that position, not four.
 
 **Review** opens a list of the pending changes (added lines, removed
 lines with a per-row breakdown of which descendants were pruned,
