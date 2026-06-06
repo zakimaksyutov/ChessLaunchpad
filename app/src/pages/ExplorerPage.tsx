@@ -667,12 +667,20 @@ const ExplorerPage: React.FC = () => {
         stripReviewParam();
     }, [stripReviewParam]);
 
-    /** True when the model holds at least one staged change. */
-    const isDirty = useMemo(() => {
+    /**
+     * Memoized delta so the sticky bar + Review view re-render only when the
+     * pending model actually changes. Also drives `isDirty` below — keep it
+     * the single source of truth to avoid recomputing the delta twice per
+     * render (once here, once via `isEmpty()`).
+     */
+    const delta = useMemo(() => {
         void pendingTick;
-        if (!pendingModel) return false;
-        return !pendingModel.isEmpty();
+        return pendingModel ? pendingModel.computeDelta() : null;
     }, [pendingModel, pendingTick]);
+
+    /** True when the model holds at least one staged change. */
+    const isDirty = !!delta &&
+        (delta.counts.added + delta.counts.removed + delta.counts.changed) > 0;
 
     // Reflect dirty state into the cross-page notifier so Training (and the
     // header eventually) can prompt the user.
@@ -875,13 +883,6 @@ const ExplorerPage: React.FC = () => {
         setMode('read');
         stripReviewParam();
     }, [stripReviewParam]);
-
-    // Memoized delta so the sticky bar + Review view re-render only when the
-    // pending model actually changes.
-    const delta = useMemo(() => {
-        void pendingTick;
-        return pendingModel ? pendingModel.computeDelta() : null;
-    }, [pendingModel, pendingTick]);
 
     // ── Render guards ────────────────────────────────────────────────
 
