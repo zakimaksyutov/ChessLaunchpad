@@ -87,6 +87,11 @@ should be free to take their time).
   only thing being compared — the position itself is identical on
   both sides.
 
+For positions reachable by multiple PGN paths (transpositions), every
+row uses the **canonical path** — shortest, ties broken
+lexicographically by SAN — same convention as Explorer's "How you got
+here." One position has one path label, everywhere.
+
 Totals on the sticky bar match the totals across all rows expanded —
 i.e., `removed` counts every edge in every chain, and `added` does
 the same.
@@ -114,8 +119,10 @@ The view answers the two questions the user has at Save time: "is
 this what I meant to do?" and "did a delete take more of the tree
 with it than I realized?". **Save** writes the new state and returns
 to Read mode. **Discard** drops the delta and returns to Read mode.
-**Cancel** (or browser Back) returns to Edit mode with the delta
-intact.
+**Cancel** and **browser Back** are equivalent: both return to Edit
+mode with the delta intact, and both stay within `/explorer` —
+neither exits the page. Whether the Review view is its own history
+entry is the implementer's call as long as that behavior holds.
 
 The unit of work is a session of edits, not an individual edge. The
 user can build a 10-move line, prune a dead branch, and commit it in
@@ -126,8 +133,13 @@ one transaction.
 - **Training is disabled while edits are pending.** A tooltip prompts
   the user to Save or Discard first. This keeps repertoire edits and
   FSRS card updates from racing on the same blob.
-- **The delta is in-memory.** A hard refresh or closing the tab loses
-  it; the browser warns before unload.
+- **The delta is in-memory and tab-local.** A hard refresh, a tab
+  close, or navigating to a different route loses it; the browser
+  warns before unload. Navigating between positions inside
+  `/explorer` does **not** clear the delta and does **not** fire
+  the unload warning — it's a page-local state change. Edit mode is
+  **not** encoded in the URL: a shared `/explorer?…` link always
+  opens in Read mode for the recipient.
 - **Concurrent edits from another tab.** Conflict detection uses the
   blob's existing **ETag / `If-Match`** flow (already supported by
   `IDataAccessLayer`). The Explorer captures the ETag on load and
