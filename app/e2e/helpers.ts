@@ -25,7 +25,6 @@ export function buildRepertoireData(variants: VariantDef[]) {
       orientation: v.orientation,
       classifications: v.classifications ?? [],
     })),
-    currentEpoch: 0,
     lastPlayedDate: new Date().toISOString(),
     dailyPlayCount: 0,
     fsrsCards: {},
@@ -50,7 +49,7 @@ export function buildRepertoireData(variants: VariantDef[]) {
  *   - `body.repertoires` — full-FEN keys, object-shaped cards (in-memory shape)
  *   - `body.fsrsCards`   — flat map hydrated from the position dict
  *
- * Plus all the top-level fields (`currentEpoch`, `lastPlayedDate`,
+ * Plus all the top-level fields (`lastPlayedDate`,
  * `dailyPlayCount`, `settings`, `activity`, `games`).
  *
  * The raw wire body is kept internally and used to feed subsequent GETs so

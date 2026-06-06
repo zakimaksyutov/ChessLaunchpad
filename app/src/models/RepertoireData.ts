@@ -86,8 +86,6 @@ export interface RepertoireData {
      * fields are no longer used in-memory and are never written back.
      */
     data?: OpeningVariantData[];
-    // V1 stub — always 0, kept because the backend schema requires it.
-    currentEpoch: number;
     lastPlayedDate: Date;
     dailyPlayCount: number; // Backend compat — derived from activity on save, not read internally
     /**

@@ -71,7 +71,6 @@ export interface PersistedRepertoireEntryV3 {
 export interface PersistedBlobV3 {
     v: typeof PERSISTED_BLOB_VERSION;
     repertoires: PersistedRepertoireEntryV3[];
-    currentEpoch: number;
     lastPlayedDate: string;
     dailyPlayCount: number;
     settings?: RepertoireData['settings'];
@@ -177,7 +176,6 @@ export function encodePersistedBlob(data: RepertoireData): PersistedBlobV3 {
     return {
         v: PERSISTED_BLOB_VERSION,
         repertoires: outReps,
-        currentEpoch: data.currentEpoch ?? 0,
         lastPlayedDate: lastPlayedDateToString(data.lastPlayedDate),
         dailyPlayCount: data.dailyPlayCount ?? 0,
         settings: data.settings,
@@ -308,7 +306,6 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
 
     return {
         repertoires: outReps,
-        currentEpoch: persisted.currentEpoch ?? 0,
         lastPlayedDate: persisted.lastPlayedDate as unknown as Date, // normalize() re-hydrates
         dailyPlayCount: persisted.dailyPlayCount ?? 0,
         settings: persisted.settings,

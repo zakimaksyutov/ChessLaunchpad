@@ -49,7 +49,6 @@ function blackRep(positions: Record<string, PositionEntry> = {}): RepertoireEntr
 function baseData(reps: RepertoireEntry[]): RepertoireData {
     return {
         repertoires: reps,
-        currentEpoch: 0,
         lastPlayedDate: new Date('2026-05-25T00:00:00.000Z'),
         dailyPlayCount: 0,
     };
@@ -243,7 +242,7 @@ describe('BlobCodec', () => {
             expect(b.positions[fenAfter(['e4'])].moves.c5.card).toEqual(reviewCard());
         });
 
-        it('preserves currentEpoch / lastPlayedDate / dailyPlayCount / settings / activity / games', async () => {
+        it('preserves lastPlayedDate / dailyPlayCount / settings / activity / games', async () => {
             const root = startFen();
             const data: RepertoireData = {
                 ...baseData([
@@ -265,7 +264,6 @@ describe('BlobCodec', () => {
             const enc = encodePersistedBlob(data);
             const dec = decodePersistedBlob(jsonClone(enc));
 
-            expect(dec.currentEpoch).toBe(0);
             expect(String(dec.lastPlayedDate)).toBe('2026-05-25T00:00:00.000Z');
             expect(dec.dailyPlayCount).toBe(0);
             expect(dec.settings?.contextDepth).toBe(4);
@@ -413,12 +411,12 @@ describe('BlobCodec', () => {
         });
 
         it('decode throws on unsupported version', async () => {
-            const blob = { v: 99, repertoires: [], currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0 };
+            const blob = { v: 99, repertoires: [], lastPlayedDate: '', dailyPlayCount: 0 };
             expect(() => decodePersistedBlob(blob)).toThrow(/unsupported repertoire blob version/i);
         });
 
         it('decode throws specifically for the interim v2 hashed-key format', async () => {
-            const blob = { v: 2, repertoires: [], currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0 };
+            const blob = { v: 2, repertoires: [], lastPlayedDate: '', dailyPlayCount: 0 };
             expect(() => decodePersistedBlob(blob)).toThrow(/unsupported repertoire blob version: 2/);
             // And it mentions the interim/never-shipped status so devs aren't confused.
             expect(() => decodePersistedBlob(blob)).toThrow(/never shipped/);
@@ -442,7 +440,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '2026-05-25T00:00:00.000Z', dailyPlayCount: 0,
+                lastPlayedDate: '2026-05-25T00:00:00.000Z', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/orphan persisted entries.*\[2\]/);
         });
@@ -460,7 +458,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/out-of-bounds child index 5/);
         });
@@ -487,7 +485,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/expects child index 1 to map to FEN/);
         });
@@ -506,7 +504,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/illegal move "Zz9"/);
         });
@@ -521,7 +519,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/malformed move key "e4"/);
         });
@@ -536,7 +534,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/malformed move key/);
         });
@@ -545,7 +543,7 @@ describe('BlobCodec', () => {
             const blob = {
                 v: PERSISTED_BLOB_VERSION,
                 repertoires: [{ name: 'White', orientation: 'white', positions: { foo: {} } }],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/non-array `positions`/);
         });
@@ -560,7 +558,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/missing\/invalid `moves`/);
         });
@@ -578,7 +576,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/malformed packed card/);
         });
@@ -604,7 +602,7 @@ describe('BlobCodec', () => {
                         },
                         { name: 'Black', orientation: 'black', positions: [] },
                     ],
-                    currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                    lastPlayedDate: '', dailyPlayCount: 0,
                 };
                 expect(() => decodePersistedBlob(blob)).toThrow(/malformed packed card.*element 0/);
             });
@@ -624,7 +622,7 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: [] },
                 ],
-                currentEpoch: 0, lastPlayedDate: '', dailyPlayCount: 0,
+                lastPlayedDate: '', dailyPlayCount: 0,
             };
             expect(() => decodePersistedBlob(blob)).toThrow(/malformed packed card.*element 9/);
         });
@@ -634,7 +632,6 @@ describe('BlobCodec', () => {
         it('returns the raw object unchanged when `v` is absent', async () => {
             const v1: RepertoireData = {
                 data: [],
-                currentEpoch: 0,
                 lastPlayedDate: new Date('2026-05-25T00:00:00.000Z'),
                 dailyPlayCount: 0,
             };
@@ -651,7 +648,6 @@ describe('BlobCodec', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                currentEpoch: 0,
                 lastPlayedDate: new Date('2026-05-25T00:00:00.000Z'),
                 dailyPlayCount: 0,
             };

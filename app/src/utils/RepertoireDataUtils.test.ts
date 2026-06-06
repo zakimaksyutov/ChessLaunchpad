@@ -46,7 +46,6 @@ describe('RepertoireDataUtils', () => {
         it('migrates legacy white variant into the White repertoire', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -80,7 +79,6 @@ describe('RepertoireDataUtils', () => {
             const legacyKey = FSRSService.makeCardKey(startFen(), 'e4');
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 fsrsCards: { [legacyKey]: card },
@@ -101,7 +99,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'White', orientation: 'white', positions: {} },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -113,7 +110,6 @@ describe('RepertoireDataUtils', () => {
         it('drops the legacy `data` field after bootstrap', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -126,7 +122,6 @@ describe('RepertoireDataUtils', () => {
             yesterday.setDate(yesterday.getDate() - 1);
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 5,
                 lastPlayedDate: yesterday,
                 dailyPlayCount: 5,
             };
@@ -167,7 +162,6 @@ describe('RepertoireDataUtils', () => {
         it('emits `repertoires` and strips legacy `data` / `fsrsCards`', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -184,7 +178,6 @@ describe('RepertoireDataUtils', () => {
         it('projects in-memory fsrsCards back into the position dict', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -203,7 +196,6 @@ describe('RepertoireDataUtils', () => {
         it('preserves activity, games, and settings (incl. linkedAccounts)', () => {
             const data: RepertoireData = {
                 data: [],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 activity: {
@@ -235,7 +227,6 @@ describe('RepertoireDataUtils', () => {
                     },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -254,7 +245,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'White', orientation: 'white', positions: {} },
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 fsrsCards: {},
@@ -278,7 +268,6 @@ describe('RepertoireDataUtils', () => {
             const legacyBlob: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 fsrsCards: { [cardKey]: card },
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -296,7 +285,6 @@ describe('RepertoireDataUtils', () => {
             // settings should survive.
             const data: RepertoireData = {
                 data: [],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 trainingSettings: { contextDepth: 5, retention: 0.96, linkedAccounts: [{ platform: 'lichess', username: 'imported' }] },
@@ -314,7 +302,6 @@ describe('RepertoireDataUtils', () => {
             // not get dropped on the projection round-trip.
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 // No fsrsCards — simulates a legacy export from a user who
@@ -334,7 +321,6 @@ describe('RepertoireDataUtils', () => {
         it('initializes activity on data without it (no eager today entry)', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
             };
@@ -346,7 +332,6 @@ describe('RepertoireDataUtils', () => {
         it('strips blank entries during normalization', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 activity: {
@@ -367,7 +352,6 @@ describe('RepertoireDataUtils', () => {
         it('preserves existing activity during normalization', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
-                currentEpoch: 0,
                 lastPlayedDate: new Date(),
                 dailyPlayCount: 0,
                 activity: {

@@ -20,7 +20,6 @@ import {
 function makeRepertoireData(overrides: Partial<RepertoireData> = {}): RepertoireData {
     return {
         data: [],
-        currentEpoch: 0,
         lastPlayedDate: new Date(),
         dailyPlayCount: 0,
         fsrsCards: {},

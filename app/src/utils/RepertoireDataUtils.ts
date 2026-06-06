@@ -34,8 +34,6 @@ export class RepertoireDataUtils {
             repertoireData.repertoires = bootstrapRepertoiresFromLegacy(legacyVariants, legacyCards);
         }
 
-        // V1 stub — always reset to 0
-        repertoireData.currentEpoch = 0;
         if (!repertoireData.lastPlayedDate) {
             repertoireData.lastPlayedDate = new Date(0);
         } else {
@@ -178,7 +176,6 @@ export class RepertoireDataUtils {
         pruneEmptyAnnotations(repertoires);
         return {
             repertoires,
-            currentEpoch: 0, // V1 stub
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
             dailyPlayCount: 0, // V1 stub — derived from activity
             settings: RepertoireDataUtils.buildCurrentSettings(existingData.settings),

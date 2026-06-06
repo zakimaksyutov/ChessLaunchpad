@@ -21,7 +21,6 @@ function buildData(variants: Array<{ pgn: string; orientation: 'white' | 'black'
             orientation: v.orientation,
             classifications: [],
         })),
-        currentEpoch: 0,
         lastPlayedDate: new Date(0),
         dailyPlayCount: 0,
         fsrsCards: {},
