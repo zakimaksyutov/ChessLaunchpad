@@ -79,8 +79,10 @@ export function bootstrapRepertoiresFromLegacy(
             const pos = rep.positions[beforeFen];
             if (!pos.moves[move.san]) {
                 // Wrap with empty entry on first sighting; the user-turn
-                // branch below attaches the card if appropriate.
-                pos.moves[move.san] = {};
+                // branch below attaches the card if appropriate. We
+                // denormalize `to` so reachability / canonical-path readers
+                // (PendingEditModel etc.) can skip chess.js on this edge.
+                pos.moves[move.san] = { to: afterFen };
             }
             if (isUserTurnForOrientation(beforeFen, variant.orientation)) {
                 const key = FSRSService.makeCardKey(beforeFen, move.san);

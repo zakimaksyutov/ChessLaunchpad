@@ -109,12 +109,14 @@ function cloneRepertoires(reps: RepertoireEntry[]): RepertoireEntry[] {
                 {
                     annotations: pos.annotations ? pos.annotations.map(a => ({ ...a })) : undefined,
                     moves: Object.fromEntries(
-                        Object.entries(pos.moves).map(([san, m]) => [
-                            san,
+                        Object.entries(pos.moves).map(([san, m]) => {
                             // Cards are read-only in the snapshot; deep-clone the
                             // FSRSCardData object so later mutations don't leak.
-                            m.card ? { card: { ...m.card } } : {},
-                        ]),
+                            const out: MoveEntry = {};
+                            if (m.card) out.card = { ...m.card };
+                            if (m.to !== undefined) out.to = m.to;
+                            return [san, out];
+                        }),
                     ),
                 },
             ]),
@@ -137,6 +139,19 @@ function fenAfter(fromFen: string, san: string): string | null {
     }
 }
 
+/**
+ * Resolve the child FEN for `(fromFen, san)` using the denormalized `to`
+ * stored on the `MoveEntry` when present, falling back to a chess.js replay
+ * via `fenAfter`. Hot readers (reachability BFS, canonical-path BFS, edge
+ * enumeration) call this on every visited edge — for production data where
+ * the codec / `addEdge` populate `to`, this is a single property read and
+ * skips chess.js entirely.
+ */
+function edgeTo(move: MoveEntry | undefined, fromFen: string, san: string): string | null {
+    if (move && move.to !== undefined) return move.to;
+    return fenAfter(fromFen, san);
+}
+
 function reachableFensFromRoot(
     rep: RepertoireEntry | undefined,
     root: string,
@@ -149,7 +164,7 @@ function reachableFensFromRoot(
         const pos = rep.positions[fen];
         if (!pos) continue;
         for (const san of Object.keys(pos.moves)) {
-            const to = fenAfter(fen, san);
+            const to = edgeTo(pos.moves[san], fen, san);
             if (to && !r.has(to)) {
                 r.add(to);
                 stack.push(to);
@@ -215,7 +230,7 @@ function canonicalPath(
             if (!pos) continue;
             const sans = Object.keys(pos.moves).slice().sort(compareSans);
             for (const san of sans) {
-                const to = fenAfter(item.fen, san);
+                const to = edgeTo(pos.moves[san], item.fen, san);
                 if (!to) continue;
                 if (item.visited.has(to)) continue;
                 const newSans = item.sans.concat(san);
@@ -378,7 +393,9 @@ export class PendingEditModel {
         if (!rep.positions[from]) rep.positions[from] = { moves: {} };
         if (!rep.positions[to]) rep.positions[to] = { moves: {} };
         if (!rep.positions[from].moves[san]) {
-            rep.positions[from].moves[san] = {};
+            // Denormalize `to` so reachability/canonical-path/edge-collection
+            // hot paths can skip chess.js on this edge.
+            rep.positions[from].moves[san] = { to };
         }
         if (isUserTurnForOrientation(from, orientation)) {
             const key = FSRSService.makeCardKey(from, san);
@@ -657,7 +674,7 @@ function collectEdges(rep: RepertoireEntry): Record<string, EdgeRecord> {
     const out: Record<string, EdgeRecord> = {};
     for (const [fen, pos] of Object.entries(rep.positions)) {
         for (const san of Object.keys(pos.moves)) {
-            const to = fenAfter(fen, san);
+            const to = edgeTo(pos.moves[san], fen, san);
             if (!to) continue;
             const key = `${fen}::${san}`;
             out[key] = {
@@ -861,7 +878,7 @@ function countDescendantUserTurnEdges(rep: RepertoireEntry, fen: string): number
         const userHere = isUserTurnForOrientation(cur, rep.orientation);
         for (const san of Object.keys(pos.moves)) {
             if (userHere) count += 1;
-            const to = fenAfter(cur, san);
+            const to = edgeTo(pos.moves[san], cur, san);
             if (to && !visited.has(to)) {
                 visited.add(to);
                 stack.push(to);

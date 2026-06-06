@@ -53,14 +53,22 @@ export class RepertoireGraph {
             for (const [fen, pos] of Object.entries(rep.positions)) {
                 graph.ensureNode(fen);
                 for (const san of Object.keys(pos.moves)) {
+                    // Prefer the denormalized `to` populated by the codec /
+                    // PendingEditModel; fall back to chess.js replay for
+                    // legacy/test fixtures that hand-rolled MoveEntry as `{}`.
                     let toFen: string;
-                    try {
-                        const chess = new Chess(fen);
-                        const move = chess.move(san);
-                        if (!move) continue;
-                        toFen = normalizeFenResetHalfmoveClock(chess.fen());
-                    } catch {
-                        continue;
+                    const memoTo = pos.moves[san].to;
+                    if (memoTo !== undefined) {
+                        toFen = memoTo;
+                    } else {
+                        try {
+                            const chess = new Chess(fen);
+                            const move = chess.move(san);
+                            if (!move) continue;
+                            toFen = normalizeFenResetHalfmoveClock(chess.fen());
+                        } catch {
+                            continue;
+                        }
                     }
                     graph.ensureNode(toFen);
                     const isUserTurn = isUserTurnForOrientation(fen, rep.orientation);

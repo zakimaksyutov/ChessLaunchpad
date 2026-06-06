@@ -365,6 +365,9 @@ function decodeRepertoireV3(rep: PersistedRepertoireEntryV3): RepertoireEntry {
             }
 
             const move = movesIn[key];
+            // Denormalize `childFen` onto the in-memory entry so reachability /
+            // canonical-path readers (PendingEditModel, RepertoireGraph) can
+            // skip chess.js when traversing this edge.
             outMoves[san] = move && move.card !== undefined
                 ? { card: unpackCard(move.card) }
                 : {};
@@ -384,6 +387,7 @@ function decodeRepertoireV3(rep: PersistedRepertoireEntryV3): RepertoireEntry {
                 );
             }
             const childFen = normalizeFenResetHalfmoveClock(chess.fen());
+            outMoves[san].to = childFen;
 
             if (childIdx === NO_CHILD_INDEX) {
                 // Validated SAN; child not stored, don't recurse.

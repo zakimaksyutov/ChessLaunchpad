@@ -55,15 +55,15 @@ describe('RepertoiresSerde', () => {
             expect(white.name).toBe('White');
         });
 
-        it('attaches FSRS cards only to user-turn moves; opponent moves are `{}`', () => {
+        it('attaches FSRS cards only to user-turn moves; opponent moves carry no card', () => {
             const reps = bootstrapRepertoiresFromLegacy([variant('1. e4 e5', 'white')], {});
             const white = reps.find(r => r.orientation === 'white')!;
             const root = startFen();
             const afterE4 = fenAfter(['e4']);
-            // 1.e4 — white's move (user) → card slot present (but no legacy card was provided).
-            expect(white.positions[root].moves['e4']).toEqual({});
-            // 1...e5 — black's move (opponent for white repertoire) → always `{}`.
-            expect(white.positions[afterE4].moves['e5']).toEqual({});
+            // 1.e4 — white's move (user) → no legacy card was provided.
+            expect(white.positions[root].moves['e4'].card).toBeUndefined();
+            // 1...e5 — black's move (opponent for white repertoire) → no card.
+            expect(white.positions[afterE4].moves['e5'].card).toBeUndefined();
         });
 
         it('places legacy fsrsCards on the right edges', () => {
@@ -106,8 +106,8 @@ describe('RepertoiresSerde', () => {
             const root = startFen();
             // White repertoire has the e4 move (user turn).
             expect(white.positions[root].moves['e4']).toBeDefined();
-            // Black repertoire also has the e4 move (opponent move).
-            expect(black.positions[root].moves['e4']).toEqual({});
+            // Black repertoire also has the e4 move (opponent move, no card).
+            expect(black.positions[root].moves['e4'].card).toBeUndefined();
         });
 
         it('dedupes duplicate annotations at the same FEN', () => {

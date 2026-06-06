@@ -93,7 +93,8 @@ describe('BlobCodec', () => {
             const enc = encodePersistedBlob(data);
             const dec = decodePersistedBlob(jsonClone(enc));
             const w = dec.repertoires!.find(r => r.orientation === 'white')!;
-            expect(w.positions[fenAfter(['e4'])].moves.e5).toEqual({});
+            // Opponent move — no card; `to` is denormalized by the decoder.
+            expect(w.positions[fenAfter(['e4'])].moves.e5.card).toBeUndefined();
         });
 
         it('round-trips position-level annotations', async () => {
@@ -174,7 +175,7 @@ describe('BlobCodec', () => {
             const dec = decodePersistedBlob(jsonClone(enc));
             const w = dec.repertoires!.find(r => r.orientation === 'white')!;
             expect(Object.keys(w.positions[root].moves).sort()).toEqual(['Nf3']);
-            expect(w.positions[fenAfter(['Nf3', 'Nf6', 'Ng1'])].moves.Ng8).toEqual({});
+            expect(w.positions[fenAfter(['Nf3', 'Nf6', 'Ng1'])].moves.Ng8.card).toBeUndefined();
         });
 
         it('collapses transpositions to a single index (1.e4 e5 2.Nf3 == 1.Nf3 e5 2.e4)', async () => {
