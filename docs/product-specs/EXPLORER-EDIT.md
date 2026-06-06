@@ -28,20 +28,24 @@ graph and does not interact with transposition pruning.
 
 A sticky bar shows *"N added · K removed · M changed — Review & Save
 · Discard"* whenever the delta is non-empty (categories that are zero
-are omitted). Counts are of **user actions on distinct units**:
+are omitted). Counts are of **moves that will appear in / disappear
+from the saved blob**, not of user clicks:
 
-- `added` / `removed` count individual moves; a delete that cascades
-  through transpositions still counts as one removal.
+- `removed` includes descendants pruned by the transposition-aware
+  reachability check. Deleting one edge that drops a 7-move branch
+  shows as `8 removed`, not `1 removed`, so the magnitude of a
+  cascade is visible without opening the Review dialog.
+- `added` counts each new move; building a 10-ply line one drop at a
+  time shows as `10 added`.
 - `changed` counts positions whose annotation set differs from the
   saved state — drawing three arrows and clearing one on the same
   position is one change to that position, not four.
 
 **Review** opens a list of the pending changes (added lines, removed
-lines with a count of pruned descendants per removal, positions with
-changed annotations) so the user can confirm the edits are
-intentional — especially that a delete didn't drop more of the tree
-than expected. **Save** writes the new state. **Discard** drops the
-delta.
+lines with a per-row breakdown of which descendants were pruned,
+positions with changed annotations) so the user can see *which* lines
+moved and confirm the edits are intentional. **Save** writes the new
+state. **Discard** drops the delta.
 
 The unit of work is a session of edits, not an individual edge. The
 user can build a 10-move line, prune a dead branch, and commit it in
