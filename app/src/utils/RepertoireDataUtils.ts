@@ -40,8 +40,6 @@ export class RepertoireDataUtils {
             // If it was sent as a string, re-hydrate into a real Date
             repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
         }
-        // V1 stub — always reset to 0
-        repertoireData.dailyPlayCount = 0;
 
         // Build the in-memory FSRS flat map from the position dict. This is
         // the authoritative store FSRSService mutates during training.
@@ -177,7 +175,6 @@ export class RepertoireDataUtils {
         return {
             repertoires,
             lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-            dailyPlayCount: 0, // V1 stub — derived from activity
             settings: RepertoireDataUtils.buildCurrentSettings(existingData.settings),
             activity: existingData.activity,
             games: existingData.games,

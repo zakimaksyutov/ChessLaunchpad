@@ -158,7 +158,6 @@ array index; identity in memory is the normalized FEN string.
     { "name": "Black", "orientation": "black", "positions": [ ... ] }
   ],
   "lastPlayedDate": "...",
-  "dailyPlayCount": 0,
   "settings": { ... },
   "activity": { ... },
   "games": { ... }

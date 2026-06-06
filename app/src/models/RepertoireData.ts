@@ -87,7 +87,6 @@ export interface RepertoireData {
      */
     data?: OpeningVariantData[];
     lastPlayedDate: Date;
-    dailyPlayCount: number; // Backend compat — derived from activity on save, not read internally
     /**
      * In-memory flat card map (key = `${fen}::${san}`). Built by `normalize`
      * from `repertoires` and mutated by FSRSService. Re-projected back into

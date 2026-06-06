@@ -47,7 +47,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
             RepertoireDataUtils.normalize(data);
 
@@ -80,7 +79,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 fsrsCards: { [legacyKey]: card },
             };
             RepertoireDataUtils.normalize(data);
@@ -100,7 +98,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
             RepertoireDataUtils.normalize(data);
             expect(data.repertoires).toHaveLength(2);
@@ -111,7 +108,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
             RepertoireDataUtils.normalize(data);
             expect(data.data).toBeUndefined();
@@ -123,7 +119,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: yesterday,
-                dailyPlayCount: 5,
             };
             RepertoireDataUtils.normalize(data);
             expect(data.lastPlayedDate.getTime()).toBe(RepertoireDataUtils.getCurrentDateOnly().getTime());
@@ -163,7 +158,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
             RepertoireDataUtils.normalize(data);
             const blob = RepertoireDataUtils.prepareDataForSave(data);
@@ -179,7 +173,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
             RepertoireDataUtils.normalize(data);
 
@@ -197,7 +190,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 activity: {
                     practiceLog: [{ date: '2026-05-25', reviewed: 10, mistakes: 2, learned: 1, traversals: 3, timeSeconds: 300 }],
                     lifetime: { reviewed: 100, mistakes: 20, learned: 10, traversals: 50, timeSeconds: 5000 },
@@ -228,7 +220,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
 
             const blob = RepertoireDataUtils.prepareDataForSave(importedBlob);
@@ -246,7 +237,6 @@ describe('RepertoireDataUtils', () => {
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 fsrsCards: {},
                 settings: { contextDepth: 7, retention: 0.99, maxInterval: 30, linkedAccounts: [{ platform: 'lichess', username: 'someone' }] },
             };
@@ -269,7 +259,6 @@ describe('RepertoireDataUtils', () => {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 fsrsCards: { [cardKey]: card },
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
 
             const blob = RepertoireDataUtils.prepareDataForSave(legacyBlob);
@@ -286,7 +275,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 trainingSettings: { contextDepth: 5, retention: 0.96, linkedAccounts: [{ platform: 'lichess', username: 'imported' }] },
             };
             RepertoireDataUtils.normalize(data);
@@ -303,7 +291,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 // No fsrsCards — simulates a legacy export from a user who
                 // never reviewed a card.
             };
@@ -322,7 +309,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
             };
             RepertoireDataUtils.normalize(data);
             expect(data.activity).toBeDefined();
@@ -333,7 +319,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 activity: {
                     practiceLog: [
                         { date: '2026-05-20', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 },
@@ -353,7 +338,6 @@ describe('RepertoireDataUtils', () => {
             const data: RepertoireData = {
                 data: [legacyVariant('1. e4 e5', 'white')],
                 lastPlayedDate: new Date(),
-                dailyPlayCount: 0,
                 activity: {
                     practiceLog: [{ date: '2026-05-25', reviewed: 5, mistakes: 1, learned: 0, traversals: 2, timeSeconds: 120 }],
                     lifetime: { reviewed: 50, mistakes: 10, learned: 5, traversals: 20, timeSeconds: 3000 },

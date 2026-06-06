@@ -32,7 +32,6 @@ function makeData(variants: OpeningVariantData[] = []): RepertoireData {
     const data: RepertoireData = {
         data: variants,
         lastPlayedDate: new Date(0),
-        dailyPlayCount: 0,
         fsrsCards: {},
         settings: {},
         activity: {

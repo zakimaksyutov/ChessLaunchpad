@@ -21,7 +21,6 @@ function makeRepertoireData(overrides: Partial<RepertoireData> = {}): Repertoire
     return {
         data: [],
         lastPlayedDate: new Date(),
-        dailyPlayCount: 0,
         fsrsCards: {},
         ...overrides,
     };
@@ -323,7 +322,6 @@ describe('ActivityService', () => {
 
             expect(data.activity!.lifetime.reviewed).toBe(5);
             expect(data.activity!.lifetime.traversals).toBe(1);
-            expect(data.dailyPlayCount).toBe(0);
         });
 
         it('accumulates across multiple traversals', () => {
@@ -338,7 +336,6 @@ describe('ActivityService', () => {
             expect(entry.mistakes).toBe(1);
             expect(entry.traversals).toBe(2);
             expect(entry.timeSeconds).toBe(105);
-            expect(data.dailyPlayCount).toBe(0);
         });
     });
 

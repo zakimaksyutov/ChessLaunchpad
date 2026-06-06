@@ -172,7 +172,6 @@ export function getTodayPlayCount(data: RepertoireData): number {
 /**
  * Record a completed traversal into activity data.
  * Updates both today's entry and lifetime totals.
- * Also keeps `dailyPlayCount` in sync for backend compatibility.
  */
 export function recordTraversal(
     data: RepertoireData,
