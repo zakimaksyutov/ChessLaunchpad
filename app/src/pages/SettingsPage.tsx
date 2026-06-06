@@ -326,10 +326,10 @@ const SettingsPage: React.FC = () => {
         let parsed: RepertoireData;
         try {
             const raw = JSON.parse(text);
-            // `decodePersistedBlob` is the single entry point for both v1
-            // legacy shape (pass-through) and v2 wire shape (hashed FENs +
-            // packed cards). After this, `parsed` is in the in-memory
-            // shape that `normalize()` expects.
+            // `decodePersistedBlob` is the single entry point for both the
+            // v1 legacy shape (pass-through) and the v3 wire shape (array of
+            // positions, `"<SAN>:<idx>"` move keys, packed cards). After this,
+            // `parsed` is in the in-memory shape that `normalize()` expects.
             parsed = decodePersistedBlob(raw);
         } catch (ex: unknown) {
             const msg = ex instanceof Error ? ex.message : String(ex);
