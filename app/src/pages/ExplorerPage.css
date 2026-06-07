@@ -479,6 +479,18 @@
   font-style: italic;
 }
 
+/* Side-tone modifier. Marks plies belonging to the studying side with a
+   soft tinted pill that covers the move-number prefix and the SAN as one
+   unit. Opponent plies (and tokens with no side info) stay flat. Uses
+   background only — weight, color, and italic are left alone so this
+   composes cleanly with `.explorer-ply-variation` (italic + gray) and
+   doesn't clash with the FSRS state pills on move-row heads. */
+.explorer-ply-token--user {
+  background: #eaf2fb;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
 /* Wraps `( … )` around a variation so the parens hug their contents instead of
    being separated by the parent flex gap. The wrapper is itself an inline-flex
    so plies inside it still wrap on narrow screens. */

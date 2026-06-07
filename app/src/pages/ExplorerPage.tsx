@@ -92,6 +92,15 @@ function moveNumberOf(depth: number): number {
     return Math.ceil(depth / 2);
 }
 
+/**
+ * True iff the ply at `plyDepth` (1-based) is played by the studying side.
+ * Odd plies are white moves; even plies are black moves.
+ */
+function isUserPlyForDepth(plyDepth: number, orientation: Orientation): boolean {
+    const isWhitePly = plyDepth % 2 === 1;
+    return isWhitePly === (orientation === 'white');
+}
+
 // ── Subcomponents ────────────────────────────────────────────────────
 
 interface ClickablePlyProps {
@@ -102,20 +111,34 @@ interface ClickablePlyProps {
     targetFen: string;
     onJump: (fen: string) => void;
     className?: string;
+    /**
+     * When defined, marks this ply as belonging to the studying side
+     * (true) or the opponent (false). Adds `.explorer-ply-token--user`
+     * (or `--opponent`) on the wrapper so CSS can render the side cue
+     * (currently: a soft tinted pill behind the user's plies covering
+     * the move-number prefix and the SAN as one unit). Leave undefined
+     * to render with no side-specific styling.
+     */
+    isUserPly?: boolean;
 }
 
-const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJump, className }) => (
-    <span className="explorer-ply-token">
-        {prefix ? <span className="explorer-ply-prefix">{prefix}</span> : null}
-        <button
-            type="button"
-            className={`explorer-ply ${className ?? ''}`}
-            onClick={() => onJump(targetFen)}
-        >
-            {san}
-        </button>
-    </span>
-);
+const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJump, className, isUserPly }) => {
+    const tokenSideClass = isUserPly === undefined
+        ? ''
+        : isUserPly ? 'explorer-ply-token--user' : 'explorer-ply-token--opponent';
+    return (
+        <span className={`explorer-ply-token ${tokenSideClass}`}>
+            {prefix ? <span className="explorer-ply-prefix">{prefix}</span> : null}
+            <button
+                type="button"
+                className={`explorer-ply ${className ?? ''}`}
+                onClick={() => onJump(targetFen)}
+            >
+                {san}
+            </button>
+        </span>
+    );
+};
 
 /**
  * Renders the canonical-form PGN of a path with each ply clickable. Plies
@@ -163,8 +186,9 @@ const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string }> 
 const MergedPathsLine: React.FC<{
     shown: Path[];
     rootFen: string;
+    orientation: Orientation;
     onJump: (fen: string) => void;
-}> = ({ shown, rootFen, onJump }) => {
+}> = ({ shown, rootFen, orientation, onJump }) => {
     if (shown.length === 0) return null;
     if (shown[0].length === 0) return <StartPill />;
     const tokens = mergePathsAsVariations(shown, rootFen);
@@ -180,6 +204,7 @@ const MergedPathsLine: React.FC<{
         prefix: string,
         edge: GraphEdge,
         isMain: boolean,
+        plyDepth: number,
         k: number,
     ): React.ReactNode => (
         <ClickablePly
@@ -189,6 +214,7 @@ const MergedPathsLine: React.FC<{
             targetFen={edge.to}
             onJump={onJump}
             className={isMain ? '' : 'explorer-ply-variation'}
+            isUserPly={isUserPlyForDepth(plyDepth, orientation)}
         />
     );
 
@@ -208,7 +234,7 @@ const MergedPathsLine: React.FC<{
             );
         } else {
             const top = stack[stack.length - 1];
-            top.nodes.push(renderPly(t.prefix, t.edge, t.isMain, key++));
+            top.nodes.push(renderPly(t.prefix, t.edge, t.isMain, t.plyDepth, key++));
         }
     }
 
@@ -227,8 +253,9 @@ const MergedPathsLine: React.FC<{
  */
 const ContinuationLine: React.FC<{
     continuation: Continuation;
+    orientation: Orientation;
     onJump: (fen: string) => void;
-}> = ({ continuation, onJump }) => {
+}> = ({ continuation, orientation, onJump }) => {
     const { plies, tail } = continuation;
     const elements: React.ReactNode[] = [];
 
@@ -248,6 +275,7 @@ const ContinuationLine: React.FC<{
                 san={parts[i].san}
                 targetFen={p.toFen}
                 onJump={onJump}
+                isUserPly={isUserPlyForDepth(p.plyDepth, orientation)}
             />
         );
     }
@@ -260,6 +288,7 @@ const ContinuationLine: React.FC<{
         const altIsWhite = altDepth % 2 === 1;
         const altMoveNumber = Math.ceil(altDepth / 2);
         const altPrefix = altIsWhite ? `${altMoveNumber}.` : `${altMoveNumber}\u2026`;
+        const altIsUser = isUserPlyForDepth(altDepth, orientation);
 
         elements.push(
             <span key="alt-open" className="explorer-alt-paren">{'('}</span>
@@ -282,6 +311,7 @@ const ContinuationLine: React.FC<{
                     san={san}
                     targetFen={childFen}
                     onJump={onJump}
+                    isUserPly={altIsUser}
                 />
             );
         });
@@ -397,7 +427,7 @@ const MoveRow: React.FC<MoveRowProps> = ({
                 )}
             </div>
             <div className="explorer-move-row-cont">
-                <ContinuationLine continuation={continuation} onJump={onJump} />
+                <ContinuationLine continuation={continuation} orientation={orientation} onJump={onJump} />
             </div>
         </div>
     );
@@ -1164,6 +1194,7 @@ const ExplorerPage: React.FC = () => {
                                         <MergedPathsLine
                                             shown={summary.shown}
                                             rootFen={service.getRootFen()}
+                                            orientation={resolvedOrientation}
                                             onJump={fen => jumpTo(fen, undefined, true)}
                                         />
                                     </li>
