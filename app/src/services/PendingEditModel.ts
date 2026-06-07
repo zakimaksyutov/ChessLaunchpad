@@ -88,13 +88,26 @@ export interface AnnotationDiff {
     after: Annotation[];
 }
 
+/**
+ * Per-category change counts. Returned standalone by the cheap
+ * `computeCounts()` path used by the sticky bar / `isDirty` hook, and
+ * embedded inside `PendingDelta` returned by the rich `computeDelta()`
+ * path used by the Review view. The two paths share a single
+ * implementation so the numbers cannot drift apart.
+ */
+export interface DeltaCounts {
+    added: number;
+    removed: number;
+    changed: number;
+}
+
 /** Computed delta. Empty array fields → no items in that category. */
 export interface PendingDelta {
     addedChains: EditChain[];
     removedChains: EditChain[];
     editedAnnotations: AnnotationDiff[];
     /** Sums across all chains. */
-    counts: { added: number; removed: number; changed: number };
+    counts: DeltaCounts;
 }
 
 // ── Helpers (module-private) ──────────────────────────────────────────
@@ -364,11 +377,13 @@ export class PendingEditModel {
 
     /**
      * True iff the model has no pending changes vs. its snapshot. Used to
-     * gate Save/Discard and the beforeunload warning.
+     * gate Save/Discard and the beforeunload warning. Uses the cheap
+     * counts-only path so render-time callers (the sticky bar's `isDirty`
+     * hook) don't pay for the Review-only PGN/canonical-path work.
      */
     isEmpty(): boolean {
-        const d = this.computeDelta();
-        return d.counts.added === 0 && d.counts.removed === 0 && d.counts.changed === 0;
+        const c = this.computeCounts();
+        return c.added === 0 && c.removed === 0 && c.changed === 0;
     }
 
     // ── Mutating operations ─────────────────────────────────────────
@@ -502,7 +517,47 @@ export class PendingEditModel {
      * Compare (base, current) and produce the chain-decomposed delta the
      * Review view renders. Pure over the model's snapshots.
      */
+    // ── Delta computation ────────────────────────────────────────────
+
+    /**
+     * Cheap, presentation-free change summary. Computes the same
+     * `counts` that `computeDelta()` emits, but skips chain
+     * decomposition, canonical-path BFS, and PGN formatting — none of
+     * which are needed by the sticky bar / `isDirty` hook that fires on
+     * every render. Counts are guaranteed identical to `computeDelta()`
+     * because both delegate to the same `computeImpl()` worker.
+     */
+    computeCounts(): DeltaCounts {
+        return this.computeImpl(false).counts;
+    }
+
+    /**
+     * Full chain-decomposed delta the Review view renders. Pure over
+     * the model's snapshots. Expensive on large repertoires with many
+     * changes — call only when the Review pane is actually visible.
+     */
     computeDelta(): PendingDelta {
+        return this.computeImpl(true);
+    }
+
+    /**
+     * Shared implementation behind `computeCounts()` (cheap) and
+     * `computeDelta()` (rich).
+     *
+     * Phase 1 — always: collect edges from both snapshots, set-diff to
+     *   get added/removed edge sets, compute root-reachability for
+     *   annotation visibility filtering, and compare annotation sets.
+     *   Counts are derived directly from these set sizes — no chain
+     *   decomposition required (the number of edges in any chain
+     *   partition equals the raw diff size).
+     *
+     * Phase 2 — only when `includePresentation` is true: chain-decompose
+     *   added/removed edges, resolve a canonical PGN to each chain
+     *   head's parent FEN (the dominant cost on large rep deletes),
+     *   format `chainPgn`/`parentPgn`, compute per-annotation canonical
+     *   PGNs, and resolve `tailHint`s.
+     */
+    private computeImpl(includePresentation: boolean): PendingDelta {
         const __t0 = performance.now();
         let __basePositions = 0;
         let __curPositions = 0;
@@ -517,12 +572,16 @@ export class PendingEditModel {
         const removedChains: EditChain[] = [];
         const editedAnnotations: AnnotationDiff[] = [];
 
+        let countsAdded = 0;
+        let countsRemoved = 0;
+        let countsChanged = 0;
+
         for (const orientation of ['white', 'black'] as Orientation[]) {
             const baseRep = findRepertoire(this.baseRepertoires, orientation);
             const curRep = findRepertoire(this.currentRepertoires, orientation);
             if (!baseRep || !curRep) continue;
 
-            // Build edge sets.
+            // Phase 1a — build edge sets (always).
             const __tCollect = performance.now();
             const baseEdges = collectEdges(baseRep);
             const curEdges = collectEdges(curRep);
@@ -533,6 +592,10 @@ export class PendingEditModel {
             __baseEdges += Object.keys(baseEdges).length;
             __curEdges += Object.keys(curEdges).length;
 
+            // Phase 1b — set-diff edges (always). Counts come straight
+            // from the diff size since every changed edge ends up in
+            // exactly one chain (chain decomposition partitions the
+            // changed-edge set).
             const __tDiff = performance.now();
             const baseKeys = new Set(Object.keys(baseEdges));
             const curKeys = new Set(Object.keys(curEdges));
@@ -541,37 +604,46 @@ export class PendingEditModel {
             const removedEdgeKeys = [...baseKeys].filter(k => !curKeys.has(k));
             __msDiff += performance.now() - __tDiff;
 
-            // Chain-decompose Added against current repertoire (reachability
-            // and "joins-existing" annotations need to look at survivors).
-            // Pass BOTH orientations' reps so multi-orientation edits in one
-            // session can resolve parent paths across orientations.
-            const __tDecompose = performance.now();
-            const addedAsChains = decomposeChains(
-                'added',
-                addedEdgeKeys.map(k => curEdges[k]),
-                orientation,
-                curRep,
-                baseRep,
-                this.root,
-                this.currentRepertoires,
-                this.baseRepertoires,
-            );
-            for (const c of addedAsChains) addedChains.push(c);
+            countsAdded += addedEdgeKeys.length;
+            countsRemoved += removedEdgeKeys.length;
 
-            const removedAsChains = decomposeChains(
-                'removed',
-                removedEdgeKeys.map(k => baseEdges[k]),
-                orientation,
-                curRep,
-                baseRep,
-                this.root,
-                this.currentRepertoires,
-                this.baseRepertoires,
-            );
-            for (const c of removedAsChains) removedChains.push(c);
-            __msDecompose += performance.now() - __tDecompose;
+            // Phase 2a — chain decomposition + canonical PGN resolution
+            // (presentation only). Skipped on the cheap path.
+            if (includePresentation) {
+                // Chain-decompose Added against current repertoire
+                // (reachability and "joins-existing" annotations need
+                // to look at survivors). Pass BOTH orientations' reps
+                // so multi-orientation edits in one session can
+                // resolve parent paths across orientations.
+                const __tDecompose = performance.now();
+                const addedAsChains = decomposeChains(
+                    'added',
+                    addedEdgeKeys.map(k => curEdges[k]),
+                    orientation,
+                    curRep,
+                    baseRep,
+                    this.root,
+                    this.currentRepertoires,
+                    this.baseRepertoires,
+                );
+                for (const c of addedAsChains) addedChains.push(c);
 
-            // Annotation diffs (set semantics).
+                const removedAsChains = decomposeChains(
+                    'removed',
+                    removedEdgeKeys.map(k => baseEdges[k]),
+                    orientation,
+                    curRep,
+                    baseRep,
+                    this.root,
+                    this.currentRepertoires,
+                    this.baseRepertoires,
+                );
+                for (const c of removedAsChains) removedChains.push(c);
+                __msDecompose += performance.now() - __tDecompose;
+            }
+
+            // Phase 1c — annotation diffs (always for counts; only
+            // populates rich diff objects when presentation is needed).
             //
             // Only consider positions REACHABLE in both base and current:
             //   - Positions cascade-pruned by a delete in this session are
@@ -595,8 +667,21 @@ export class PendingEditModel {
                 const before = baseRep.positions[fen]?.annotations ?? [];
                 const after = curRep.positions[fen]?.annotations ?? [];
                 if (annotationSetsEqual(before, after)) continue;
+                countsChanged += 1;
+                if (!includePresentation) continue;
+                // Phase 2b — canonical PGN for the annotation row
+                // (presentation only). canonicalPath can fail if the
+                // FEN was just pruned in the same tick — guard by not
+                // emitting a diff entry for it (count already bumped,
+                // which matches the prior behavior: a position that
+                // became unreachable is excluded).
                 const sans = canonicalPath(curRep, fen, this.root);
-                if (!sans) continue;
+                if (!sans) {
+                    // Roll back the count so we stay consistent with
+                    // the rich-path output (which silently drops these).
+                    countsChanged -= 1;
+                    continue;
+                }
                 editedAnnotations.push({
                     orientation,
                     fen,
@@ -608,26 +693,23 @@ export class PendingEditModel {
             __msAnnotations += performance.now() - __tAnnotations;
         }
 
-        // Counts: every edge in every chain (head + tail).
-        const sumEdges = (chains: EditChain[]) =>
-            chains.reduce((n, c) => n + 1 + c.tail.length, 0);
-
         const result: PendingDelta = {
             addedChains,
             removedChains,
             editedAnnotations,
             counts: {
-                added: sumEdges(addedChains),
-                removed: sumEdges(removedChains),
-                changed: editedAnnotations.length,
+                added: countsAdded,
+                removed: countsRemoved,
+                changed: countsChanged,
             },
         };
 
         const __ms = performance.now() - __t0;
         const __fmt = (n: number) => n.toFixed(1);
+        const __flavor = includePresentation ? 'full' : 'counts';
         // eslint-disable-next-line no-console
         console.log(
-            `[PendingEditModel.computeDelta] ${__fmt(__ms)}ms ` +
+            `[PendingEditModel.computeDelta:${__flavor}] ${__fmt(__ms)}ms ` +
                 `(collect ${__fmt(__msCollect)} / diff ${__fmt(__msDiff)} / decompose ${__fmt(__msDecompose)} / annot ${__fmt(__msAnnotations)}) ` +
                 `— positions base/cur: ${__basePositions}/${__curPositions}, edges base/cur: ${__baseEdges}/${__curEdges}, ` +
                 `chains +${addedChains.length}/-${removedChains.length}, ` +

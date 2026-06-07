@@ -668,19 +668,34 @@ const ExplorerPage: React.FC = () => {
     }, [stripReviewParam]);
 
     /**
-     * Memoized delta so the sticky bar + Review view re-render only when the
-     * pending model actually changes. Also drives `isDirty` below — keep it
-     * the single source of truth to avoid recomputing the delta twice per
-     * render (once here, once via `isEmpty()`).
+     * Cheap counts-only memo, runs on every edit. Drives the sticky bar
+     * pill and `isDirty` (which gates the cross-page notifier and
+     * `beforeunload`). Avoids the chain-decomposition + canonical-path +
+     * PGN-formatting cost paid by the full `computeDelta()` — that cost
+     * is only paid when the Review pane is actually open (see `delta`
+     * below). Counts are guaranteed to match the rich path because both
+     * share `PendingEditModel.computeImpl` internally.
      */
-    const delta = useMemo(() => {
+    const counts = useMemo(() => {
         void pendingTick;
-        return pendingModel ? pendingModel.computeDelta() : null;
+        return pendingModel ? pendingModel.computeCounts() : null;
     }, [pendingModel, pendingTick]);
 
     /** True when the model holds at least one staged change. */
-    const isDirty = !!delta &&
-        (delta.counts.added + delta.counts.removed + delta.counts.changed) > 0;
+    const isDirty = !!counts &&
+        (counts.added + counts.removed + counts.changed) > 0;
+
+    /**
+     * Rich delta with chain decomposition + per-row canonical PGN.
+     * Only computed when the Review pane is actually visible — gated on
+     * `view === 'review'` so editing the rep on huge repertoires never
+     * pays for presentation work the user can't see.
+     */
+    const delta = useMemo(() => {
+        void pendingTick;
+        if (view !== 'review' || !pendingModel) return null;
+        return pendingModel.computeDelta();
+    }, [pendingModel, pendingTick, view]);
 
     // Reflect dirty state into the cross-page notifier so Training (and the
     // header eventually) can prompt the user.
@@ -1121,13 +1136,13 @@ const ExplorerPage: React.FC = () => {
                 )}
 
                 {/* Sticky save bar — visible only in edit mode with a non-empty delta. */}
-                {mode === 'edit' && delta && (delta.counts.added > 0 || delta.counts.removed > 0 || delta.counts.changed > 0) && view === 'main' && (
+                {mode === 'edit' && counts && (counts.added > 0 || counts.removed > 0 || counts.changed > 0) && view === 'main' && (
                     <div className="explorer-save-bar" role="region" aria-label="Pending edits">
                         <span className="explorer-save-bar-counts">
                             {[
-                                delta.counts.added > 0 ? `${delta.counts.added} added` : null,
-                                delta.counts.removed > 0 ? `${delta.counts.removed} removed` : null,
-                                delta.counts.changed > 0 ? `${delta.counts.changed} changed` : null,
+                                counts.added > 0 ? `${counts.added} added` : null,
+                                counts.removed > 0 ? `${counts.removed} removed` : null,
+                                counts.changed > 0 ? `${counts.changed} changed` : null,
                             ].filter(Boolean).join(' · ')}
                         </span>
                         <div className="explorer-save-bar-actions">
@@ -1170,9 +1185,9 @@ const ExplorerPage: React.FC = () => {
                         <div className="explorer-modal">
                             <h2 id="discard-prompt-title">Discard pending edits?</h2>
                             <p>
-                                Your unsaved changes — {delta?.counts.added ?? 0} added,
-                                {' '}{delta?.counts.removed ?? 0} removed,
-                                {' '}{delta?.counts.changed ?? 0} changed — will be lost.
+                                Your unsaved changes — {counts?.added ?? 0} added,
+                                {' '}{counts?.removed ?? 0} removed,
+                                {' '}{counts?.changed ?? 0} changed — will be lost.
                                 This cannot be undone.
                             </p>
                             <div className="explorer-modal-actions">
