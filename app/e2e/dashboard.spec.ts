@@ -129,8 +129,7 @@ test.describe('Dashboard — game sync drives FSRS', () => {
     }
 
     // ── 6. Build fixture with pre-rated cards and linked account ────
-    const fixture = buildRepertoireData(variants);
-    fixture.fsrsCards = preRatedCards;
+    const fixture = buildRepertoireData(variants, preRatedCards);
     fixture.settings = {
       ...fixture.settings,
       linkedAccounts: [{ platform: 'lichess', username: USERNAME }],

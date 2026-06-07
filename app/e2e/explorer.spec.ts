@@ -92,11 +92,13 @@ test.describe('Explorer page — navigation and URL sync', () => {
         // Heading switches to "Opponent's replies".
         await expect(moves.locator('.explorer-section-title')).toHaveText("Opponent's replies");
 
-        // Two opponent rows: e5 and c5, no FSRS pills (opponent moves skip
+        // Two opponent rows: c5 and e5, no FSRS pills (opponent moves skip
         // the FSRS cluster entirely per EXPLORER.md).
+        // Order: SANs from the v3 wire are emitted in `Array.prototype.sort()`
+        // order (alphabetical), so 'c5' renders before 'e5'.
         await expect(moveRows).toHaveCount(2);
         const sans = moves.locator('.explorer-move-row button.explorer-move-san');
-        await expect(sans).toHaveText(['e5', 'c5']);
+        await expect(sans).toHaveText(['c5', 'e5']);
         await expect(moves.locator('.explorer-move-row.opponent')).toHaveCount(2);
         await expect(moves.locator('.explorer-state-pill')).toHaveCount(0);
 

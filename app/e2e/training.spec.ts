@@ -580,15 +580,10 @@ test.describe('Teaching with known prefix (e4 studied, Nf3 new)', () => {
   const nf3CardKey = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
 
   // Build fixture with e4 pre-rated as well-studied (Good × 3)
-  const studiedPrefixFixture = (() => {
-    const f = buildRepertoireData([
-      { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
-    ]);
-    f.fsrsCards = {
-      [e4CardKey]: rateGoodNTimes(3),
-    };
-    return f;
-  })();
+  const studiedPrefixFixture = buildRepertoireData(
+    [{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }],
+    { [e4CardKey]: rateGoodNTimes(3) },
+  );
 
   test('autoplays known prefix e4 during teach and recall of new Nf3', async ({ page }) => {
     const { saves } = await setupMockEnvironment(page, studiedPrefixFixture);
@@ -752,17 +747,16 @@ function rateAgainOnce(): FSRSCardData {
 // PGN with a green arrow e5→d6 and a red square on e5 shown before opponent's e5
 // Comment on e4 so annotations appear during the autoplay pause (step.fen = post-e4).
 const annotatedFixture = (() => {
-  const f = buildRepertoireData([
-    { pgn: '1. e4 {[%cal Ge5d6] [%csl Re5]} e5 2. Nf3', orientation: 'white' },
-  ]);
   const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
   const nf3Key =
     'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
-  f.fsrsCards = {
-    [e4Key]: rateAgainOnce(),
-    [nf3Key]: rateAgainOnce(),
-  };
-  return f;
+  return buildRepertoireData(
+    [{ pgn: '1. e4 {[%cal Ge5d6] [%csl Re5]} e5 2. Nf3', orientation: 'white' }],
+    {
+      [e4Key]: rateAgainOnce(),
+      [nf3Key]: rateAgainOnce(),
+    },
+  );
 })();
 
 test.describe('Training page — PGN annotations before autoplay (1. e4 {arrows/highlights} e5 2. Nf3)', () => {
@@ -817,17 +811,16 @@ test.describe('Training page — PGN annotations before autoplay (1. e4 {arrows/
 // ── Incorrect moves → Again rating ──────────────────────────────────
 
 const incorrectMoveFixture = (() => {
-  const f = buildRepertoireData([
-    { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
-  ]);
   const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
   const nf3Key =
     'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
-  f.fsrsCards = {
-    [e4Key]: rateGoodNTimes(3),
-    [nf3Key]: rateGoodNTimes(3),
-  };
-  return f;
+  return buildRepertoireData(
+    [{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }],
+    {
+      [e4Key]: rateGoodNTimes(3),
+      [nf3Key]: rateGoodNTimes(3),
+    },
+  );
 })();
 
 test.describe('Training page — incorrect moves then correct (1. e4 e5 2. Nf3)', () => {
@@ -960,22 +953,23 @@ function rateGoodNTimesAt(n: number, msAgo: number): FSRSCardData {
 }
 
 const orientationLeakFixture = (() => {
-  const f = buildRepertoireData([
-    { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
-    { pgn: '1. e4 e5 2. Nf3 {[%cal Ge5d6]} Nc6', orientation: 'black' },
-  ]);
   const e4Key  = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
   const nf3Key = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
   const e5Key  = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1::e5';
   const nc6Key = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 1::Nc6';
   const HOUR = 60 * 60 * 1000;
-  f.fsrsCards = {
-    [e4Key]:  rateGoodNTimesAt(3, HOUR),
-    [nf3Key]: rateAgainOnce(),
-    [e5Key]:  rateGoodNTimesAt(3, HOUR),
-    [nc6Key]: rateGoodNTimesAt(3, HOUR),
-  };
-  return f;
+  return buildRepertoireData(
+    [
+      { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
+      { pgn: '1. e4 e5 2. Nf3 {[%cal Ge5d6]} Nc6', orientation: 'black' },
+    ],
+    {
+      [e4Key]:  rateGoodNTimesAt(3, HOUR),
+      [nf3Key]: rateAgainOnce(),
+      [e5Key]:  rateGoodNTimesAt(3, HOUR),
+      [nc6Key]: rateGoodNTimesAt(3, HOUR),
+    },
+  );
 })();
 
 test.describe('Training page — PGN annotations from opposite-orientation variant must not leak (REPRO)', () => {

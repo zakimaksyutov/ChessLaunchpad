@@ -1,7 +1,13 @@
 import { type Page } from '@playwright/test';
-import { decodePersistedBlob } from '../src/utils/BlobCodec';
+import {
+    encodePersistedBlob,
+    decodePersistedBlob,
+    type PersistedBlobV3,
+} from '../src/utils/BlobCodec';
 import { extractFsrsCardsFromRepertoires } from '../src/utils/RepertoiresSerde';
 import { type RepertoireData } from '../src/models/RepertoireData';
+import { type FSRSCardData } from '../src/models/FSRSCardData';
+import { pgnToRepertoires } from '../src/test-utils/repertoireBuilders';
 
 const API_BASE = 'https://chess-prod-function.azurewebsites.net/api/user';
 
@@ -11,25 +17,36 @@ export interface VariantDef {
 }
 
 /**
- * Build a minimal RepertoireData payload matching the backend contract.
+ * Build a v3-encoded RepertoireData payload matching the backend contract.
+ *
+ * Tests express their fixtures as PGN strings (the natural notation for an
+ * opening line); this helper materializes them into the position-centric
+ * v3 wire shape that `decodePersistedBlob` accepts in the app's read path.
+ *
+ * `seedCards` lets a test pre-rate user-turn moves (keyed by `<fen>::<san>`).
+ * Cards are inlined onto the matching `moves[san].card` before the BFS
+ * encode, so they survive the v3 round-trip and the app sees them as
+ * already-rated. Cards whose key doesn't correspond to a user-turn edge
+ * in any constructed repertoire are silently dropped — same semantics as
+ * the production reconciliation.
  *
  * The app's normalize() (which runs in the browser after fetch) will
- * reconcile FSRS cards, hydrate defaults, etc. — so we only need to
- * supply the variant list and sensible top-level defaults.
+ * synthesize New-state cards for user-turn edges that have none.
  */
-export function buildRepertoireData(variants: VariantDef[]) {
-  return {
-    data: variants.map(v => ({
-      pgn: v.pgn,
-      orientation: v.orientation,
-    })),
-    fsrsCards: {},
+export function buildRepertoireData(
+  variants: VariantDef[],
+  seedCards: Record<string, FSRSCardData> = {},
+): PersistedBlobV3 {
+  const repertoires = pgnToRepertoires(variants, seedCards);
+  const inMemory: RepertoireData = {
+    repertoires,
     settings: {
       contextDepth: 2,
       retention: 0.97,
       maxInterval: 90,
     },
   };
+  return encodePersistedBlob(inMemory);
 }
 
 /**
@@ -87,7 +104,7 @@ export async function setupMockEnvironment(
   await page.route(`${API_BASE}/${username}/variants`, async (route, request) => {
     if (request.method() === 'GET') {
       // Return the most recently saved RAW wire body (v3) if available,
-      // otherwise the fixture (legacy v1 shape — passes through decode).
+      // otherwise the fixture (already v3-encoded by `buildRepertoireData`).
       const latestBody = rawWireBodies.length > 0
         ? rawWireBodies[rawWireBodies.length - 1]
         : fixture;
@@ -118,17 +135,11 @@ export async function setupMockEnvironment(
 
 /**
  * Decode a captured v3 wire body into the in-memory shape that tests assert
- * against, including a hydrated `fsrsCards` flat map. v1 (no `v` field)
- * passes through unchanged.
+ * against, including a hydrated `fsrsCards` flat map.
  */
 function decodeWireForTests(wireBody: Record<string, unknown>): Record<string, unknown> {
   const decoded = decodePersistedBlob(wireBody) as RepertoireData;
-  // For v1 pass-through, `decoded` may not have `repertoires` (legacy `data`
-  // shape — no fsrsCards hydration needed; the test will see the raw shape).
-  if (!decoded.repertoires) {
-    return decoded as unknown as Record<string, unknown>;
-  }
-  const fsrsCards = extractFsrsCardsFromRepertoires(decoded.repertoires);
+  const fsrsCards = extractFsrsCardsFromRepertoires(decoded.repertoires ?? []);
   return { ...decoded, fsrsCards } as unknown as Record<string, unknown>;
 }
 
