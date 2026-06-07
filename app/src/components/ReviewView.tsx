@@ -270,11 +270,13 @@ interface TailEdgeRowProps {
 
 const TailEdgeRow: React.FC<TailEdgeRowProps> = ({ parentSans, edge, side }) => {
     const parentPgn = pgnFromSans(parentSans);
+    const fullPgn = pgnFromSans([...parentSans, edge.san]);
+    const pgnLabel = fullPgn || [...parentSans, edge.san].join(' ');
     return (
         <div className="explorer-review-chain-head">
             <ChainBoard parentPgn={parentPgn} headEdge={edge} side={side} />
             <div className="explorer-review-chain-body">
-                <div className="explorer-review-chain-pgn">{[...parentSans, edge.san].join(' ')}</div>
+                <div className="explorer-review-chain-pgn">{pgnLabel}</div>
                 <div className="explorer-review-chain-fen">FEN: <code>{edge.to}</code></div>
             </div>
         </div>
