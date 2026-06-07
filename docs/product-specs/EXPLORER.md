@@ -125,8 +125,11 @@ position.
   Implementation Decisions). If the position is in neither orientation
   — whether the input failed to parse or the position simply isn't in
   the tree — the field shows an inline error (e.g. *"Not in your White
-  repertoire."*) and the board does not move. Placeholder: *"Paste FEN
-  or PGN to jump…"*.
+  repertoire."*) and the board does not move. **In Edit mode the
+  cross-orientation fallthrough is suppressed** — the input only
+  searches the active orientation, since the toggle is hidden while
+  editing (see EXPLORER-EDIT.md). Placeholder: *"Paste FEN or PGN to
+  jump…"*.
 
 ### Bottom: "Your moves from here" / "Opponent's replies"
 

@@ -6,8 +6,10 @@ stays for bulk seed and backup.
 
 ## The Idea
 
-A pill toggle on the Explorer header flips **Read ⇄ Edit**. Read
-mode is byte-for-byte today's Explorer. Edit mode lets the user:
+A green **Edit repertoire** button on the Explorer toolbar (right
+side of the same row as the White ⇄ Black toggle) promotes the page
+into **Edit mode**. Read mode is byte-for-byte today's Explorer.
+Edit mode lets the user:
 
 - **Add a move** by playing it on the board. The Explorer
   auto-navigates onto the resulting position so the user can keep
@@ -40,16 +42,43 @@ existing arrow to clear it) use the chessboard's existing conventions
 — Edit mode simply enables them; Read mode suppresses them as today.
 No separate brush or color picker UI.
 
+Edit mode is **scoped to a single repertoire per session**: the
+orientation toggle is **hidden while in Edit mode**, so the user
+cannot accidentally split a delta across two repertoires. To edit
+the other side, exit Edit (Discard at zero changes is a one-click
+exit) and toggle orientation in Read mode first.
+
+The **Find-position** input remains visible in Edit mode but only
+searches the **active orientation's** repertoire — the
+cross-orientation fallthrough that Read mode allows is suppressed
+(otherwise pasting a FEN that lives in the other repertoire would
+silently flip the board with no visible orientation control). On a
+miss the input surfaces *"Not in your {orientation} repertoire (exit
+Edit to search the other side)."*
+
 Edit mode is available from any Explorer state, including an **empty
-repertoire**: the user toggles into Edit on the start position and
-drops moves directly from there. No special bootstrap path.
+repertoire**: the user clicks **Edit repertoire** on the start
+position and drops moves directly from there. No special bootstrap
+path.
 
 ## Review & Save
 
-A sticky bar shows *"N added · K removed · M changed — Review & Save
-· Discard"* whenever the delta is non-empty (categories that are zero
-are omitted). Counts are of **moves that will appear in / disappear
-from the saved blob**, not of user clicks:
+The Edit-mode toolbar replaces the **Edit repertoire** CTA with an
+**inline edit bar** in the same slot. The bar is **always visible
+while in Edit mode**, even at zero pending changes — so the
+Save/Discard controls do not pop in and out as the user makes their
+first edit.
+
+The bar shows *"N added · K removed · M changed"* (categories that
+are zero are omitted) plus a **Review & Save** button and a
+**Discard** button. When the delta is empty the counts read
+*"No pending changes"* and **Review & Save** is disabled (with a
+tooltip *"Make a change to enable"*); **Discard** stays enabled and
+acts as the exit affordance back to Read mode (it short-circuits the
+confirmation prompt because there is nothing to discard).
+
+Counts are of **moves that will appear in / disappear from the saved
+blob**, not of user clicks:
 
 - `removed` includes descendants pruned by the transposition-aware
   reachability check. Deleting one edge that drops a 7-move branch
@@ -96,9 +125,9 @@ row uses the **canonical path** — shortest, ties broken
 lexicographically by SAN — same convention as Explorer's "How you got
 here." One position has one path label, everywhere.
 
-Totals on the sticky bar match the totals across all rows expanded —
-i.e., `removed` counts every edge in every chain, and `added` does
-the same.
+Totals on the inline edit bar match the totals across all rows
+expanded — i.e., `removed` counts every edge in every chain, and
+`added` does the same.
 
 The three lists, chain decomposition, and the transposition tail
 annotations below are all computed **lazily when Review opens**, as
@@ -137,10 +166,12 @@ mode with the delta intact, and both stay within `/explorer` —
 neither exits the page. Whether the Review view is its own history
 entry is the implementer's call as long as that behavior holds.
 
-**Discard** always prompts for confirmation when the delta is
-non-empty — it's destructive and silent loss is not acceptable.
-**Save**, **Cancel**, and **browser Back** never prompt — they are
-either committing or non-destructive. Tab close, hard refresh, or
+**Discard** prompts for confirmation when the delta is non-empty —
+it's destructive and silent loss is not acceptable. At zero pending
+changes there is nothing to discard, so the same button exits Edit
+mode silently and serves as the Edit-mode escape hatch. **Save**,
+**Cancel**, and **browser Back** never prompt — they are either
+committing or non-destructive. Tab close, hard refresh, or
 navigation to a different route rely on the browser's
 `beforeunload` warning alone.
 

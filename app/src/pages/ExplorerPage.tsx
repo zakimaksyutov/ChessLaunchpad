@@ -601,6 +601,14 @@ const ExplorerPage: React.FC = () => {
             setFindError(`Not in your ${resolvedOrientation} repertoire.`);
             return;
         }
+        // In Edit mode the orientation toggle is hidden and editing is
+        // scoped to a single repertoire per session — silently switching
+        // sides via Find would be confusing. Block the cross-orientation
+        // fallthrough and surface the same not-found error as above.
+        if (mode === 'edit' && result.orientation !== resolvedOrientation) {
+            setFindError(`Not in your ${resolvedOrientation} repertoire (exit Edit to search the other side).`);
+            return;
+        }
         setFindError(null);
         jumpTo(result.fen, result.orientation, true);
     };
@@ -657,18 +665,7 @@ const ExplorerPage: React.FC = () => {
     }, [data, pendingModel, stripReviewParam]);
 
     /**
-     * Read-mode toggle. Does NOT clear the pending model — the user can flip
-     * back to Edit and continue where they left off. The Read view simply
-     * shows the persisted blob (via the read-mode service) while the model
-     * is parked.
-     */
-    const exitToReadMode = useCallback(() => {
-        setMode('read');
-        stripReviewParam();
-    }, [stripReviewParam]);
-
-    /**
-     * Cheap counts-only memo, runs on every edit. Drives the sticky bar
+     * Cheap counts-only memo, runs on every edit. Drives the inline edit-bar
      * pill and `isDirty` (which gates the cross-page notifier and
      * `beforeunload`). Avoids the chain-decomposition + canonical-path +
      * PGN-formatting cost paid by the full `computeDelta()` — that cost
@@ -949,52 +946,88 @@ const ExplorerPage: React.FC = () => {
                     </div>
                 )}
 
-                <div className="explorer-orientation-bar">
-                    <button
-                        type="button"
-                        className={`explorer-toggle ${resolvedOrientation === 'white' ? 'active' : ''}`}
-                        onClick={() => resolvedOrientation !== 'white' && handleToggleOrientation()}
-                        aria-pressed={resolvedOrientation === 'white'}
-                    >
-                        White
-                    </button>
-                    <span className="explorer-toggle-sep">⇄</span>
-                    <button
-                        type="button"
-                        className={`explorer-toggle ${resolvedOrientation === 'black' ? 'active' : ''}`}
-                        onClick={() => resolvedOrientation !== 'black' && handleToggleOrientation()}
-                        aria-pressed={resolvedOrientation === 'black'}
-                    >
-                        Black
-                    </button>
-                    {/* Read / Edit mode pill. Visible from any Explorer state,
-                        including the empty repertoire. The Read button is
-                        always non-destructive — it just parks the model. The
-                        Edit button captures a snapshot if one isn't already
-                        live. */}
-                    <span className="explorer-mode-sep" aria-hidden="true">·</span>
-                    <button
-                        type="button"
-                        className={`explorer-toggle explorer-mode-toggle ${mode === 'read' ? 'active' : ''}`}
-                        onClick={() => mode !== 'read' && exitToReadMode()}
-                        aria-pressed={mode === 'read'}
-                        title="Read mode — browse the repertoire"
-                    >
-                        Read
-                    </button>
-                    <button
-                        type="button"
-                        className={`explorer-toggle explorer-mode-toggle ${mode === 'edit' ? 'active' : ''}`}
-                        onClick={() => mode !== 'edit' && enterEditMode()}
-                        aria-pressed={mode === 'edit'}
-                        title="Edit mode — add or remove moves and annotations"
-                    >
-                        Edit
-                    </button>
-                </div>
-
                 {view === 'main' && (
                 <div className="explorer-body">
+                    {/* Toolbar lives in the body's top-left grid cell so it
+                        shares the board's column width exactly — its left
+                        and right edges line up with the board's edges. The
+                        right column starts on the second grid row,
+                        top-aligned with the chessboard (not with the
+                        toolbar) so the toolbar reads as the page's top
+                        line. Read mode: orientation toggle on the left,
+                        green "Edit repertoire" CTA on the right. Edit
+                        mode: toggle is hidden (editing is scoped to a
+                        single repertoire per session) and the inline edit
+                        bar spans the column with counts on the left and
+                        the Save / Discard actions on the right; the bar
+                        wraps to two rows on tight fits. Discard at zero
+                        changes acts as the exit affordance back to Read
+                        mode. */}
+                    <div className="explorer-orientation-bar">
+                        {mode === 'read' && (
+                            <div className="explorer-toolbar-left">
+                                <button
+                                    type="button"
+                                    className={`explorer-toggle ${resolvedOrientation === 'white' ? 'active' : ''}`}
+                                    onClick={() => resolvedOrientation !== 'white' && handleToggleOrientation()}
+                                    aria-pressed={resolvedOrientation === 'white'}
+                                >
+                                    White
+                                </button>
+                                <span className="explorer-toggle-sep">⇄</span>
+                                <button
+                                    type="button"
+                                    className={`explorer-toggle ${resolvedOrientation === 'black' ? 'active' : ''}`}
+                                    onClick={() => resolvedOrientation !== 'black' && handleToggleOrientation()}
+                                    aria-pressed={resolvedOrientation === 'black'}
+                                >
+                                    Black
+                                </button>
+                            </div>
+                        )}
+                        {mode === 'read' && (
+                            <button
+                                type="button"
+                                className="explorer-edit-cta"
+                                onClick={enterEditMode}
+                                title="Edit mode — add or remove moves and annotations"
+                            >
+                                Edit repertoire
+                            </button>
+                        )}
+                        {mode === 'edit' && (
+                            <div className="explorer-save-bar" role="region" aria-label="Pending edits">
+                                <span className="explorer-save-bar-counts">
+                                    {isDirty
+                                        ? [
+                                            counts!.added > 0 ? `${counts!.added} added` : null,
+                                            counts!.removed > 0 ? `${counts!.removed} removed` : null,
+                                            counts!.changed > 0 ? `${counts!.changed} changed` : null,
+                                        ].filter(Boolean).join(' · ')
+                                        : 'No pending changes'}
+                                </span>
+                                <div className="explorer-save-bar-actions">
+                                    <button
+                                        type="button"
+                                        className="explorer-save-bar-review"
+                                        onClick={enterReviewView}
+                                        disabled={saveInFlight || !isDirty}
+                                        title={!isDirty ? 'Make a change to enable' : undefined}
+                                    >
+                                        Review &amp; Save
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="explorer-save-bar-discard"
+                                        onClick={requestDiscard}
+                                        disabled={saveInFlight}
+                                    >
+                                        Discard
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <div className="explorer-left-col">
                     <div
                         className="explorer-board-col"
@@ -1135,37 +1168,6 @@ const ExplorerPage: React.FC = () => {
                         onDiscard={requestDiscard}
                         saveInFlight={saveInFlight}
                     />
-                )}
-
-                {/* Sticky save bar — visible only in edit mode with a non-empty delta. */}
-                {mode === 'edit' && counts && (counts.added > 0 || counts.removed > 0 || counts.changed > 0) && view === 'main' && (
-                    <div className="explorer-save-bar" role="region" aria-label="Pending edits">
-                        <span className="explorer-save-bar-counts">
-                            {[
-                                counts.added > 0 ? `${counts.added} added` : null,
-                                counts.removed > 0 ? `${counts.removed} removed` : null,
-                                counts.changed > 0 ? `${counts.changed} changed` : null,
-                            ].filter(Boolean).join(' · ')}
-                        </span>
-                        <div className="explorer-save-bar-actions">
-                            <button
-                                type="button"
-                                className="explorer-save-bar-review"
-                                onClick={enterReviewView}
-                                disabled={saveInFlight}
-                            >
-                                Review &amp; Save
-                            </button>
-                            <button
-                                type="button"
-                                className="explorer-save-bar-discard"
-                                onClick={requestDiscard}
-                                disabled={saveInFlight}
-                            >
-                                Discard
-                            </button>
-                        </div>
-                    </div>
                 )}
 
                 {saveError && (

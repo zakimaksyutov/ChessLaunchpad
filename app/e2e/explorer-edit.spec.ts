@@ -52,10 +52,12 @@ test.describe('Explorer page — Edit mode', () => {
         // No save bar in Read mode.
         await expect(page.locator('.explorer-save-bar')).toHaveCount(0);
 
-        // Flip to Edit mode.
-        const editPill = page.getByRole('button', { name: 'Edit', exact: true });
-        await editPill.click();
-        await expect(editPill).toHaveAttribute('aria-pressed', 'true');
+        // Flip to Edit mode via the green "Edit repertoire" CTA.
+        const editCta = page.getByRole('button', { name: 'Edit repertoire', exact: true });
+        await editCta.click();
+        // Inline edit bar appears immediately (always-visible in Edit mode).
+        await expect(page.locator('.explorer-save-bar')).toBeVisible();
+        await expect(page.locator('.explorer-save-bar-counts')).toHaveText('No pending changes');
 
         // Click 1.e4 to navigate after it, so the board is on black's move.
         await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
@@ -108,7 +110,7 @@ test.describe('Explorer page — Edit mode', () => {
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
         // Enter Edit.
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
 
         // From the start position, the move list shows 1.e4. Delete it.
         const moves = page.locator('.explorer-moves');
@@ -147,7 +149,7 @@ test.describe('Explorer page — Edit mode', () => {
         await page.goto('/#/explorer');
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
         await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
         await dragPiece(page, 'e7', 'e5');
 
@@ -163,13 +165,13 @@ test.describe('Explorer page — Edit mode', () => {
         // Confirm discard.
         await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
 
-        // Back to Read mode, no save bar, no saves recorded.
+        // Back to Read mode, no save bar, "Edit repertoire" CTA returns, no saves recorded.
         await expect(page.locator('.explorer-save-bar')).toHaveCount(0);
-        await expect(page.getByRole('button', { name: 'Read', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.getByRole('button', { name: 'Edit repertoire', exact: true })).toBeVisible();
         expect(saves).toHaveLength(0);
     });
 
-    test('shared link with ?fen= opens in Read mode (edit pill is NOT auto-active)', async ({ page }) => {
+    test('shared link with ?fen= opens in Read mode (no auto-edit)', async ({ page }) => {
         const fixture = buildRepertoireData([
             { pgn: '1. e4 e5', orientation: 'white' },
         ]);
@@ -178,11 +180,11 @@ test.describe('Explorer page — Edit mode', () => {
         // Navigate directly to an explorer URL with fen — simulating a
         // shared link. Even though we didn't include any "edit" flag in the
         // URL, the page must open in Read mode (no `edit` URL flag exists
-        // per spec).
+        // per spec) — i.e. the green "Edit repertoire" CTA is shown and no
+        // inline edit bar exists.
         await page.goto('/#/explorer?o=white');
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole('button', { name: 'Read', exact: true })).toHaveAttribute('aria-pressed', 'true');
-        await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveAttribute('aria-pressed', 'false');
+        await expect(page.getByRole('button', { name: 'Edit repertoire', exact: true })).toBeVisible();
         // No save bar.
         await expect(page.locator('.explorer-save-bar')).toHaveCount(0);
     });
@@ -206,7 +208,7 @@ test.describe('Explorer page — Edit mode', () => {
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
         // Stage an edit.
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
         await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
         await dragPiece(page, 'e7', 'e5');
         const saveBar = page.locator('.explorer-save-bar');
@@ -235,7 +237,7 @@ test.describe('Explorer page — Edit mode', () => {
         await page.goto('/#/explorer');
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
         await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
         await dragPiece(page, 'e7', 'e5');
         await page.locator('.explorer-save-bar').getByRole('button', { name: 'Review & Save' }).click();
@@ -248,7 +250,7 @@ test.describe('Explorer page — Edit mode', () => {
         await expect(page.locator('.explorer-save-bar')).toContainText(/1 added/);
     });
 
-    test('delta survives orientation toggle and in-page navigation', async ({ page }) => {
+    test('orientation toggle is hidden in Edit mode; delta survives in-page navigation', async ({ page }) => {
         const fixture = buildRepertoireData([
             { pgn: '1. e4 e5', orientation: 'white' },
         ]);
@@ -257,12 +259,19 @@ test.describe('Explorer page — Edit mode', () => {
         await page.goto('/#/explorer');
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
+        // Toggle pills are visible in Read mode.
+        await expect(page.getByRole('button', { name: 'White', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Black', exact: true })).toBeVisible();
+
         // Stage a white-rep edit.
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
-        await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
-        await dragPiece(page, 'e7', 'e5'); // already in rep — no-op, so try a fresh move:
-        // The earlier drop is idempotent; try a3 from start instead.
-        // Jump back to start via the "start" pill (when at root, only the static pill is shown).
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
+
+        // Toggle pills are hidden in Edit mode (editing is scoped to one
+        // repertoire per session).
+        await expect(page.getByRole('button', { name: 'White', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Black', exact: true })).toHaveCount(0);
+
+        // Jump back to start and drop a fresh move (1.a3).
         await page.locator('button.explorer-path-start').first().click();
         await dragPiece(page, 'a2', 'a3');
         const saveBar = page.locator('.explorer-save-bar');
@@ -270,13 +279,9 @@ test.describe('Explorer page — Edit mode', () => {
         const initialCount = await saveBar.locator('.explorer-save-bar-counts').textContent();
         expect(initialCount).toMatch(/1 added/);
 
-        // Toggle to Black orientation — delta must survive.
-        await page.getByRole('button', { name: 'Black', exact: true }).click();
-        await expect(saveBar).toBeVisible();
-        await expect(saveBar.locator('.explorer-save-bar-counts')).toHaveText(initialCount!);
-
-        // Toggle back to White — still there.
-        await page.getByRole('button', { name: 'White', exact: true }).click();
+        // Navigate into the existing line via the move list — delta survives
+        // in-page navigation.
+        await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
         await expect(saveBar).toBeVisible();
         await expect(saveBar.locator('.explorer-save-bar-counts')).toHaveText(initialCount!);
     });
@@ -290,7 +295,7 @@ test.describe('Explorer page — Edit mode', () => {
         await page.goto('/#/explorer');
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
 
         // Annotate the start position by dispatching the annotation-changed
         // callback directly through the chess-control bridge. We rely on
@@ -343,7 +348,7 @@ test.describe('Explorer page — Edit mode', () => {
         // No edits yet → Training link not dimmed.
         await expect(page.locator('a[href="#/training"]')).not.toHaveClass(/header-nav-link-disabled/);
 
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
         await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
         await dragPiece(page, 'e7', 'e5');
 
@@ -373,7 +378,7 @@ test.describe('Explorer page — Edit mode', () => {
         await page.waitForTimeout(500);
 
         // Stage an edit.
-        await page.getByRole('button', { name: 'Edit', exact: true }).click();
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
         await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
         await dragPiece(page, 'e7', 'e5');
         await expect(page.locator('.explorer-save-bar')).toBeVisible();

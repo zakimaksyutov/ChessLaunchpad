@@ -55,13 +55,30 @@
   padding: 0 0.25rem;
 }
 
-/* ===== Orientation toggle ===== */
+/* ===== Toolbar (orientation toggle + edit affordance) =====
+   Lives in the body's top-left grid cell, so it shares the board's
+   column width exactly — the toolbar's left and right edges line
+   up with the board's edges. Read mode lays out the orientation
+   toggle on the left and the green Edit-repertoire CTA on the
+   right via `space-between`. Edit mode replaces both with the
+   inline edit bar, which fills the full column width
+   (`.explorer-save-bar { flex: 1 1 100% }`) and runs its own
+   space-between layout for counts vs. actions. On narrow viewports
+   the row wraps. Vertical spacing to the board is handled by the
+   body grid's row gap. */
 .explorer-orientation-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.explorer-toolbar-left {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .explorer-toggle {
@@ -86,17 +103,28 @@
   font-size: 1rem;
 }
 
-/* ===== Two-column body ===== */
+/* ===== Two-column body =====
+   Desktop: 2x2 grid. Top row holds only the toolbar in the left
+   cell — the right cell of that row stays empty so the right
+   column's content (How you got here, opening, moves) starts on
+   the second row, top-aligned with the chessboard rather than the
+   toolbar. Bottom row: left = board + find input, right = right
+   column. On narrow viewports this collapses to a single column
+   (see @media block below). */
 .explorer-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  gap: 1.25rem;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "toolbar ."
+    "left    right";
+  gap: 0.5rem 1.25rem;
   align-items: start;
 }
 
-/* Left column stacks board + Find input so the input sits directly
-   under the board, regardless of how tall the right column grows. */
+.explorer-orientation-bar { grid-area: toolbar; }
 .explorer-left-col {
+  grid-area: left;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -107,6 +135,7 @@
 
 .explorer-board-col { min-width: 0; width: 100%; }
 .explorer-right-col {
+  grid-area: right;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -437,13 +466,14 @@
     padding: 0.5rem;
   }
 
-  /* Single column: board → right column → find. Then within the right column,
+  /* Single column: toolbar → board → right column → find. Then within the right column,
      reorder so opening + moves precede "How you got here" per spec.
      Use `display: contents` on the left wrapper so its children participate
      directly in the page grid and can be placed via grid-area. */
   .explorer-body {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "toolbar"
       "board"
       "right"
       "find";
@@ -454,6 +484,7 @@
     display: contents;
   }
 
+  .explorer-orientation-bar { grid-area: toolbar; }
   .explorer-board-col { grid-area: board; max-width: none; }
   .explorer-right-col { grid-area: right; }
   .explorer-find      { grid-area: find;  max-width: none; }
@@ -463,28 +494,26 @@
   .explorer-right-col .explorer-moves            { order: 2; }
 }
 
-/* ===== Mode toggle (Read / Edit) ===== */
-.explorer-mode-sep {
-  color: #c0c8d2;
-  font-size: 1rem;
-  margin: 0 0.1rem;
-}
-
-.explorer-mode-toggle {
-  background: #f0f0f0;
-  color: #444;
-  border-color: #d0d6df;
-}
-
-.explorer-mode-toggle.active {
+/* ===== Edit-mode entry CTA (Read mode, right side of toolbar) ===== */
+.explorer-edit-cta {
   background: #1f7a3a;
   color: #fff;
-  border-color: #1f7a3a;
+  border: 1px solid #1f7a3a;
+  border-radius: 6px;
+  padding: 0.45rem 0.95rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 
-/* Read mode pill stays neutral-blue style only via its `.active` parent. */
-.explorer-mode-toggle:not(.active):hover {
-  background: #e4e9f1;
+.explorer-edit-cta:hover {
+  background: #186029;
+  border-color: #186029;
+}
+
+.explorer-edit-cta:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 2px;
 }
 
 /* ===== Move row delete button (Edit mode only) ===== */
@@ -519,65 +548,70 @@
   font-style: normal;
 }
 
-/* ===== Sticky save bar ===== */
+/* ===== Inline edit bar (Edit mode, fills the toolbar's column width
+   so it sits as a banner directly above the chessboard). Always
+   visible while in Edit mode — even at zero pending changes — so the
+   Save/Discard controls do not pop in and out as the user makes edits.
+   Counts on the left, actions on the right via `space-between`. When
+   the row can't fit both, it wraps to two rows (counts on top,
+   actions below); `margin-left: auto` on the actions keeps them
+   right-anchored within their row in both layouts. */
 .explorer-save-bar {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
+  flex: 1 1 100%;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 0.65rem 0.85rem;
-  margin: 0.85rem -0.5rem 0;
-  background: #1f7a3a;
-  color: #fff;
-  border-top: 1px solid #186029;
-  box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+  gap: 0.5rem 0.75rem;
+  padding: 0.35rem 0.65rem;
+  background: #f0f6f1;
+  color: #1f3a25;
+  border: 1px solid #c5dbcc;
+  border-radius: 6px;
 }
 
 .explorer-save-bar-counts {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .explorer-save-bar-actions {
   display: flex;
   gap: 0.5rem;
+  margin-left: auto;
 }
 
 .explorer-save-bar-review,
 .explorer-save-bar-discard {
-  background: #fff;
-  color: #1f7a3a;
-  border: none;
+  background: #1f7a3a;
+  color: #fff;
+  border: 1px solid #1f7a3a;
   border-radius: 6px;
-  padding: 0.45rem 0.95rem;
+  padding: 0.35rem 0.85rem;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .explorer-save-bar-review:hover:not(:disabled) {
-  background: #e8f4ed;
+  background: #186029;
+  border-color: #186029;
 }
 
 .explorer-save-bar-discard {
   background: transparent;
-  color: #fff;
-  border: 1px solid #fff;
+  color: #1f7a3a;
+  border: 1px solid #1f7a3a;
 }
 
 .explorer-save-bar-discard:hover:not(:disabled) {
-  background: rgba(255,255,255,0.12);
+  background: rgba(31, 122, 58, 0.08);
 }
 
 .explorer-save-bar-review:disabled,
 .explorer-save-bar-discard:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -933,12 +967,6 @@
   }
   .explorer-review-edit-side {
     width: 100%;
-  }
-  /* Sticky save bar pushes hard against the safe-area inset on mobile. */
-  .explorer-save-bar {
-    padding-bottom: max(0.65rem, env(safe-area-inset-bottom, 0));
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
   }
   .explorer-review-header {
     padding: 0.5rem 0.3rem;
