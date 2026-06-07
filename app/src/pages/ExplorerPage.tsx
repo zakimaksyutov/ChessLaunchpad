@@ -26,6 +26,7 @@ import { PendingEditModel } from '../services/PendingEditModel';
 import { PendingEditNotifier } from '../services/PendingEditNotifier';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
+import { isExplorerHash, isExplorerRoute } from '../utils/Routes';
 import './ExplorerPage.css';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -762,7 +763,7 @@ const ExplorerPage: React.FC = () => {
             if (!href.startsWith('#/')) return;
             // Compare just the route segment (before any query string).
             const targetRoute = href.replace(/^#/, '').split('?')[0];
-            if (targetRoute.startsWith('/explorer')) return; // staying inside Explorer
+            if (isExplorerRoute(targetRoute)) return; // staying inside Explorer
             const confirmed = window.confirm(
                 'You have unsaved repertoire edits. Leaving this page will discard them. Continue?',
             );
@@ -789,7 +790,7 @@ const ExplorerPage: React.FC = () => {
     // listener that bounces the user back to this URL on a cancel — see
     // PendingEditNotifier for why it's a module-level listener.
     useEffect(() => {
-        if (window.location.hash.startsWith('#/explorer')) {
+        if (isExplorerHash(window.location.hash)) {
             PendingEditNotifier.setLastSafeHash(window.location.hash);
         }
     });

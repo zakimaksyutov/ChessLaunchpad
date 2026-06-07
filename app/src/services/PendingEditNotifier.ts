@@ -10,6 +10,8 @@
  * tab").
  */
 
+import { isExplorerHash } from '../utils/Routes';
+
 type Listener = (isPending: boolean) => void;
 type EditModeListener = (inEditMode: boolean) => void;
 
@@ -91,8 +93,6 @@ export const PendingEditNotifier = {
 // The guard is no-op when `_pending` is false, so the runtime cost of
 // always being registered is negligible.
 if (typeof window !== 'undefined') {
-    const isExplorerHash = (h: string) => h.startsWith('#/explorer');
-
     const handle = () => {
         const here = window.location.hash;
         if (isExplorerHash(here)) {
