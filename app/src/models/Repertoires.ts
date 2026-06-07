@@ -37,8 +37,9 @@ export interface PositionEntry {
 }
 
 /**
- * A named repertoire. v1 hardcodes two entries — "White" and "Black" — both
- * always present, even if one's `positions` is `{}`.
+ * A named repertoire. The current schema hardcodes two entries —
+ * "White" and "Black" — both always present, even if one's `positions`
+ * is `{}`.
  */
 export interface RepertoireEntry {
     name: string;
@@ -49,7 +50,7 @@ export interface RepertoireEntry {
 export const REPERTOIRE_NAME_WHITE = 'White';
 export const REPERTOIRE_NAME_BLACK = 'Black';
 
-/** Construct two empty named repertoires (v1 invariant: both always present). */
+/** Construct two empty named repertoires (schema invariant: both always present). */
 export function createEmptyRepertoires(): RepertoireEntry[] {
     return [
         { name: REPERTOIRE_NAME_WHITE, orientation: 'white', positions: {} },

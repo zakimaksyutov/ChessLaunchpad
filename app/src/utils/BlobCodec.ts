@@ -160,8 +160,7 @@ function epochMsToISO(ms: number): string {
  *   - any position in `rep.positions` is not reachable from the start FEN
  *     by replaying SANs (orphan check).
  *
- * The in-memory `data` is **not** mutated. Legacy `data` / `fsrsCards` fields
- * are dropped from the output.
+ * The in-memory `data` is **not** mutated.
  */
 export function encodePersistedBlob(data: RepertoireData): PersistedBlobV3 {
     const reps = data.repertoires ?? [];

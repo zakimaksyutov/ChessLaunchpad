@@ -171,10 +171,9 @@ const SettingsPage: React.FC = () => {
             current.games = nextGames;
 
             // prepareDataForSave projects the in-memory `repertoires` + flat
-            // `fsrsCards` map into the position-centric blob shape and strips
-            // legacy fields. We need it here even though we only changed
-            // settings — to keep every persist path producing identical wire
-            // formats.
+            // `fsrsCards` map into the position-centric blob shape. We need
+            // it here even though we only changed settings — to keep every
+            // persist path producing identical wire formats.
             const blobForSave = RepertoireDataUtils.prepareDataForSave(current);
 
             await dal.storeRepertoireData(blobForSave);
@@ -622,7 +621,6 @@ const SettingsPage: React.FC = () => {
                 </p>
                 <p className="settings-description" style={{ fontSize: '0.85rem', color: '#666' }}>
                     Import will replace your entire repertoire — export first if you want a backup.
-                    Legacy <code>.chess</code> files are converted automatically.
                 </p>
                 <div className="cache-info" style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
