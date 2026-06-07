@@ -342,18 +342,20 @@
 .explorer-ply-token {
   display: inline-flex;
   align-items: baseline;
+  gap: 0.2rem;
 }
 
-/* Non-clickable move-number prefix (e.g., "1.", "3…") shown beside the SAN. */
+/* Non-clickable move-number prefix (e.g., "1.", "3…") shown beside the SAN.
+ * Uses the page's proportional font so "2." renders tight against the digit
+ * (a monospace period sits centered in its cell and visually drifts away
+ * from the number). */
 .explorer-ply-prefix {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #6e7783;
   font-size: inherit;
 }
 
 /* Same as .explorer-ply-prefix but sized to the row heading. */
 .explorer-move-row-prefix {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.98rem;
   font-weight: 600;
   color: #6e7783;
@@ -467,6 +469,41 @@
 .explorer-ply:hover {
   text-decoration: underline;
   color: rgb(0, 130, 210);
+}
+
+/* Variation plies (those wrapped in PGN "(…)" inside How-you-got-here) are
+   visually de-emphasized so the main line stays the reading anchor. The button
+   is still fully clickable on hover. */
+.explorer-ply-variation {
+  color: #6e7783;
+  font-style: italic;
+}
+
+/* Side-tone modifier. Marks plies belonging to the studying side with a
+   soft tinted pill that covers the move-number prefix and the SAN as one
+   unit. Opponent plies (and tokens with no side info) stay flat. Uses
+   background only — weight, color, and italic are left alone so this
+   composes cleanly with `.explorer-ply-variation` (italic + gray) and
+   doesn't clash with the FSRS state pills on move-row heads. */
+.explorer-ply-token--user {
+  background: #eaf2fb;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* Wraps `( … )` around a variation so the parens hug their contents instead of
+   being separated by the parent flex gap. The wrapper is itself an inline-flex
+   so plies inside it still wrap on narrow screens. */
+.explorer-path-variation {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.25rem;
+}
+
+.explorer-path-paren {
+  color: #6e7783;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* ===== Mobile reflow ===== */

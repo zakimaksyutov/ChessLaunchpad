@@ -149,4 +149,58 @@ test.describe('Explorer page — navigation and URL sync', () => {
         // Explorer is read-only — no PUTs captured throughout.
         expect(saves).toHaveLength(0);
     });
+
+    test('"How you got here" merges transposition paths as PGN variations', async ({ page }) => {
+        // Two white variants reaching the same position after 1.e4 c5 2.Nf3
+        // by different move orders.
+        const variants = [
+            { pgn: '1. e4 c5 2. Nf3', orientation: 'white' as const },
+            { pgn: '1. Nf3 c5 2. e4', orientation: 'white' as const },
+        ];
+        const fixture = buildRepertoireData(variants);
+        await setupMockEnvironment(page, fixture);
+
+        // Target FEN: position after 1.e4 c5 2.Nf3 (== position after 1.Nf3 c5 2.e4),
+        // normalized (halfmove=0, fullmove=1) per FenUtils.normalizeFenResetHalfmoveClock.
+        const targetFen = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 1';
+        await page.goto(`/#/explorer?o=white&fen=${encodeURIComponent(targetFen)}`);
+
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+
+        const howYouGotHere = page.locator('.explorer-how-you-got-here');
+        await expect(howYouGotHere.locator('.explorer-section-title')).toHaveText('How you got here');
+
+        // The two paths collapse into a single PGN-with-variations line
+        // (the old multi-row UL is gone for multi-path targets).
+        const lines = howYouGotHere.locator('.explorer-paths .explorer-path-line');
+        await expect(lines).toHaveCount(1);
+        const line = lines.first();
+
+        // Start pill is clickable.
+        await expect(line.locator('button.explorer-path-start')).toBeVisible();
+
+        // Variation segment is wrapped in PGN parens and styled distinctly.
+        const variation = line.locator('.explorer-path-variation');
+        await expect(variation).toHaveCount(1);
+        await expect(variation.locator('.explorer-path-paren')).toHaveCount(2);
+        // The variation's plies are clickable buttons, each marked with the
+        // de-emphasized variation class.
+        const varPlies = variation.locator('button.explorer-ply.explorer-ply-variation');
+        await expect(varPlies).toHaveCount(3);
+        await expect(varPlies).toHaveText(['Nf3', 'c5', 'e4']);
+
+        // Main-line plies are everything outside the variation: e4, c5, Nf3.
+        const mainPlies = line.locator(':scope > .explorer-ply-token button.explorer-ply');
+        await expect(mainPlies).toHaveCount(3);
+        await expect(mainPlies).toHaveText(['e4', 'c5', 'Nf3']);
+        // Main plies must NOT carry the variation class.
+        await expect(line.locator(':scope > .explorer-ply-token .explorer-ply-variation')).toHaveCount(0);
+
+        // First variation ply opens with `1.` (full prefix at variation start);
+        // first main ply after the variation regains its `1…` prefix.
+        await expect(variation.locator('.explorer-ply-token').first()).toContainText('1.Nf3');
+        const mainPlyTokens = line.locator(':scope > .explorer-ply-token');
+        await expect(mainPlyTokens.nth(1)).toContainText('1\u2026c5');
+    });
 });

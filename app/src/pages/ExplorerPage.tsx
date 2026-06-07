@@ -27,6 +27,7 @@ import { PendingEditNotifier } from '../services/PendingEditNotifier';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
 import { isExplorerHash, isExplorerRoute } from '../utils/Routes';
+import { mergePathsAsVariations } from '../utils/MergedPathsRender';
 import './ExplorerPage.css';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -91,6 +92,15 @@ function moveNumberOf(depth: number): number {
     return Math.ceil(depth / 2);
 }
 
+/**
+ * True iff the ply at `plyDepth` (1-based) is played by the studying side.
+ * Odd plies are white moves; even plies are black moves.
+ */
+function isUserPlyForDepth(plyDepth: number, orientation: Orientation): boolean {
+    const isWhitePly = plyDepth % 2 === 1;
+    return isWhitePly === (orientation === 'white');
+}
+
 // ── Subcomponents ────────────────────────────────────────────────────
 
 interface ClickablePlyProps {
@@ -100,21 +110,46 @@ interface ClickablePlyProps {
     san: string;
     targetFen: string;
     onJump: (fen: string) => void;
+    /**
+     * Hover/focus preview callback. Called with `targetFen` when the pointer
+     * enters or focus arrives on the SAN button, and with `null` when it
+     * leaves/blurs. The page uses this to drive the board into a "preview"
+     * state showing the hovered position without actually navigating.
+     */
+    onHover?: (fen: string | null) => void;
     className?: string;
+    /**
+     * When defined, marks this ply as belonging to the studying side
+     * (true) or the opponent (false). Adds `.explorer-ply-token--user`
+     * (or `--opponent`) on the wrapper so CSS can render the side cue
+     * (currently: a soft tinted pill behind the user's plies covering
+     * the move-number prefix and the SAN as one unit). Leave undefined
+     * to render with no side-specific styling.
+     */
+    isUserPly?: boolean;
 }
 
-const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJump, className }) => (
-    <span className="explorer-ply-token">
-        {prefix ? <span className="explorer-ply-prefix">{prefix}</span> : null}
-        <button
-            type="button"
-            className={`explorer-ply ${className ?? ''}`}
-            onClick={() => onJump(targetFen)}
-        >
-            {san}
-        </button>
-    </span>
-);
+const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJump, onHover, className, isUserPly }) => {
+    const tokenSideClass = isUserPly === undefined
+        ? ''
+        : isUserPly ? 'explorer-ply-token--user' : 'explorer-ply-token--opponent';
+    return (
+        <span className={`explorer-ply-token ${tokenSideClass}`}>
+            {prefix ? <span className="explorer-ply-prefix">{prefix}</span> : null}
+            <button
+                type="button"
+                className={`explorer-ply ${className ?? ''}`}
+                onClick={() => onJump(targetFen)}
+                onMouseEnter={onHover ? () => onHover(targetFen) : undefined}
+                onMouseLeave={onHover ? () => onHover(null) : undefined}
+                onFocus={onHover ? () => onHover(targetFen) : undefined}
+                onBlur={onHover ? () => onHover(null) : undefined}
+            >
+                {san}
+            </button>
+        </span>
+    );
+};
 
 /**
  * Renders the canonical-form PGN of a path with each ply clickable. Plies
@@ -126,13 +161,17 @@ const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJ
  * (jumps to `rootFen`), or as a static visual badge when the Explorer is
  * already at the starting position.
  */
-const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string }> = ({ onJump, rootFen }) => {
+const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string; onHover?: (fen: string | null) => void }> = ({ onJump, rootFen, onHover }) => {
     if (onJump && rootFen) {
         return (
             <button
                 type="button"
                 className="explorer-path-start"
                 onClick={() => onJump(rootFen)}
+                onMouseEnter={onHover ? () => onHover(rootFen) : undefined}
+                onMouseLeave={onHover ? () => onHover(null) : undefined}
+                onFocus={onHover ? () => onHover(rootFen) : undefined}
+                onBlur={onHover ? () => onHover(null) : undefined}
                 aria-label="Go to starting position"
                 title="Go to starting position"
             >
@@ -151,28 +190,75 @@ const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string }> 
     );
 };
 
-const PathLine: React.FC<{
-    path: Path;
+/**
+ * Renders one or more "How you got here" paths as a single PGN-with-variations
+ * line. The shortest/canonical path (`shown[0]`) is the main line; subsequent
+ * paths contribute parenthesized variations branching off the main line at
+ * their divergence point and stopping at the first position they share with
+ * the main line again (rejoin). Every ply — main or variation — remains
+ * clickable.
+ */
+const MergedPathsLine: React.FC<{
+    shown: Path[];
     rootFen: string;
+    orientation: Orientation;
     onJump: (fen: string) => void;
-}> = ({ path, rootFen, onJump }) => {
-    if (path.length === 0) return <StartPill />;
-    const parts = formatPlyLabelParts(
-        path.map((_, i) => i + 1),
-        path.map(e => e.san),
+    onHover?: (fen: string | null) => void;
+}> = ({ shown, rootFen, orientation, onJump, onHover }) => {
+    if (shown.length === 0) return null;
+    if (shown[0].length === 0) return <StartPill />;
+    const tokens = mergePathsAsVariations(shown, rootFen);
+
+    // Walk the flat token stream, grouping each (open-var … close-var) into a
+    // single `.explorer-path-variation` span. This lets the parens hug their
+    // contents without being pushed apart by the parent flex gap.
+    type Frame = { isMain: boolean; nodes: React.ReactNode[] };
+    const stack: Frame[] = [{ isMain: true, nodes: [] }];
+    let key = 0;
+
+    const renderPly = (
+        prefix: string,
+        edge: GraphEdge,
+        isMain: boolean,
+        plyDepth: number,
+        k: number,
+    ): React.ReactNode => (
+        <ClickablePly
+            key={k}
+            prefix={prefix}
+            san={edge.san}
+            targetFen={edge.to}
+            onJump={onJump}
+            onHover={onHover}
+            className={isMain ? '' : 'explorer-ply-variation'}
+            isUserPly={isUserPlyForDepth(plyDepth, orientation)}
+        />
     );
+
+    for (const t of tokens) {
+        if (t.kind === 'open-var') {
+            stack.push({ isMain: false, nodes: [] });
+        } else if (t.kind === 'close-var') {
+            const frame = stack.pop();
+            if (!frame) continue;
+            const parent = stack[stack.length - 1];
+            parent.nodes.push(
+                <span key={key++} className="explorer-path-variation">
+                    <span className="explorer-path-paren">(</span>
+                    {frame.nodes}
+                    <span className="explorer-path-paren">)</span>
+                </span>,
+            );
+        } else {
+            const top = stack[stack.length - 1];
+            top.nodes.push(renderPly(t.prefix, t.edge, t.isMain, t.plyDepth, key++));
+        }
+    }
+
     return (
         <span className="explorer-path-line">
-            <StartPill onJump={onJump} rootFen={rootFen} />
-            {path.map((edge, i) => (
-                <ClickablePly
-                    key={i}
-                    prefix={parts[i].prefix}
-                    san={parts[i].san}
-                    targetFen={edge.to}
-                    onJump={onJump}
-                />
-            ))}
+            <StartPill onJump={onJump} rootFen={rootFen} onHover={onHover} />
+            {stack[0].nodes}
         </span>
     );
 };
@@ -184,8 +270,10 @@ const PathLine: React.FC<{
  */
 const ContinuationLine: React.FC<{
     continuation: Continuation;
+    orientation: Orientation;
     onJump: (fen: string) => void;
-}> = ({ continuation, onJump }) => {
+    onHover?: (fen: string | null) => void;
+}> = ({ continuation, orientation, onJump, onHover }) => {
     const { plies, tail } = continuation;
     const elements: React.ReactNode[] = [];
 
@@ -205,6 +293,8 @@ const ContinuationLine: React.FC<{
                 san={parts[i].san}
                 targetFen={p.toFen}
                 onJump={onJump}
+                onHover={onHover}
+                isUserPly={isUserPlyForDepth(p.plyDepth, orientation)}
             />
         );
     }
@@ -217,6 +307,7 @@ const ContinuationLine: React.FC<{
         const altIsWhite = altDepth % 2 === 1;
         const altMoveNumber = Math.ceil(altDepth / 2);
         const altPrefix = altIsWhite ? `${altMoveNumber}.` : `${altMoveNumber}\u2026`;
+        const altIsUser = isUserPlyForDepth(altDepth, orientation);
 
         elements.push(
             <span key="alt-open" className="explorer-alt-paren">{'('}</span>
@@ -239,6 +330,8 @@ const ContinuationLine: React.FC<{
                     san={san}
                     targetFen={childFen}
                     onJump={onJump}
+                    onHover={onHover}
+                    isUserPly={altIsUser}
                 />
             );
         });
@@ -263,6 +356,7 @@ interface MoveRowProps {
     orientation: Orientation;
     isUserMove: boolean;
     onJump: (fen: string) => void;
+    onHover?: (fen: string | null) => void;
     service: ExplorerService;
     currentDepth: number;
     currentPgn: string;
@@ -276,6 +370,7 @@ const MoveRow: React.FC<MoveRowProps> = ({
     orientation,
     isUserMove,
     onJump,
+    onHover,
     service,
     currentDepth,
     currentPgn,
@@ -309,6 +404,10 @@ const MoveRow: React.FC<MoveRowProps> = ({
                         type="button"
                         className={`explorer-move-san ${card ? `state-${card.status.toLowerCase()}` : ''}`}
                         onClick={() => onJump(edge.to)}
+                        onMouseEnter={onHover ? () => onHover(edge.to) : undefined}
+                        onMouseLeave={onHover ? () => onHover(null) : undefined}
+                        onFocus={onHover ? () => onHover(edge.to) : undefined}
+                        onBlur={onHover ? () => onHover(null) : undefined}
                         title={`Jump to position after ${edge.san}`}
                     >
                         {edge.san}
@@ -354,7 +453,7 @@ const MoveRow: React.FC<MoveRowProps> = ({
                 )}
             </div>
             <div className="explorer-move-row-cont">
-                <ContinuationLine continuation={continuation} onJump={onJump} />
+                <ContinuationLine continuation={continuation} orientation={orientation} onJump={onJump} onHover={onHover} />
             </div>
         </div>
     );
@@ -531,6 +630,60 @@ const ExplorerPage: React.FC = () => {
     }, [explicitOrientationParam]);
 
     const [currentFen, setCurrentFen] = useState<string | null>(null);
+
+    // Hover preview: which FEN to render on the board instead of `currentFen`.
+    // Set when the pointer is over (or focus is on) any clickable ply on the
+    // page; cleared on leave/blur with a tiny debounce so moving the pointer
+    // from one ply directly to the next doesn't flash through `currentFen`
+    // between mouseleave→mouseenter pairs. `null` means "no preview — show
+    // the navigation position".
+    const [previewFen, setPreviewFen] = useState<string | null>(null);
+    const previewClearTimerRef = useRef<number | null>(null);
+    // Suppress hover events for a short window after every navigation. When
+    // currentFen changes, the move-list re-renders and a different ply button
+    // can land under the (stationary) cursor — browsers fire a synthetic
+    // mouseenter on that new button, which would otherwise pollute the
+    // preview state with a ply the user never intentionally pointed at.
+    // 150 ms is well under the threshold for a real human pointer flick
+    // between two move buttons after a click, so this is invisible to users.
+    const recentNavAtRef = useRef<number>(0);
+    const HOVER_SUPPRESSION_MS = 150;
+    const handleHover = useCallback((fen: string | null) => {
+        if (Date.now() - recentNavAtRef.current < HOVER_SUPPRESSION_MS) return;
+        if (previewClearTimerRef.current !== null) {
+            window.clearTimeout(previewClearTimerRef.current);
+            previewClearTimerRef.current = null;
+        }
+        if (fen === null) {
+            previewClearTimerRef.current = window.setTimeout(() => {
+                setPreviewFen(null);
+                previewClearTimerRef.current = null;
+            }, 500);
+        } else {
+            setPreviewFen(fen);
+        }
+    }, []);
+    // Drop any pending preview when the underlying navigation position
+    // changes (click-to-jump, URL change, etc.) so the board doesn't keep
+    // showing a stale hover after the user has moved on. Also stamp the
+    // suppression window so post-navigation synthetic mouseenters don't
+    // bring it back (see `handleHover`).
+    useEffect(() => {
+        recentNavAtRef.current = Date.now();
+        if (previewClearTimerRef.current !== null) {
+            window.clearTimeout(previewClearTimerRef.current);
+            previewClearTimerRef.current = null;
+        }
+        setPreviewFen(null);
+    }, [currentFen]);
+    useEffect(() => {
+        return () => {
+            if (previewClearTimerRef.current !== null) {
+                window.clearTimeout(previewClearTimerRef.current);
+                previewClearTimerRef.current = null;
+            }
+        };
+    }, []);
 
     // When data + URL settle, resolve the FEN (snap to root if necessary).
     useEffect(() => {
@@ -936,7 +1089,15 @@ const ExplorerPage: React.FC = () => {
     const currentDepth = canonical.length;
     const summary = service.summarizePaths(currentFen, resolvedOrientation);
     const edges = service.getEdges(currentFen, resolvedOrientation);
-    const annotations = service.getAnnotations(currentFen, resolvedOrientation);
+    // Board rendering: when the user is hovering a ply, show that position
+    // instead of the navigation position. Annotations follow the displayed
+    // FEN so the user sees what's actually drawn there. `roundId` stays
+    // anchored to `currentFen` so chess-control treats hover swaps as
+    // in-round `fen` changes (which animate via detectMove) rather than
+    // round resets.
+    const isPreviewing = previewFen !== null && previewFen !== currentFen;
+    const boardFen = isPreviewing ? previewFen! : currentFen;
+    const annotations = service.getAnnotations(boardFen, resolvedOrientation);
     const currentLabel = service.classifyPath(canonical);
     const isUserTurn = isUserTurnForOrientation(currentFen, resolvedOrientation);
     const movesHeading = isUserTurn ? 'Your moves from here' : "Opponent's replies";
@@ -1069,12 +1230,12 @@ const ExplorerPage: React.FC = () => {
                     >
                         <ChessboardControl
                             roundId={`explorer-${mode}-${resolvedOrientation}-${currentFen}`}
-                            fen={currentFen}
+                            fen={boardFen}
                             orientation={resolvedOrientation}
-                            movePlayed={mode === 'edit' ? handleBoardMove : () => false}
-                            annotationsChanged={mode === 'edit' ? handleAnnotationsChanged : undefined}
+                            movePlayed={mode === 'edit' && !isPreviewing ? handleBoardMove : () => false}
+                            annotationsChanged={mode === 'edit' && !isPreviewing ? handleAnnotationsChanged : undefined}
                             annotations={annotations}
-                            interactive={mode === 'edit'}
+                            interactive={mode === 'edit' && !isPreviewing}
                         />
                     </div>
 
@@ -1117,11 +1278,15 @@ const ExplorerPage: React.FC = () => {
                                 <div className="explorer-empty-path">(not reachable)</div>
                             ) : (
                                 <ul className="explorer-paths">
-                                    {summary.shown.map((p, i) => (
-                                        <li key={i}>
-                                            <PathLine path={p} rootFen={service.getRootFen()} onJump={fen => jumpTo(fen, undefined, true)} />
-                                        </li>
-                                    ))}
+                                    <li>
+                                        <MergedPathsLine
+                                            shown={summary.shown}
+                                            rootFen={service.getRootFen()}
+                                            orientation={resolvedOrientation}
+                                            onJump={fen => jumpTo(fen, undefined, true)}
+                                            onHover={handleHover}
+                                        />
+                                    </li>
                                     {summary.moreCount > 0 && (
                                         <li className="explorer-paths-more">
                                             {summary.moreIsLowerBound
@@ -1160,6 +1325,7 @@ const ExplorerPage: React.FC = () => {
                                                 orientation={resolvedOrientation}
                                                 isUserMove={isUserTurn}
                                                 onJump={fen => jumpTo(fen, undefined, true)}
+                                                onHover={handleHover}
                                                 service={service}
                                                 currentDepth={currentDepth}
                                                 currentPgn={currentPgn}
