@@ -27,6 +27,7 @@ import { PendingEditNotifier } from '../services/PendingEditNotifier';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
 import { isExplorerHash, isExplorerRoute } from '../utils/Routes';
+import { mergePathsAsVariations } from '../utils/MergedPathsRender';
 import './ExplorerPage.css';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -151,28 +152,70 @@ const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string }> 
     );
 };
 
-const PathLine: React.FC<{
-    path: Path;
+/**
+ * Renders one or more "How you got here" paths as a single PGN-with-variations
+ * line. The shortest/canonical path (`shown[0]`) is the main line; subsequent
+ * paths contribute parenthesized variations branching off the main line at
+ * their divergence point and stopping at the first position they share with
+ * the main line again (rejoin). Every ply — main or variation — remains
+ * clickable.
+ */
+const MergedPathsLine: React.FC<{
+    shown: Path[];
     rootFen: string;
     onJump: (fen: string) => void;
-}> = ({ path, rootFen, onJump }) => {
-    if (path.length === 0) return <StartPill />;
-    const parts = formatPlyLabelParts(
-        path.map((_, i) => i + 1),
-        path.map(e => e.san),
+}> = ({ shown, rootFen, onJump }) => {
+    if (shown.length === 0) return null;
+    if (shown[0].length === 0) return <StartPill />;
+    const tokens = mergePathsAsVariations(shown, rootFen);
+
+    // Walk the flat token stream, grouping each (open-var … close-var) into a
+    // single `.explorer-path-variation` span. This lets the parens hug their
+    // contents without being pushed apart by the parent flex gap.
+    type Frame = { isMain: boolean; nodes: React.ReactNode[] };
+    const stack: Frame[] = [{ isMain: true, nodes: [] }];
+    let key = 0;
+
+    const renderPly = (
+        prefix: string,
+        edge: GraphEdge,
+        isMain: boolean,
+        k: number,
+    ): React.ReactNode => (
+        <ClickablePly
+            key={k}
+            prefix={prefix}
+            san={edge.san}
+            targetFen={edge.to}
+            onJump={onJump}
+            className={isMain ? '' : 'explorer-ply-variation'}
+        />
     );
+
+    for (const t of tokens) {
+        if (t.kind === 'open-var') {
+            stack.push({ isMain: false, nodes: [] });
+        } else if (t.kind === 'close-var') {
+            const frame = stack.pop();
+            if (!frame) continue;
+            const parent = stack[stack.length - 1];
+            parent.nodes.push(
+                <span key={key++} className="explorer-path-variation">
+                    <span className="explorer-path-paren">(</span>
+                    {frame.nodes}
+                    <span className="explorer-path-paren">)</span>
+                </span>,
+            );
+        } else {
+            const top = stack[stack.length - 1];
+            top.nodes.push(renderPly(t.prefix, t.edge, t.isMain, key++));
+        }
+    }
+
     return (
         <span className="explorer-path-line">
             <StartPill onJump={onJump} rootFen={rootFen} />
-            {path.map((edge, i) => (
-                <ClickablePly
-                    key={i}
-                    prefix={parts[i].prefix}
-                    san={parts[i].san}
-                    targetFen={edge.to}
-                    onJump={onJump}
-                />
-            ))}
+            {stack[0].nodes}
         </span>
     );
 };
@@ -1117,11 +1160,13 @@ const ExplorerPage: React.FC = () => {
                                 <div className="explorer-empty-path">(not reachable)</div>
                             ) : (
                                 <ul className="explorer-paths">
-                                    {summary.shown.map((p, i) => (
-                                        <li key={i}>
-                                            <PathLine path={p} rootFen={service.getRootFen()} onJump={fen => jumpTo(fen, undefined, true)} />
-                                        </li>
-                                    ))}
+                                    <li>
+                                        <MergedPathsLine
+                                            shown={summary.shown}
+                                            rootFen={service.getRootFen()}
+                                            onJump={fen => jumpTo(fen, undefined, true)}
+                                        />
+                                    </li>
                                     {summary.moreCount > 0 && (
                                         <li className="explorer-paths-more">
                                             {summary.moreIsLowerBound

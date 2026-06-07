@@ -471,6 +471,29 @@
   color: rgb(0, 130, 210);
 }
 
+/* Variation plies (those wrapped in PGN "(…)" inside How-you-got-here) are
+   visually de-emphasized so the main line stays the reading anchor. The button
+   is still fully clickable on hover. */
+.explorer-ply-variation {
+  color: #6e7783;
+  font-style: italic;
+}
+
+/* Wraps `( … )` around a variation so the parens hug their contents instead of
+   being separated by the parent flex gap. The wrapper is itself an inline-flex
+   so plies inside it still wrap on narrow screens. */
+.explorer-path-variation {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.25rem;
+}
+
+.explorer-path-paren {
+  color: #6e7783;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* ===== Mobile reflow ===== */
 @media (max-width: 800px) {
   .explorer-card {
