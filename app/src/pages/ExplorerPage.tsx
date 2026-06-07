@@ -639,7 +639,17 @@ const ExplorerPage: React.FC = () => {
     // the navigation position".
     const [previewFen, setPreviewFen] = useState<string | null>(null);
     const previewClearTimerRef = useRef<number | null>(null);
+    // Suppress hover events for a short window after every navigation. When
+    // currentFen changes, the move-list re-renders and a different ply button
+    // can land under the (stationary) cursor — browsers fire a synthetic
+    // mouseenter on that new button, which would otherwise pollute the
+    // preview state with a ply the user never intentionally pointed at.
+    // 150 ms is well under the threshold for a real human pointer flick
+    // between two move buttons after a click, so this is invisible to users.
+    const recentNavAtRef = useRef<number>(0);
+    const HOVER_SUPPRESSION_MS = 150;
     const handleHover = useCallback((fen: string | null) => {
+        if (Date.now() - recentNavAtRef.current < HOVER_SUPPRESSION_MS) return;
         if (previewClearTimerRef.current !== null) {
             window.clearTimeout(previewClearTimerRef.current);
             previewClearTimerRef.current = null;
@@ -655,8 +665,11 @@ const ExplorerPage: React.FC = () => {
     }, []);
     // Drop any pending preview when the underlying navigation position
     // changes (click-to-jump, URL change, etc.) so the board doesn't keep
-    // showing a stale hover after the user has moved on.
+    // showing a stale hover after the user has moved on. Also stamp the
+    // suppression window so post-navigation synthetic mouseenters don't
+    // bring it back (see `handleHover`).
     useEffect(() => {
+        recentNavAtRef.current = Date.now();
         if (previewClearTimerRef.current !== null) {
             window.clearTimeout(previewClearTimerRef.current);
             previewClearTimerRef.current = null;
