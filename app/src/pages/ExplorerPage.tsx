@@ -648,7 +648,7 @@ const ExplorerPage: React.FC = () => {
             previewClearTimerRef.current = window.setTimeout(() => {
                 setPreviewFen(null);
                 previewClearTimerRef.current = null;
-            }, 60);
+            }, 500);
         } else {
             setPreviewFen(fen);
         }
