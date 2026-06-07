@@ -271,19 +271,33 @@ test.describe('Explorer page — Edit mode', () => {
         await expect(page.getByRole('button', { name: 'White', exact: true })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Black', exact: true })).toHaveCount(0);
 
-        // Jump back to start and drop a fresh move (1.a3).
-        await page.locator('button.explorer-path-start').first().click();
+        // Drop a fresh move from the start position (1.a3). The page
+        // auto-navigates to the new position after the add.
         await dragPiece(page, 'a2', 'a3');
         const saveBar = page.locator('.explorer-save-bar');
         await expect(saveBar).toBeVisible();
-        const initialCount = await saveBar.locator('.explorer-save-bar-counts').textContent();
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('1 added');
+        const initialCount = (await saveBar.locator('.explorer-save-bar-counts').textContent())!;
         expect(initialCount).toMatch(/1 added/);
 
+        // Jump back to start (now that we've navigated away, the start pill
+        // renders as a real button) so we can navigate into the existing
+        // 1.e4 line from the move list.
+        const startBtn = page.locator('button.explorer-path-start').first();
+        await expect(startBtn).toBeAttached();
+        await startBtn.dispatchEvent('click');
+
         // Navigate into the existing line via the move list — delta survives
-        // in-page navigation.
-        await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
+        // in-page navigation. Scope to the moves list so we don't accidentally
+        // match continuation plies. Use dispatchEvent because the row may be
+        // re-rendering as the pending model settles.
+        const e4Btn = page.locator('.explorer-moves-list button.explorer-move-san')
+            .filter({ hasText: /^e4$/ })
+            .first();
+        await expect(e4Btn).toBeAttached();
+        await e4Btn.dispatchEvent('click');
         await expect(saveBar).toBeVisible();
-        await expect(saveBar.locator('.explorer-save-bar-counts')).toHaveText(initialCount!);
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toHaveText(initialCount);
     });
 
     test('annotation-only Save flows through the same path', async ({ page }) => {
