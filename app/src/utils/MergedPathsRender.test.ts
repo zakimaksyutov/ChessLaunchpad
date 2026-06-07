@@ -233,4 +233,36 @@ describe('mergePathsAsVariations', () => {
         expect(tokens.every(t => t.kind === 'ply')).toBe(true);
         expect(render(tokens)).toBe('1.e4 e5');
     });
+
+    it('phantom rejoin: divergent intermediate FEN that coincides with a non-rejoin main position does not truncate the variation', () => {
+        // Main:  R - A - B - C - D - T   (sans: a, b, c, d, e)
+        // Var:   R - X - C - Y - Z - T   (sans: a2, b2, c2, d2, e2)
+        //
+        // var[1].to == 'C' == main[2].to (a transposition through a main square,
+        // but NOT the variation's true rejoin point). With the old
+        // membership-based rejoin search, the variation would be truncated to
+        // [a2, b2] and the moves c2/d2/e2 leading to target would be dropped.
+        // With suffix-by-edge-identity, the trailing run has length 0 (var's
+        // last edge has .from='Z', main's has .from='D'), so the variation
+        // spans all 5 edges.
+        const main: Path = [
+            E(ROOT, 'A', 'a'),
+            E('A', 'B', 'b'),
+            E('B', 'C', 'c'),
+            E('C', 'D', 'd'),
+            E('D', 'T', 'e'),
+        ];
+        const variation: Path = [
+            E(ROOT, 'X', 'a2'),
+            E('X', 'C', 'b2'),
+            E('C', 'Y', 'c2'),
+            E('Y', 'Z', 'd2'),
+            E('Z', 'T', 'e2'),
+        ];
+        const tokens = mergePathsAsVariations([main, variation], ROOT);
+        // Variation must contain all 5 divergent edges, not just the first two.
+        const varSlice = tokens.slice(1, tokens.findIndex(t => t.kind === 'close-var') + 1);
+        const varSans = san(varSlice);
+        expect(varSans).toEqual(['a2', 'b2', 'c2', 'd2', 'e2']);
+    });
 });

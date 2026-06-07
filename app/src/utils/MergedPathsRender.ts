@@ -27,13 +27,19 @@ export type MergedPathToken =
  *   - For each subsequent path:
  *       * Find the **divergence index** `d` (smallest edge index at which the
  *         path's `to` FEN differs from main's `to` FEN at the same index).
- *       * Find the **rejoin index** `r` (smallest `r > d` such that the
- *         variation's intermediate position lies on the main line). Because
- *         all input paths end at the same target FEN, every variation
- *         eventually rejoins; in the worst case at `r == p.length`.
- *       * The variation's emitted edges are `p[d..r-1]`. They are inserted
- *         **immediately after** main's edge at index `d` (the move the
- *         variation is an alternative to).
+ *       * Find the **rejoin index** `r` by computing the longest trailing run
+ *         of edges that are pairwise identical (same `from` and `to` FEN) in
+ *         the variation and the main line. Those trailing edges are
+ *         redundant — they appear verbatim on main — so the variation drops
+ *         them. The variation's emitted edges are `p[d..r-1]`.
+ *
+ *         We use edge identity (not just FEN membership) so a divergent
+ *         intermediate position that *coincidentally* equals some non-rejoin
+ *         `main[k].to` (e.g. a transposition through a main square) does not
+ *         truncate the variation. The suffix must align all the way to the
+ *         target.
+ *       * Emitted edges are inserted **immediately after** main's edge at
+ *         index `d` (the move the variation is an alternative to).
  *   - Variations are not nested: each non-main path produces exactly one
  *     `(…)` group at the top level of the main line. Multiple non-main paths
  *     that diverge at the same point render as sibling groups `(…)(…)` after
@@ -46,25 +52,17 @@ export type MergedPathToken =
  * in published game notation.
  *
  * @param paths   Ordered list of paths (paths[0] is the main line).
- * @param rootFen The starting FEN — used as the position before paths[0][0].
- *                Required so the rejoin search can recognize a variation
- *                that returns directly to the root (which never happens in
- *                legal chess, but the contract is consistent).
+ * @param _rootFen The starting FEN. Currently unused by the merge algorithm
+ *                 but kept in the signature for callers that pass it for
+ *                 documentation/symmetry with sibling utilities.
  */
 export function mergePathsAsVariations(
     paths: Path[],
-    rootFen: string,
+    _rootFen: string,
 ): MergedPathToken[] {
     if (paths.length === 0) return [];
     const main = paths[0];
     if (main.length === 0) return [];
-
-    // FEN → main-line step index (0 = root, i+1 = position after main[i]).
-    const mainPosToStep = new Map<string, number>();
-    mainPosToStep.set(rootFen, 0);
-    for (let i = 0; i < main.length; i++) {
-        mainPosToStep.set(main[i].to, i + 1);
-    }
 
     // Variations grouped by the main-edge index they appear *after*.
     const variationsByMainIdx = new Map<number, GraphEdge[][]>();
@@ -79,11 +77,22 @@ export function mergePathsAsVariations(
         while (d < minLen && p[d].to === main[d].to) d++;
         if (d >= p.length) continue;
 
-        // Rejoin index r: smallest r > d such that p[r-1].to ∈ main positions.
-        // Always terminates: target FEN === main's final position, so at worst
-        // r = p.length.
-        let r = d + 1;
-        while (r < p.length && !mainPosToStep.has(p[r - 1].to)) r++;
+        // Longest common trailing run by edge identity (same from + to). At
+        // step s from the end the edges are main[M-1-s] and p[P-1-s]; once
+        // they diverge we stop. `from` is checked explicitly so the topmost
+        // suffix edge is verified to be the same move, not just a move that
+        // happens to land on the same FEN.
+        let s = 0;
+        while (s < Math.min(p.length, main.length)) {
+            const me = main[main.length - 1 - s];
+            const ve = p[p.length - 1 - s];
+            if (me.from !== ve.from || me.to !== ve.to) break;
+            s++;
+        }
+
+        // Always keep at least one edge after the divergence — the move that
+        // the variation is presenting as an alternative.
+        const r = Math.max(d + 1, p.length - s);
 
         const variationEdges = p.slice(d, r);
         if (variationEdges.length === 0) continue;
