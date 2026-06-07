@@ -386,7 +386,7 @@ const ExplorerPage: React.FC = () => {
     //   - 'main'   — the board + move list (works in both read and edit)
     //   - 'review' — Review & Save full-page list (edit only)
     //
-    // The Cancel/Back rule in EXPLORER-EDIT.md is "return to Edit with the
+    // The Cancel/Back rule in EXPLORER.md is "return to Edit with the
     // delta intact" — we keep the model alive on the page across Read↔Edit
     // toggles unless the user explicitly Discards or Saves.
     const [mode, setMode] = useState<'read' | 'edit'>('read');

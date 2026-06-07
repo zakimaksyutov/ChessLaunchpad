@@ -6,8 +6,8 @@
  * Deliberately not persisted: the spec calls the delta "tab-local" — a
  * hard refresh or tab close loses it, so the notifier is reset on page
  * reload. Cross-tab gating relies on the blob ETag's 412 conflict path,
- * not on this notifier (see EXPLORER-EDIT.md "Concurrent edits from
- * another tab").
+ * not on this notifier (see EXPLORER.md "Concurrent edits from another
+ * tab").
  */
 
 type Listener = (isPending: boolean) => void;
