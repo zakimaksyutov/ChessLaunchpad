@@ -2,6 +2,7 @@ import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock, isUserTurnForOrientation } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
 import { RepertoireEntry } from '../models/Repertoires';
+import { reachableFrom, forEachReachableEdge } from '../utils/PathSearch';
 
 export interface GraphEdge {
     from: string;       // normalized FEN before the move
@@ -204,18 +205,10 @@ export class RepertoireGraph {
         if (orientation && !targetEdge.orientations.has(orientation)) return null;
 
         // 1. Find every node reachable from root via orientation-filtered edges.
-        const reachable = new Set<string>();
-        reachable.add(this.rootFen);
-        const stack: string[] = [this.rootFen];
-        while (stack.length) {
-            const fen = stack.pop()!;
-            for (const e of this.getEdges(fen, orientation)) {
-                if (!reachable.has(e.to)) {
-                    reachable.add(e.to);
-                    stack.push(e.to);
-                }
-            }
-        }
+        const reachable = reachableFrom(
+            this.rootFen,
+            fen => this.getEdges(fen, orientation).map(e => e.to),
+        );
         if (!reachable.has(targetFen)) return null;
 
         // 2. Compute in-degrees within the reachable subgraph.
@@ -302,8 +295,7 @@ export class RepertoireGraph {
      */
     getDescendantCardKeys(fen: string, orientation: 'white' | 'black'): string[] {
         const keys: string[] = [];
-        const visited = new Set<string>();
-        this.collectDescendantCardKeys(fen, visited, keys, orientation);
+        this.collectDescendantCardKeys(fen, keys, orientation);
         return keys;
     }
 
@@ -413,22 +405,22 @@ export class RepertoireGraph {
         visited.delete(currentFen);
     }
 
-    private collectDescendantCardKeys(fen: string, visited: Set<string>, keys: string[], orientation: 'white' | 'black'): void {
-        if (visited.has(fen)) return;
-        visited.add(fen);
-
-        const node = this.nodes.get(fen);
-        if (!node) return;
-
-        const edges = orientation
-            ? node.edges.filter(e => e.orientations.has(orientation))
-            : node.edges;
-
-        for (const edge of edges) {
-            if (isUserTurnForOrientation(edge.from, orientation)) {
-                keys.push(edge.cardKey);
-            }
-            this.collectDescendantCardKeys(edge.to, visited, keys, orientation);
-        }
+    private collectDescendantCardKeys(fen: string, keys: string[], orientation: 'white' | 'black'): void {
+        forEachReachableEdge<string, GraphEdge>(
+            fen,
+            current => {
+                const node = this.nodes.get(current);
+                if (!node) return [];
+                const edges = orientation
+                    ? node.edges.filter(e => e.orientations.has(orientation))
+                    : node.edges;
+                return edges.map(edge => ({ from: current, to: edge.to, edge }));
+            },
+            ref => {
+                if (isUserTurnForOrientation(ref.from, orientation)) {
+                    keys.push(ref.edge.cardKey);
+                }
+            },
+        );
     }
 }

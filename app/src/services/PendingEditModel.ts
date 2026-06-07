@@ -13,6 +13,13 @@ import {
     normalizeFenResetHalfmoveClock,
     isUserTurnForOrientation,
 } from '../utils/FenUtils';
+import {
+    type NeighborFn,
+    type EdgeRef,
+    reachableFrom,
+    forEachReachableEdge,
+    findCanonicalPath,
+} from '../utils/PathSearch';
 
 export type Orientation = 'white' | 'black';
 
@@ -154,26 +161,40 @@ function edgeTo(move: MoveEntry | undefined, fromFen: string, san: string): stri
     return fenAfter(fromFen, san);
 }
 
+/**
+ * Build a `NeighborFn` over a single repertoire's position dict. Each
+ * outgoing edge is identified by its SAN string (which is also the lex
+ * sort key used by `PathSearch`).
+ */
+function repNeighbors(rep: RepertoireEntry | undefined): NeighborFn<string, string> {
+    return (fen: string): EdgeRef<string, string>[] => {
+        if (!rep) return [];
+        const pos = rep.positions[fen];
+        if (!pos) return [];
+        const out: EdgeRef<string, string>[] = [];
+        for (const san of Object.keys(pos.moves)) {
+            const to = edgeTo(pos.moves[san], fen, san);
+            if (to) out.push({ from: fen, to, edge: san });
+        }
+        return out;
+    };
+}
+
 function reachableFensFromRoot(
     rep: RepertoireEntry | undefined,
     root: string,
 ): Set<string> {
-    const r = new Set<string>([root]);
-    if (!rep) return r;
-    const stack = [root];
-    while (stack.length) {
-        const fen = stack.pop()!;
+    if (!rep) return new Set([root]);
+    return reachableFrom(root, fen => {
         const pos = rep.positions[fen];
-        if (!pos) continue;
+        if (!pos) return [];
+        const tos: string[] = [];
         for (const san of Object.keys(pos.moves)) {
             const to = edgeTo(pos.moves[san], fen, san);
-            if (to && !r.has(to)) {
-                r.add(to);
-                stack.push(to);
-            }
+            if (to) tos.push(to);
         }
-    }
-    return r;
+        return tos;
+    });
 }
 
 /** Set equality for annotation arrays (order-insensitive, duplicate-collapsing). */
@@ -187,19 +208,13 @@ function annotationSetsEqual(a: Annotation[], b: Annotation[]): boolean {
     return annotationsKey(a) === annotationsKey(b);
 }
 
-function compareSans(a: string, b: string): number {
-    return a.localeCompare(b);
-}
-
 // ── Path enumeration (canonical-only, on a given repertoire snapshot) ──
 
 /**
  * Canonical (shortest, lex-by-SAN tiebreak) path of SAN moves from root to
- * `targetFen` in `rep`. Returns null if not reachable. [] for root.
- *
- * BFS with per-path visited set so cycles are tolerated; ties at any depth
- * are broken by sorting the frontier on (running SAN sequence) before
- * expanding it, mirroring ExplorerService.enumeratePaths' first result.
+ * `targetFen` in `rep`. Returns null if not reachable. [] for root. Wraps
+ * the shared `findCanonicalPath` so all canonical-path consumers use one
+ * algorithm.
  */
 function canonicalPath(
     rep: RepertoireEntry | undefined,
@@ -208,45 +223,12 @@ function canonicalPath(
 ): string[] | null {
     if (targetFen === root) return [];
     if (!rep) return null;
-    const reachable = reachableFensFromRoot(rep, root);
-    if (!reachable.has(targetFen)) return null;
-
-    type FrontierItem = { fen: string; sans: string[]; visited: Set<string> };
-    let frontier: FrontierItem[] = [{ fen: root, sans: [], visited: new Set([root]) }];
-    const MAX_WORK = 20_000;
-    let work = 0;
-    while (frontier.length > 0) {
-        // Stable lex order ensures the first result returned is the lex-smallest at this depth.
-        frontier.sort((a, b) => {
-            const n = Math.min(a.sans.length, b.sans.length);
-            for (let i = 0; i < n; i++) {
-                const c = compareSans(a.sans[i], b.sans[i]);
-                if (c !== 0) return c;
-            }
-            return a.sans.length - b.sans.length;
-        });
-        const next: FrontierItem[] = [];
-        for (const item of frontier) {
-            if (work++ > MAX_WORK) return null;
-            const pos = rep.positions[item.fen];
-            if (!pos) continue;
-            const sans = Object.keys(pos.moves).slice().sort(compareSans);
-            for (const san of sans) {
-                const to = edgeTo(pos.moves[san], item.fen, san);
-                if (!to) continue;
-                if (item.visited.has(to)) continue;
-                const newSans = item.sans.concat(san);
-                if (to === targetFen) {
-                    return newSans;
-                }
-                const newVisited = new Set(item.visited);
-                newVisited.add(to);
-                next.push({ fen: to, sans: newSans, visited: newVisited });
-            }
-        }
-        frontier = next;
-    }
-    return null;
+    return findCanonicalPath<string, string>(
+        root,
+        fen => fen === targetFen,
+        repNeighbors(rep),
+        { edgeKey: san => san, maxWork: 20_000 },
+    );
 }
 
 /**
@@ -859,23 +841,9 @@ function decomposeChains(
 /** Count all user-turn edges reachable from `fen` (excluding `fen` itself). */
 function countDescendantUserTurnEdges(rep: RepertoireEntry, fen: string): number {
     let count = 0;
-    const visited = new Set<string>();
-    const stack: string[] = [fen];
-    visited.add(fen);
-    while (stack.length) {
-        const cur = stack.pop()!;
-        const pos = rep.positions[cur];
-        if (!pos) continue;
-        const userHere = isUserTurnForOrientation(cur, rep.orientation);
-        for (const san of Object.keys(pos.moves)) {
-            if (userHere) count += 1;
-            const to = edgeTo(pos.moves[san], cur, san);
-            if (to && !visited.has(to)) {
-                visited.add(to);
-                stack.push(to);
-            }
-        }
-    }
+    forEachReachableEdge<string, string>(fen, repNeighbors(rep), ref => {
+        if (isUserTurnForOrientation(ref.from, rep.orientation)) count += 1;
+    });
     return count;
 }
 
