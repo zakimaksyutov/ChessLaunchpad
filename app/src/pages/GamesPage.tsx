@@ -469,7 +469,7 @@ const GamesPage: React.FC = () => {
 
                 const dal = createDataAccessLayer(username, hashedPassword);
                 const repertoireData = await dal.retrieveRepertoireData();
-                const sets = buildRepertoireFenSets(repertoireData.data);
+                const sets = buildRepertoireFenSets(repertoireData.repertoires);
                 if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: "fenSets-ready", totalMs: Math.round(performance.now() - perfT0Ref.current), whiteFens: sets.whiteFens.size, blackFens: sets.blackFens.size })}`);
                 setFenSets(sets);
                 // Refresh linked accounts after normalize() has hydrated them from backend

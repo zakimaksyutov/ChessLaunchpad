@@ -18,8 +18,13 @@ import {
     RetentionPreset,
 } from '../services/FSRSService';
 import { FSRSCardData } from '../models/FSRSCardData';
+import { RepertoireData } from '../models/RepertoireData';
 import { createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
+import {
+    bootstrapRepertoiresFromLegacy,
+} from '../utils/RepertoiresSerde';
+import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
 
 const SettingsPage: React.FC = () => {
@@ -56,6 +61,10 @@ const SettingsPage: React.FC = () => {
     // Cache clearing
     const [clearingCache, setClearingCache] = useState(false);
     const [cacheCleared, setCacheCleared] = useState(false);
+
+    // Import/Export
+    const [importing, setImporting] = useState(false);
+    const importInputRef = useRef<HTMLInputElement>(null);
 
     const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -154,20 +163,24 @@ const SettingsPage: React.FC = () => {
                 }
             }
 
-            // Build settings from draft values (don't mutate globals until save succeeds)
-            const updated = {
-                ...current,
-                settings: {
-                    ...(current.settings ?? {}),
-                    contextDepth,
-                    retention: presetCfg.retention,
-                    maxInterval: presetCfg.maxInterval,
-                    linkedAccounts,
-                },
-                games: nextGames,
+            // Build settings from draft values (don't mutate globals until save succeeds).
+            current.settings = {
+                ...(current.settings ?? {}),
+                contextDepth,
+                retention: presetCfg.retention,
+                maxInterval: presetCfg.maxInterval,
+                linkedAccounts,
             };
+            current.games = nextGames;
 
-            await dal.storeRepertoireData(updated);
+            // prepareDataForSave projects the in-memory `repertoires` + flat
+            // `fsrsCards` map into the position-centric blob shape and strips
+            // legacy fields. We need it here even though we only changed
+            // settings — to keep every persist path producing identical wire
+            // formats.
+            const blobForSave = RepertoireDataUtils.prepareDataForSave(current);
+
+            await dal.storeRepertoireData(blobForSave);
 
             // Apply draft to in-memory services only after save succeeds
             TrainingEngine.setContextDepth(contextDepth);
@@ -253,6 +266,145 @@ const SettingsPage: React.FC = () => {
             setErrorMessage(`Failed to clear cache: ${msg}`);
         } finally {
             setClearingCache(false);
+        }
+    };
+
+    // ── Import / Export ────────────────────────────────────────────────
+    //
+    // Relocated from the now-removed Repertoire page. Since the variant
+    // editor is gone, Import is the only in-app way to seed a fresh
+    // repertoire — so it must (a) accept both shapes (legacy variant-based
+    // and new position-based), (b) round-trip cleanly through normalize()
+    // so the bootstrap migration runs, and (c) confirm before destroying
+    // existing data.
+
+    const FILE_EXTENSION = 'chess';
+
+    const handleExport = async () => {
+        try {
+            const username = localStorage.getItem('username') || '';
+            const hashedPassword = localStorage.getItem('hashedPassword') || '';
+            if (!username || !hashedPassword) {
+                setErrorMessage('Not logged in. Please log in first.');
+                return;
+            }
+            const dal = createDataAccessLayer(username, hashedPassword);
+            const current = await dal.retrieveRepertoireData();
+            const blob = RepertoireDataUtils.prepareDataForSave(current);
+            const persisted = encodePersistedBlob(blob);
+
+            const json = JSON.stringify(persisted);
+            const file = new Blob([json], { type: 'application/json' });
+
+            const positionCount = (blob.repertoires ?? []).reduce(
+                (sum, r) => sum + Object.keys(r.positions).length, 0,
+            );
+            const now = new Date().toISOString();
+            const filename = `Repertoire-${username}-${now}-${positionCount} positions.${FILE_EXTENSION}`;
+
+            const url = URL.createObjectURL(file);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setErrorMessage(`Failed to export: ${msg}`);
+        }
+    };
+
+    const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+
+        const text = await file.text();
+        // Reset the input so re-selecting the same file fires onChange again.
+        e.target.value = '';
+
+        let parsed: RepertoireData;
+        try {
+            const raw = JSON.parse(text);
+            // `decodePersistedBlob` is the single entry point for both the
+            // v1 legacy shape (pass-through) and the v3 wire shape (array of
+            // positions, `"<SAN>:<idx>"` move keys, packed cards). After this,
+            // `parsed` is in the in-memory shape that `normalize()` expects.
+            parsed = decodePersistedBlob(raw);
+        } catch (ex: unknown) {
+            const msg = ex instanceof Error ? ex.message : String(ex);
+            alert(`Failed to import: ${msg || 'file is not valid JSON.'}`);
+            return;
+        }
+
+        // Validate + count positions WITHOUT triggering normalize() (which
+        // has live side effects on FSRSService / TrainingEngine / linked
+        // accounts module vars). We only want to mutate global state once
+        // the user has confirmed the destructive replace.
+        let positionCount = 0;
+        try {
+            // Light bootstrap: ensure `repertoires` exists so we can count
+            // positions. For new-shape imports this is a no-op; for legacy
+            // imports it materializes the dict for confirmation only.
+            if (!parsed.repertoires) {
+                parsed.repertoires = bootstrapRepertoiresFromLegacy(
+                    parsed.data ?? [],
+                    parsed.fsrsCards ?? {},
+                );
+            }
+            positionCount = parsed.repertoires.reduce(
+                (sum, r) => sum + Object.keys(r.positions).length, 0,
+            );
+        } catch (ex: unknown) {
+            const msg = ex instanceof Error ? ex.message : String(ex);
+            alert(`Failed to import: ${msg}`);
+            return;
+        }
+
+        if (positionCount === 0 && !window.confirm(
+            'The imported file contains no positions. Continue and overwrite your repertoire with an empty one?'
+        )) {
+            return;
+        }
+        if (!window.confirm(
+            `Import will REPLACE your existing repertoire with ${positionCount} position(s). ` +
+            'You may want to Export first if you plan to restore later.\n\nProceed?'
+        )) {
+            return;
+        }
+
+        setImporting(true);
+        try {
+            const username = localStorage.getItem('username') || '';
+            const hashedPassword = localStorage.getItem('hashedPassword') || '';
+            const dal = createDataAccessLayer(username, hashedPassword);
+            // The DAL holds an internal ETag that is populated by the most
+            // recent GET on this instance, and `storeRepertoireData` sends
+            // it as `If-Match`. A fresh DAL instance has no ETag, so any
+            // PUT without a prior GET fails with 412. Capture the ETag
+            // without decoding the body — import is the rescue path for
+            // users stranded on an unreadable wire format (e.g., the
+            // skipped v2 blob), so we must not let a stale/corrupt
+            // backend blob block the PUT that's about to overwrite it.
+            await dal.fetchEtagOnly();
+            // Now run the full normalization — handles `trainingSettings`
+            // -> `settings` migration, snaps retention to the closest
+            // preset, hydrates the flat fsrsCards map from the dict, and
+            // synthesizes New-state cards for graph edges without one.
+            // This is the same path the live read flow runs after a GET.
+            RepertoireDataUtils.normalize(parsed);
+            // prepareDataForSave projects the (now-fully-populated) flat
+            // fsrsCards map BACK into `repertoires.positions[*].moves[*].card`
+            // and strips legacy fields from the persisted blob.
+            const blobForSave = RepertoireDataUtils.prepareDataForSave(parsed);
+            await dal.storeRepertoireData(blobForSave);
+            // Full reload so all pages re-fetch the new repertoire.
+            window.location.reload();
+        } catch (ex: unknown) {
+            const msg = ex instanceof Error ? ex.message : String(ex);
+            alert(`Failed to import: ${msg}`);
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -478,6 +630,41 @@ const SettingsPage: React.FC = () => {
                         {lichessLoading ? 'Connecting…' : '♞ Connect with Lichess'}
                     </button>
                 )}
+            </div>
+
+            <div className="settings-card">
+                <h1>Repertoire Backup</h1>
+                <p className="settings-description">
+                    Export your full repertoire (positions, FSRS card states, settings, and activity)
+                    to a <code>.chess</code> file, or replace your current repertoire with one from a file.
+                </p>
+                <p className="settings-description" style={{ fontSize: '0.85rem', color: '#666' }}>
+                    Import will replace your entire repertoire — export first if you want a backup.
+                    Legacy <code>.chess</code> files are converted automatically.
+                </p>
+                <div className="cache-info" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        className="secondary"
+                        onClick={handleExport}
+                        disabled={importing}
+                    >
+                        Export
+                    </button>
+                    <button
+                        className="secondary"
+                        onClick={() => importInputRef.current?.click()}
+                        disabled={importing}
+                    >
+                        {importing ? 'Importing…' : 'Import'}
+                    </button>
+                    <input
+                        type="file"
+                        ref={importInputRef}
+                        style={{ display: 'none' }}
+                        accept=".chess"
+                        onChange={handleImportFileSelected}
+                    />
+                </div>
             </div>
 
             <div className="settings-card">

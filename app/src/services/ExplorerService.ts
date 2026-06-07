@@ -9,7 +9,16 @@ import {
     isLikelyFen,
     isUserTurnForOrientation,
 } from '../utils/FenUtils';
-import { extractAnnotations } from '../utils/AnnotationUtils';
+import {
+    bootstrapRepertoiresFromLegacy,
+    extractAnnotationsFromRepertoires,
+    extractFsrsCardsFromRepertoires,
+} from '../utils/RepertoiresSerde';
+import {
+    type EdgeRef,
+    reachableFrom,
+    enumerateShortestPaths,
+} from '../utils/PathSearch';
 import {
     DatabaseOpening,
 } from '../utils/DatabaseOpeningsUtils';
@@ -134,16 +143,26 @@ export class ExplorerService {
         data: RepertoireData,
         openings: DatabaseOpening[],
     ) {
-        const pgns = data.data.map(v => ({ pgn: v.pgn, orientation: v.orientation }));
-        this.graph = new RepertoireGraph(pgns);
-        this.fsrs = new FSRSService(data.fsrsCards ?? {});
+        // ExplorerService is invoked directly from page code as well as from
+        // tests (which often hand-craft legacy-shape RepertoireData). Tolerate
+        // both shapes by running the same bootstrap path the normalize() flow
+        // uses for blobs that lack `repertoires`.
+        let repertoires = data.repertoires;
+        let fsrsCards = data.fsrsCards;
+        if (!repertoires) {
+            repertoires = bootstrapRepertoiresFromLegacy(data.data ?? [], data.fsrsCards ?? {});
+            fsrsCards = extractFsrsCardsFromRepertoires(repertoires);
+        }
+
+        this.graph = RepertoireGraph.fromRepertoires(repertoires);
+        this.fsrs = new FSRSService(fsrsCards ?? {});
         this.openings = openings;
 
         this.reachable = {
             white: this.computeReachable('white'),
             black: this.computeReachable('black'),
         };
-        this.annotationsByFen = this.collectAnnotations(data);
+        this.annotationsByFen = this.collectAnnotations(repertoires);
 
         this.canonicalCache = { white: new Map(), black: new Map() };
     }
@@ -198,89 +217,21 @@ export class ExplorerService {
             return { paths: [], capped: false };
         }
 
-        // BFS by path length. Each frontier entry is a partial path; we expand
-        // layer-by-layer so the first `HOW_YOU_GOT_HERE_CAP` results are
-        // guaranteed shortest-first (with lex-by-SAN tiebreak — we sort each
-        // frontier before expanding).
-        //
-        // Two hard bounds prevent the search from running away on pathological
-        // transposition graphs:
-        //   1. HOW_YOU_GOT_HERE_CAP=20 found paths → flag capped and stop.
-        //   2. MAX_WORK total frontier expansions → flag capped and stop.
-        //
-        // Per-path cycle guard: each path carries its own visited-FEN set, so
-        // a single path never revisits a node. This is what makes the BFS
-        // terminate on graphs with cycles.
-
-        const MAX_WORK = 10_000;
-        let work = 0;
-        let capped = false;
-
-        type Frontier = { fen: string; edges: GraphEdge[]; visited: Set<string> };
-        let frontier: Frontier[] = [{
-            fen: root,
-            edges: [],
-            visited: new Set([root]),
-        }];
-
-        const results: Path[] = [];
-        const seen = new Set<string>(); // SAN-sequence dedup across paths
-
-        while (frontier.length > 0 && results.length < HOW_YOU_GOT_HERE_CAP) {
-            // Sort current frontier by lex(SAN sequence) before expanding so
-            // results within a single depth come out in lex order.
-            frontier.sort((a, b) => compareSanSequence(a.edges, b.edges));
-
-            const next: Frontier[] = [];
-            let outerBreak = false;
-            for (const node of frontier) {
-                if (results.length >= HOW_YOU_GOT_HERE_CAP) {
-                    capped = true;
-                    outerBreak = true;
-                    break;
-                }
-                if (work >= MAX_WORK) {
-                    capped = true;
-                    outerBreak = true;
-                    break;
-                }
-                work += 1;
-                for (const e of this.graph.getEdges(node.fen, orientation)) {
-                    if (node.visited.has(e.to)) continue;
-                    const newEdges = node.edges.concat(e);
-                    if (e.to === targetFen) {
-                        const key = newEdges.map(p => p.san).join(' ');
-                        if (!seen.has(key)) {
-                            seen.add(key);
-                            results.push(newEdges);
-                            if (results.length >= HOW_YOU_GOT_HERE_CAP) {
-                                capped = true;
-                                outerBreak = true;
-                                break;
-                            }
-                        }
-                        // Don't expand past the target — the spec only wants
-                        // root → target paths, and descendant exploration
-                        // costs work without producing valid results.
-                        continue;
-                    }
-                    const newVisited = new Set(node.visited);
-                    newVisited.add(e.to);
-                    next.push({ fen: e.to, edges: newEdges, visited: newVisited });
-                }
-                if (outerBreak) break;
-            }
-            if (outerBreak) break;
-            frontier = next;
-        }
-
-        // Final sort: shortest first, then lex SAN sequence.
-        results.sort((a, b) => {
-            if (a.length !== b.length) return a.length - b.length;
-            return compareSanSequence(a, b);
-        });
-
-        return { paths: results, capped };
+        // Delegate to the shared BFS so canonical-path semantics match
+        // PendingEditModel exactly (shortest-first, lex-by-SAN tiebreak,
+        // per-path cycle guard, dedup by SAN sequence).
+        return enumerateShortestPaths<string, GraphEdge>(
+            root,
+            fen => fen === targetFen,
+            fen => this.graph.getEdges(fen, orientation).map(
+                (e): EdgeRef<string, GraphEdge> => ({ from: fen, to: e.to, edge: e }),
+            ),
+            {
+                edgeKey: e => e.san,
+                limit: HOW_YOU_GOT_HERE_CAP,
+                maxWork: 10_000,
+            },
+        );
     }
 
     /**
@@ -578,54 +529,28 @@ export class ExplorerService {
     // ── Private ───────────────────────────────────────────────────────
 
     private computeReachable(orientation: Orientation): Set<string> {
-        const reachable = new Set<string>();
-        const root = this.graph.getRootFen();
-        const stack: string[] = [root];
-        reachable.add(root);
-        while (stack.length) {
-            const fen = stack.pop()!;
-            for (const e of this.graph.getEdges(fen, orientation)) {
-                if (!reachable.has(e.to)) {
-                    reachable.add(e.to);
-                    stack.push(e.to);
-                }
-            }
-        }
-        return reachable;
+        return reachableFrom(
+            this.graph.getRootFen(),
+            fen => this.graph.getEdges(fen, orientation).map(e => e.to),
+        );
     }
 
-    private collectAnnotations(data: RepertoireData): Record<Orientation, Map<string, Annotation[]>> {
+    private collectAnnotations(repertoires: import('../models/Repertoires').RepertoireEntry[]): Record<Orientation, Map<string, Annotation[]>> {
+        // Source annotations from the position dict. The Explorer historically
+        // hid square highlights (arrows-only) and we keep that here so the
+        // arrow-overlay UI doesn't gain noisy squares. The persisted shape
+        // still carries both — see RepertoiresSerde for the storage layer.
         const result: Record<Orientation, Map<string, Annotation[]>> = {
             white: new Map(),
             black: new Map(),
         };
-
-        for (const variant of data.data) {
-            const orientation = variant.orientation as Orientation;
-            const dest = result[orientation];
-
-            let chess: Chess;
-            try {
-                chess = new Chess();
-                chess.loadPgn(variant.pgn);
-            } catch {
-                continue;
-            }
-
-            const comments = chess.getComments();
-            for (const c of comments) {
-                const arrows = extractAnnotations(c.comment).filter(a => a.dest);
-                if (arrows.length === 0) continue;
-                const normFen = normalizeFenResetHalfmoveClock(c.fen);
-                const existing = dest.get(normFen) ?? [];
-                // Dedup by (brush, orig, dest).
-                for (const ann of arrows) {
-                    const dup = existing.find(
-                        e => e.brush === ann.brush && e.orig === ann.orig && e.dest === ann.dest,
-                    );
-                    if (!dup) existing.push(ann);
+        const per = extractAnnotationsFromRepertoires(repertoires);
+        for (const orientation of ['white', 'black'] as const) {
+            for (const [fen, anns] of per[orientation]) {
+                const arrows = anns.filter(a => a.dest);
+                if (arrows.length > 0) {
+                    result[orientation].set(fen, arrows);
                 }
-                dest.set(normFen, existing);
             }
         }
         return result;
@@ -633,16 +558,6 @@ export class ExplorerService {
 }
 
 // ── Pure formatting helpers (decoupled from the service for easy testing) ──
-
-/** Lexicographic comparison of two paths' SAN sequences. */
-function compareSanSequence(a: GraphEdge[], b: GraphEdge[]): number {
-    const n = Math.min(a.length, b.length);
-    for (let i = 0; i < n; i++) {
-        const c = a[i].san.localeCompare(b[i].san);
-        if (c !== 0) return c;
-    }
-    return a.length - b.length;
-}
 
 /**
  * Format a single ply as PGN-style text. `plyDepth` is 1-based (1 = first

@@ -1,6 +1,8 @@
 import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock, isUserTurnForOrientation } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
+import { RepertoireEntry } from '../models/Repertoires';
+import { reachableFrom, forEachReachableEdge } from '../utils/PathSearch';
 
 export interface GraphEdge {
     from: string;       // normalized FEN before the move
@@ -36,6 +38,64 @@ export class RepertoireGraph {
         for (const { pgn, orientation } of pgns) {
             this.addPgn(pgn, orientation);
         }
+    }
+
+    /**
+     * Build a graph directly from the position-centric `repertoires` shape.
+     * Each `from` node + SAN gives us the edge; the `to` FEN is derived by
+     * replaying the SAN through chess.js (the spec deliberately doesn't
+     * persist `to`-FENs so they can't drift). Edges shared between the two
+     * orientations are merged on `(from, san, to)` and accumulate both
+     * orientations.
+     */
+    static fromRepertoires(repertoires: RepertoireEntry[]): RepertoireGraph {
+        const graph = new RepertoireGraph([]);
+        for (const rep of repertoires) {
+            for (const [fen, pos] of Object.entries(rep.positions)) {
+                graph.ensureNode(fen);
+                for (const san of Object.keys(pos.moves)) {
+                    // Prefer the denormalized `to` populated by the codec /
+                    // PendingEditModel; fall back to chess.js replay for
+                    // legacy/test fixtures that hand-rolled MoveEntry as `{}`.
+                    let toFen: string;
+                    const memoTo = pos.moves[san].to;
+                    if (memoTo !== undefined) {
+                        toFen = memoTo;
+                    } else {
+                        try {
+                            const chess = new Chess(fen);
+                            const move = chess.move(san);
+                            if (!move) continue;
+                            toFen = normalizeFenResetHalfmoveClock(chess.fen());
+                        } catch {
+                            continue;
+                        }
+                    }
+                    graph.ensureNode(toFen);
+                    const isUserTurn = isUserTurnForOrientation(fen, rep.orientation);
+                    const cardKey = FSRSService.makeCardKey(fen, san);
+                    const node = graph.nodes.get(fen)!;
+                    const existing = node.edges.find(e => e.san === san && e.to === toFen);
+                    if (existing) {
+                        existing.orientations.add(rep.orientation);
+                        if (isUserTurn) existing.hasCard = true;
+                    } else {
+                        node.edges.push({
+                            from: fen,
+                            to: toFen,
+                            san,
+                            hasCard: isUserTurn,
+                            cardKey,
+                            orientations: new Set([rep.orientation]),
+                        });
+                    }
+                    if (isUserTurn) {
+                        graph.orientations.set(cardKey, rep.orientation);
+                    }
+                }
+            }
+        }
+        return graph;
     }
 
     getRootFen(): string {
@@ -145,18 +205,10 @@ export class RepertoireGraph {
         if (orientation && !targetEdge.orientations.has(orientation)) return null;
 
         // 1. Find every node reachable from root via orientation-filtered edges.
-        const reachable = new Set<string>();
-        reachable.add(this.rootFen);
-        const stack: string[] = [this.rootFen];
-        while (stack.length) {
-            const fen = stack.pop()!;
-            for (const e of this.getEdges(fen, orientation)) {
-                if (!reachable.has(e.to)) {
-                    reachable.add(e.to);
-                    stack.push(e.to);
-                }
-            }
-        }
+        const reachable = reachableFrom(
+            this.rootFen,
+            fen => this.getEdges(fen, orientation).map(e => e.to),
+        );
         if (!reachable.has(targetFen)) return null;
 
         // 2. Compute in-degrees within the reachable subgraph.
@@ -243,8 +295,7 @@ export class RepertoireGraph {
      */
     getDescendantCardKeys(fen: string, orientation: 'white' | 'black'): string[] {
         const keys: string[] = [];
-        const visited = new Set<string>();
-        this.collectDescendantCardKeys(fen, visited, keys, orientation);
+        this.collectDescendantCardKeys(fen, keys, orientation);
         return keys;
     }
 
@@ -354,22 +405,22 @@ export class RepertoireGraph {
         visited.delete(currentFen);
     }
 
-    private collectDescendantCardKeys(fen: string, visited: Set<string>, keys: string[], orientation: 'white' | 'black'): void {
-        if (visited.has(fen)) return;
-        visited.add(fen);
-
-        const node = this.nodes.get(fen);
-        if (!node) return;
-
-        const edges = orientation
-            ? node.edges.filter(e => e.orientations.has(orientation))
-            : node.edges;
-
-        for (const edge of edges) {
-            if (isUserTurnForOrientation(edge.from, orientation)) {
-                keys.push(edge.cardKey);
-            }
-            this.collectDescendantCardKeys(edge.to, visited, keys, orientation);
-        }
+    private collectDescendantCardKeys(fen: string, keys: string[], orientation: 'white' | 'black'): void {
+        forEachReachableEdge<string, GraphEdge>(
+            fen,
+            current => {
+                const node = this.nodes.get(current);
+                if (!node) return [];
+                const edges = orientation
+                    ? node.edges.filter(e => e.orientations.has(orientation))
+                    : node.edges;
+                return edges.map(edge => ({ from: current, to: edge.to, edge }));
+            },
+            ref => {
+                if (isUserTurnForOrientation(ref.from, orientation)) {
+                    keys.push(ref.edge.cardKey);
+                }
+            },
+        );
     }
 }

@@ -3,6 +3,7 @@ import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import {
     LinkedAccount,
     Platform,
@@ -146,7 +147,12 @@ async function runIngestInternal(
         updateAccountStates(data, fetches, eligible);
 
         try {
-            await dal.storeRepertoireData(data);
+            // Project in-memory state into the position-centric blob shape
+            // before persisting — strips legacy `data`/`fsrsCards` from the
+            // PUT body and re-syncs the position dict with FSRSService's
+            // in-place card mutations.
+            const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
+            await dal.storeRepertoireData(blobForSave);
             return { didWrite: true, gamesProcessed: eligible.length };
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
@@ -244,7 +250,7 @@ function applyIngest(
     if (games.length === 0) return;
 
     const activity = ensureActivity(data);
-    const { whiteFens, blackFens } = buildRepertoireFenSets(data.data ?? []);
+    const { whiteFens, blackFens } = buildRepertoireFenSets(data.repertoires);
     if (!data.fsrsCards) data.fsrsCards = {};
     const fsrs = new FSRSService(data.fsrsCards);
 

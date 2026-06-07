@@ -19,15 +19,7 @@ function buildData(variants: Array<{ pgn: string; orientation: 'white' | 'black'
         data: variants.map(v => ({
             pgn: v.pgn,
             orientation: v.orientation,
-            classifications: [],
-            numberOfTimesPlayed: 0,
-            errorEMA: 0,
-            lastSucceededEpoch: 0,
-            successEMA: 0,
         })),
-        currentEpoch: 0,
-        lastPlayedDate: new Date(0),
-        dailyPlayCount: 0,
         fsrsCards: {},
     };
 }

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessboardControl from '../components/ChessboardControl';
-import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
+import ReviewView from '../components/ReviewView';
+import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireData } from '../models/RepertoireData';
 import {
     ExplorerService,
@@ -20,6 +21,12 @@ import {
     normalizeFenResetHalfmoveClock,
 } from '../utils/FenUtils';
 import { GraphEdge } from '../services/RepertoireGraph';
+import { Annotation } from '../models/Annotation';
+import { PendingEditModel } from '../services/PendingEditModel';
+import { PendingEditNotifier } from '../services/PendingEditNotifier';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
+import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
+import { isExplorerHash, isExplorerRoute } from '../utils/Routes';
 import './ExplorerPage.css';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -260,6 +267,8 @@ interface MoveRowProps {
     currentDepth: number;
     currentPgn: string;
     now: Date;
+    /** When set, renders a trash button that calls this with (from, san) */
+    onDelete?: (from: string, san: string) => void;
 }
 
 const MoveRow: React.FC<MoveRowProps> = ({
@@ -271,6 +280,7 @@ const MoveRow: React.FC<MoveRowProps> = ({
     currentDepth,
     currentPgn,
     now,
+    onDelete,
 }) => {
     const continuation = useMemo(
         () => service.expandContinuation(currentDepth, edge, orientation),
@@ -331,6 +341,17 @@ const MoveRow: React.FC<MoveRowProps> = ({
                         → {afterLabel.name}
                     </span>
                 )}
+                {onDelete && (
+                    <button
+                        type="button"
+                        className="explorer-move-delete"
+                        onClick={() => onDelete(edge.from, edge.san)}
+                        aria-label={`Delete ${edge.san} from repertoire`}
+                        title={`Delete ${edge.san} from repertoire`}
+                    >
+                        ×
+                    </button>
+                )}
             </div>
             <div className="explorer-move-row-cont">
                 <ContinuationLine continuation={continuation} onJump={onJump} />
@@ -342,7 +363,6 @@ const MoveRow: React.FC<MoveRowProps> = ({
 // ── Main page ─────────────────────────────────────────────────────────
 
 const ExplorerPage: React.FC = () => {
-    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [data, setData] = useState<RepertoireData | null>(null);
@@ -357,6 +377,39 @@ const ExplorerPage: React.FC = () => {
     const [snapToast, setSnapToast] = useState<string | null>(null);
     const [findInput, setFindInput] = useState('');
     const [findError, setFindError] = useState<string | null>(null);
+
+    // ── Edit-mode state ─────────────────────────────────────────────
+    //
+    // `mode`:
+    //   - 'read'   — today's behavior, board non-interactive
+    //   - 'edit'   — pill toggled to Edit; pendingModel is non-null
+    // `view`:
+    //   - 'main'   — the board + move list (works in both read and edit)
+    //   - 'review' — Review & Save full-page list (edit only)
+    //
+    // The Cancel/Back rule in EXPLORER.md is "return to Edit with the
+    // delta intact" — we keep the model alive on the page across Read↔Edit
+    // toggles unless the user explicitly Discards or Saves.
+    const [mode, setMode] = useState<'read' | 'edit'>('read');
+    const [pendingModel, setPendingModel] = useState<PendingEditModel | null>(null);
+    // Bump on every mutation to PendingEditModel so derived memos re-run.
+    const [pendingTick, setPendingTick] = useState(0);
+    const bumpPending = useCallback(() => setPendingTick(t => t + 1), []);
+
+    // The Review view is driven by `?review=1` in the URL so that browser
+    // Back from Review pops the param and lands the user back on Edit's
+    // main view — the spec calls this out as required ("Cancel and browser
+    // Back are equivalent: both return to Edit mode with the delta intact").
+    // The param is stripped automatically when the user lands in Read mode
+    // (see `enterReviewView`/`exitReviewView`).
+    const view: 'main' | 'review' = (mode === 'edit' && searchParams.get('review') === '1')
+        ? 'review'
+        : 'main';
+
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveInFlight, setSaveInFlight] = useState(false);
+    const [conflictPrompt, setConflictPrompt] = useState(false);
+    const [discardPrompt, setDiscardPrompt] = useState(false);
 
     // Tick `now` once a minute so the relative due/last labels update.
     const [now, setNow] = useState(() => new Date());
@@ -420,19 +473,51 @@ const ExplorerPage: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Cross-tab freshness: re-fetch when the page regains visibility.
+    // Cross-tab freshness: re-fetch when the page regains visibility — but
+    // ONLY when no Edit session is in flight. Refreshing mid-edit would swap
+    // out the DAL's captured ETag (and the page's `data`) under the user's
+    // feet, silently defeating the 412 conflict path that protects
+    // concurrent edits (see `handleSave`'s catch block). The pending model
+    // already holds the snapshot it was started against; surfacing newer
+    // server state is deferred until the user finishes or discards the
+    // session — same trade-off the spec calls out for ungated background
+    // game ingestion ("ETag safety net it would buy").
     useEffect(() => {
         const onVis = () => {
-            if (document.visibilityState === 'visible') void fetchAll(false);
+            if (document.visibilityState !== 'visible') return;
+            if (pendingModel) return; // edit session active — don't trample the ETag
+            void fetchAll(false);
         };
         document.addEventListener('visibilitychange', onVis);
         return () => document.removeEventListener('visibilitychange', onVis);
-    }, [fetchAll]);
+    }, [fetchAll, pendingModel]);
 
+    // In Read mode, the ExplorerService reads the persisted blob. In Edit
+    // mode it reads the PendingEditModel's working copy so the user sees the
+    // effects of their drops/deletes immediately (the move list, "How you got
+    // here", and the board's annotations all reflect the pending state).
     const service = useMemo(() => {
         if (!data || !openings) return null;
+        if (mode === 'edit' && pendingModel) {
+            // pendingTick rebuilds the service on every mutation; it doesn't
+            // need to be referenced in the body — the dep array does the work.
+            void pendingTick;
+            const editData: RepertoireData = {
+                repertoires: pendingModel.currentRepertoires,
+                // Build an inline flat card map: base cards minus any keys that
+                // no longer have a corresponding edge, plus any new cards from
+                // this session. The new-card map IS the authority for adds.
+                fsrsCards: {
+                    ...extractFsrsCardsFromRepertoires(pendingModel.currentRepertoires),
+                },
+                settings: data.settings,
+                activity: data.activity,
+                games: data.games,
+            };
+            return new ExplorerService(editData, openings);
+        }
         return new ExplorerService(data, openings);
-    }, [data, openings]);
+    }, [data, openings, mode, pendingModel, pendingTick]);
 
     // Resolve URL parameters into a concrete (orientation, fen).
     const explicitOrientationParam = searchParams.get('o');
@@ -517,9 +602,315 @@ const ExplorerPage: React.FC = () => {
             setFindError(`Not in your ${resolvedOrientation} repertoire.`);
             return;
         }
+        // In Edit mode the orientation toggle is hidden and editing is
+        // scoped to a single repertoire per session — silently switching
+        // sides via Find would be confusing. Block the cross-orientation
+        // fallthrough and surface the same not-found error as above.
+        if (mode === 'edit' && result.orientation !== resolvedOrientation) {
+            setFindError(`Not in your ${resolvedOrientation} repertoire (exit Edit to search the other side).`);
+            return;
+        }
         setFindError(null);
         jumpTo(result.fen, result.orientation, true);
     };
+
+    // ── Edit mode: enter/exit, mutations, save/discard ───────────────
+
+    /**
+     * Enter Edit mode: snapshot the current persisted blob into a
+     * PendingEditModel. Preserves the model across orientation toggles and
+     * navigations inside `/explorer` — only Save, Discard, hard navigation,
+     * or page reload destroys it.
+     */
+    /**
+     * Helper: pop the `?review=1` flag off the URL (replace, no history push)
+     * so a sub-flow that lands the user back on the main view doesn't leave
+     * a stray review entry behind that browser Back could re-enter.
+     */
+    const stripReviewParam = useCallback(() => {
+        if (searchParams.get('review') === '1') {
+            const next = new URLSearchParams(searchParams);
+            next.delete('review');
+            setSearchParams(next, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
+
+    /** Open the Review view by pushing a `?review=1` history entry. */
+    const enterReviewView = useCallback(() => {
+        if (searchParams.get('review') === '1') return;
+        const next = new URLSearchParams(searchParams);
+        next.set('review', '1');
+        setSearchParams(next); // push — so browser Back returns to main
+    }, [searchParams, setSearchParams]);
+
+    /** Cancel/back from Review explicitly — go through the same back-stack pop. */
+    const exitReviewView = useCallback(() => {
+        if (searchParams.get('review') === '1') {
+            // Walk history one step back so browser Back and the Cancel
+            // button produce the same URL trail. If for some reason that
+            // overshoots (rare — would mean the user manually deep-linked
+            // to ?review=1), fall back to stripping the param.
+            window.history.back();
+        }
+    }, [searchParams]);
+
+    const enterEditMode = useCallback(() => {
+        if (!data) return;
+        if (!pendingModel) {
+            const reps = data.repertoires ?? [];
+            const cards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
+            setPendingModel(new PendingEditModel(reps, cards));
+        }
+        setMode('edit');
+        stripReviewParam();
+    }, [data, pendingModel, stripReviewParam]);
+
+    /**
+     * Cheap counts-only memo, runs on every edit. Drives the inline edit-bar
+     * pill and `isDirty` (which gates the cross-page notifier and
+     * `beforeunload`). Avoids the chain-decomposition + canonical-path +
+     * PGN-formatting cost paid by the full `computeDelta()` — that cost
+     * is only paid when the Review pane is actually open (see `delta`
+     * below). Counts are guaranteed to match the rich path because both
+     * share `PendingEditModel.computeImpl` internally.
+     */
+    const counts = useMemo(() => {
+        void pendingTick;
+        return pendingModel ? pendingModel.computeCounts() : null;
+    }, [pendingModel, pendingTick]);
+
+    /** True when the model holds at least one staged change. */
+    const isDirty = !!counts &&
+        (counts.added + counts.removed + counts.changed) > 0;
+
+    /**
+     * Rich delta with chain decomposition + per-row canonical PGN.
+     * Only computed when the Review pane is actually visible — gated on
+     * `view === 'review'` so editing the rep on huge repertoires never
+     * pays for presentation work the user can't see.
+     */
+    const delta = useMemo(() => {
+        void pendingTick;
+        if (view !== 'review' || !pendingModel) return null;
+        return pendingModel.computeDelta();
+    }, [pendingModel, pendingTick, view]);
+
+    // Reflect dirty state into the cross-page notifier so the safety-net
+    // guards (SPA click guard, popstate, beforeunload) know there's
+    // unsaved work that would be lost.
+    useEffect(() => {
+        PendingEditNotifier.setPending(isDirty);
+        return () => PendingEditNotifier.setPending(false);
+    }, [isDirty]);
+
+    // Reflect edit-mode entry/exit so the Header can disable all of its
+    // menu items while the user is editing. This is independent from
+    // `isDirty`: once the user clicks "Edit repertoire", every header
+    // entry is disabled — even before any change is staged — so the
+    // only way out is Save or Discard.
+    useEffect(() => {
+        PendingEditNotifier.setInEditMode(mode === 'edit');
+        return () => PendingEditNotifier.setInEditMode(false);
+    }, [mode]);
+
+    // beforeunload warning when the user has unsaved edits. Tab close, hard
+    // refresh, and navigation to non-/explorer routes trigger this; in-page
+    // hash navigation does not.
+    useEffect(() => {
+        if (!isDirty) return;
+        const handler = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            // Most browsers ignore the returned string today, but Chrome
+            // still requires setting returnValue to fire the dialog.
+            e.returnValue = '';
+            return '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDirty]);
+
+    // SPA navigation gate. HashRouter `<Link>` clicks do NOT fire
+    // `beforeunload`, so any in-page anchor leaving `/explorer` could
+    // silently destroy the pending delta on unmount. Intercept anchor
+    // clicks on the document while dirty and prompt the user — same
+    // destructive-action confirm wording as the sticky-bar Discard. If
+    // the user confirms, we strip dirty state and let the click proceed
+    // on the second invocation.
+    //
+    // The Header is fully disabled while in Edit mode (see Header.tsx
+    // subscribing to PendingEditNotifier.isInEditMode), so header anchor
+    // clicks are blocked at the source; this guard remains as defense
+    // in depth for any other in-page anchor that may exit `/explorer`.
+    //
+    // Companion guards:
+    //   - The `popstate` listener inside PendingEditNotifier catches
+    //     browser Back/Forward when the URL leaves `/explorer` mid-edit
+    //     and bounces back if the user cancels.
+    useEffect(() => {
+        if (!isDirty) return;
+        const handler = (e: MouseEvent) => {
+            // Honor modifier-clicks (new tab/window) — the user is opening
+            // the target in a new context, not abandoning this one.
+            if (e.defaultPrevented || e.button !== 0
+                || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            // Find the anchor ancestor of the click target.
+            let el = e.target as HTMLElement | null;
+            while (el && el.tagName !== 'A') el = el.parentElement;
+            if (!el) return;
+            const anchor = el as HTMLAnchorElement;
+            // Only intercept in-app hash links that go to a DIFFERENT route.
+            const href = anchor.getAttribute('href') ?? '';
+            if (!href.startsWith('#/')) return;
+            // Compare just the route segment (before any query string).
+            const targetRoute = href.replace(/^#/, '').split('?')[0];
+            if (isExplorerRoute(targetRoute)) return; // staying inside Explorer
+            const confirmed = window.confirm(
+                'You have unsaved repertoire edits. Leaving this page will discard them. Continue?',
+            );
+            if (!confirmed) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            // User chose to abandon — clear the model so beforeunload (and
+            // the next click) don't re-prompt.
+            setDiscardPrompt(false);
+            setConflictPrompt(false);
+            setPendingModel(null);
+            setMode('read');
+            // The synchronous click will proceed and React Router will
+            // navigate; nothing else for us to do.
+        };
+        document.addEventListener('click', handler, true);
+        return () => document.removeEventListener('click', handler, true);
+    }, [isDirty]);
+
+    // Update the global popstate guard's "last safe URL" tracker whenever
+    // the explorer URL settles. The notifier holds a window-level popstate
+    // listener that bounces the user back to this URL on a cancel — see
+    // PendingEditNotifier for why it's a module-level listener.
+    useEffect(() => {
+        if (isExplorerHash(window.location.hash)) {
+            PendingEditNotifier.setLastSafeHash(window.location.hash);
+        }
+    });
+
+    /** Board-driven "Add move" handler in Edit mode. */
+    const handleBoardMove = useCallback((from: string, to: string): boolean => {
+        if (mode !== 'edit' || !pendingModel || !currentFen || !service) return false;
+
+        // Translate (from, to) squares into a SAN string via chess.js.
+        // We attempt every legal move from the current FEN to find the SAN
+        // that matches — chess.js' UCI parsing is rigid about promotions.
+        try {
+            const chess = new Chess(currentFen);
+            const moves = chess.moves({ verbose: true });
+            const match = moves.find(m => m.from === from && m.to === to);
+            if (!match) return false;
+            const san = match.san;
+            const newFen = pendingModel.addEdge(currentFen, san, resolvedOrientation);
+            if (!newFen) return false;
+            bumpPending();
+            // Auto-navigate to the new position so the user can keep building.
+            jumpTo(newFen, undefined, true);
+            return true;
+        } catch {
+            return false;
+        }
+    }, [mode, pendingModel, currentFen, service, resolvedOrientation, bumpPending, jumpTo]);
+
+    /** Per-row delete handler. */
+    const handleDeleteEdge = useCallback((from: string, san: string) => {
+        if (!pendingModel) return;
+        pendingModel.deleteEdge(from, san, resolvedOrientation);
+        bumpPending();
+    }, [pendingModel, resolvedOrientation, bumpPending]);
+
+    /** Annotation gesture (right-click arrow / square highlight). */
+    const handleAnnotationsChanged = useCallback((fen: string, anns: Annotation[]) => {
+        if (mode !== 'edit' || !pendingModel) return;
+        pendingModel.setAnnotations(fen, resolvedOrientation, anns);
+        bumpPending();
+    }, [mode, pendingModel, resolvedOrientation, bumpPending]);
+
+    /** Sticky-bar Save handler. */
+    const handleSave = useCallback(async () => {
+        if (!pendingModel || !data) return;
+        setSaveInFlight(true);
+        setSaveError(null);
+        try {
+            // Build the in-memory blob to save. The model owns repertoires +
+            // any new cards; combine with the base FSRS cards (still in
+            // `data.fsrsCards`) and let `prepareDataForSave` project the
+            // result into the position-centric wire shape.
+            const baseCards = data.fsrsCards ?? {};
+            // Cards we keep: every card that still has a corresponding edge
+            // in the working repertoires. `extractFsrsCardsFromRepertoires`
+            // gives us exactly that view, with both base-resurrected and
+            // newly-minted cards reachable from the dict.
+            const liveCards = extractFsrsCardsFromRepertoires(pendingModel.currentRepertoires);
+            // Merge: live takes precedence (it already holds the new cards
+            // attached to fresh edges). Base contributes nothing the dict
+            // doesn't already carry, but we keep the merge so any unrelated
+            // legacy bookkeeping survives.
+            const mergedCards = { ...baseCards, ...liveCards };
+
+            const blobInMemory: RepertoireData = {
+                repertoires: pendingModel.currentRepertoires,
+                fsrsCards: mergedCards,
+                settings: data.settings,
+                activity: data.activity,
+                games: data.games,
+            };
+            const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
+            await dal.storeRepertoireData(wire);
+            // Reload to the canonical persisted state so the in-memory model
+            // and the persisted blob agree.
+            dataRef.current = null;
+            setPendingModel(null);
+            setMode('read');
+            stripReviewParam();
+            await fetchAll(true);
+        } catch (err: unknown) {
+            if (err instanceof DataAccessError && err.statusCode === 412) {
+                setConflictPrompt(true);
+            } else {
+                const msg = err instanceof Error ? err.message : String(err);
+                setSaveError(`Save failed: ${msg}`);
+            }
+        } finally {
+            setSaveInFlight(false);
+        }
+    }, [pendingModel, data, dal, fetchAll, stripReviewParam]);
+
+    /** Conflict prompt: "Refresh" discards local edits and re-fetches. */
+    const handleConflictRefresh = useCallback(async () => {
+        setConflictPrompt(false);
+        setPendingModel(null);
+        setMode('read');
+        stripReviewParam();
+        dataRef.current = null;
+        await fetchAll(true);
+    }, [fetchAll, stripReviewParam]);
+
+    /** Sticky-bar Discard handler (always prompts when delta non-empty). */
+    const requestDiscard = useCallback(() => {
+        if (!pendingModel || pendingModel.isEmpty()) {
+            // Trivial discard: nothing to confirm.
+            setPendingModel(null);
+            setMode('read');
+            stripReviewParam();
+            return;
+        }
+        setDiscardPrompt(true);
+    }, [pendingModel, stripReviewParam]);
+
+    const confirmDiscard = useCallback(() => {
+        setDiscardPrompt(false);
+        setPendingModel(null);
+        setMode('read');
+        stripReviewParam();
+    }, [stripReviewParam]);
 
     // ── Render guards ────────────────────────────────────────────────
 
@@ -571,53 +962,119 @@ const ExplorerPage: React.FC = () => {
                     </div>
                 )}
 
-                <div className="explorer-orientation-bar">
-                    <button
-                        type="button"
-                        className={`explorer-toggle ${resolvedOrientation === 'white' ? 'active' : ''}`}
-                        onClick={() => resolvedOrientation !== 'white' && handleToggleOrientation()}
-                        aria-pressed={resolvedOrientation === 'white'}
-                    >
-                        White
-                    </button>
-                    <span className="explorer-toggle-sep">⇄</span>
-                    <button
-                        type="button"
-                        className={`explorer-toggle ${resolvedOrientation === 'black' ? 'active' : ''}`}
-                        onClick={() => resolvedOrientation !== 'black' && handleToggleOrientation()}
-                        aria-pressed={resolvedOrientation === 'black'}
-                    >
-                        Black
-                    </button>
-                </div>
-
+                {view === 'main' && (
                 <div className="explorer-body">
+                    {/* Toolbar lives in the body's top-left grid cell so it
+                        shares the board's column width exactly — its left
+                        and right edges line up with the board's edges. The
+                        right column starts on the second grid row,
+                        top-aligned with the chessboard (not with the
+                        toolbar) so the toolbar reads as the page's top
+                        line. Read mode: orientation toggle on the left,
+                        green "Edit repertoire" CTA on the right. Edit
+                        mode: toggle is hidden (editing is scoped to a
+                        single repertoire per session) and the inline edit
+                        bar spans the column with counts on the left and
+                        the Save / Discard actions on the right; the bar
+                        wraps to two rows on tight fits. Discard at zero
+                        changes acts as the exit affordance back to Read
+                        mode. */}
+                    <div className="explorer-orientation-bar">
+                        {mode === 'read' && (
+                            <div className="explorer-toolbar-left">
+                                <button
+                                    type="button"
+                                    className={`explorer-toggle ${resolvedOrientation === 'white' ? 'active' : ''}`}
+                                    onClick={() => resolvedOrientation !== 'white' && handleToggleOrientation()}
+                                    aria-pressed={resolvedOrientation === 'white'}
+                                >
+                                    White
+                                </button>
+                                <span className="explorer-toggle-sep">⇄</span>
+                                <button
+                                    type="button"
+                                    className={`explorer-toggle ${resolvedOrientation === 'black' ? 'active' : ''}`}
+                                    onClick={() => resolvedOrientation !== 'black' && handleToggleOrientation()}
+                                    aria-pressed={resolvedOrientation === 'black'}
+                                >
+                                    Black
+                                </button>
+                            </div>
+                        )}
+                        {mode === 'read' && (
+                            <button
+                                type="button"
+                                className="explorer-btn explorer-btn--cta explorer-btn--primary"
+                                onClick={enterEditMode}
+                                title="Edit mode — add or remove moves and annotations"
+                            >
+                                Edit repertoire
+                            </button>
+                        )}
+                        {mode === 'edit' && (
+                            <div className="explorer-save-bar" role="region" aria-label="Pending edits">
+                                <span className="explorer-save-bar-counts">
+                                    {isDirty
+                                        ? [
+                                            counts!.added > 0 ? `${counts!.added} added` : null,
+                                            counts!.removed > 0 ? `${counts!.removed} removed` : null,
+                                            counts!.changed > 0 ? `${counts!.changed} changed` : null,
+                                        ].filter(Boolean).join(' · ')
+                                        : 'No pending changes'}
+                                </span>
+                                <div className="explorer-save-bar-actions">
+                                    <button
+                                        type="button"
+                                        className="explorer-btn explorer-btn--sm explorer-btn--primary"
+                                        onClick={enterReviewView}
+                                        disabled={saveInFlight || !isDirty}
+                                        title={!isDirty ? 'Make a change to enable' : undefined}
+                                    >
+                                        Review &amp; Save
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="explorer-btn explorer-btn--sm explorer-btn--ghost"
+                                        onClick={requestDiscard}
+                                        disabled={saveInFlight}
+                                    >
+                                        Discard
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    <div className="explorer-left-col">
                     <div
                         className="explorer-board-col"
                         /*
-                         * Make the board fully read-only: vendored chess-control
-                         * still handles right-click annotation drawing even when
+                         * Read mode: vendored chess-control still handles
+                         * right-click annotation drawing even when
                          * `interactive={false}`. Capture and cancel pointer
-                         * events from the right mouse button before they reach
-                         * the board so users cannot draw ephemeral arrows on
-                         * the Explorer (per EXPLORER.md "Arrows are read-only
-                         * in v1").
+                         * events from the right mouse button before they
+                         * reach the board so users cannot draw ephemeral
+                         * arrows in Read mode (per EXPLORER.md "Arrows are
+                         * read-only").
+                         *
+                         * Edit mode: pass-through — the user is encouraged
+                         * to drop arrows; we route them via the model.
                          */
-                        onPointerDownCapture={(e) => {
+                        onPointerDownCapture={mode === 'read' ? (e) => {
                             if (e.button === 2) {
                                 e.preventDefault();
                                 e.stopPropagation();
                             }
-                        }}
-                        onContextMenu={(e) => e.preventDefault()}
+                        } : undefined}
+                        onContextMenu={mode === 'read' ? (e) => e.preventDefault() : undefined}
                     >
                         <ChessboardControl
-                            roundId={`explorer-${resolvedOrientation}-${currentFen}`}
+                            roundId={`explorer-${mode}-${resolvedOrientation}-${currentFen}`}
                             fen={currentFen}
                             orientation={resolvedOrientation}
-                            movePlayed={() => false}
+                            movePlayed={mode === 'edit' ? handleBoardMove : () => false}
+                            annotationsChanged={mode === 'edit' ? handleAnnotationsChanged : undefined}
                             annotations={annotations}
-                            interactive={false}
+                            interactive={mode === 'edit'}
                         />
                     </div>
 
@@ -638,6 +1095,7 @@ const ExplorerPage: React.FC = () => {
                             <div className="explorer-find-error" role="alert">{findError}</div>
                         )}
                     </form>
+                    </div>
 
                     <div className="explorer-right-col">
                         <section className="explorer-how-you-got-here">
@@ -685,7 +1143,14 @@ const ExplorerPage: React.FC = () => {
                         <section className="explorer-moves">
                             <div className="explorer-section-title">{movesHeading}</div>
                             {edges.length === 0 ? (
-                                <div className="explorer-moves-empty">{emptyMessage}</div>
+                                <div className="explorer-moves-empty">
+                                    {emptyMessage}
+                                    {mode === 'edit' && (
+                                        <div className="explorer-moves-empty-hint">
+                                            Drag a piece on the board to add a move.
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
                                 <ul className="explorer-moves-list">
                                     {edges.map(e => (
@@ -699,6 +1164,7 @@ const ExplorerPage: React.FC = () => {
                                                 currentDepth={currentDepth}
                                                 currentPgn={currentPgn}
                                                 now={now}
+                                                onDelete={mode === 'edit' ? handleDeleteEdge : undefined}
                                             />
                                         </li>
                                     ))}
@@ -707,6 +1173,95 @@ const ExplorerPage: React.FC = () => {
                         </section>
                     </div>
                 </div>
+                )}
+
+                {view === 'review' && delta && pendingModel && (
+                    <ReviewView
+                        delta={delta}
+                        rootFen={pendingModel.root}
+                        onCancel={exitReviewView}
+                        onSave={handleSave}
+                        onDiscard={requestDiscard}
+                        saveInFlight={saveInFlight}
+                    />
+                )}
+
+                {saveError && (
+                    <div className="explorer-error explorer-save-error" role="alert">
+                        {saveError}
+                        <button
+                            type="button"
+                            className="explorer-toast-dismiss"
+                            aria-label="Dismiss"
+                            onClick={() => setSaveError(null)}
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
+                {discardPrompt && (
+                    <div className="explorer-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="discard-prompt-title">
+                        <div className="explorer-modal">
+                            <h2 id="discard-prompt-title">Discard pending edits?</h2>
+                            <p>
+                                Your unsaved changes — {counts?.added ?? 0} added,
+                                {' '}{counts?.removed ?? 0} removed,
+                                {' '}{counts?.changed ?? 0} changed — will be lost.
+                                This cannot be undone.
+                            </p>
+                            <div className="explorer-modal-actions">
+                                <button
+                                    type="button"
+                                    className="explorer-btn explorer-btn--neutral"
+                                    onClick={() => setDiscardPrompt(false)}
+                                >
+                                    Keep editing
+                                </button>
+                                <button
+                                    type="button"
+                                    className="explorer-btn explorer-btn--danger"
+                                    onClick={confirmDiscard}
+                                >
+                                    Discard
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {conflictPrompt && (
+                    <div className="explorer-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="conflict-prompt-title">
+                        <div className="explorer-modal">
+                            <h2 id="conflict-prompt-title">Repertoire changed elsewhere</h2>
+                            <p>
+                                Another writer (another tab, a training session, or game
+                                ingestion) updated your repertoire while you were editing.
+                                Saving now would overwrite their changes.
+                            </p>
+                            <p>
+                                <strong>Refresh</strong> discards your local edits and
+                                re-loads the latest state.
+                            </p>
+                            <div className="explorer-modal-actions">
+                                <button
+                                    type="button"
+                                    className="explorer-btn explorer-btn--neutral"
+                                    onClick={() => setConflictPrompt(false)}
+                                >
+                                    Keep editing
+                                </button>
+                                <button
+                                    type="button"
+                                    className="explorer-btn explorer-btn--danger"
+                                    onClick={handleConflictRefresh}
+                                >
+                                    Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

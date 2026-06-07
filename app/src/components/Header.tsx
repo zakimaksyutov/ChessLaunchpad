@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clearGames } from '../data/GamesDB';
 import { getLinkedAccounts, setLinkedAccounts } from '../services/LinkedAccountsService';
+import { PendingEditNotifier } from '../services/PendingEditNotifier';
 import './Header.css';  // Import the CSS file
 
 interface HeaderProps {
@@ -14,6 +15,16 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
 
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Subscribe to the Explorer's edit-mode signal. While editing, every
+    // header menu item is disabled (title, nav links, username dropdown).
+    // The user must Save or Discard from the Explorer page before
+    // navigating anywhere — this prevents accidentally losing pending
+    // repertoire edits via the header.
+    const [inEditMode, setInEditMode] = useState(() => PendingEditNotifier.isInEditMode());
+    useEffect(() => {
+        return PendingEditNotifier.subscribeEditMode(setInEditMode);
+    }, []);
 
     // If user clicks *anywhere* outside the dropdown, close it
     useEffect(() => {
@@ -32,11 +43,20 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         };
     }, []);
 
+    // Close the dropdown automatically whenever edit mode becomes active,
+    // so a dropdown that happened to be open doesn't end up with disabled
+    // buttons lingering on screen.
+    useEffect(() => {
+        if (inEditMode) setIsDropdownOpen(false);
+    }, [inEditMode]);
+
     const toggleDropdown = () => {
+        if (inEditMode) return;
         setIsDropdownOpen((prev) => !prev);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (inEditMode) return;
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             toggleDropdown();
@@ -86,20 +106,66 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         navigate('/');
     };
 
+    // Block anchor-link navigations from the header while editing. The
+    // `<Link>` components below render real `<a>` tags inside HashRouter;
+    // adding `pointer-events: none` on them via CSS handles mouse clicks,
+    // but keyboard (Enter) and assistive-tech activations bypass that, so
+    // we also gate clicks here for full coverage.
+    const handleNavClick = (e: React.MouseEvent) => {
+        if (inEditMode) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    };
+
+    const navLinkClass = `header-nav-link${inEditMode ? ' header-nav-link-disabled' : ''}`;
+    const editModeTitle = inEditMode
+        ? 'Save or discard your repertoire edits in Explorer first.'
+        : undefined;
+
     return (
         <header className="header">
             {/* Left side: Title */}
-            <Link to="/" className="header-title-link">
+            <Link
+                to="/"
+                className={`header-title-link${inEditMode ? ' header-title-link-disabled' : ''}`}
+                onClick={handleNavClick}
+                aria-disabled={inEditMode || undefined}
+                title={editModeTitle}
+            >
                 <div className="header-title">Chess Launchpad</div>
             </Link>
 
             {/* Middle Section: Menu items (only if logged in) */}
             {username && (
                 <nav className="header-nav">
-                    <Link to="/training" className="header-nav-link">Training</Link>
-                    <Link to="/repertoire" className="header-nav-link">Repertoire</Link>
-                    <Link to="/explorer" className="header-nav-link">Explorer</Link>
-                    <Link to="/games" className="header-nav-link">Games</Link>
+                    <Link
+                        to="/training"
+                        className={navLinkClass}
+                        onClick={handleNavClick}
+                        title={editModeTitle}
+                        aria-disabled={inEditMode || undefined}
+                    >
+                        Training
+                    </Link>
+                    <Link
+                        to="/explorer"
+                        className={navLinkClass}
+                        onClick={handleNavClick}
+                        title={editModeTitle}
+                        aria-disabled={inEditMode || undefined}
+                    >
+                        Explorer
+                    </Link>
+                    <Link
+                        to="/games"
+                        className={navLinkClass}
+                        onClick={handleNavClick}
+                        title={editModeTitle}
+                        aria-disabled={inEditMode || undefined}
+                    >
+                        Games
+                    </Link>
                 </nav>
             )}
 
@@ -109,19 +175,21 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
                     /* Logged in state */
                     <div className="username-dropdown-container" ref={dropdownRef}>
                         <span
-                            className="username-text"
+                            className={`username-text${inEditMode ? ' username-text-disabled' : ''}`}
                             onClick={toggleDropdown}
                             onKeyDown={handleKeyDown}
-                            tabIndex={0}
+                            tabIndex={inEditMode ? -1 : 0}
                             role="button"
                             aria-expanded={isDropdownOpen}
                             aria-haspopup="true"
+                            aria-disabled={inEditMode || undefined}
+                            title={editModeTitle}
                         >
                             <strong>{username}</strong>
                         </span>
 
                         {/* Conditionally render the dropdown menu */}
-                        {isDropdownOpen && (
+                        {isDropdownOpen && !inEditMode && (
                             <div className="dropdown-menu">
                                 <button onClick={handleSettingsClick}>Settings</button>
                                 <button onClick={handleLogoutClick}>Logout</button>

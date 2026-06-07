@@ -55,13 +55,39 @@
   padding: 0 0.25rem;
 }
 
-/* ===== Orientation toggle ===== */
+/* ===== Toolbar (orientation toggle + edit affordance) =====
+   Lives in the body's top-left grid cell, so it shares the board's
+   column width exactly — the toolbar's left and right edges line
+   up with the board's edges. Read mode lays out the orientation
+   toggle on the left and the green Edit-repertoire CTA on the
+   right via `space-between`. Edit mode replaces both with the
+   inline edit bar, which fills the full column width
+   (`.explorer-save-bar { flex: 1 1 100% }`) and runs its own
+   space-between layout for counts vs. actions. On narrow viewports
+   the row wraps. Vertical spacing to the board is handled by the
+   body grid's row gap. */
 .explorer-orientation-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  /* Pin the toolbar's single-row height to the natural height of the
+     Edit-mode inline bar so the chessboard does not shift down when
+     the user enters Edit mode. The Read-mode CTA is shorter than the
+     Edit bar by ~10px (the bar's border + outer padding nest around
+     its inner buttons), so without this floor the board jumps. When
+     the Edit bar wraps to two rows on narrow viewports the natural
+     height grows beyond `min-height` — the shift is unavoidable in
+     that case and acknowledged. */
+  min-height: 2.65rem;
+}
+
+.explorer-toolbar-left {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .explorer-toggle {
@@ -86,20 +112,37 @@
   font-size: 1rem;
 }
 
-/* ===== Two-column body via grid-areas ===== */
+/* ===== Two-column body =====
+   Desktop: 2x2 grid. Top row holds only the toolbar in the left
+   cell — the right cell of that row stays empty so the right
+   column's content (How you got here, opening, moves) starts on
+   the second row, top-aligned with the chessboard rather than the
+   toolbar. Bottom row: left = board + find input, right = right
+   column. On narrow viewports this collapses to a single column
+   (see @media block below). */
 .explorer-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  grid-template-rows: auto 1fr;
   grid-template-areas:
-    "board   right"
-    "find    right";
-  grid-template-rows: auto auto;
-  gap: 0.6rem 1.25rem;
+    "toolbar ."
+    "left    right";
+  gap: 0.5rem 1.25rem;
   align-items: start;
 }
 
-.explorer-board-col { grid-area: board; min-width: 0; width: 100%; max-width: 704px; }
-.explorer-find      { grid-area: find;  min-width: 0; }
+.explorer-orientation-bar { grid-area: toolbar; }
+.explorer-left-col {
+  grid-area: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  width: 100%;
+  max-width: 704px;
+}
+
+.explorer-board-col { min-width: 0; width: 100%; }
 .explorer-right-col {
   grid-area: right;
   min-width: 0;
@@ -432,23 +475,465 @@
     padding: 0.5rem;
   }
 
-  /* Single column: board → right column → find. Then within the right column,
-     reorder so opening + moves precede "How you got here" per spec. */
+  /* Single column: toolbar → board → right column → find. Then within the right column,
+     reorder so opening + moves precede "How you got here" per spec.
+     Use `display: contents` on the left wrapper so its children participate
+     directly in the page grid and can be placed via grid-area. */
   .explorer-body {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "toolbar"
       "board"
       "right"
       "find";
     gap: 0.6rem;
   }
 
-  .explorer-board-col,
-  .explorer-find {
-    max-width: none;
+  .explorer-left-col {
+    display: contents;
   }
+
+  .explorer-orientation-bar { grid-area: toolbar; }
+  .explorer-board-col { grid-area: board; max-width: none; }
+  .explorer-right-col { grid-area: right; }
+  .explorer-find      { grid-area: find;  max-width: none; }
 
   .explorer-right-col .explorer-how-you-got-here { order: 3; }
   .explorer-right-col .explorer-opening-current  { order: 1; }
   .explorer-right-col .explorer-moves            { order: 2; }
+}
+
+/* ===== Button system =====
+ * Single base + modifiers used by every Explorer button (Edit CTA, save-bar
+ * actions, modal actions, Review-view actions). Replaces ~7 bespoke
+ * `.explorer-*-cta`/`-save`/`-discard`/`-cancel`/`-confirm` definitions
+ * so the green/red/neutral palette and disabled/focus behaviour cannot
+ * drift between sites. Compose: `explorer-btn explorer-btn--<size>?
+ * explorer-btn--<color>`. Default size is medium (0.5rem 1rem). */
+.explorer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.explorer-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.explorer-btn:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 2px;
+}
+
+/* Size modifiers (default is medium). */
+.explorer-btn--cta { padding: 0.45rem 0.95rem; }
+.explorer-btn--sm  { padding: 0.35rem 0.85rem; font-size: 0.88rem; }
+.explorer-btn--xs  { padding: 0.4rem 0.75rem; }
+
+/* Color modifiers. */
+.explorer-btn--primary {
+  background: #1f7a3a;
+  border-color: #1f7a3a;
+  color: #fff;
+}
+.explorer-btn--primary:hover:not(:disabled) {
+  background: #186029;
+  border-color: #186029;
+}
+
+.explorer-btn--ghost {
+  color: #1f7a3a;
+  border-color: #1f7a3a;
+}
+.explorer-btn--ghost:hover:not(:disabled) {
+  background: rgba(31, 122, 58, 0.08);
+}
+
+.explorer-btn--neutral {
+  background: #f0f0f0;
+  color: #324050;
+  border-color: #d0d6df;
+}
+.explorer-btn--neutral:hover:not(:disabled) {
+  background: #e4e9f1;
+}
+
+.explorer-btn--neutral-ghost {
+  color: #324050;
+  border-color: #d0d6df;
+}
+.explorer-btn--neutral-ghost:hover:not(:disabled) {
+  background: #f1f4f8;
+}
+
+.explorer-btn--danger {
+  background: #b03434;
+  color: #fff;
+}
+.explorer-btn--danger:hover:not(:disabled) {
+  background: #8a1c1c;
+}
+
+.explorer-btn--danger-ghost {
+  background: #fff;
+  color: #b03434;
+  border-color: #f3b9b9;
+}
+.explorer-btn--danger-ghost:hover:not(:disabled) {
+  background: #fde2e2;
+}
+
+/* ===== Move row delete button (Edit mode only) ===== */
+.explorer-move-delete {
+  margin-left: auto;
+  background: transparent;
+  color: #b03434;
+  border: 1px solid #f3b9b9;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.05rem 0.45rem 0.15rem;
+  font-weight: 700;
+}
+
+.explorer-move-delete:hover {
+  background: #fde2e2;
+  color: #8a1c1c;
+}
+
+.explorer-move-delete:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 1px;
+}
+
+/* ===== "No moves yet" hint in edit mode ===== */
+.explorer-moves-empty-hint {
+  margin-top: 0.35rem;
+  color: #555;
+  font-size: 0.85rem;
+  font-style: normal;
+}
+
+/* ===== Inline edit bar (Edit mode, fills the toolbar's column width
+   so it sits as a banner directly above the chessboard). Always
+   visible while in Edit mode — even at zero pending changes — so the
+   Save/Discard controls do not pop in and out as the user makes edits.
+   Counts on the left, actions on the right via `space-between`. When
+   the row can't fit both, it wraps to two rows (counts on top,
+   actions below); `margin-left: auto` on the actions keeps them
+   right-anchored within their row in both layouts. */
+.explorer-save-bar {
+  flex: 1 1 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.35rem 0.65rem;
+  background: #f0f6f1;
+  color: #1f3a25;
+  border: 1px solid #c5dbcc;
+  border-radius: 6px;
+}
+
+.explorer-save-bar-counts {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.explorer-save-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.explorer-save-error {
+  position: relative;
+}
+
+/* ===== Modal dialogs (Discard / Conflict) ===== */
+.explorer-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 32, 0.55);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.explorer-modal {
+  background: #fff;
+  border-radius: 10px;
+  max-width: 440px;
+  width: 100%;
+  padding: 1.25rem 1.4rem;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+}
+
+.explorer-modal h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1b2733;
+}
+
+.explorer-modal p {
+  margin: 0.4rem 0;
+  color: #324050;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.explorer-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* ===== Review view ===== */
+.explorer-review {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.explorer-review-header {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.6rem 0.5rem;
+  margin: 0 -0.5rem 0.4rem;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.explorer-review-counts {
+  flex: 1 1 auto;
+  font-size: 0.95rem;
+  color: #324050;
+}
+
+.explorer-review-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.explorer-review-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #6e7783;
+  font-style: italic;
+}
+
+.explorer-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.explorer-review-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2b3038;
+  margin: 0.4rem 0 0.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.explorer-review-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.explorer-review-chain {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #fff;
+}
+
+.explorer-review-chain-added {
+  border-left: 4px solid #1f7a3a;
+}
+
+.explorer-review-chain-removed {
+  border-left: 4px solid #b03434;
+}
+
+.explorer-review-chain-head {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.explorer-review-mini-board {
+  width: 168px;
+  flex-shrink: 0;
+}
+
+.explorer-review-chain-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.explorer-review-chain-orientation {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6e7783;
+}
+
+.explorer-review-chain-pgn {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1b2733;
+  word-break: break-word;
+}
+
+.explorer-review-chain-fen {
+  font-size: 0.8rem;
+  color: #6e7783;
+}
+
+.explorer-review-chain-fen code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  background: #f1f4f8;
+  padding: 1px 4px;
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.explorer-review-chain-hint {
+  font-size: 0.85rem;
+  color: #4a505a;
+  background: #f1f4f8;
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.explorer-review-chain-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  word-break: break-word;
+}
+
+.explorer-review-chain-expand {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid #b0d4ee;
+  color: rgb(0, 130, 210);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.explorer-review-chain-expand:hover {
+  background: #e3edf8;
+}
+
+.explorer-review-chain-tail {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px dashed #eef0f3;
+  padding-top: 0.55rem;
+}
+
+.explorer-review-edit {
+  border: 1px solid #eef0f3;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #fff;
+  border-left: 4px solid #d9a82a;
+}
+
+.explorer-review-edit-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+}
+
+.explorer-review-edit-boards {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.explorer-review-edit-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 168px;
+  min-width: 0;
+}
+
+.explorer-review-edit-side-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6e7783;
+}
+
+/* Tighten the mini board on review rows so two side-by-side fits comfortably. */
+.explorer-review-mini-board .chessboard-container {
+  max-width: 168px !important;
+}
+
+/* ===== Mobile review reflow ===== */
+@media (max-width: 800px) {
+  .explorer-review-chain-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .explorer-review-mini-board {
+    width: 100%;
+  }
+  .explorer-review-mini-board .chessboard-container {
+    max-width: 320px !important;
+    margin: 0 auto;
+  }
+  .explorer-review-edit-boards {
+    flex-direction: column;
+  }
+  .explorer-review-edit-side {
+    width: 100%;
+  }
+  .explorer-review-header {
+    padding: 0.5rem 0.3rem;
+  }
 }

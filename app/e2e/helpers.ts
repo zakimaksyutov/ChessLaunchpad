@@ -1,11 +1,13 @@
 import { type Page } from '@playwright/test';
+import { decodePersistedBlob } from '../src/utils/BlobCodec';
+import { extractFsrsCardsFromRepertoires } from '../src/utils/RepertoiresSerde';
+import { type RepertoireData } from '../src/models/RepertoireData';
 
 const API_BASE = 'https://chess-prod-function.azurewebsites.net/api/user';
 
 export interface VariantDef {
   pgn: string;
   orientation: 'white' | 'black';
-  classifications?: string[];
 }
 
 /**
@@ -20,16 +22,7 @@ export function buildRepertoireData(variants: VariantDef[]) {
     data: variants.map(v => ({
       pgn: v.pgn,
       orientation: v.orientation,
-      classifications: v.classifications ?? [],
-      numberOfTimesPlayed: 0,
-      // V1 stubs — backend requires these as numbers
-      errorEMA: 0,
-      lastSucceededEpoch: 0,
-      successEMA: 0,
     })),
-    currentEpoch: 0,
-    lastPlayedDate: new Date().toISOString(),
-    dailyPlayCount: 0,
     fsrsCards: {},
     settings: {
       contextDepth: 2,
@@ -41,6 +34,21 @@ export function buildRepertoireData(variants: VariantDef[]) {
 
 /**
  * Captured PUT requests made by the app to save repertoire data.
+ *
+ * Since switching the wire format to v3 (positions as a deterministic-BFS
+ * array with `"<SAN>:<idx>"` move keys, packed FSRS cards), the raw PUT
+ * body no longer has a top-level `fsrsCards` flat map and its `positions`
+ * are arrays. To keep the existing test assertion style
+ * (`saved.fsrsCards[<fen>::<san>]`, `saved.repertoires[0].positions[<fen>]`)
+ * working, the helper exposes a **decoded** view as `body`:
+ *
+ *   - `body.repertoires` — full-FEN keys, object-shaped cards (in-memory shape)
+ *   - `body.fsrsCards`   — flat map hydrated from the position dict
+ *
+ * Plus all the top-level fields (`settings`, `activity`, `games`).
+ *
+ * The raw wire body is kept internally and used to feed subsequent GETs so
+ * the app's decode path is exercised on every read.
  */
 export interface CapturedSave {
   body: Record<string, unknown>;
@@ -62,6 +70,9 @@ export async function setupMockEnvironment(
   username = 'testuser',
 ) {
   const saves: CapturedSave[] = [];
+  // Raw wire bodies parallel to `saves`, used to feed subsequent GETs verbatim
+  // so the app's v3 decode path is exercised on every read.
+  const rawWireBodies: Record<string, unknown>[] = [];
 
   // Bypass auth check (ProtectedRoute reads localStorage)
   await page.addInitScript(
@@ -75,8 +86,11 @@ export async function setupMockEnvironment(
   // Mock API calls
   await page.route(`${API_BASE}/${username}/variants`, async (route, request) => {
     if (request.method() === 'GET') {
-      // Return the most recently saved data if available, otherwise the fixture.
-      const latestBody = saves.length > 0 ? saves[saves.length - 1].body : fixture;
+      // Return the most recently saved RAW wire body (v3) if available,
+      // otherwise the fixture (legacy v1 shape — passes through decode).
+      const latestBody = rawWireBodies.length > 0
+        ? rawWireBodies[rawWireBodies.length - 1]
+        : fixture;
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -86,8 +100,11 @@ export async function setupMockEnvironment(
     }
     // PUT (save) — capture the body, then accept
     if (request.method() === 'PUT') {
-      const body = request.postDataJSON();
-      if (body) saves.push({ body });
+      const wireBody = request.postDataJSON();
+      if (wireBody) {
+        rawWireBodies.push(wireBody);
+        saves.push({ body: decodeWireForTests(wireBody) });
+      }
       return route.fulfill({
         status: 200,
         headers: { ETag: `"test-etag-${saves.length + 1}"` },
@@ -97,6 +114,22 @@ export async function setupMockEnvironment(
   });
 
   return { saves };
+}
+
+/**
+ * Decode a captured v3 wire body into the in-memory shape that tests assert
+ * against, including a hydrated `fsrsCards` flat map. v1 (no `v` field)
+ * passes through unchanged.
+ */
+function decodeWireForTests(wireBody: Record<string, unknown>): Record<string, unknown> {
+  const decoded = decodePersistedBlob(wireBody) as RepertoireData;
+  // For v1 pass-through, `decoded` may not have `repertoires` (legacy `data`
+  // shape — no fsrsCards hydration needed; the test will see the raw shape).
+  if (!decoded.repertoires) {
+    return decoded as unknown as Record<string, unknown>;
+  }
+  const fsrsCards = extractFsrsCardsFromRepertoires(decoded.repertoires);
+  return { ...decoded, fsrsCards } as unknown as Record<string, unknown>;
 }
 
 /**

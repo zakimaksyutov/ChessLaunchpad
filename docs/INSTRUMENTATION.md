@@ -3,16 +3,8 @@
 All logs are emitted to `console.log` with prefix `[Perf]` followed by a JSON object. Logging is **disabled by default**. Activate it by adding `?measurePerf=true` to the URL hash:
 
 ```
-http://localhost:4274/ChessLaunchpad/#/repertoire?measurePerf=true
 http://localhost:4274/ChessLaunchpad/#/games?measurePerf=true
 ```
-
-## Repertoire Page Steps
-
-| Step | File | Fields | Description |
-|------|------|--------|-------------|
-| `explorer-evals` | `pages/RepertoirePage.tsx` | `totalMs` | Load explorer eval data from static JSON |
-| `eval-drops` | `pages/RepertoirePage.tsx` | `totalMs`, `variants`, `withDrops` | Compute eval drops per variant |
 
 ## Games Page Steps
 
@@ -48,8 +40,9 @@ yarn preview          # serves on http://localhost:4274/ChessLaunchpad/
 ## Example Output
 
 ```
-[Perf] {"step":"explorer-evals","totalMs":428}
-[Perf] {"step":"eval-drops","totalMs":218,"variants":132,"withDrops":132}
+[Perf] {"step":"games-loaded","totalMs":312,"games":428,"withCachedAnnotation":425}
+[Perf] {"step":"fenSets-ready","totalMs":540,"whiteFens":1389,"blackFens":1024}
+[Perf] {"step":"annotations-ready","totalMs":612,"computeMs":18,"fromCache":425,"computed":3,"total":428}
 ```
 
 # Games Page — Tracing a Game

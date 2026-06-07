@@ -36,6 +36,33 @@
   text-decoration: underline;
 }
 
+/* While Explorer is in Edit mode, the entire header is visually
+   disabled: title link, all nav links, and the username dropdown.
+   The user must Save or Discard from the Explorer page first. Click
+   handlers also no-op to keep keyboard / assistive-tech activations
+   consistent with the dimmed visual. */
+.header-nav-link-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.header-nav-link-disabled:hover {
+  text-decoration: none;
+}
+
+.header-title-link-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.username-text-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .header-right {
   display: flex;
   align-items: center;

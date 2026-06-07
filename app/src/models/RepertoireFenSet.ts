@@ -1,41 +1,25 @@
-import { Chess } from 'chess.js';
-import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
-import { OpeningVariantData } from './RepertoireData';
+import { RepertoireEntry } from './Repertoires';
 
 /**
- * Builds two Set<string> of normalized FENs from repertoire data:
- * one for white variants, one for black variants.
+ * Builds two Set<string> of normalized FENs from the in-memory `repertoires`
+ * shape: one for the white orientation, one for the black orientation.
  *
- * Each variant's PGN is replayed with chess.js and every resulting
- * position is normalized (halfmove=0, fullmove=1) so transpositions
- * match.
+ * The position keys in each repertoire's dict are already normalized FENs
+ * (halfmove=0, fullmove=1) — no extra walking required.
  */
 export interface RepertoireFenSets {
     whiteFens: Set<string>;
     blackFens: Set<string>;
 }
 
-export function buildRepertoireFenSets(variants: OpeningVariantData[]): RepertoireFenSets {
+export function buildRepertoireFenSets(repertoires: RepertoireEntry[] | undefined): RepertoireFenSets {
     const whiteFens = new Set<string>();
     const blackFens = new Set<string>();
 
-    for (const variant of variants) {
-        const chess = new Chess();
-        try {
-            chess.loadPgn(variant.pgn);
-        } catch {
-            continue;
-        }
-        chess.deleteComments();
-
-        const moves = chess.history({ verbose: true });
-        const temp = new Chess();
-        const target = variant.orientation === 'white' ? whiteFens : blackFens;
-        target.add(normalizeFenResetHalfmoveClock(temp.fen()));
-
-        for (const move of moves) {
-            temp.move(move);
-            target.add(normalizeFenResetHalfmoveClock(temp.fen()));
+    for (const rep of repertoires ?? []) {
+        const target = rep.orientation === 'white' ? whiteFens : blackFens;
+        for (const fen of Object.keys(rep.positions)) {
+            target.add(fen);
         }
     }
 

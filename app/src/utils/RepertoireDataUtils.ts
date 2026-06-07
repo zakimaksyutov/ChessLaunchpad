@@ -1,53 +1,58 @@
-import { OpeningVariant } from "../models/OpeningVariant";
-import { RepertoireData, OpeningVariantData, AppSettings } from "../models/RepertoireData";
-import { FSRSCardData } from "../models/FSRSCardData";
-import { RepertoireGraph } from "../services/RepertoireGraph";
+import { RepertoireData, AppSettings } from "../models/RepertoireData";
 import { FSRSService } from "../services/FSRSService";
 import { TrainingEngine } from "../services/TrainingEngine";
 import { getLinkedAccounts, setLinkedAccounts } from "../services/LinkedAccountsService";
 import { ensureActivity } from "../services/ActivityService";
+import {
+    bootstrapRepertoiresFromLegacy,
+    extractFsrsCardsFromRepertoires,
+    projectFsrsCardsIntoRepertoires,
+    pruneEmptyAnnotations,
+} from "./RepertoiresSerde";
+import { RepertoireGraph } from "../services/RepertoireGraph";
 
 export class RepertoireDataUtils {
 
     public static normalize(repertoireData: RepertoireData): void {
-        // Handle data from backend, normalize/provide defaults if needed.
-        if (!repertoireData.data) {
-            repertoireData.data = [];
-        }
-        // V1 stub — always reset to 0
-        repertoireData.currentEpoch = 0;
-        if (!repertoireData.lastPlayedDate) {
-            repertoireData.lastPlayedDate = new Date(0);
-        } else {
-            // If it was sent as a string, re-hydrate into a real Date
-            repertoireData.lastPlayedDate = new Date(repertoireData.lastPlayedDate);
-        }
-        // V1 stub — always reset to 0
-        repertoireData.dailyPlayCount = 0;
-
-        // Normalize the data — stub V1 fields
-        for (const variant of repertoireData.data) {
-            variant.errorEMA = 0;
-            variant.lastSucceededEpoch = 0;
-            variant.successEMA = 0;
-            if (!variant.numberOfTimesPlayed) {
-                variant.numberOfTimesPlayed = 0;
-            }
+        // ── Position-centric migration ─────────────────────────────────
+        //
+        // Source-of-truth precedence:
+        //   1. If `repertoires` is present, use it as-is.
+        //   2. Else if legacy `data` (variants) is present, bootstrap.
+        //   3. Else, seed with two empty entries (White, Black).
+        //
+        // After this block, `repertoires` is the in-memory authoritative
+        // shape; `data` and (top-level) `fsrsCards` are stale and treated
+        // as read-only. `prepareDataForSave` re-projects in-memory state
+        // into `repertoires` on save and explicitly omits the legacy
+        // fields from the persisted blob.
+        if (!repertoireData.repertoires) {
+            const legacyVariants = repertoireData.data ?? [];
+            const legacyCards = repertoireData.fsrsCards ?? {};
+            repertoireData.repertoires = bootstrapRepertoiresFromLegacy(legacyVariants, legacyCards);
         }
 
-        // Ensure fsrsCards is always present.
-        if (!repertoireData.fsrsCards) {
-            repertoireData.fsrsCards = {};
+        // Build the in-memory FSRS flat map from the position dict. This is
+        // the authoritative store FSRSService mutates during training.
+        const cardsFromDict = extractFsrsCardsFromRepertoires(repertoireData.repertoires);
+        repertoireData.fsrsCards = cardsFromDict;
+
+        // Ensure cards exist for every user-turn edge in the graph so freshly
+        // bootstrapped repertoires (or repertoires with new positions added
+        // by import) have a New-state card for each. This replaces the
+        // legacy `reconcileCards` pass — the dict is by-construction
+        // consistent with the graph (no orphan cards to delete), but new
+        // edges added without a card still need one.
+        const graph = RepertoireGraph.fromRepertoires(repertoireData.repertoires);
+        const fsrs = new FSRSService(repertoireData.fsrsCards);
+        for (const key of graph.getCardKeys()) {
+            fsrs.ensureCard(key);
         }
 
-        // Reconcile FSRS cards with current repertoire positions
-        RepertoireDataUtils.reconcileCards(repertoireData);
-
-        // Check whether we started a new day — update lastPlayedDate.
-        const currentDate = RepertoireDataUtils.getCurrentDateOnly();
-        if (currentDate > repertoireData.lastPlayedDate) {
-            repertoireData.lastPlayedDate = currentDate;
-        }
+        // Legacy `data` is no longer the source of truth — strip it so any
+        // consumer that still touches it gets an immediate signal. The
+        // bootstrap above already pulled everything we need out of it.
+        delete repertoireData.data;
 
         // Initialize activity structure (does not create a today entry — that
         // only happens when actual activity is recorded, to avoid blank rows
@@ -80,96 +85,84 @@ export class RepertoireDataUtils {
         delete repertoireData.trainingSettings;
     }
 
-    public static convertToVariantData(repertoireData: RepertoireData): OpeningVariant[] {
-        const variants = repertoireData.data.map(data => {
-            const variant = new OpeningVariant(data.pgn, data.orientation, data.classifications);
-            variant.numberOfTimesPlayed = data.numberOfTimesPlayed;
-            return variant;
-        });
-
-        variants.sort((a, b) => a.pgn.localeCompare(b.pgn))
-
-        return variants;
-    }
-
     /**
      * Build current AppSettings from in-memory state.
-     * Merges into existing settings to preserve unknown fields.
+     *
+     * Behavior: if a field exists in `existing`, it wins; otherwise we fall
+     * back to the live module-var state (TrainingEngine / FSRSService /
+     * LinkedAccountsService).
+     *
+     * This precedence matters for **two** callers:
+     *   - SettingsPage.handleSave writes draft values into `current.settings`
+     *     BEFORE calling prepareDataForSave; those drafts must survive even
+     *     though the module vars are still on the pre-save state (they're
+     *     only updated after the PUT succeeds, so the save is reversible).
+     *   - SettingsPage import path passes the imported file's settings
+     *     verbatim; those should likewise be preserved over whatever the
+     *     pre-import session had loaded.
+     *
+     * For TrainingPage / GameIngestService, `existing` comes from a
+     * just-normalized blob whose values already match the module vars (since
+     * normalize() hydrates the vars from `existing.settings`), so the
+     * preference rule produces the same result either way.
      */
     public static buildCurrentSettings(existing?: AppSettings | null): AppSettings {
+        const e = existing ?? {};
         return {
-            ...(existing ?? {}),
-            contextDepth: TrainingEngine.getContextDepth(),
-            retention: FSRSService.getRetention(),
-            maxInterval: FSRSService.getMaxInterval(),
-            linkedAccounts: getLinkedAccounts(),
-        };
-    }
-
-    public static convertToRepertoireData(
-        variants: OpeningVariant[],
-        fsrsCards?: Record<string, FSRSCardData>,
-        existingSettings?: AppSettings | null,
-        existingData?: RepertoireData | null,
-    ): RepertoireData {
-        const data: OpeningVariantData[] = variants.map(variant => ({
-            pgn: variant.pgn,
-            orientation: variant.orientation,
-            classifications: variant.classifications,
-            numberOfTimesPlayed: variant.numberOfTimesPlayed,
-            // V1 stubs — backend requires these as numbers
-            errorEMA: 0,
-            lastSucceededEpoch: 0,
-            successEMA: 0,
-        }));
-
-        return {
-            data,
-            currentEpoch: 0, // V1 stub
-            lastPlayedDate: RepertoireDataUtils.getCurrentDateOnly(),
-            // Backward compat: derive from activity for backend (always 0)
-            dailyPlayCount: 0,
-            fsrsCards: fsrsCards ?? {},
-            settings: RepertoireDataUtils.buildCurrentSettings(existingSettings),
-            activity: existingData?.activity,
-            games: existingData?.games,
+            ...e,
+            contextDepth: typeof e.contextDepth === 'number'
+                ? e.contextDepth
+                : TrainingEngine.getContextDepth(),
+            retention: typeof e.retention === 'number'
+                ? e.retention
+                : FSRSService.getRetention(),
+            maxInterval: typeof e.maxInterval === 'number'
+                ? e.maxInterval
+                : FSRSService.getMaxInterval(),
+            linkedAccounts: Array.isArray(e.linkedAccounts)
+                ? e.linkedAccounts
+                : getLinkedAccounts(),
         };
     }
 
     /**
-     * Reconcile fsrsCards with the repertoire graph.
-     * - New positions (in graph, no card) → create card with state=New
-     * - Removed positions (card exists, not in graph) → delete card
-     * - Existing positions → untouched
+     * Build the object to PUT to the backend from the in-memory state.
+     *
+     * The output uses the position-centric `repertoires` shape exclusively —
+     * `data` and `fsrsCards` are NOT included. Consumers (TrainingPage,
+     * GameIngestService, SettingsPage, importer) mutate `data.fsrsCards`
+     * (the flat in-memory map) and the position dict in `data.repertoires`;
+     * this function syncs the card map back into the dict before serialization.
+     *
+     * Defensively bootstraps from legacy fields if `repertoires` is missing
+     * — this protects callers that pass a parsed-but-not-normalized blob
+     * (e.g. the importer for legacy-shape files) from silently emitting an
+     * empty repertoire and destroying the user's data.
      */
-    public static reconcileCards(repertoireData: RepertoireData): void {
-        const cards = repertoireData.fsrsCards ?? {};
-        repertoireData.fsrsCards = cards;
-
-        const pgns = repertoireData.data.map(v => ({
-            pgn: v.pgn,
-            orientation: v.orientation,
-        }));
-        const graph = new RepertoireGraph(pgns);
-        const graphKeys = new Set(graph.getCardKeys());
-        const fsrsService = new FSRSService(cards);
-
-        // Create new cards for positions in graph but not in cards
-        for (const key of graphKeys) {
-            fsrsService.ensureCard(key);
+    public static prepareDataForSave(existingData: RepertoireData): RepertoireData {
+        // Ensure both repertoires AND the flat card map are populated. If
+        // the caller hands us a parsed blob in the new shape but never ran
+        // through normalize(), `fsrsCards` will be missing — extract it from
+        // the position dict so the projection below doesn't wipe the cards.
+        let repertoires = existingData.repertoires;
+        let fsrsCards = existingData.fsrsCards;
+        if (!repertoires) {
+            repertoires = bootstrapRepertoiresFromLegacy(
+                existingData.data ?? [],
+                existingData.fsrsCards ?? {},
+            );
         }
-
-        // Delete cards for positions not in graph
-        for (const key of fsrsService.getAllCardKeys()) {
-            if (!graphKeys.has(key)) {
-                fsrsService.deleteCard(key);
-            }
+        if (!fsrsCards) {
+            fsrsCards = extractFsrsCardsFromRepertoires(repertoires);
         }
+        projectFsrsCardsIntoRepertoires(repertoires, fsrsCards);
+        pruneEmptyAnnotations(repertoires);
+        return {
+            repertoires,
+            settings: RepertoireDataUtils.buildCurrentSettings(existingData.settings),
+            activity: existingData.activity,
+            games: existingData.games,
+        };
     }
 
-    public static getCurrentDateOnly(): Date {
-        const currentDate = new Date();
-        currentDate.setHours(0, 0, 0, 0);
-        return new Date(currentDate.getTime());
-    }
 }
