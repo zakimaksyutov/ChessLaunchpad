@@ -1,6 +1,4 @@
 import { RepertoireData, AppSettings } from "../models/RepertoireData";
-import { FSRSCardData } from "../models/FSRSCardData";
-import { RepertoireEntry, createEmptyRepertoires } from "../models/Repertoires";
 import { FSRSService } from "../services/FSRSService";
 import { TrainingEngine } from "../services/TrainingEngine";
 import { getLinkedAccounts, setLinkedAccounts } from "../services/LinkedAccountsService";
@@ -167,11 +165,4 @@ export class RepertoireDataUtils {
         };
     }
 
-    /** Returns the in-memory repertoires (initializing both empty if absent). */
-    public static getRepertoires(data: RepertoireData): RepertoireEntry[] {
-        if (!data.repertoires) {
-            data.repertoires = createEmptyRepertoires();
-        }
-        return data.repertoires;
-    }
 }

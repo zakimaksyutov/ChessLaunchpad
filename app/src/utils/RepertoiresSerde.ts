@@ -3,7 +3,6 @@ import { Annotation } from '../models/Annotation';
 import { FSRSCardData } from '../models/FSRSCardData';
 import {
     RepertoireEntry,
-    PositionEntry,
     createEmptyRepertoires,
     findRepertoire,
 } from '../models/Repertoires';

@@ -176,7 +176,7 @@ describe('PendingEditModel.deleteEdge cascade', () => {
 
         // Sanity: position after 1.e4 c5 2.Nf3 Nc6 exists in base.
         const transFen = fenAfter(['e4', 'c5', 'Nf3', 'Nc6']);
-        expect(m.isReachable(transFen, 'white')).toBe(true);
+        expect(m.getCurrentRepertoire('white').positions[transFen]).toBeDefined();
 
         // Delete 1.e4 — the after-e4 chain is pruned; the transposition-
         // protected deeper position survives via 1.Nf3 c5 2.e4 Nc6.
@@ -310,7 +310,7 @@ describe('PendingEditModel.setAnnotations and annotation diff', () => {
         const m = new PendingEditModel(baseReps, extractFsrsCardsFromRepertoires(baseReps));
 
         // Sanity: the annotated position is reachable.
-        expect(m.isReachable(afterE4c5, 'white')).toBe(true);
+        expect(m.getCurrentRepertoire('white').positions[afterE4c5]).toBeDefined();
 
         // Delete the root edge → cascade prunes the annotated position.
         m.deleteEdge(startFen, 'e4', 'white');
@@ -507,24 +507,5 @@ describe('PendingEditModel snapshot immutability', () => {
         // Base is unchanged.
         const baseAfter = findRepertoire(m.baseRepertoires, 'white')!;
         expect(Object.keys(baseAfter.positions[startFen].moves)).toEqual(['e4']);
-    });
-});
-
-// ── Reset / Discard ───────────────────────────────────────────────────
-
-describe('PendingEditModel.resetToBase', () => {
-    it('restores the working copy to match the snapshot', () => {
-        const { repertoires, fsrsCards } = buildRepertoires([
-            { pgn: '1. e4', orientation: 'white' },
-        ]);
-        const m = new PendingEditModel(repertoires, fsrsCards);
-        m.deleteEdge(startFen, 'e4', 'white');
-        m.addEdge(startFen, 'd4', 'white');
-        expect(m.isEmpty()).toBe(false);
-        m.resetToBase();
-        expect(m.isEmpty()).toBe(true);
-        const rep = m.getCurrentRepertoire('white');
-        expect(Object.keys(rep.positions[startFen].moves)).toEqual(['e4']);
-        expect(Object.keys(m.newCardsByKey)).toHaveLength(0);
     });
 });

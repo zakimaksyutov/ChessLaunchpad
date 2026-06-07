@@ -2,7 +2,6 @@ import { Chess } from 'chess.js';
 import { createEmptyCard } from 'ts-fsrs';
 import {
     RepertoireEntry,
-    PositionEntry,
     MoveEntry,
     createEmptyRepertoires,
     findRepertoire,
@@ -29,16 +28,6 @@ export interface EditedEdge {
     from: string;
     to: string;
     san: string;
-    /**
-     * 1-based ply depth along the canonical path used for the row label.
-     * Computed by the chain decomposer; not used by the model itself.
-     */
-    plyDepth?: number;
-    /**
-     * Whether this edge is a user-turn edge under `orientation` (i.e. produces
-     * an FSRS card on add and frees one on remove).
-     */
-    isUserTurn: boolean;
 }
 
 /** A chain of co-linear edits (added or cascade-removed). */
@@ -361,20 +350,6 @@ export class PendingEditModel {
         return rep;
     }
 
-    /** Working copy's annotations for (fen, orientation). Empty array if none. */
-    getAnnotations(fen: string, orientation: Orientation): Annotation[] {
-        const rep = this.getCurrentRepertoire(orientation);
-        return rep.positions[fen]?.annotations ?? [];
-    }
-
-    /** True iff the position is reachable from root in the working copy. */
-    isReachable(fen: string, orientation: Orientation): boolean {
-        if (fen === this.root) return true;
-        const rep = this.getCurrentRepertoire(orientation);
-        const reachable = reachableFensFromRoot(rep, this.root);
-        return reachable.has(fen);
-    }
-
     /**
      * True iff the model has no pending changes vs. its snapshot. Used to
      * gate Save/Discard and the beforeunload warning. Uses the cheap
@@ -682,27 +657,6 @@ export class PendingEditModel {
         };
     }
 
-    // ── Reset / hard-discard ─────────────────────────────────────────
-
-    /**
-     * Replace the working copy with a fresh clone of the snapshot and clear
-     * any minted cards. Used by Discard so the next Edit session starts from
-     * the saved state.
-     */
-    resetToBase(): void {
-        // Wipe positions on the working repertoire and re-clone from the base.
-        for (const rep of this.currentRepertoires) {
-            for (const k of Object.keys(rep.positions)) delete rep.positions[k];
-        }
-        const baseClone = cloneRepertoires(this.baseRepertoires);
-        for (const rep of this.currentRepertoires) {
-            const src = findRepertoire(baseClone, rep.orientation);
-            if (src) Object.assign(rep.positions, src.positions);
-        }
-        for (const k of Object.keys(this.newCardsByKey)) {
-            delete this.newCardsByKey[k];
-        }
-    }
 }
 
 // ── Edge / chain decomposition ────────────────────────────────────────
@@ -828,23 +782,17 @@ function decomposeChains(
         // Chain PGN: parent path + each SAN in the chain.
         const chainSans = [...parentSans, ...chainEdges.map(e => e.san)];
 
-        // Plydepth assignment (1-based from start).
-        const headPlyDepth = parentSans.length + 1;
         const editedHead: EditedEdge = {
             orientation,
             from: head.from,
             to: head.to,
             san: head.san,
-            isUserTurn: head.isUserTurn,
-            plyDepth: headPlyDepth,
         };
-        const editedTail: EditedEdge[] = tail.map((e, i) => ({
+        const editedTail: EditedEdge[] = tail.map(e => ({
             orientation,
             from: e.from,
             to: e.to,
             san: e.san,
-            isUserTurn: e.isUserTurn,
-            plyDepth: headPlyDepth + 1 + i,
         }));
 
         // Tail hint:
@@ -910,8 +858,6 @@ function decomposeChains(
 
 /** Count all user-turn edges reachable from `fen` (excluding `fen` itself). */
 function countDescendantUserTurnEdges(rep: RepertoireEntry, fen: string): number {
-    const root = startFen();
-    void root; // (not needed; keep API symmetric)
     let count = 0;
     const visited = new Set<string>();
     const stack: string[] = [fen];
@@ -933,20 +879,3 @@ function countDescendantUserTurnEdges(rep: RepertoireEntry, fen: string): number
     return count;
 }
 
-// ── Re-exports for tests ──────────────────────────────────────────────
-
-export const __test = {
-    cloneRepertoires,
-    canonicalPath,
-    annotationsKey,
-    pathToPgn,
-    fenAfter,
-};
-
-// Avoid unused-export typecheck noise: a slim wrapper consumers might use.
-export function makeEmptyModel(): PendingEditModel {
-    return new PendingEditModel(createEmptyRepertoires(), {});
-}
-
-// Keep helper interfaces exported for the page UI.
-export type { PositionEntry, MoveEntry };
