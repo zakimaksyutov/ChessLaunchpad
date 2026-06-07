@@ -30,7 +30,7 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
             <div className="explorer-review-header">
                 <button
                     type="button"
-                    className="explorer-review-back"
+                    className="explorer-btn explorer-btn--xs explorer-btn--neutral-ghost"
                     onClick={onCancel}
                     aria-label="Cancel review and return to Edit"
                 >
@@ -47,7 +47,7 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                 <div className="explorer-review-actions">
                     <button
                         type="button"
-                        className="explorer-review-discard"
+                        className="explorer-btn explorer-btn--danger-ghost"
                         onClick={onDiscard}
                         disabled={saveInFlight || empty}
                     >
@@ -55,7 +55,7 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                     </button>
                     <button
                         type="button"
-                        className="explorer-review-save"
+                        className="explorer-btn explorer-btn--primary"
                         onClick={() => void onSave()}
                         disabled={saveInFlight || empty}
                     >

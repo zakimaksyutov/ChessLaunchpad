@@ -503,26 +503,93 @@
   .explorer-right-col .explorer-moves            { order: 2; }
 }
 
-/* ===== Edit-mode entry CTA (Read mode, right side of toolbar) ===== */
-.explorer-edit-cta {
-  background: #1f7a3a;
-  color: #fff;
-  border: 1px solid #1f7a3a;
+/* ===== Button system =====
+ * Single base + modifiers used by every Explorer button (Edit CTA, save-bar
+ * actions, modal actions, Review-view actions). Replaces ~7 bespoke
+ * `.explorer-*-cta`/`-save`/`-discard`/`-cancel`/`-confirm` definitions
+ * so the green/red/neutral palette and disabled/focus behaviour cannot
+ * drift between sites. Compose: `explorer-btn explorer-btn--<size>?
+ * explorer-btn--<color>`. Default size is medium (0.5rem 1rem). */
+.explorer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
-  padding: 0.45rem 0.95rem;
+  padding: 0.5rem 1rem;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.9rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
 }
 
-.explorer-edit-cta:hover {
+.explorer-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.explorer-btn:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 2px;
+}
+
+/* Size modifiers (default is medium). */
+.explorer-btn--cta { padding: 0.45rem 0.95rem; }
+.explorer-btn--sm  { padding: 0.35rem 0.85rem; font-size: 0.88rem; }
+.explorer-btn--xs  { padding: 0.4rem 0.75rem; }
+
+/* Color modifiers. */
+.explorer-btn--primary {
+  background: #1f7a3a;
+  border-color: #1f7a3a;
+  color: #fff;
+}
+.explorer-btn--primary:hover:not(:disabled) {
   background: #186029;
   border-color: #186029;
 }
 
-.explorer-edit-cta:focus-visible {
-  outline: 2px solid rgb(0, 130, 210);
-  outline-offset: 2px;
+.explorer-btn--ghost {
+  color: #1f7a3a;
+  border-color: #1f7a3a;
+}
+.explorer-btn--ghost:hover:not(:disabled) {
+  background: rgba(31, 122, 58, 0.08);
+}
+
+.explorer-btn--neutral {
+  background: #f0f0f0;
+  color: #324050;
+  border-color: #d0d6df;
+}
+.explorer-btn--neutral:hover:not(:disabled) {
+  background: #e4e9f1;
+}
+
+.explorer-btn--neutral-ghost {
+  color: #324050;
+  border-color: #d0d6df;
+}
+.explorer-btn--neutral-ghost:hover:not(:disabled) {
+  background: #f1f4f8;
+}
+
+.explorer-btn--danger {
+  background: #b03434;
+  color: #fff;
+}
+.explorer-btn--danger:hover:not(:disabled) {
+  background: #8a1c1c;
+}
+
+.explorer-btn--danger-ghost {
+  background: #fff;
+  color: #b03434;
+  border-color: #f3b9b9;
+}
+.explorer-btn--danger-ghost:hover:not(:disabled) {
+  background: #fde2e2;
 }
 
 /* ===== Move row delete button (Edit mode only) ===== */
@@ -591,39 +658,6 @@
   margin-left: auto;
 }
 
-.explorer-save-bar-review,
-.explorer-save-bar-discard {
-  background: #1f7a3a;
-  color: #fff;
-  border: 1px solid #1f7a3a;
-  border-radius: 6px;
-  padding: 0.35rem 0.85rem;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.88rem;
-}
-
-.explorer-save-bar-review:hover:not(:disabled) {
-  background: #186029;
-  border-color: #186029;
-}
-
-.explorer-save-bar-discard {
-  background: transparent;
-  color: #1f7a3a;
-  border: 1px solid #1f7a3a;
-}
-
-.explorer-save-bar-discard:hover:not(:disabled) {
-  background: rgba(31, 122, 58, 0.08);
-}
-
-.explorer-save-bar-review:disabled,
-.explorer-save-bar-discard:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .explorer-save-error {
   position: relative;
 }
@@ -670,35 +704,6 @@
   margin-top: 1rem;
 }
 
-.explorer-modal-cancel,
-.explorer-modal-confirm {
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  border: 1px solid transparent;
-}
-
-.explorer-modal-cancel {
-  background: #f0f0f0;
-  color: #324050;
-  border-color: #d0d6df;
-}
-
-.explorer-modal-cancel:hover {
-  background: #e4e9f1;
-}
-
-.explorer-modal-confirm {
-  background: #b03434;
-  color: #fff;
-}
-
-.explorer-modal-confirm:hover {
-  background: #8a1c1c;
-}
-
 /* ===== Review view ===== */
 .explorer-review {
   display: flex;
@@ -721,20 +726,6 @@
   border-bottom: 1px solid #eef0f3;
 }
 
-.explorer-review-back {
-  background: transparent;
-  border: 1px solid #d0d6df;
-  border-radius: 6px;
-  padding: 0.4rem 0.75rem;
-  cursor: pointer;
-  font-size: 0.9rem;
-  color: #324050;
-}
-
-.explorer-review-back:hover {
-  background: #f1f4f8;
-}
-
 .explorer-review-counts {
   flex: 1 1 auto;
   font-size: 0.95rem;
@@ -744,41 +735,6 @@
 .explorer-review-actions {
   display: flex;
   gap: 0.5rem;
-}
-
-.explorer-review-save,
-.explorer-review-discard {
-  border-radius: 6px;
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  border: 1px solid transparent;
-}
-
-.explorer-review-save {
-  background: #1f7a3a;
-  color: #fff;
-}
-
-.explorer-review-save:hover:not(:disabled) {
-  background: #186029;
-}
-
-.explorer-review-save:disabled,
-.explorer-review-discard:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.explorer-review-discard {
-  background: #fff;
-  color: #b03434;
-  border-color: #f3b9b9;
-}
-
-.explorer-review-discard:hover:not(:disabled) {
-  background: #fde2e2;
 }
 
 .explorer-review-empty {

@@ -988,7 +988,7 @@ const ExplorerPage: React.FC = () => {
                         {mode === 'read' && (
                             <button
                                 type="button"
-                                className="explorer-edit-cta"
+                                className="explorer-btn explorer-btn--cta explorer-btn--primary"
                                 onClick={enterEditMode}
                                 title="Edit mode — add or remove moves and annotations"
                             >
@@ -1009,7 +1009,7 @@ const ExplorerPage: React.FC = () => {
                                 <div className="explorer-save-bar-actions">
                                     <button
                                         type="button"
-                                        className="explorer-save-bar-review"
+                                        className="explorer-btn explorer-btn--sm explorer-btn--primary"
                                         onClick={enterReviewView}
                                         disabled={saveInFlight || !isDirty}
                                         title={!isDirty ? 'Make a change to enable' : undefined}
@@ -1018,7 +1018,7 @@ const ExplorerPage: React.FC = () => {
                                     </button>
                                     <button
                                         type="button"
-                                        className="explorer-save-bar-discard"
+                                        className="explorer-btn explorer-btn--sm explorer-btn--ghost"
                                         onClick={requestDiscard}
                                         disabled={saveInFlight}
                                     >
@@ -1197,14 +1197,14 @@ const ExplorerPage: React.FC = () => {
                             <div className="explorer-modal-actions">
                                 <button
                                     type="button"
-                                    className="explorer-modal-cancel"
+                                    className="explorer-btn explorer-btn--neutral"
                                     onClick={() => setDiscardPrompt(false)}
                                 >
                                     Keep editing
                                 </button>
                                 <button
                                     type="button"
-                                    className="explorer-modal-confirm"
+                                    className="explorer-btn explorer-btn--danger"
                                     onClick={confirmDiscard}
                                 >
                                     Discard
@@ -1230,14 +1230,14 @@ const ExplorerPage: React.FC = () => {
                             <div className="explorer-modal-actions">
                                 <button
                                     type="button"
-                                    className="explorer-modal-cancel"
+                                    className="explorer-btn explorer-btn--neutral"
                                     onClick={() => setConflictPrompt(false)}
                                 >
                                     Keep editing
                                 </button>
                                 <button
                                     type="button"
-                                    className="explorer-modal-confirm"
+                                    className="explorer-btn explorer-btn--danger"
                                     onClick={handleConflictRefresh}
                                 >
                                     Refresh
