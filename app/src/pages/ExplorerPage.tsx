@@ -995,6 +995,7 @@ const ExplorerPage: React.FC = () => {
 
                 {view === 'main' && (
                 <div className="explorer-body">
+                    <div className="explorer-left-col">
                     <div
                         className="explorer-board-col"
                         /*
@@ -1045,6 +1046,7 @@ const ExplorerPage: React.FC = () => {
                             <div className="explorer-find-error" role="alert">{findError}</div>
                         )}
                     </form>
+                    </div>
 
                     <div className="explorer-right-col">
                         <section className="explorer-how-you-got-here">

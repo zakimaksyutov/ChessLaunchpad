@@ -126,6 +126,9 @@ const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
     const length = 1 + chain.tail.length;
     const isLong = length >= 2;
 
+    const parentSans = chain.parentPgn ? sansFromPgn(chain.parentPgn) : [];
+    const headPgn = pgnFromSans([...parentSans, chain.head.san]);
+
     return (
         <div className={`explorer-review-chain explorer-review-chain-${side}`}>
             <div className="explorer-review-chain-head">
@@ -138,8 +141,8 @@ const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
                     <div className="explorer-review-chain-orientation">
                         {chain.orientation === 'white' ? 'White' : 'Black'} repertoire
                     </div>
-                    <div className="explorer-review-chain-pgn">{chain.chainPgn || '(start)'}</div>
-                    <div className="explorer-review-chain-fen">FEN: <code>{lastTo(chain)}</code></div>
+                    <div className="explorer-review-chain-pgn">{headPgn || '(start)'}</div>
+                    <div className="explorer-review-chain-fen">FEN: <code>{chain.head.to}</code></div>
                     {chain.tailHint && (
                         <div className="explorer-review-chain-hint">
                             {chain.tailHint.kind === 'joins-existing' && (
@@ -185,11 +188,6 @@ const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
         </div>
     );
 };
-
-function lastTo(chain: EditChain): string {
-    if (chain.tail.length > 0) return chain.tail[chain.tail.length - 1].to;
-    return chain.head.to;
-}
 
 /** Reconstruct the parent path (as SAN list) for the i-th tail edge. */
 function runningSans(chain: EditChain, tailIdx: number): string[] {

@@ -86,22 +86,27 @@
   font-size: 1rem;
 }
 
-/* ===== Two-column body via grid-areas ===== */
+/* ===== Two-column body ===== */
 .explorer-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-  grid-template-areas:
-    "board   right"
-    "find    right";
-  grid-template-rows: auto auto;
-  gap: 0.6rem 1.25rem;
+  gap: 1.25rem;
   align-items: start;
 }
 
-.explorer-board-col { grid-area: board; min-width: 0; width: 100%; max-width: 704px; }
-.explorer-find      { grid-area: find;  min-width: 0; }
+/* Left column stacks board + Find input so the input sits directly
+   under the board, regardless of how tall the right column grows. */
+.explorer-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  width: 100%;
+  max-width: 704px;
+}
+
+.explorer-board-col { min-width: 0; width: 100%; }
 .explorer-right-col {
-  grid-area: right;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -433,7 +438,9 @@
   }
 
   /* Single column: board → right column → find. Then within the right column,
-     reorder so opening + moves precede "How you got here" per spec. */
+     reorder so opening + moves precede "How you got here" per spec.
+     Use `display: contents` on the left wrapper so its children participate
+     directly in the page grid and can be placed via grid-area. */
   .explorer-body {
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -443,10 +450,13 @@
     gap: 0.6rem;
   }
 
-  .explorer-board-col,
-  .explorer-find {
-    max-width: none;
+  .explorer-left-col {
+    display: contents;
   }
+
+  .explorer-board-col { grid-area: board; max-width: none; }
+  .explorer-right-col { grid-area: right; }
+  .explorer-find      { grid-area: find;  max-width: none; }
 
   .explorer-right-col .explorer-how-you-got-here { order: 3; }
   .explorer-right-col .explorer-opening-current  { order: 1; }
