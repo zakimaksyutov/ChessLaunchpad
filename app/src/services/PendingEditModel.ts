@@ -349,6 +349,10 @@ export class PendingEditModel {
      * Add an edge `(from --san--> to)` to `orientation`'s repertoire.
      *
      * - Replays SAN through chess.js to derive `to`; throws if illegal.
+     * - Refuses (returns null) if `from` isn't reachable from root in the
+     *   current working copy. This prevents creating orphan positions that
+     *   would later block save with a cryptic codec error. `from === root`
+     *   is always allowed (it's the empty-repertoire bootstrap path).
      * - Ensures both positions exist; idempotent if the edge already exists.
      * - For user-turn moves, attaches a fresh New-state card unless one
      *   already exists in the base map (which is the case for adds that
@@ -356,12 +360,16 @@ export class PendingEditModel {
      *   `newCardsByKey` ledger only carries cards we *minted* in this
      *   session — base-resurrected cards aren't double-counted.
      *
-     * Returns the resulting `to` FEN, or null if the move was illegal.
+     * Returns the resulting `to` FEN, or null if the move was illegal or
+     * if `from` was not reachable from root.
      */
     addEdge(from: string, san: string, orientation: Orientation): string | null {
         const to = fenAfter(from, san);
         if (!to) return null;
         const rep = this.getCurrentRepertoire(orientation);
+        if (from !== this.root && !reachableFensFromRoot(rep, this.root).has(from)) {
+            return null;
+        }
         if (!rep.positions[from]) rep.positions[from] = { moves: {} };
         if (!rep.positions[to]) rep.positions[to] = { moves: {} };
         if (!rep.positions[from].moves[san]) {
@@ -457,9 +465,16 @@ export class PendingEditModel {
      * Ensures the position exists (creates one with empty moves if not).
      * Set-equality semantics (order/dup-insensitive) are applied in
      * `computeDelta`; this method does not normalize the input.
+     *
+     * No-op if `fen` isn't reachable from root in the current working copy.
+     * This prevents creating orphan positions that would later block save
+     * with a cryptic codec error. `fen === root` is always allowed.
      */
     setAnnotations(fen: string, orientation: Orientation, annotations: Annotation[]): void {
         const rep = this.getCurrentRepertoire(orientation);
+        if (fen !== this.root && !reachableFensFromRoot(rep, this.root).has(fen)) {
+            return;
+        }
         if (!rep.positions[fen]) rep.positions[fen] = { moves: {} };
         if (annotations.length === 0) {
             delete rep.positions[fen].annotations;

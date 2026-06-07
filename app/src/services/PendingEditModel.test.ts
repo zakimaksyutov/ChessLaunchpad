@@ -134,6 +134,21 @@ describe('PendingEditModel.addEdge', () => {
         const delta = m.computeDelta();
         expect(delta.counts.added).toBe(1);
     });
+
+    it('refuses to add from a FEN not reachable from root (no orphan)', () => {
+        const m = emptyModel();
+        // FEN reached by 1.e4 — never added to the repertoire, so unreachable.
+        const orphanFrom = fenAfter(['e4']);
+        const result = m.addEdge(orphanFrom, 'e5', 'white');
+        expect(result).toBeNull();
+        // Working copy must not have been mutated — no orphan position
+        // and no orphan child position created.
+        const rep = m.getCurrentRepertoire('white');
+        expect(rep.positions[orphanFrom]).toBeUndefined();
+        expect(rep.positions[fenAfter(['e4', 'e5'])]).toBeUndefined();
+        // Model is still empty — save would not throw.
+        expect(m.isEmpty()).toBe(true);
+    });
 });
 
 // ── deleteEdge cascade & transposition ────────────────────────────────
@@ -321,6 +336,20 @@ describe('PendingEditModel.setAnnotations and annotation diff', () => {
         expect(d.editedAnnotations).toHaveLength(0);
         void whiteRep; // keep the lint linter quiet on the helper alias
     });
+
+    it('refuses to set annotations on a FEN not reachable from root (no orphan)', () => {
+        const m = emptyModel();
+        // FEN reached by 1.e4 — never added to the repertoire, so unreachable.
+        const orphanFen = fenAfter(['e4']);
+        m.setAnnotations(orphanFen, 'white', [
+            { brush: 'G', orig: 'e2', dest: 'e4' },
+        ]);
+        const rep = m.getCurrentRepertoire('white');
+        // Working copy must not have been mutated — no orphan position created.
+        expect(rep.positions[orphanFen]).toBeUndefined();
+        // Model is still empty — save would not throw.
+        expect(m.isEmpty()).toBe(true);
+    });
 });
 
 // ── Chain decomposition (Added) ───────────────────────────────────────
@@ -437,10 +466,13 @@ describe('PendingEditModel multi-orientation', () => {
         const m = emptyModel();
         m.addEdge(startFen, 'e4', 'white');             // white user-turn
         const afterE4 = fenAfter(['e4']);
-        m.addEdge(afterE4, 'c5', 'black');               // black user-turn (black to move)
+        // For the black repertoire, e4 must exist as the opponent edge so
+        // afterE4 is reachable before we can add a user-turn response.
+        m.addEdge(startFen, 'e4', 'black');             // black opponent-turn (no card)
+        m.addEdge(afterE4, 'c5', 'black');              // black user-turn (black to move)
         expect(m.newCardsByKey[FSRSService.makeCardKey(afterE4, 'c5')]).toBeDefined();
         const d = m.computeDelta();
-        expect(d.counts.added).toBe(2);
+        expect(d.counts.added).toBe(3);
         expect(d.addedChains.some(c => c.orientation === 'white')).toBe(true);
         expect(d.addedChains.some(c => c.orientation === 'black')).toBe(true);
     });
