@@ -342,18 +342,20 @@
 .explorer-ply-token {
   display: inline-flex;
   align-items: baseline;
+  gap: 0.2rem;
 }
 
-/* Non-clickable move-number prefix (e.g., "1.", "3…") shown beside the SAN. */
+/* Non-clickable move-number prefix (e.g., "1.", "3…") shown beside the SAN.
+ * Uses the page's proportional font so "2." renders tight against the digit
+ * (a monospace period sits centered in its cell and visually drifts away
+ * from the number). */
 .explorer-ply-prefix {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: #6e7783;
   font-size: inherit;
 }
 
 /* Same as .explorer-ply-prefix but sized to the row heading. */
 .explorer-move-row-prefix {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.98rem;
   font-weight: 600;
   color: #6e7783;
