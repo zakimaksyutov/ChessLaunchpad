@@ -641,6 +641,15 @@ describe('BlobCodec', () => {
             expect(() => decodePersistedBlob(interim)).toThrow(/missing `v` field/);
         });
 
+        it('accepts the literal `{}` fresh-account body from the backend', async () => {
+            // Per docs/BACKEND_API_CONTRACT.md, `GET /variants` for a newly
+            // created user returns `{}`. Decode must treat that as an empty
+            // RepertoireData (not a missing-`v` legacy blob) so the first
+            // post-signup load can succeed.
+            const dec = decodePersistedBlob({});
+            expect(dec).toEqual({});
+        });
+
         it('throws on non-object input', async () => {
             expect(() => decodePersistedBlob(null)).toThrow(/expected a v3 repertoire blob/);
             expect(() => decodePersistedBlob('not a blob')).toThrow(/expected a v3 repertoire blob/);

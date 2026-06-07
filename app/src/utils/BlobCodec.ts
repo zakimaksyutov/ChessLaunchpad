@@ -262,6 +262,10 @@ function encodeRepertoireV3(rep: RepertoireEntry): PersistedRepertoireEntryV3 {
  *   v3        → rebuild `repertoires` with full FEN keys and unpacked cards
  *               by walking the `positions` array starting at index 0
  *               (= standard initial FEN).
+ *   `{}`      → fresh-account sentinel from the backend (see
+ *               `docs/BACKEND_API_CONTRACT.md` §"Repertoire JSON Schema":
+ *               "A newly created user starts with `{}`"). Returns an empty
+ *               `RepertoireData` so `normalize()` can seed defaults.
  *   v2        → hard error (interim hashed-key shape never shipped).
  *   missing v → hard error (legacy v1 variant-PGN format no longer supported).
  *
@@ -279,6 +283,16 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
                 raw === null ? 'null' : typeof raw
             }.`
         );
+    }
+
+    // Fresh-account sentinel: per `docs/BACKEND_API_CONTRACT.md`, a newly
+    // created user's GET /variants returns the literal body `{}`. Treat that
+    // as an empty in-memory blob so the first post-signup load can proceed
+    // straight to `normalize()` which seeds default repertoires. Any
+    // *non-empty* object without `v` is still a legacy v1 (variant-PGN) blob
+    // and is rejected below.
+    if (Object.keys(raw as object).length === 0) {
+        return {};
     }
 
     const v = (raw as { v?: unknown }).v;
