@@ -107,9 +107,22 @@ export class RepertoireDataUtils {
      * mutate `data.fsrsCards` (the flat in-memory map) and the position
      * dict in `data.repertoires`; this function syncs the card map back
      * into the dict before serialization.
+     *
+     * Refuses to operate on an un-normalized blob (`repertoires` missing).
+     * `normalize()` always seeds at least two empty repertoires, so a
+     * missing field at this point is a programmer error — silently
+     * substituting an empty pair would PUT an empty repertoire and
+     * destroy the user's data.
      */
     public static prepareDataForSave(existingData: RepertoireData): RepertoireData {
-        const repertoires = existingData.repertoires ?? createEmptyRepertoires();
+        if (!existingData.repertoires) {
+            throw new Error(
+                'RepertoireDataUtils.prepareDataForSave: `repertoires` is missing. ' +
+                'Callers must run `normalize()` on the blob first — refusing to save an ' +
+                'empty repertoire that would overwrite the user\'s data.'
+            );
+        }
+        const repertoires = existingData.repertoires;
         const fsrsCards = existingData.fsrsCards ?? extractFsrsCardsFromRepertoires(repertoires);
         projectFsrsCardsIntoRepertoires(repertoires, fsrsCards);
         pruneEmptyAnnotations(repertoires);

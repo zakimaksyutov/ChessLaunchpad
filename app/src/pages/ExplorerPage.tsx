@@ -811,7 +811,11 @@ const ExplorerPage: React.FC = () => {
         if (!data) return;
         if (!pendingModel) {
             const reps = data.repertoires ?? [];
-            const cards = data.fsrsCards ?? {};
+            // Defensive: derive cards from the dict if the flat map happens
+            // to be missing. Under current invariants `normalize()` always
+            // populates `data.fsrsCards`, so this is a safety net rather
+            // than the expected path.
+            const cards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
             setPendingModel(new PendingEditModel(reps, cards));
         }
         setMode('edit');
