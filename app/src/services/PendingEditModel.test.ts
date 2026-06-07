@@ -7,9 +7,9 @@ import {
     findRepertoire,
 } from '../models/Repertoires';
 import {
-    bootstrapRepertoiresFromLegacy,
     extractFsrsCardsFromRepertoires,
 } from '../utils/RepertoiresSerde';
+import { pgnToRepertoires } from '../test-utils/repertoireBuilders';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
 import { Annotation } from '../models/Annotation';
@@ -29,9 +29,8 @@ function buildRepertoires(variants: Array<{ pgn: string; orientation: 'white' | 
     repertoires: RepertoireEntry[];
     fsrsCards: Record<string, ReturnType<typeof FSRSService.serialize> extends infer T ? T : never>;
 } {
-    const reps = bootstrapRepertoiresFromLegacy(
+    const reps = pgnToRepertoires(
         variants.map(v => ({ pgn: v.pgn, orientation: v.orientation })),
-        {},
     );
     // Build FSRS cards from the dict so the model sees a populated baseFsrsCards.
     const fsrsCards = extractFsrsCardsFromRepertoires(reps);
@@ -315,9 +314,8 @@ describe('PendingEditModel.setAnnotations and annotation diff', () => {
         const reps = createEmptyRepertoires();
         const whiteRep = findRepertoire(reps, 'white')!;
         // 1.e4 c5 — but stage the annotation on the after-c5 position.
-        const baseReps = bootstrapRepertoiresFromLegacy(
+        const baseReps = pgnToRepertoires(
             [{ pgn: '1. e4 c5', orientation: 'white' }],
-            {},
         );
         const reuseWhite = findRepertoire(baseReps, 'white')!;
         const afterE4c5 = fenAfter(['e4', 'c5']);

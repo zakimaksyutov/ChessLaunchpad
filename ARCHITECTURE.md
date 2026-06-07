@@ -100,7 +100,7 @@ Evaluations are precomputed per-position (see `models/ExplorerEvals.ts`) with up
 Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 ```
 
-The entire repertoire (positions + FSRS cards + annotations + settings + activity) is stored as a single JSON blob with ETag-based optimistic concurrency. Storage is **position-centric**: a top-level `repertoires` field holds two named entries (`White`, `Black`), each with a dict of normalized FENs to position entries that carry inline FSRS cards on user-turn moves. See `docs/REPERTOIRE-STORAGE.md` for the full schema and wire format, and `docs/BACKEND_API_CONTRACT.md` for the REST envelope. Legacy variant-centric blobs (`data: [...]` + flat `fsrsCards`) are converted on first read via a one-time bootstrap in `utils/RepertoiresSerde.ts`.
+The entire repertoire (positions + FSRS cards + annotations + settings + activity) is stored as a single JSON blob with ETag-based optimistic concurrency. Storage is **position-centric**: a top-level `repertoires` field holds two named entries (`White`, `Black`), each with a dict of normalized FENs to position entries that carry inline FSRS cards on user-turn moves. See `docs/REPERTOIRE-STORAGE.md` for the full schema and wire format, and `docs/BACKEND_API_CONTRACT.md` for the REST envelope.
 
 ### Games Page Data Flow
 

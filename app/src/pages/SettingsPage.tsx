@@ -21,9 +21,6 @@ import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireData } from '../models/RepertoireData';
 import { createDataAccessLayer } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
-import {
-    bootstrapRepertoiresFromLegacy,
-} from '../utils/RepertoiresSerde';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
 
@@ -273,10 +270,13 @@ const SettingsPage: React.FC = () => {
     //
     // Relocated from the now-removed Repertoire page. Since the variant
     // editor is gone, Import is the only in-app way to seed a fresh
-    // repertoire — so it must (a) accept both shapes (legacy variant-based
-    // and new position-based), (b) round-trip cleanly through normalize()
-    // so the bootstrap migration runs, and (c) confirm before destroying
-    // existing data.
+    // repertoire — so it must (a) decode and validate the file, (b) round-
+    // trip cleanly through normalize() so module-level state (FSRSService /
+    // TrainingEngine / LinkedAccountsService) is correctly hydrated, and
+    // (c) confirm before destroying existing data.
+    //
+    // Only v3 `.chess` files are accepted; pre-v3 (legacy variant-PGN)
+    // files are rejected by `decodePersistedBlob` with a clear error.
 
     const FILE_EXTENSION = 'chess';
 
@@ -326,10 +326,10 @@ const SettingsPage: React.FC = () => {
         let parsed: RepertoireData;
         try {
             const raw = JSON.parse(text);
-            // `decodePersistedBlob` is the single entry point for both the
-            // v1 legacy shape (pass-through) and the v3 wire shape (array of
+            // `decodePersistedBlob` accepts only the v3 wire shape (array of
             // positions, `"<SAN>:<idx>"` move keys, packed cards). After this,
             // `parsed` is in the in-memory shape that `normalize()` expects.
+            // Pre-v3 (variant-PGN) blobs are rejected with a clear error.
             parsed = decodePersistedBlob(raw);
         } catch (ex: unknown) {
             const msg = ex instanceof Error ? ex.message : String(ex);
@@ -341,25 +341,9 @@ const SettingsPage: React.FC = () => {
         // has live side effects on FSRSService / TrainingEngine / linked
         // accounts module vars). We only want to mutate global state once
         // the user has confirmed the destructive replace.
-        let positionCount = 0;
-        try {
-            // Light bootstrap: ensure `repertoires` exists so we can count
-            // positions. For new-shape imports this is a no-op; for legacy
-            // imports it materializes the dict for confirmation only.
-            if (!parsed.repertoires) {
-                parsed.repertoires = bootstrapRepertoiresFromLegacy(
-                    parsed.data ?? [],
-                    parsed.fsrsCards ?? {},
-                );
-            }
-            positionCount = parsed.repertoires.reduce(
-                (sum, r) => sum + Object.keys(r.positions).length, 0,
-            );
-        } catch (ex: unknown) {
-            const msg = ex instanceof Error ? ex.message : String(ex);
-            alert(`Failed to import: ${msg}`);
-            return;
-        }
+        const positionCount = (parsed.repertoires ?? []).reduce(
+            (sum, r) => sum + Object.keys(r.positions).length, 0,
+        );
 
         if (positionCount === 0 && !window.confirm(
             'The imported file contains no positions. Continue and overwrite your repertoire with an empty one?'
@@ -387,15 +371,13 @@ const SettingsPage: React.FC = () => {
             // skipped v2 blob), so we must not let a stale/corrupt
             // backend blob block the PUT that's about to overwrite it.
             await dal.fetchEtagOnly();
-            // Now run the full normalization — handles `trainingSettings`
-            // -> `settings` migration, snaps retention to the closest
-            // preset, hydrates the flat fsrsCards map from the dict, and
-            // synthesizes New-state cards for graph edges without one.
+            // Now run the full normalization — snaps retention to the
+            // closest preset, hydrates the flat fsrsCards map from the dict,
+            // and synthesizes New-state cards for graph edges without one.
             // This is the same path the live read flow runs after a GET.
             RepertoireDataUtils.normalize(parsed);
             // prepareDataForSave projects the (now-fully-populated) flat
-            // fsrsCards map BACK into `repertoires.positions[*].moves[*].card`
-            // and strips legacy fields from the persisted blob.
+            // fsrsCards map BACK into `repertoires.positions[*].moves[*].card`.
             const blobForSave = RepertoireDataUtils.prepareDataForSave(parsed);
             await dal.storeRepertoireData(blobForSave);
             // Full reload so all pages re-fetch the new repertoire.

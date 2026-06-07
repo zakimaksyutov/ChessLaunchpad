@@ -1,5 +1,7 @@
 import { DataAccessError, createDataAccessLayer } from "./DataAccessLayer";
-import { OpeningVariantData } from "../models/RepertoireData";
+import { RepertoireEntry } from "../models/Repertoires";
+import { Chess } from "chess.js";
+import { normalizeFenResetHalfmoveClock } from "../utils/FenUtils";
 
 describe.skip("DataAccessLayer - Main E2E Test", () => {
     const testUsername = "UnitTest";
@@ -36,14 +38,23 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         // ----------------------------------------------------------------------------
         // 4. Attempt to store with a *fresh* DAL instance (which will NOT have the ETag)
         // ----------------------------------------------------------------------------
-        const newVariants1: OpeningVariantData[] = [
+        const root = normalizeFenResetHalfmoveClock(new Chess().fen());
+        const afterE4 = (() => { const c = new Chess(); c.move('e4'); return normalizeFenResetHalfmoveClock(c.fen()); })();
+        const afterE4E5 = (() => { const c = new Chess(); c.move('e4'); c.move('e5'); return normalizeFenResetHalfmoveClock(c.fen()); })();
+
+        const whiteReps1: RepertoireEntry[] = [
             {
-                pgn: "1. e4 e5",
-                orientation: "white",
-            }
+                name: 'White', orientation: 'white',
+                positions: {
+                    [root]: { moves: { e4: {} } },
+                    [afterE4]: { moves: { e5: {} } },
+                    [afterE4E5]: { moves: {} },
+                },
+            },
+            { name: 'Black', orientation: 'black', positions: {} },
         ];
 
-        repertoireData.data = newVariants1;
+        repertoireData.repertoires = whiteReps1;
 
         // Store with the fresh DAL -> Expect a "Precondition Failed." error (from server)
         let missingIfMatchError: DataAccessError | undefined;
@@ -71,26 +82,34 @@ describe.skip("DataAccessLayer - Main E2E Test", () => {
         // 7. Retrieve variants again, ensure they contain what we just added
         // ----------------------------------------------------------------------------
         const updatedData = await dal.retrieveRepertoireData();
-        expect(Array.isArray(updatedData.data)).toBe(true);
-        expect(updatedData.data?.length).toBe(1);
-        expect(updatedData.data?.[0].pgn).toBe("1. e4 e5");
+        const updatedWhite = updatedData.repertoires?.find(r => r.orientation === 'white');
+        expect(updatedWhite).toBeDefined();
+        expect(updatedWhite!.positions[root]?.moves['e4']).toBeDefined();
 
         // ----------------------------------------------------------------------------
         // 8. Optionally, let's do a second update to show If-Match changes.
         // ----------------------------------------------------------------------------
-        const newVariants2: OpeningVariantData[] = [
+        const afterD4 = (() => { const c = new Chess(); c.move('d4'); return normalizeFenResetHalfmoveClock(c.fen()); })();
+        const afterD4D5 = (() => { const c = new Chess(); c.move('d4'); c.move('d5'); return normalizeFenResetHalfmoveClock(c.fen()); })();
+        const whiteReps2: RepertoireEntry[] = [
             {
-                pgn: "1. d4 d5",
-                orientation: "white",
-            }
+                name: 'White', orientation: 'white',
+                positions: {
+                    [root]: { moves: { d4: {} } },
+                    [afterD4]: { moves: { d5: {} } },
+                    [afterD4D5]: { moves: {} },
+                },
+            },
+            { name: 'Black', orientation: 'black', positions: {} },
         ];
-        updatedData.data = newVariants2;
+        updatedData.repertoires = whiteReps2;
         await dal.storeRepertoireData(updatedData);
 
         // Now retrieve a final time
         const finalData = await dal.retrieveRepertoireData();
-        expect(finalData.data?.length).toBe(1);
-        expect(finalData.data?.[0].pgn).toBe("1. d4 d5");
+        const finalWhite = finalData.repertoires?.find(r => r.orientation === 'white');
+        expect(finalWhite!.positions[root]?.moves['d4']).toBeDefined();
+        expect(finalWhite!.positions[root]?.moves['e4']).toBeUndefined();
 
         // ----------------------------------------------------------------------------
         // 9. Delete the "UnitTest" user account with the random password

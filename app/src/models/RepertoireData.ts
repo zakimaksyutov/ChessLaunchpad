@@ -58,11 +58,6 @@ export interface Activity {
     lifetime: LifetimeStats;
 }
 
-export interface OpeningVariantData {
-    pgn: string;
-    orientation: 'black' | 'white';
-}
-
 export interface AppSettings {
     contextDepth?: number;
     retention?: number;
@@ -73,27 +68,21 @@ export interface AppSettings {
 
 export interface RepertoireData {
     /**
-     * Position-centric repertoire storage. After the first save through the
-     * new client this is the persisted shape; `data` and `fsrsCards` are
-     * absent in newly-written blobs. See `docs/REPERTOIRE-STORAGE.md`.
+     * Position-centric repertoire storage. Always populated after
+     * `RepertoireDataUtils.normalize()` runs — seeded with two empty named
+     * entries (White, Black) for brand-new accounts. See
+     * `docs/REPERTOIRE-STORAGE.md`.
      */
     repertoires?: RepertoireEntry[];
     /**
-     * Legacy variant-centric storage. Present on blobs that pre-date the
-     * position-centric migration. Read-only after `normalize()` runs — it
-     * bootstraps `repertoires` from these PGNs and FSRS card map, then those
-     * fields are no longer used in-memory and are never written back.
-     */
-    data?: OpeningVariantData[];
-    /**
      * In-memory flat card map (key = `${fen}::${san}`). Built by `normalize`
-     * from `repertoires` and mutated by FSRSService. Re-projected back into
-     * `repertoires` on save; never persisted as a separate field after the
-     * first new-client save.
+     * from `repertoires` and mutated by FSRSService during training.
+     * Re-projected back into `repertoires` on save by `prepareDataForSave`.
+     * Never persisted on the wire — the v3 blob stores cards inline on each
+     * user-turn move.
      */
     fsrsCards?: Record<string, FSRSCardData>;
     settings?: AppSettings | null;
-    trainingSettings?: AppSettings | null; // legacy, migrated to settings
     activity?: Activity;
     /** Per-account game-ingest state, keyed by `${platform}:${usernameLower}`. */
     games?: GamesIngestMap;

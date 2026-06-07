@@ -1,25 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
 import {
-    bootstrapRepertoiresFromLegacy,
     extractFsrsCardsFromRepertoires,
     extractAnnotationsFromRepertoires,
     projectFsrsCardsIntoRepertoires,
     pruneEmptyAnnotations,
 } from './RepertoiresSerde';
-import { OpeningVariantData } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService } from '../services/FSRSService';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
 import { State } from 'ts-fsrs';
 import { createEmptyRepertoires } from '../models/Repertoires';
-
-function variant(pgn: string, orientation: 'white' | 'black'): OpeningVariantData {
-    return {
-        pgn,
-        orientation,
-    };
-}
 
 function startFen(): string {
     return normalizeFenResetHalfmoveClock(new Chess().fen());
@@ -36,100 +27,6 @@ function reviewCard(): FSRSCardData {
 }
 
 describe('RepertoiresSerde', () => {
-    describe('bootstrapRepertoiresFromLegacy', () => {
-        it('always returns both White and Black entries (spec invariant)', () => {
-            const reps = bootstrapRepertoiresFromLegacy([], {});
-            expect(reps).toHaveLength(2);
-            expect(reps.map(r => r.orientation).sort()).toEqual(['black', 'white']);
-            expect(reps[0].positions).toEqual({});
-            expect(reps[1].positions).toEqual({});
-        });
-
-        it('seeds both entries even when only white variants are provided', () => {
-            const reps = bootstrapRepertoiresFromLegacy([variant('1. e4', 'white')], {});
-            const white = reps.find(r => r.orientation === 'white')!;
-            const black = reps.find(r => r.orientation === 'black')!;
-            expect(Object.keys(white.positions).length).toBeGreaterThan(0);
-            expect(black.positions).toEqual({});
-            expect(black.name).toBe('Black');
-            expect(white.name).toBe('White');
-        });
-
-        it('attaches FSRS cards only to user-turn moves; opponent moves carry no card', () => {
-            const reps = bootstrapRepertoiresFromLegacy([variant('1. e4 e5', 'white')], {});
-            const white = reps.find(r => r.orientation === 'white')!;
-            const root = startFen();
-            const afterE4 = fenAfter(['e4']);
-            // 1.e4 — white's move (user) → no legacy card was provided.
-            expect(white.positions[root].moves['e4'].card).toBeUndefined();
-            // 1...e5 — black's move (opponent for white repertoire) → no card.
-            expect(white.positions[afterE4].moves['e5'].card).toBeUndefined();
-        });
-
-        it('places legacy fsrsCards on the right edges', () => {
-            const root = startFen();
-            const cardKey = FSRSService.makeCardKey(root, 'e4');
-            const c = reviewCard();
-            const reps = bootstrapRepertoiresFromLegacy(
-                [variant('1. e4 e5', 'white')],
-                { [cardKey]: c },
-            );
-            const white = reps.find(r => r.orientation === 'white')!;
-            expect(white.positions[root].moves['e4'].card).toEqual(c);
-        });
-
-        it('preserves both arrow and square annotations from PGN comments (B1 regression)', () => {
-            // Comment after 1.e4 has both an arrow and a square.
-            const pgn = '1. e4 { [%cal Re2e4] [%csl Yd4] } e5';
-            const reps = bootstrapRepertoiresFromLegacy([variant(pgn, 'white')], {});
-            const white = reps.find(r => r.orientation === 'white')!;
-            const afterE4 = fenAfter(['e4']);
-            const anns = white.positions[afterE4].annotations ?? [];
-            // Arrow R e2→e4
-            expect(anns).toEqual(expect.arrayContaining([
-                expect.objectContaining({ brush: 'R', orig: 'e2', dest: 'e4' }),
-            ]));
-            // Square Y d4 (no dest field)
-            const square = anns.find(a => a.brush === 'Y' && a.orig === 'd4');
-            expect(square).toBeDefined();
-            expect(square!.dest).toBeUndefined();
-        });
-
-        it('merges PGN edges across white+black variants — shared edges keep cards on the user-turn side', () => {
-            // Both colors include the move 1.e4. For white it's user; for black it's opponent.
-            const reps = bootstrapRepertoiresFromLegacy(
-                [variant('1. e4', 'white'), variant('1. e4 e5', 'black')],
-                {},
-            );
-            const white = reps.find(r => r.orientation === 'white')!;
-            const black = reps.find(r => r.orientation === 'black')!;
-            const root = startFen();
-            // White repertoire has the e4 move (user turn).
-            expect(white.positions[root].moves['e4']).toBeDefined();
-            // Black repertoire also has the e4 move (opponent move, no card).
-            expect(black.positions[root].moves['e4'].card).toBeUndefined();
-        });
-
-        it('dedupes duplicate annotations at the same FEN', () => {
-            // Same arrow appears in two variants on the same position.
-            const pgn = '1. e4 { [%cal Re2e4] } e5';
-            const reps = bootstrapRepertoiresFromLegacy(
-                [variant(pgn, 'white'), variant(pgn, 'white')],
-                {},
-            );
-            const white = reps.find(r => r.orientation === 'white')!;
-            const afterE4 = fenAfter(['e4']);
-            const anns = white.positions[afterE4].annotations ?? [];
-            expect(anns.filter(a => a.brush === 'R' && a.orig === 'e2' && a.dest === 'e4')).toHaveLength(1);
-        });
-
-        it('silently skips malformed PGNs without throwing', () => {
-            expect(() =>
-                bootstrapRepertoiresFromLegacy([variant('this is not a pgn', 'white')], {}),
-            ).not.toThrow();
-        });
-    });
-
     describe('extractFsrsCardsFromRepertoires', () => {
         it('returns only user-turn cards keyed by `${fen}::${san}`', () => {
             const reps = createEmptyRepertoires();

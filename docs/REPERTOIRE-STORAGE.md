@@ -7,13 +7,13 @@ behavior, read the code:
 - `app/src/models/Repertoires.ts` — in-memory types
 - `app/src/models/RepertoireData.ts` — top-level blob type
 - `app/src/utils/BlobCodec.ts` — v3 wire encode/decode + version policy
-- `app/src/utils/RepertoiresSerde.ts` — legacy bootstrap, card sync
+- `app/src/utils/RepertoiresSerde.ts` — card sync helpers
 
 ## Model
 
-A user has named **repertoires** (v1 hardcodes `White` and `Black`).
-Each is a dict of normalized FEN → position entry. A position entry
-carries `moves` (keyed by SAN) and optional `annotations`. Move
+A user has named **repertoires** (currently hardcoded as `White` and
+`Black`). Each is a dict of normalized FEN → position entry. A position
+entry carries `moves` (keyed by SAN) and optional `annotations`. Move
 entries are `{ card }` on user moves (side-to-move matches the
 repertoire's orientation) and `{}` on opponent moves. The symmetric
 wrapper leaves room for per-edge metadata on either side without a
@@ -44,23 +44,23 @@ The in-memory shape (FEN-keyed dicts, object FSRS cards) is convenient
 for runtime. The wire form is a compact v3 encoding: positions become
 a BFS-ordered array, move keys carry the child's array index,
 transpositions collapse onto a shared index, and FSRS cards pack as
-positional arrays with epoch-ms dates. Roughly 55% smaller than v1 on
-real repertoires. `settings`, `activity`, and `games` ride along the
-same blob unchanged.
+positional arrays with epoch-ms dates. `settings`, `activity`, and
+`games` ride along the same blob unchanged.
 
 The codec rejects illegal SANs and orphan positions on both encode and
 decode rather than silently dropping data.
 
-## Legacy compatibility
+## Supported wire versions
 
-Older blobs and `.chess` exports use a flat array of PGN lines plus a
-flat FSRS-card map. On read, a one-time bootstrap rebuilds the
-position-centric model from these; the next save rewrites the blob as
-v3 and the legacy fields are gone. The same bootstrap handles legacy
-`.chess` imports.
+Only **v3** is accepted. `decodePersistedBlob` throws on:
 
-Roll-forward only: a user who has saved through the v3 client has no
-`data` / `fsrsCards` on their blob, so reverting them to a pre-v3
-client would surface an empty repertoire. Server-side schema
-validation is currently disabled (`BACKEND_API_CONTRACT.md`); when
-re-enabled it must match v3.
+- a blob with no `v` field — the pre-v3 variant-PGN ("v1") shape, no
+  longer supported. All users were migrated before this support was
+  removed.
+- `v: 2` — an interim hashed-key shape that lived on a feature branch
+  but never shipped.
+- any other `v` value.
+
+`.chess` file imports go through the same decoder, so legacy exports
+surface as a clear "unsupported repertoire blob" error rather than
+loading partially.

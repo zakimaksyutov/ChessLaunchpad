@@ -811,7 +811,7 @@ const ExplorerPage: React.FC = () => {
         if (!data) return;
         if (!pendingModel) {
             const reps = data.repertoires ?? [];
-            const cards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
+            const cards = data.fsrsCards ?? {};
             setPendingModel(new PendingEditModel(reps, cards));
         }
         setMode('edit');

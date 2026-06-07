@@ -12,8 +12,6 @@ import { normalizeFenResetHalfmoveClock } from './FenUtils';
 /**
  * Persisted-blob version flag.
  *
- *   undefined → legacy v1 (full-FEN keys, FSRS cards as objects with ISO dates).
- *               Decode passes through unchanged; `normalize()` handles it.
  *   3         → v3 (this module). `positions` is an array; move keys carry the
  *               child's array index as `"<SAN>:<index>"` (or `"<SAN>:-1"` when
  *               the child position is not stored in the repertoire). FSRS cards
@@ -22,6 +20,10 @@ import { normalizeFenResetHalfmoveClock } from './FenUtils';
  *   2 (skipped): an interim hashed-key shape lived on the `migration` branch
  *               but never shipped. Treated as a hard error on decode so any
  *               stale dev blobs surface loudly rather than being mis-parsed.
+ *
+ *   undefined / 1: the original variant-PGN format. No longer supported —
+ *               decode throws. All users were migrated to v3 before this
+ *               compatibility was removed.
  */
 export const PERSISTED_BLOB_VERSION = 3 as const;
 
@@ -255,14 +257,14 @@ function encodeRepertoireV3(rep: RepertoireEntry): PersistedRepertoireEntryV3 {
 // ── Decode ──────────────────────────────────────────────────────────────
 
 /**
- * Decode a persisted blob (v1 or v3) into the in-memory `RepertoireData`
- * shape that `normalize()` expects.
+ * Decode a persisted v3 blob into the in-memory `RepertoireData` shape that
+ * `normalize()` expects.
  *
- *   v1 (or absent `v`) → pass-through (returned object IS the input).
- *   v2                  → hard error (interim hashed-key shape never shipped).
- *   v3                  → rebuild `repertoires` with full FEN keys and
- *                         unpacked cards by walking the `positions` array
- *                         starting at index 0 (= standard initial FEN).
+ *   v3        → rebuild `repertoires` with full FEN keys and unpacked cards
+ *               by walking the `positions` array starting at index 0
+ *               (= standard initial FEN).
+ *   v2        → hard error (interim hashed-key shape never shipped).
+ *   missing v → hard error (legacy v1 variant-PGN format no longer supported).
  *
  * Validates aggressively:
  *   - SAN is replayed via chess.js for every move (including `-1` edges),
@@ -273,18 +275,25 @@ function encodeRepertoireV3(rep: RepertoireEntry): PersistedRepertoireEntryV3 {
  */
 export function decodePersistedBlob(raw: unknown): RepertoireData {
     if (!raw || typeof raw !== 'object') {
-        return raw as RepertoireData;
+        throw new Error(
+            `BlobCodec.decode: expected a v3 repertoire blob object, got ${
+                raw === null ? 'null' : typeof raw
+            }.`
+        );
     }
 
     const v = (raw as { v?: unknown }).v;
     if (v === undefined) {
-        return raw as RepertoireData;
+        throw new Error(
+            `BlobCodec.decode: unsupported repertoire blob — missing \`v\` field. ` +
+            `Pre-v3 (variant-PGN) blobs are no longer supported.`
+        );
     }
     if (v === 2) {
         throw new Error(
             `BlobCodec.decode: unsupported repertoire blob version: 2 ` +
             `(interim hashed-key format never shipped). Re-export from a ` +
-            `client that produced v1 or v3.`
+            `client that produces v3.`
         );
     }
     if (v !== PERSISTED_BLOB_VERSION) {
