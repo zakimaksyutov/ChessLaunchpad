@@ -56,8 +56,10 @@ repertoire per session.
   the board with the chessboard's native right-click gestures.
 
 Edits accumulate into an **in-memory, tab-local pending delta**.
-Training is blocked while a delta is open; navigating away from
-`/explorer` mid-edit prompts before abandoning.
+While Edit mode is active every header menu item (title, nav links,
+username dropdown) is disabled — the user must Save or Discard to
+exit Edit mode before navigating anywhere. Browser back/forward and
+tab close still prompt before abandoning unsaved changes.
 
 ### Review & Save
 

@@ -694,12 +694,23 @@ const ExplorerPage: React.FC = () => {
         return pendingModel.computeDelta();
     }, [pendingModel, pendingTick, view]);
 
-    // Reflect dirty state into the cross-page notifier so Training (and the
-    // header eventually) can prompt the user.
+    // Reflect dirty state into the cross-page notifier so the safety-net
+    // guards (SPA click guard, popstate, beforeunload) know there's
+    // unsaved work that would be lost.
     useEffect(() => {
         PendingEditNotifier.setPending(isDirty);
         return () => PendingEditNotifier.setPending(false);
     }, [isDirty]);
+
+    // Reflect edit-mode entry/exit so the Header can disable all of its
+    // menu items while the user is editing. This is independent from
+    // `isDirty`: once the user clicks "Edit repertoire", every header
+    // entry is disabled — even before any change is staged — so the
+    // only way out is Save or Discard.
+    useEffect(() => {
+        PendingEditNotifier.setInEditMode(mode === 'edit');
+        return () => PendingEditNotifier.setInEditMode(false);
+    }, [mode]);
 
     // beforeunload warning when the user has unsaved edits. Tab close, hard
     // refresh, and navigation to non-/explorer routes trigger this; in-page
@@ -718,18 +729,22 @@ const ExplorerPage: React.FC = () => {
     }, [isDirty]);
 
     // SPA navigation gate. HashRouter `<Link>` clicks do NOT fire
-    // `beforeunload`, so a header click would silently destroy the pending
-    // delta on unmount. Intercept anchor clicks on the document while dirty
-    // and prompt the user — same destructive-action confirm wording as the
-    // sticky-bar Discard. If the user confirms, we strip dirty state via
-    // confirmDiscard and let the click proceed on the second invocation.
+    // `beforeunload`, so any in-page anchor leaving `/explorer` could
+    // silently destroy the pending delta on unmount. Intercept anchor
+    // clicks on the document while dirty and prompt the user — same
+    // destructive-action confirm wording as the sticky-bar Discard. If
+    // the user confirms, we strip dirty state and let the click proceed
+    // on the second invocation.
+    //
+    // The Header is fully disabled while in Edit mode (see Header.tsx
+    // subscribing to PendingEditNotifier.isInEditMode), so header anchor
+    // clicks are blocked at the source; this guard remains as defense
+    // in depth for any other in-page anchor that may exit `/explorer`.
     //
     // Companion guards:
-    //   - Header.tsx intercepts the imperative `navigate('/settings')` and
-    //     `navigate('/')` (logout) flows by consulting the same notifier.
-    //   - The `popstate` listener below catches browser Back/Forward when
-    //     the URL leaves `/explorer` mid-edit and bounces back if the user
-    //     cancels.
+    //   - The `popstate` listener inside PendingEditNotifier catches
+    //     browser Back/Forward when the URL leaves `/explorer` mid-edit
+    //     and bounces back if the user cancels.
     useEffect(() => {
         if (!isDirty) return;
         const handler = (e: MouseEvent) => {

@@ -11,9 +11,12 @@
  */
 
 type Listener = (isPending: boolean) => void;
+type EditModeListener = (inEditMode: boolean) => void;
 
 let _pending = false;
+let _inEditMode = false;
 const _listeners = new Set<Listener>();
+const _editModeListeners = new Set<EditModeListener>();
 let _lastSafeHash: string = (typeof window !== 'undefined') ? window.location.hash : '';
 
 export const PendingEditNotifier = {
@@ -33,6 +36,31 @@ export const PendingEditNotifier = {
     subscribe(listener: Listener): () => void {
         _listeners.add(listener);
         return () => { _listeners.delete(listener); };
+    },
+
+    /**
+     * Whether the Explorer page is currently in Edit mode. Distinct from
+     * `isPending` (unsaved-changes safety net): edit mode can be active
+     * with zero pending edits (the user just clicked "Edit repertoire").
+     * The Header subscribes to this to disable every menu item — the user
+     * must Save or Discard before navigating anywhere.
+     */
+    isInEditMode(): boolean {
+        return _inEditMode;
+    },
+
+    setInEditMode(inEditMode: boolean): void {
+        if (_inEditMode === inEditMode) return;
+        _inEditMode = inEditMode;
+        for (const l of _editModeListeners) {
+            try { l(inEditMode); } catch { /* listener errors must not break the notifier */ }
+        }
+    },
+
+    /** Returns an unsubscribe function. */
+    subscribeEditMode(listener: EditModeListener): () => void {
+        _editModeListeners.add(listener);
+        return () => { _editModeListeners.delete(listener); };
     },
 
     /**

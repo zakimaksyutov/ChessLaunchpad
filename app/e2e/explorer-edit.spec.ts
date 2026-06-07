@@ -350,7 +350,7 @@ test.describe('Explorer page — Edit mode', () => {
         expect(annotated).toBeDefined();
     });
 
-    test('Training nav link is dimmed and intercepting clicks while dirty', async ({ page }) => {
+    test('Header is fully disabled while in Edit mode', async ({ page }) => {
         const fixture = buildRepertoireData([
             { pgn: '1. e4', orientation: 'white' },
         ]);
@@ -359,24 +359,62 @@ test.describe('Explorer page — Edit mode', () => {
         await page.goto('/#/explorer');
         await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
 
-        // No edits yet → Training link not dimmed.
-        await expect(page.locator('a[href="#/training"]')).not.toHaveClass(/header-nav-link-disabled/);
-
-        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
-        await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
-        await dragPiece(page, 'e7', 'e5');
-
-        // Now dirty → Training link is dimmed and tooltip is set.
+        // Read mode → header is fully interactive.
         const trainingLink = page.locator('a[href="#/training"]');
-        await expect(trainingLink).toHaveClass(/header-nav-link-disabled/);
-        await expect(trainingLink).toHaveAttribute('aria-disabled', 'true');
-        await expect(trainingLink).toHaveAttribute('title', /Save or discard/i);
+        const explorerLink = page.locator('a[href="#/explorer"]');
+        const gamesLink = page.locator('a[href="#/games"]');
+        const titleLink = page.locator('a.header-title-link');
+        const usernameButton = page.locator('.username-text');
 
-        // Clicking it should prompt; with auto-dismiss (cancel), the URL must stay in /explorer.
-        page.on('dialog', d => d.dismiss());
+        await expect(trainingLink).not.toHaveClass(/header-nav-link-disabled/);
+        await expect(explorerLink).not.toHaveClass(/header-nav-link-disabled/);
+        await expect(gamesLink).not.toHaveClass(/header-nav-link-disabled/);
+        await expect(titleLink).not.toHaveClass(/header-title-link-disabled/);
+        await expect(usernameButton).not.toHaveClass(/username-text-disabled/);
+
+        // Enter Edit mode (no edits staged yet).
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
+
+        // Every header item is now disabled — even before any change.
+        for (const link of [trainingLink, explorerLink, gamesLink]) {
+            await expect(link).toHaveClass(/header-nav-link-disabled/);
+            await expect(link).toHaveAttribute('aria-disabled', 'true');
+            await expect(link).toHaveAttribute('title', /Save or discard/i);
+        }
+        await expect(titleLink).toHaveClass(/header-title-link-disabled/);
+        await expect(titleLink).toHaveAttribute('aria-disabled', 'true');
+        await expect(usernameButton).toHaveClass(/username-text-disabled/);
+        await expect(usernameButton).toHaveAttribute('aria-disabled', 'true');
+
+        // Clicking the username should NOT open the dropdown.
+        await usernameButton.click({ force: true });
+        await expect(page.locator('.dropdown-menu')).toHaveCount(0);
+
+        // Clicking a nav link should NOT navigate — URL stays in /explorer.
         await trainingLink.click({ force: true });
         await page.waitForTimeout(200);
         expect(page.url()).toContain('/explorer');
+
+        await titleLink.click({ force: true });
+        await page.waitForTimeout(200);
+        expect(page.url()).toContain('/explorer');
+
+        // Stage an edit then Discard to exit Edit mode; header should
+        // become interactive again. The Discard flow shows an in-app
+        // confirmation dialog (not a native confirm).
+        await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
+        await dragPiece(page, 'e7', 'e5');
+        const saveBar = page.locator('.explorer-save-bar');
+        await expect(saveBar).toBeVisible();
+        await saveBar.getByRole('button', { name: 'Discard' }).click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
+        await expect(saveBar).toHaveCount(0);
+
+        await expect(trainingLink).not.toHaveClass(/header-nav-link-disabled/);
+        await expect(titleLink).not.toHaveClass(/header-title-link-disabled/);
+        await expect(usernameButton).not.toHaveClass(/username-text-disabled/);
     });
 
     test('browser Back to a non-/explorer route prompts and bounces back on cancel', async ({ page }) => {
