@@ -558,16 +558,6 @@ export class PendingEditModel {
      *   PGNs, and resolve `tailHint`s.
      */
     private computeImpl(includePresentation: boolean): PendingDelta {
-        const __t0 = performance.now();
-        let __basePositions = 0;
-        let __curPositions = 0;
-        let __baseEdges = 0;
-        let __curEdges = 0;
-        let __msCollect = 0;
-        let __msDiff = 0;
-        let __msDecompose = 0;
-        let __msAnnotations = 0;
-
         const addedChains: EditChain[] = [];
         const removedChains: EditChain[] = [];
         const editedAnnotations: AnnotationDiff[] = [];
@@ -582,27 +572,18 @@ export class PendingEditModel {
             if (!baseRep || !curRep) continue;
 
             // Phase 1a — build edge sets (always).
-            const __tCollect = performance.now();
             const baseEdges = collectEdges(baseRep);
             const curEdges = collectEdges(curRep);
-            __msCollect += performance.now() - __tCollect;
-
-            __basePositions += Object.keys(baseRep.positions).length;
-            __curPositions += Object.keys(curRep.positions).length;
-            __baseEdges += Object.keys(baseEdges).length;
-            __curEdges += Object.keys(curEdges).length;
 
             // Phase 1b — set-diff edges (always). Counts come straight
             // from the diff size since every changed edge ends up in
             // exactly one chain (chain decomposition partitions the
             // changed-edge set).
-            const __tDiff = performance.now();
             const baseKeys = new Set(Object.keys(baseEdges));
             const curKeys = new Set(Object.keys(curEdges));
 
             const addedEdgeKeys = [...curKeys].filter(k => !baseKeys.has(k));
             const removedEdgeKeys = [...baseKeys].filter(k => !curKeys.has(k));
-            __msDiff += performance.now() - __tDiff;
 
             countsAdded += addedEdgeKeys.length;
             countsRemoved += removedEdgeKeys.length;
@@ -615,7 +596,6 @@ export class PendingEditModel {
                 // to look at survivors). Pass BOTH orientations' reps
                 // so multi-orientation edits in one session can
                 // resolve parent paths across orientations.
-                const __tDecompose = performance.now();
                 const addedAsChains = decomposeChains(
                     'added',
                     addedEdgeKeys.map(k => curEdges[k]),
@@ -639,7 +619,6 @@ export class PendingEditModel {
                     this.baseRepertoires,
                 );
                 for (const c of removedAsChains) removedChains.push(c);
-                __msDecompose += performance.now() - __tDecompose;
             }
 
             // Phase 1c — annotation diffs (always for counts; only
@@ -654,7 +633,6 @@ export class PendingEditModel {
             //     new addition (covered by addedChains).
             //   - Root is always reachable (even on an empty repertoire),
             //     so annotation edits on the start position always register.
-            const __tAnnotations = performance.now();
             const baseReachable = reachableFensFromRoot(baseRep, this.root);
             const curReachable = reachableFensFromRoot(curRep, this.root);
             const allFens = new Set<string>([
@@ -690,10 +668,9 @@ export class PendingEditModel {
                     after,
                 });
             }
-            __msAnnotations += performance.now() - __tAnnotations;
         }
 
-        const result: PendingDelta = {
+        return {
             addedChains,
             removedChains,
             editedAnnotations,
@@ -703,20 +680,6 @@ export class PendingEditModel {
                 changed: countsChanged,
             },
         };
-
-        const __ms = performance.now() - __t0;
-        const __fmt = (n: number) => n.toFixed(1);
-        const __flavor = includePresentation ? 'full' : 'counts';
-        // eslint-disable-next-line no-console
-        console.log(
-            `[PendingEditModel.computeDelta:${__flavor}] ${__fmt(__ms)}ms ` +
-                `(collect ${__fmt(__msCollect)} / diff ${__fmt(__msDiff)} / decompose ${__fmt(__msDecompose)} / annot ${__fmt(__msAnnotations)}) ` +
-                `— positions base/cur: ${__basePositions}/${__curPositions}, edges base/cur: ${__baseEdges}/${__curEdges}, ` +
-                `chains +${addedChains.length}/-${removedChains.length}, ` +
-                `changes +${result.counts.added}/-${result.counts.removed}/~${result.counts.changed}`,
-        );
-
-        return result;
     }
 
     // ── Reset / hard-discard ─────────────────────────────────────────
