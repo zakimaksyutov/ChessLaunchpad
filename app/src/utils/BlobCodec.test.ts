@@ -614,17 +614,22 @@ describe('BlobCodec', () => {
         });
     });
 
-    describe('v1 pass-through', () => {
-        it('returns the raw object unchanged when `v` is absent', async () => {
+    describe('legacy v1 rejection', () => {
+        it('throws when the blob is missing `v` (pre-v3 variant-PGN shape)', async () => {
+            // Pre-v3 blobs (variant-PGN + flat fsrsCards) lacked a `v` field.
+            // All users were migrated before this support was removed, so
+            // these now surface as a hard decode error.
             const v1: RepertoireData = {
                 data: [],
-            };
-            const out = decodePersistedBlob(v1);
-            expect(out).toBe(v1);
+            } as unknown as RepertoireData;
+            expect(() => decodePersistedBlob(v1)).toThrow(/missing `v` field/);
+            expect(() => decodePersistedBlob(v1)).toThrow(/no longer supported/);
         });
 
-        it('returns a v1 position-centric blob (with `repertoires`, no `v`) unchanged', async () => {
-            const v1: RepertoireData = {
+        it('throws when an object-shaped blob without `v` includes a position-centric `repertoires` field', async () => {
+            // An interim shape that had `repertoires` but no `v` would also
+            // be rejected — decode policy is strictly "v3 only".
+            const interim = {
                 repertoires: [
                     {
                         name: 'White', orientation: 'white',
@@ -633,8 +638,22 @@ describe('BlobCodec', () => {
                     { name: 'Black', orientation: 'black', positions: {} },
                 ],
             };
-            const out = decodePersistedBlob(v1);
-            expect(out).toBe(v1);
+            expect(() => decodePersistedBlob(interim)).toThrow(/missing `v` field/);
+        });
+
+        it('accepts the literal `{}` fresh-account body from the backend', async () => {
+            // Per docs/BACKEND_API_CONTRACT.md, `GET /variants` for a newly
+            // created user returns `{}`. Decode must treat that as an empty
+            // RepertoireData (not a missing-`v` legacy blob) so the first
+            // post-signup load can succeed.
+            const dec = decodePersistedBlob({});
+            expect(dec).toEqual({});
+        });
+
+        it('throws on non-object input', async () => {
+            expect(() => decodePersistedBlob(null)).toThrow(/expected a v3 repertoire blob/);
+            expect(() => decodePersistedBlob('not a blob')).toThrow(/expected a v3 repertoire blob/);
+            expect(() => decodePersistedBlob(42)).toThrow(/expected a v3 repertoire blob/);
         });
     });
 

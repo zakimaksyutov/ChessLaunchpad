@@ -19,7 +19,10 @@ import {
 
 function makeRepertoireData(overrides: Partial<RepertoireData> = {}): RepertoireData {
     return {
-        data: [],
+        repertoires: [
+            { name: 'White', orientation: 'white', positions: {} },
+            { name: 'Black', orientation: 'black', positions: {} },
+        ],
         fsrsCards: {},
         ...overrides,
     };

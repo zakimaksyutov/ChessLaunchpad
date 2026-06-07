@@ -10,9 +10,7 @@ import {
     isUserTurnForOrientation,
 } from '../utils/FenUtils';
 import {
-    bootstrapRepertoiresFromLegacy,
     extractAnnotationsFromRepertoires,
-    extractFsrsCardsFromRepertoires,
 } from '../utils/RepertoiresSerde';
 import {
     type EdgeRef,
@@ -143,19 +141,15 @@ export class ExplorerService {
         data: RepertoireData,
         openings: DatabaseOpening[],
     ) {
-        // ExplorerService is invoked directly from page code as well as from
-        // tests (which often hand-craft legacy-shape RepertoireData). Tolerate
-        // both shapes by running the same bootstrap path the normalize() flow
-        // uses for blobs that lack `repertoires`.
-        let repertoires = data.repertoires;
-        let fsrsCards = data.fsrsCards;
-        if (!repertoires) {
-            repertoires = bootstrapRepertoiresFromLegacy(data.data ?? [], data.fsrsCards ?? {});
-            fsrsCards = extractFsrsCardsFromRepertoires(repertoires);
-        }
+        // Callers always pass post-`normalize()` data, so `repertoires` and
+        // `fsrsCards` are guaranteed present. The `?? ...` fallbacks are
+        // defensive only — they keep tests that hand-craft minimal blobs
+        // from crashing on the unrelated graph/FSRS init.
+        const repertoires = data.repertoires ?? [];
+        const fsrsCards = data.fsrsCards ?? {};
 
         this.graph = RepertoireGraph.fromRepertoires(repertoires);
-        this.fsrs = new FSRSService(fsrsCards ?? {});
+        this.fsrs = new FSRSService(fsrsCards);
         this.openings = openings;
 
         this.reachable = {

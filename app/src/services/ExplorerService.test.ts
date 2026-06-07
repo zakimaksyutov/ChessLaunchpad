@@ -5,6 +5,8 @@ import { RepertoireData } from '../models/RepertoireData';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
 import { State } from 'ts-fsrs';
+import { pgnToRepertoires } from '../test-utils/repertoireBuilders';
+import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
 
 const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
 
@@ -15,12 +17,10 @@ function fenAfter(sanMoves: string[]): string {
 }
 
 function buildData(variants: Array<{ pgn: string; orientation: 'white' | 'black' }>): RepertoireData {
+    const repertoires = pgnToRepertoires(variants);
     return {
-        data: variants.map(v => ({
-            pgn: v.pgn,
-            orientation: v.orientation,
-        })),
-        fsrsCards: {},
+        repertoires,
+        fsrsCards: extractFsrsCardsFromRepertoires(repertoires),
     };
 }
 

@@ -811,6 +811,10 @@ const ExplorerPage: React.FC = () => {
         if (!data) return;
         if (!pendingModel) {
             const reps = data.repertoires ?? [];
+            // Defensive: derive cards from the dict if the flat map happens
+            // to be missing. Under current invariants `normalize()` always
+            // populates `data.fsrsCards`, so this is a safety net rather
+            // than the expected path.
             const cards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
             setPendingModel(new PendingEditModel(reps, cards));
         }
@@ -992,25 +996,19 @@ const ExplorerPage: React.FC = () => {
         setSaveInFlight(true);
         setSaveError(null);
         try {
-            // Build the in-memory blob to save. The model owns repertoires +
-            // any new cards; combine with the base FSRS cards (still in
-            // `data.fsrsCards`) and let `prepareDataForSave` project the
-            // result into the position-centric wire shape.
-            const baseCards = data.fsrsCards ?? {};
-            // Cards we keep: every card that still has a corresponding edge
-            // in the working repertoires. `extractFsrsCardsFromRepertoires`
-            // gives us exactly that view, with both base-resurrected and
-            // newly-minted cards reachable from the dict.
+            // Build the in-memory blob to save. `currentRepertoires` already
+            // carries inline cards on every surviving edge (cloneRepertoires
+            // deep-copies them, applyAddPosition re-attaches resurrected/new
+            // cards), so `extractFsrsCardsFromRepertoires` gives us the
+            // complete flat-map view. We don't merge in `data.fsrsCards`:
+            // any base card whose edge was deleted in edit mode is correctly
+            // dropped by `projectFsrsCardsIntoRepertoires` (which only
+            // re-emits cards backed by an existing edge in `repertoires`).
             const liveCards = extractFsrsCardsFromRepertoires(pendingModel.currentRepertoires);
-            // Merge: live takes precedence (it already holds the new cards
-            // attached to fresh edges). Base contributes nothing the dict
-            // doesn't already carry, but we keep the merge so any unrelated
-            // legacy bookkeeping survives.
-            const mergedCards = { ...baseCards, ...liveCards };
 
             const blobInMemory: RepertoireData = {
                 repertoires: pendingModel.currentRepertoires,
-                fsrsCards: mergedCards,
+                fsrsCards: liveCards,
                 settings: data.settings,
                 activity: data.activity,
                 games: data.games,

@@ -148,8 +148,7 @@ async function runIngestInternal(
 
         try {
             // Project in-memory state into the position-centric blob shape
-            // before persisting — strips legacy `data`/`fsrsCards` from the
-            // PUT body and re-syncs the position dict with FSRSService's
+            // before persisting — re-syncs the position dict with FSRSService's
             // in-place card mutations.
             const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
             await dal.storeRepertoireData(blobForSave);

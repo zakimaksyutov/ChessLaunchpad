@@ -2,34 +2,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Chess } from 'chess.js';
 import { runIngest, IngestProgress } from './GameIngestService';
 import { setLinkedAccounts, getAccountKey } from './LinkedAccountsService';
-import { RepertoireData, OpeningVariantData } from '../models/RepertoireData';
+import { RepertoireData } from '../models/RepertoireData';
 import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
-import {
-    bootstrapRepertoiresFromLegacy,
-    extractFsrsCardsFromRepertoires,
-} from '../utils/RepertoiresSerde';
+import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
+import { pgnToRepertoires, PgnVariantInput } from '../test-utils/repertoireBuilders';
 
 // ── Test helpers ──────────────────────────────────────────────────────
 
 const FAKE_NOW = new Date('2026-05-25T12:00:00Z');
 
-function makeVariant(pgn: string, orientation: 'white' | 'black'): OpeningVariantData {
+function makeVariant(pgn: string, orientation: 'white' | 'black'): PgnVariantInput {
     return {
         pgn,
         orientation,
     };
 }
 
-function makeData(variants: OpeningVariantData[] = []): RepertoireData {
-    // Build in the legacy shape, then run normalize() to bootstrap into
-    // the position-centric shape. This matches what the live read path does
-    // for users upgrading from pre-spec blobs.
+function makeData(variants: PgnVariantInput[] = []): RepertoireData {
+    // Build position-centric repertoires from PGN test fixtures, then run
+    // normalize() so module-level state (FSRSService etc.) is hydrated.
     const data: RepertoireData = {
-        data: variants,
+        repertoires: pgnToRepertoires(variants),
         fsrsCards: {},
         settings: {},
         activity: {
@@ -207,7 +204,7 @@ describe('GameIngestService', () => {
         mockLichessOnce([game]);
 
         // Find card keys for Nf3 and Bc4 at the e4-e5 position
-        const { whiteFens } = buildRepertoireFenSets(bootstrapRepertoiresFromLegacy([v1, v2], {}));
+        const { whiteFens } = buildRepertoireFenSets(pgnToRepertoires([v1, v2]));
         const positionChess = new Chess();
         positionChess.move('e4'); positionChess.move('e5');
         const normFen = normalizeFenResetHalfmoveClock(positionChess.fen());
