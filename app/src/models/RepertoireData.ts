@@ -75,7 +75,7 @@ export interface RepertoireData {
     /**
      * Position-centric repertoire storage. After the first save through the
      * new client this is the persisted shape; `data` and `fsrsCards` are
-     * absent in newly-written blobs. See `docs/product-specs/REPERTOIRES.md`.
+     * absent in newly-written blobs. See `docs/REPERTOIRE-STORAGE.md`.
      */
     repertoires?: RepertoireEntry[];
     /**

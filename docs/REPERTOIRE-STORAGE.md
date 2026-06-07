@@ -1,21 +1,18 @@
-# Repertoires — Position-Based Storage
+# Repertoire Storage
 
-Replace the variant-centric repertoire blob with a position-centric one,
-remove the variant-editor surface from the app, and stop persisting the
-legacy `data` and `fsrsCards` fields.
+Technical reference for how a user's repertoire is held in memory and
+persisted on the wire. Cross-cutting — every feature (training,
+Explorer, game ingestion, save/load) keys off this shape.
+
+For the REST envelope around the blob see `BACKEND_API_CONTRACT.md`.
+For how the legacy variant-centric blob is read once and then dropped
+see [Legacy compatibility](#legacy-compatibility) below.
 
 ## The Idea
 
 A user has named **repertoires**. Each is a dictionary of positions and
 the moves leaving them. FSRS cards live inline on user moves; opponent
 moves are present but empty.
-
-Today the repertoire is stored as a flat array of PGN lines (`data: [...]`)
-plus a sibling flat dictionary of FSRS cards keyed by `<FEN>::<SAN>`. The
-runtime already rebuilds a position DAG from these and every feature
-(training, Explorer, game annotation) keys off positions. This spec moves
-**persistence**, retires the **variant editor**, and commits the app
-fully to the new shape.
 
 ## Shape
 
@@ -59,9 +56,6 @@ see [Wire Encoding](#wire-encoding-v3) below.
 }
 ```
 
-`data` and `fsrsCards` are **no longer written**. After the first save
-through the new client they are absent from the blob.
-
 ### Rules
 
 - A repertoire's `orientation` is the side the user plays.
@@ -88,13 +82,10 @@ through the new client they are absent from the blob.
      - v3 (compact): rebuild full-FEN-keyed positions by walking the
        `positions` array from index 0 (= standard initial FEN) and
        unpacking each card.
-     - Absent `v` (legacy): pass through unchanged.
-3. If `repertoires` is present:
-     Build the in-memory model from `repertoires` only.
-4. Else (initial migration only, before the user's first save):
-     Build graph from `data`.
-     Hydrate cards from `fsrsCards`.
-     Hydrate annotations from PGN comments (as done today).
+     - Absent `v` (legacy v1): pass through unchanged; the in-memory
+       `repertoires` are bootstrapped from `data` + `fsrsCards` (see
+       [Legacy compatibility](#legacy-compatibility)).
+3. Build the in-memory model from `repertoires`.
 ```
 
 No reconciliation across sources, no consistency check.
@@ -110,12 +101,11 @@ No reconciliation across sources, no consistency check.
        "<SAN>:-1" if the child position is not stored)
      - pack each FSRS card as a positional array
      - convert `d` / `lr` to epoch milliseconds
-3. PUT { v: 3, repertoires, settings, activity, games }.   // no data, no fsrsCards
+3. PUT { v: 3, repertoires, settings, activity, games }.
 ```
 
-Once a user saves, the legacy `data` and `fsrsCards` fields are gone
-from their blob. There is no rollback path that preserves data; rolling
-back the new client would surface an empty repertoire to users.
+The legacy `data` and `fsrsCards` fields are never written. Any user
+who has saved through the v3 client has no legacy fields on their blob.
 
 ## Wire Encoding (v3)
 
@@ -235,73 +225,34 @@ array index; identity in memory is the normalized FEN string.
 - Future versions (v4+) must be introduced by bumping `v` and routing
   through a new decoder branch; unknown versions are a hard error.
 - Server-side schema validation is currently disabled
-  (`docs/BACKEND_API_CONTRACT.md`), so the backend accepts v3 today.
+  (`BACKEND_API_CONTRACT.md`), so the backend accepts v3 today.
   When validation is re-enabled it must be updated to match v3.
 
-## UI Changes
+## Legacy compatibility
 
-### Removed
+Older blobs and `.chess` exports store a flat array of PGN lines
+(`data: [...]`) plus a flat dictionary of FSRS cards keyed by
+`<FEN>::<SAN>`. The decoder accepts these as-is (no `v` field). A
+one-time bootstrap in `app/src/utils/RepertoiresSerde.ts` walks each
+legacy PGN, builds the position dict per orientation, places FSRS
+cards on user-turn moves, and lifts PGN-comment annotations onto
+their positions. Result is the in-memory v3 model; on the next save
+the blob is rewritten as v3 and the legacy fields are gone forever.
 
-- `/repertoire` page (variant table).
-- `/repertoire/variant` page (variant editor).
-- Header "Repertoire" link and its route registration.
-- "Train with filter" handoff from the variant table.
-- **Paste PGN** functionality (the textarea on the variant editor that
-  loaded a PGN line into the editor). Not relocated. To add new lines
-  in v1, users round-trip a `.chess` file through Import / Export.
+The same bootstrap runs when a user imports a `.chess` file in the
+legacy shape on the Settings page.
 
-### Relocated
+Consequences worth knowing about:
 
-- **Import / Export** move to the **Settings** page. Without them users
-  cannot seed a fresh repertoire (since the variant editor is gone).
-- Imported `.chess` files in the legacy `data`/`fsrsCards` shape are
-  converted in-memory on import using the same one-time bootstrap as the
-  blob's initial-migration read path, then persisted as v3.
-- Exports emit the v3 wire shape (compact encoding — see
-  [Wire Encoding](#wire-encoding-v3)).
-
-### Unchanged
-
-- `/explorer` stays read-only. No in-app way to add, edit, or delete
-  moves in v1 of this spec.
-- `/training`, `/games`, `/settings`, `/dashboard`, login.
-- The on-board variant-preview behavior the variant table used today
-  (`PgnControl` + `AnalysisPopover`) is preserved if it's reused
-  elsewhere; otherwise it dies with the variant table.
-
-## Migration
-
-Lazy, on first save by the new client. No special endpoint, no eager PUT
-on read. A user who never saves stays on the bootstrap read path
-indefinitely and continues to see their existing repertoire — but
-because there is no in-app editing surface, the practical trigger for
-the first save is any FSRS card update (i.e. any training session).
-
-### Accepted consequences
-
-- **No in-app repertoire editing in v1** beyond Import/Export. Explorer
-  editing is a separate future spec.
-- **Rolling back the new client is destructive** for any user who has
-  saved through it (their `data` and `fsrsCards` are gone). Roll forward,
-  not back.
-- **Stale tabs running the old client** after a new-client save will see
-  an empty repertoire on next read (no `data`).
-- **The v3 encoder rejects illegal SANs (behavior change from earlier
-  drafts).** Any `moves[SAN]` entry whose SAN cannot be replayed from its
-  parent FEN throws on encode with an explicit "illegal move" error,
-  rather than being silently dropped. In practice all known SAN sources
-  (PGN import, game ingestion, FSRS card updates) validate via chess.js
-  before writing to `pos.moves`, so this only surfaces if a legacy blob
-  contains a corrupted SAN — but in that case the user's next save fails
-  hard. There is no automatic repair: a corrupt SAN must be removed
-  manually (export → edit → import) before saves succeed again. We prefer
-  the loud failure over silent data loss.
-
-## Out of Scope
-
-- Multiple repertoires per orientation in the UI (schema supports it;
-  v1 hardcodes one each).
-- Per-edge metadata beyond `card` (wrapper is ready; no fields yet).
-- Per-position text notes (room reserved in the position entry).
-- Explorer-driven editing of individual edges.
-- Re-enabling server-side schema validation for the v3 wire shape.
+- **Roll-forward only.** A user who has saved through the v3 client
+  has no `data` / `fsrsCards` on their blob. Reverting them to a
+  pre-v3 client would surface an empty repertoire.
+- **Stale v1 tabs** that read a v3 blob will treat it as missing data
+  (no `data` field). Same accepted risk.
+- **Illegal-SAN handling.** The v3 encoder throws on any
+  `moves[SAN]` entry whose SAN can't be replayed from its parent
+  FEN, rather than silently dropping it. All current SAN sources
+  (PGN import, game ingestion, FSRS updates) pre-validate via
+  chess.js, so this only surfaces on a corrupted legacy blob — and
+  in that case the next save fails loudly. Recovery is manual
+  (export → fix → import).
