@@ -72,6 +72,15 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
+  /* Pin the toolbar's single-row height to the natural height of the
+     Edit-mode inline bar so the chessboard does not shift down when
+     the user enters Edit mode. The Read-mode CTA is shorter than the
+     Edit bar by ~10px (the bar's border + outer padding nest around
+     its inner buttons), so without this floor the board jumps. When
+     the Edit bar wraps to two rows on narrow viewports the natural
+     height grows beyond `min-height` — the shift is unavoidable in
+     that case and acknowledged. */
+  min-height: 2.65rem;
 }
 
 .explorer-toolbar-left {
