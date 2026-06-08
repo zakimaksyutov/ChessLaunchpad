@@ -21,22 +21,22 @@ const fenAfter = (sans: string[]): string => {
 
 function reviewCard(overrides: Partial<FSRSCardData> = {}): FSRSCardData {
     return {
-        d: '2030-01-01T12:34:56.789Z',
-        s: 12.5,
-        di: 4.2,
-        e: 3,
-        sd: 7,
-        ls: 0,
-        r: 8,
-        l: 1,
-        st: 2,
-        lr: '2026-04-19T08:00:00.500Z',
+        due: '2030-01-01T12:34:56.789Z',
+        stability: 12.5,
+        difficulty: 4.2,
+        elapsedDays: 3,
+        scheduledDays: 7,
+        learningSteps: 0,
+        reps: 8,
+        lapses: 1,
+        state: 2,
+        lastReview: '2026-04-19T08:00:00.500Z',
         ...overrides,
     };
 }
 
 function newCard(): FSRSCardData {
-    return { d: '2026-01-01T00:00:00.000Z', s: 0, di: 0, e: 0, sd: 0, ls: 0, r: 0, l: 0, st: 0 };
+    return { due: '2026-01-01T00:00:00.000Z', stability: 0, difficulty: 0, elapsedDays: 0, scheduledDays: 0, learningSteps: 0, reps: 0, lapses: 0, state: 0 };
 }
 
 function whiteRep(positions: Record<string, PositionEntry>): RepertoireEntry {
@@ -141,7 +141,7 @@ describe('BlobCodec', () => {
 
         it('preserves epoch-ms precision on lr', async () => {
             const root = startFen();
-            const c = reviewCard({ lr: '2026-04-19T08:00:00.123Z' });
+            const c = reviewCard({ lastReview: '2026-04-19T08:00:00.123Z' });
             const data = baseData([
                 whiteRep({
                     [root]: { moves: { e4: { card: c } } },
@@ -151,7 +151,7 @@ describe('BlobCodec', () => {
             ]);
             const dec = decodePersistedBlob(jsonClone(encodePersistedBlob(data)));
             const w = dec.repertoires!.find(r => r.orientation === 'white')!;
-            expect(w.positions[root].moves.e4.card!.lr).toBe('2026-04-19T08:00:00.123Z');
+            expect(w.positions[root].moves.e4.card!.lastReview).toBe('2026-04-19T08:00:00.123Z');
         });
 
         it('round-trips deeper lines with a cycle that returns to root (cycle-safe walk)', async () => {

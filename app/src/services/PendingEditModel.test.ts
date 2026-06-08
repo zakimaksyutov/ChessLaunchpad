@@ -85,7 +85,7 @@ describe('PendingEditModel.addEdge', () => {
         m.addEdge(startFen, 'e4', 'white');
         const key = FSRSService.makeCardKey(startFen, 'e4');
         expect(m.newCardsByKey[key]).toBeDefined();
-        expect(m.newCardsByKey[key].st).toBe(State.New);
+        expect(m.newCardsByKey[key].state).toBe(State.New);
         // Working copy carries the card on the edge.
         const rep = m.getCurrentRepertoire('white');
         expect(rep.positions[startFen].moves['e4'].card).toBeDefined();
@@ -119,7 +119,7 @@ describe('PendingEditModel.addEdge', () => {
         const card = rep.positions[startFen].moves['e4'].card;
         expect(card).toBeDefined();
         // Re-uses the existing card object — not a fresh New.
-        expect(card!.st).not.toBe(State.New);
+        expect(card!.state).not.toBe(State.New);
         // The newCardsByKey ledger is empty — base resurrection, not new.
         expect(Object.keys(m.newCardsByKey)).toHaveLength(0);
         // Cancel-out: delete+readd → isEmpty().

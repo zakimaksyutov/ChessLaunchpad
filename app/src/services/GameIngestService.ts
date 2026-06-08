@@ -328,7 +328,7 @@ function processGame(
             // reviewed at-or-after this game's timestamp.
             const key = FSRSService.makeCardKey(normFenBefore, move.san);
             const card = fsrs.getCards()[key];
-            if (card && shouldApplyRating(card.lr, game.createdAt)) {
+            if (card && shouldApplyRating(card.lastReview, game.createdAt)) {
                 fsrs.rateCard(normFenBefore, move.san, true, gameCreatedAt);
                 reviewed += 1;
             }
@@ -338,7 +338,7 @@ function processGame(
             const cards = fsrs.getCards();
             const keys = Object.keys(cards).filter(k => k.startsWith(prefix));
             for (const k of keys) {
-                if (!shouldApplyRating(cards[k].lr, game.createdAt)) continue;
+                if (!shouldApplyRating(cards[k].lastReview, game.createdAt)) continue;
                 fsrs.rateCardByKey(k, false, gameCreatedAt);
             }
             return { reviewed, hadMistake: true };

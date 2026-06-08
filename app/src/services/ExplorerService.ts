@@ -352,28 +352,28 @@ export class ExplorerService {
             return { status: 'New', reps: 0, lapses: 0 };
         }
 
-        if (c.st === State.New) {
-            return { status: 'New', reps: c.r, lapses: c.l };
+        if (c.state === State.New) {
+            return { status: 'New', reps: c.reps, lapses: c.lapses };
         }
 
         const due = FSRSService.computeDueDate(c);
-        const lastReviewedAt = c.lr ? new Date(c.lr) : undefined;
+        const lastReviewedAt = c.lastReview ? new Date(c.lastReview) : undefined;
 
-        if (c.st === State.Learning) {
+        if (c.state === State.Learning) {
             return {
                 status: 'Learning',
                 dueAt: due,
-                reps: c.r,
-                lapses: c.l,
+                reps: c.reps,
+                lapses: c.lapses,
                 lastReviewedAt,
             };
         }
-        if (c.st === State.Relearning) {
+        if (c.state === State.Relearning) {
             return {
                 status: 'Relearning',
                 dueAt: due,
-                reps: c.r,
-                lapses: c.l,
+                reps: c.reps,
+                lapses: c.lapses,
                 lastReviewedAt,
             };
         }
@@ -387,8 +387,8 @@ export class ExplorerService {
             status,
             dueAt: due,
             retrievability: R,
-            reps: c.r,
-            lapses: c.l,
+            reps: c.reps,
+            lapses: c.lapses,
             lastReviewedAt,
         };
     }

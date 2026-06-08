@@ -245,7 +245,7 @@ describe('TrainingEngine', () => {
             const futureDate = new Date(now.getTime() + 86400000).toISOString();
             const fsrsCards: Record<string, any> = {
                 [e4Key]: {
-                    d: futureDate, s: 5, di: 5, e: 1, sd: 5, ls: 1, r: 2, l: 0, st: 1, lr: now.toISOString()
+                    due: futureDate, stability: 5, difficulty: 5, elapsedDays: 1, scheduledDays: 5, learningSteps: 1, reps: 2, lapses: 0, state: 1, lastReview: now.toISOString()
                 }
             };
 
@@ -348,10 +348,10 @@ describe('TrainingEngine', () => {
             const pastDue = new Date(now.getTime() - 86400000).toISOString();
             const fsrsCards: Record<string, any> = {};
             fsrsCards[cardKeyE4] = {
-                d: pastDue, s: 1, di: 5, e: 1, sd: 1, ls: 0, r: 1, l: 0, st: 1, lr: pastDue
+                due: pastDue, stability: 1, difficulty: 5, elapsedDays: 1, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0, state: 1, lastReview: pastDue
             };
             fsrsCards[cardKeyD4] = {
-                d: pastDue, s: 1, di: 5, e: 1, sd: 1, ls: 0, r: 1, l: 0, st: 1, lr: pastDue
+                due: pastDue, stability: 1, difficulty: 5, elapsedDays: 1, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0, state: 1, lastReview: pastDue
             };
 
             const engine = makeEngine([
@@ -401,7 +401,7 @@ describe('TrainingEngine', () => {
             const pastDue = new Date(Date.now() - 86400000).toISOString();
             const fsrsCards: Record<string, any> = {};
             fsrsCards[cardKey] = {
-                d: pastDue, s: 1, di: 5, e: 1, sd: 1, ls: 0, r: 1, l: 0, st: 1, lr: pastDue
+                due: pastDue, stability: 1, difficulty: 5, elapsedDays: 1, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0, state: 1, lastReview: pastDue
             };
 
             const engine = makeEngine([makePgnInput('1. e4 e5', 'white')], fsrsCards);
@@ -440,7 +440,7 @@ describe('TrainingEngine', () => {
             const futureDue = new Date(Date.now() + 86400000).toISOString();
             const fsrsCards: Record<string, any> = {};
             fsrsCards[cardKey] = {
-                d: futureDue, s: 10, di: 5, e: 1, sd: 10, ls: 0, r: 5, l: 0, st: 2, lr: new Date().toISOString()
+                due: futureDue, stability: 10, difficulty: 5, elapsedDays: 1, scheduledDays: 10, learningSteps: 0, reps: 5, lapses: 0, state: 2, lastReview: new Date().toISOString()
             };
 
             const engine = makeEngine([makePgnInput('1. e4 e5', 'white')], fsrsCards);
@@ -463,7 +463,7 @@ describe('TrainingEngine', () => {
             const futureDue = new Date(Date.now() + 86400000).toISOString();
             const fsrsCards: Record<string, any> = {};
             fsrsCards[cardKey] = {
-                d: futureDue, s: 10, di: 5, e: 1, sd: 10, ls: 0, r: 5, l: 0, st: 2, lr: new Date().toISOString()
+                due: futureDue, stability: 10, difficulty: 5, elapsedDays: 1, scheduledDays: 10, learningSteps: 0, reps: 5, lapses: 0, state: 2, lastReview: new Date().toISOString()
             };
 
             const engine = makeEngine([makePgnInput('1. e4 e5', 'white')], fsrsCards);
@@ -486,7 +486,7 @@ describe('TrainingEngine', () => {
             const futureDue = new Date(Date.now() + 86400000).toISOString();
             const fsrsCards: Record<string, any> = {};
             fsrsCards[cardKey] = {
-                d: futureDue, s: 10, di: 5, e: 1, sd: 10, ls: 0, r: 5, l: 0, st: 2, lr: new Date().toISOString()
+                due: futureDue, stability: 10, difficulty: 5, elapsedDays: 1, scheduledDays: 10, learningSteps: 0, reps: 5, lapses: 0, state: 2, lastReview: new Date().toISOString()
             };
 
             const engine = makeEngine([makePgnInput('1. e4 e5', 'white')], fsrsCards);
@@ -535,7 +535,7 @@ describe('TrainingEngine', () => {
             const cardKey = `${startFen}::e4`;
 
             expect(cards[cardKey]).toBeDefined();
-            expect(cards[cardKey].r).toBeGreaterThan(0);
+            expect(cards[cardKey].reps).toBeGreaterThan(0);
         });
     });
 
@@ -563,14 +563,17 @@ describe('TrainingEngine', () => {
             TrainingEngine.setContextDepth(0);
             const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
             const cardKeyE4 = `${startFen}::e4`;
-            const pastDue = new Date(Date.now() - 86400000).toISOString();
+            // 5 days ago — far enough in the past that computeDueDate places
+            // the card past due even with the 2-day minimum interval that
+            // matches ts-fsrs's short-term Review scheduler.
+            const lastReview = new Date(Date.now() - 5 * 86400000).toISOString();
 
             const engine = makeEngine(
                 [makePgnInput('1. e4', 'white')],
                 {
                     [cardKeyE4]: {
-                        d: pastDue, s: 1, di: 5, e: 1, sd: 1,
-                        ls: 0, r: 1, l: 0, st: 2, lr: pastDue,
+                        due: lastReview, stability: 1, difficulty: 5, elapsedDays: 1, scheduledDays: 2,
+                        learningSteps: 0, reps: 1, lapses: 0, state: 2, lastReview: lastReview,
                     },
                 }
             );
@@ -605,7 +608,7 @@ describe('TrainingEngine', () => {
             const pastDue = new Date(Date.now() - 86400000).toISOString();
             const fsrsCards: Record<string, any> = {};
             fsrsCards[cardKeyC5] = {
-                d: pastDue, s: 1, di: 5, e: 1, sd: 1, ls: 0, r: 1, l: 0, st: 1, lr: pastDue,
+                due: pastDue, stability: 1, difficulty: 5, elapsedDays: 1, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0, state: 1, lastReview: pastDue,
             };
 
             const engine = makeEngine([

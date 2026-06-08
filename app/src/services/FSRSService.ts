@@ -101,7 +101,7 @@ export class FSRSService {
 
     getRetrievabilityByKey(key: string, now: Date): number | null {
         const cardData = this.cards[key];
-        if (!cardData || cardData.st !== State.Review) return null;
+        if (!cardData || cardData.state !== State.Review) return null;
         const card = this.hydrate(cardData);
         return this.scheduler.get_retrievability(card, now, false);
     }
@@ -115,7 +115,7 @@ export class FSRSService {
     isDue(key: string, now: Date): boolean {
         const cardData = this.cards[key];
         if (!cardData) return false;
-        if (cardData.st === State.New) return true;
+        if (cardData.state === State.New) return true;
         const due = FSRSService.computeDueDate(cardData);
         return now >= due;
     }
@@ -125,7 +125,7 @@ export class FSRSService {
      */
     getState(key: string): State | undefined {
         const cardData = this.cards[key];
-        return cardData?.st as State | undefined;
+        return cardData?.state as State | undefined;
     }
 
     /**
@@ -162,15 +162,15 @@ export class FSRSService {
     getOverdueness(key: string, now: Date): number {
         const cardData = this.cards[key];
         if (!cardData) return 0;
-        if (cardData.st === State.New) return 0;
+        if (cardData.state === State.New) return 0;
 
         const due = FSRSService.computeDueDate(cardData);
         const msPastDue = now.getTime() - due.getTime();
         if (msPastDue <= 0) return 0;
 
         const daysPastDue = msPastDue / (1000 * 60 * 60 * 24);
-        if (cardData.st === State.Review && cardData.sd > 0) {
-            const scheduledDays = FSRSService.computeInterval(cardData) ?? cardData.sd;
+        if (cardData.state === State.Review && cardData.scheduledDays > 0) {
+            const scheduledDays = FSRSService.computeInterval(cardData) ?? cardData.scheduledDays;
             return daysPastDue / scheduledDays;
         }
         return daysPastDue;
@@ -186,7 +186,7 @@ export class FSRSService {
         for (const key of keys) {
             const cardData = this.cards[key];
             if (!cardData) continue;
-            if (cardData.st !== State.Review) continue;
+            if (cardData.state !== State.Review) continue;
 
             const due = FSRSService.computeDueDate(cardData);
             if (now >= due) continue; // already due, not ahead-of-schedule
@@ -202,35 +202,35 @@ export class FSRSService {
 
     hydrate(data: FSRSCardData): Card {
         const due = FSRSService.computeDueDate(data);
-        const scheduledDays = FSRSService.computeInterval(data) ?? data.sd;
+        const scheduledDays = FSRSService.computeInterval(data) ?? data.scheduledDays;
         return {
             due,
-            stability: data.s,
-            difficulty: data.di,
-            elapsed_days: data.e,
+            stability: data.stability,
+            difficulty: data.difficulty,
+            elapsed_days: data.elapsedDays,
             scheduled_days: scheduledDays,
-            learning_steps: data.ls,
-            reps: data.r,
-            lapses: data.l,
-            state: data.st as State,
-            last_review: data.lr ? new Date(data.lr) : undefined
+            learning_steps: data.learningSteps,
+            reps: data.reps,
+            lapses: data.lapses,
+            state: data.state as State,
+            last_review: data.lastReview ? new Date(data.lastReview) : undefined
         };
     }
 
     static serialize(card: Card): FSRSCardData {
         const result: FSRSCardData = {
-            d: card.due.toISOString(),
-            s: card.stability,
-            di: card.difficulty,
-            e: card.elapsed_days,
-            sd: card.scheduled_days,
-            ls: card.learning_steps,
-            r: card.reps,
-            l: card.lapses,
-            st: card.state
+            due: card.due.toISOString(),
+            stability: card.stability,
+            difficulty: card.difficulty,
+            elapsedDays: card.elapsed_days,
+            scheduledDays: card.scheduled_days,
+            learningSteps: card.learning_steps,
+            reps: card.reps,
+            lapses: card.lapses,
+            state: card.state
         };
         if (card.last_review) {
-            result.lr = card.last_review instanceof Date
+            result.lastReview = card.last_review instanceof Date
                 ? card.last_review.toISOString()
                 : String(card.last_review);
         }
@@ -279,13 +279,33 @@ export class FSRSService {
 
     /**
      * Compute the FSRS scheduling interval (days) for a given stability,
-     * target retention, and max-interval cap. Matches the formula used by
-     * `computeInterval`, but parameterized so it can be evaluated against
-     * preset candidates without mutating global settings.
+     * target retention, and max-interval cap.
+     *
+     * This must match what the ts-fsrs scheduler produces, so that
+     * `computeDueDate` agrees with the stored `card.due` whenever the retention
+     * hasn't changed (and stays close to what ts-fsrs *would* have produced
+     * when the retention does change).
+     *
+     * The base formula `(R^(1/decay) - 1) / factor × S` is the inverse of the
+     * forgetting curve and matches `FSRSAlgorithm.next_interval`. On top of
+     * that, the short-term Review scheduler enforces
+     * `good_interval ≥ hard_interval + 1`, with `hard_interval ≥ 1`, so a
+     * Good rating in Review state is always scheduled at least 2 days out.
+     * Since this helper is only ever called for Review-state cards
+     * (see `computeInterval` and `estimateDailyLoad`), we apply the same
+     * 2-day floor.
+     *
+     * Note: ts-fsrs's exact `good_interval` also depends on the hypothetical
+     * `hard_stability` of the same review (which depends on the *pre-review*
+     * stability we don't store), so for stabilities where `round(hard_S × mod)`
+     * lifts to ≥ 2 the scheduler bumps Good to `hard_interval + 1`. We can't
+     * reproduce that without pre-review state; the residual error is bounded
+     * to ±1 day in a narrow stability band and converges to zero for both
+     * small (≤ ~6) and large (≥ ~15) stabilities.
      */
     static intervalFromStability(stability: number, retention: number, maxInterval: number): number {
-        const raw = Math.max(Math.round((stability / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1)), 1);
-        return Math.min(raw, maxInterval);
+        const raw = Math.round((stability / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1));
+        return Math.min(Math.max(raw, 2), maxInterval);
     }
 
     /**
@@ -306,8 +326,8 @@ export class FSRSService {
     ): { reviewsPerDay: number; mistakesPerDay: number } {
         let reviewsPerDay = 0;
         for (const c of Object.values(cards)) {
-            if (c.st !== State.Review || c.s <= 0) continue;
-            reviewsPerDay += 1 / FSRSService.intervalFromStability(c.s, retention, maxInterval);
+            if (c.state !== State.Review || c.stability <= 0) continue;
+            reviewsPerDay += 1 / FSRSService.intervalFromStability(c.stability, retention, maxInterval);
         }
         return {
             reviewsPerDay,
@@ -320,9 +340,9 @@ export class FSRSService {
      * Returns null for non-Review cards or cards without last_review.
      */
     static computeInterval(card: FSRSCardData): number | null {
-        if (card.st !== State.Review || !card.lr) return null;
+        if (card.state !== State.Review || !card.lastReview) return null;
         return FSRSService.intervalFromStability(
-            card.s,
+            card.stability,
             FSRSService.getRetention(),
             FSRSService.getMaxInterval(),
         );
@@ -335,9 +355,9 @@ export class FSRSService {
      */
     static computeDueDate(card: FSRSCardData): Date {
         const interval = FSRSService.computeInterval(card);
-        if (interval !== null && card.lr) {
-            return new Date(new Date(card.lr).getTime() + interval * 24 * 60 * 60 * 1000);
+        if (interval !== null && card.lastReview) {
+            return new Date(new Date(card.lastReview).getTime() + interval * 24 * 60 * 60 * 1000);
         }
-        return new Date(card.d);
+        return new Date(card.due);
     }
 }

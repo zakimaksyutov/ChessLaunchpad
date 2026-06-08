@@ -92,12 +92,12 @@ const MOVE_KEY_REGEX = /^(.+):(-?\d+)$/;
 // ── Card pack/unpack ────────────────────────────────────────────────────
 
 function packCard(card: FSRSCardData): PackedCard {
-    const d = isoToEpochMs(card.d);
-    if (card.lr !== undefined) {
-        const lr = isoToEpochMs(card.lr);
-        return [d, card.s, card.di, card.e, card.sd, card.ls, card.r, card.l, card.st, lr];
+    const d = isoToEpochMs(card.due);
+    if (card.lastReview !== undefined) {
+        const lr = isoToEpochMs(card.lastReview);
+        return [d, card.stability, card.difficulty, card.elapsedDays, card.scheduledDays, card.learningSteps, card.reps, card.lapses, card.state, lr];
     }
-    return [d, card.s, card.di, card.e, card.sd, card.ls, card.r, card.l, card.st];
+    return [d, card.stability, card.difficulty, card.elapsedDays, card.scheduledDays, card.learningSteps, card.reps, card.lapses, card.state];
 }
 
 function unpackCard(packed: unknown): FSRSCardData {
@@ -115,13 +115,20 @@ function unpackCard(packed: unknown): FSRSCardData {
             );
         }
     }
-    const [d, s, di, e, sd, ls, r, l, st, lr] = packed as number[];
+    const [d, stability, difficulty, elapsedDays, scheduledDays, learningSteps, reps, lapses, state, lr] = packed as number[];
     const out: FSRSCardData = {
-        d: epochMsToISO(d),
-        s, di, e, sd, ls, r, l, st,
+        due: epochMsToISO(d),
+        stability,
+        difficulty,
+        elapsedDays,
+        scheduledDays,
+        learningSteps,
+        reps,
+        lapses,
+        state,
     };
     if (packed.length === 10) {
-        out.lr = epochMsToISO(lr);
+        out.lastReview = epochMsToISO(lr);
     }
     return out;
 }

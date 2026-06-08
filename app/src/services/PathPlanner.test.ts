@@ -180,9 +180,9 @@ describe('PathPlanner', () => {
         // `d`, with no FSRS interval math — so ordering is deterministic.
         function learningCardOverdueBy(daysOverdue: number): FSRSCardData {
             return {
-                d: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
-                s: 1, di: 5, e: 0, sd: 1, ls: 0, r: 1, l: 0,
-                st: State.Learning,
+                due: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
+                stability: 1, difficulty: 5, elapsedDays: 0, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0,
+                state: State.Learning,
             };
         }
 
@@ -283,9 +283,9 @@ describe('PathPlanner', () => {
 
         function learningCardOverdueBy(daysOverdue: number) {
             return {
-                d: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
-                s: 1, di: 5, e: 0, sd: 1, ls: 0, r: 1, l: 0,
-                st: State.Learning,
+                due: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
+                stability: 1, difficulty: 5, elapsedDays: 0, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0,
+                state: State.Learning,
             };
         }
 
@@ -340,9 +340,9 @@ describe('PathPlanner', () => {
     describe('extendPath: opponent-branch overdueness tiebreak', () => {
         function learningCardOverdueBy(daysOverdue: number) {
             return {
-                d: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
-                s: 1, di: 5, e: 0, sd: 1, ls: 0, r: 1, l: 0,
-                st: State.Learning,
+                due: new Date(Date.now() - daysOverdue * 86400_000).toISOString(),
+                stability: 1, difficulty: 5, elapsedDays: 0, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0,
+                state: State.Learning,
             };
         }
 

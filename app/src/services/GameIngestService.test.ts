@@ -221,11 +221,11 @@ describe('GameIngestService', () => {
 
         const finalCards = extractFsrsCardsFromRepertoires(dal.data.repertoires!);
         // Both sibling cards should have advanced (reps > 0) due to Again rating.
-        expect(finalCards[nf3Key].r).toBeGreaterThan(0);
-        expect(finalCards[bc4Key].r).toBeGreaterThan(0);
-        // Both should be in Learning state (st=1) — Again on a new card.
-        expect(finalCards[nf3Key].st).toBe(1);
-        expect(finalCards[bc4Key].st).toBe(1);
+        expect(finalCards[nf3Key].reps).toBeGreaterThan(0);
+        expect(finalCards[bc4Key].reps).toBeGreaterThan(0);
+        // Both should be in Learning state (state=1) — Again on a new card.
+        expect(finalCards[nf3Key].state).toBe(1);
+        expect(finalCards[bc4Key].state).toBe(1);
 
         // Per-day counter
         const entry = dal.data.activity!.practiceLog.find(e => e.games);
@@ -484,10 +484,10 @@ describe('GameIngestService', () => {
         const lastReviewMs = gameCreatedAt + 60 * 60 * 1000; // 1h after the game
         data.fsrsCards![e4Key] = {
             ...data.fsrsCards![e4Key],
-            lr: new Date(lastReviewMs).toISOString(),
-            r: 1,
+            lastReview: new Date(lastReviewMs).toISOString(),
+            reps: 1,
         };
-        const e4ReviewedBeforeIngest = data.fsrsCards![e4Key].r;
+        const e4ReviewedBeforeIngest = data.fsrsCards![e4Key].reps;
 
         const game = lichessGame({
             id: 'g11',
@@ -505,8 +505,8 @@ describe('GameIngestService', () => {
         const sim = new Chess(); sim.move('e4'); sim.move('e5');
         const nf3Key = FSRSService.makeCardKey(normalizeFenResetHalfmoveClock(sim.fen()), 'Nf3');
         const savedCards = extractFsrsCardsFromRepertoires(dal.data.repertoires!);
-        expect(savedCards[e4Key].r).toBe(e4ReviewedBeforeIngest);
-        expect(savedCards[nf3Key].r).toBeGreaterThan(0);
+        expect(savedCards[e4Key].reps).toBe(e4ReviewedBeforeIngest);
+        expect(savedCards[nf3Key].reps).toBeGreaterThan(0);
     });
 
     it('attributes counters to the date in local timezone', async () => {

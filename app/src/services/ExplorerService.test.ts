@@ -284,7 +284,7 @@ describe('ExplorerService', () => {
 
             // 1 hour BEFORE the next due → should be Mastered (R high, not due).
             const card = data.fsrsCards![FSRSService.makeCardKey(startFen, 'e4')];
-            expect(card.st).toBe(State.Review);
+            expect(card.state).toBe(State.Review);
             const due = FSRSService.computeDueDate(card);
             const beforeDue = new Date(due.getTime() - 3600_000);
             const mastered = svc.cardInfo(startFen, 'e4', beforeDue);
