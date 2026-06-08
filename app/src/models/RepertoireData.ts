@@ -1,6 +1,7 @@
 import { FSRSCardData } from "./FSRSCardData";
 import { LinkedAccount } from "../services/LinkedAccountsService";
 import { RepertoireEntry } from "./Repertoires";
+import { AuditEntry } from "./AuditData";
 
 export interface PracticeLogGameCounters {
     ingested: number;   // Games processed on this date
@@ -86,4 +87,11 @@ export interface RepertoireData {
     activity?: Activity;
     /** Per-account game-ingest state, keyed by `${platform}:${usernameLower}`. */
     games?: GamesIngestMap;
+    /**
+     * Temporary FSRS scheduling audit trail. See
+     * `docs/product-specs/FSRS-AUDIT.md`. Mutated in place by `AuditService`
+     * during training and game ingest. Absent on existing blobs; seeded as
+     * an empty array by `RepertoireDataUtils.normalize`.
+     */
+    audit?: AuditEntry[];
 }

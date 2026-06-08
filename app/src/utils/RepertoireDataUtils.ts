@@ -40,6 +40,14 @@ export class RepertoireDataUtils {
         // consuming the 30-entry practice log cap).
         ensureActivity(repertoireData);
 
+        // Seed the FSRS audit array so AuditService can mutate a stable
+        // reference. Decode preserves an existing array verbatim; this only
+        // fires on fresh blobs or older blobs that predate the field.
+        // See `docs/product-specs/FSRS-AUDIT.md`.
+        if (!repertoireData.audit) {
+            repertoireData.audit = [];
+        }
+
         // Hydrate in-memory settings from backend.
         const s = repertoireData.settings;
         if (s) {
@@ -131,6 +139,9 @@ export class RepertoireDataUtils {
             settings: RepertoireDataUtils.buildCurrentSettings(existingData.settings),
             activity: existingData.activity,
             games: existingData.games,
+            // Pass `audit` through unchanged. The encoder drops empty arrays
+            // so a user with no captures still ships a clean wire blob.
+            audit: existingData.audit,
         };
     }
 

@@ -93,6 +93,40 @@ describe('RepertoireDataUtils', () => {
             expect(data.fsrsCards).toEqual({});
         });
 
+        describe('FSRS audit seed', () => {
+            it('seeds `audit` to an empty array when missing', () => {
+                const data: RepertoireData = {
+                    repertoires: [
+                        { name: 'White', orientation: 'white', positions: {} },
+                        { name: 'Black', orientation: 'black', positions: {} },
+                    ],
+                };
+                RepertoireDataUtils.normalize(data);
+                expect(data.audit).toEqual([]);
+            });
+
+            it('preserves an existing `audit` array verbatim (no clobber)', () => {
+                const existing = [
+                    {
+                        k: 'fen::e4',
+                        before: [1, 2, 3, 4, 5, 6, 7, 8, 2] as [number, number, number, number, number, number, number, number, number],
+                        events: [{ ts: 1, r: 1, s: 'target' as const }],
+                    },
+                ];
+                const data: RepertoireData = {
+                    repertoires: [
+                        { name: 'White', orientation: 'white', positions: {} },
+                        { name: 'Black', orientation: 'black', positions: {} },
+                    ],
+                    audit: existing,
+                };
+                RepertoireDataUtils.normalize(data);
+                // Same reference (not replaced) — AuditService relies on this
+                expect(data.audit).toBe(existing);
+                expect(data.audit).toEqual(existing);
+            });
+        });
+
         describe('preset recalibration', () => {
             afterEach(async () => {
                 const { FSRSService } = await import('../services/FSRSService');
@@ -192,6 +226,27 @@ describe('RepertoireDataUtils', () => {
             const blob = RepertoireDataUtils.prepareDataForSave(importedBlob);
             const white = blob.repertoires!.find(r => r.orientation === 'white')!;
             expect(white.positions[root].moves['e4'].card).toEqual(reviewCard);
+        });
+
+        it('passes the `audit` array reference through to the save blob', () => {
+            const auditArr = [
+                {
+                    k: 'fen::e4',
+                    before: [1, 2, 3, 4, 5, 6, 7, 8, 2] as [number, number, number, number, number, number, number, number, number],
+                    events: [{ ts: 100, r: 1, s: 'target' as const }],
+                },
+            ];
+            const data: RepertoireData = {
+                repertoires: [
+                    { name: 'White', orientation: 'white', positions: {} },
+                    { name: 'Black', orientation: 'black', positions: {} },
+                ],
+                audit: auditArr,
+            };
+            RepertoireDataUtils.normalize(data);
+            const blob = RepertoireDataUtils.prepareDataForSave(data);
+            // Same reference — the encoder later decides whether to ship it
+            expect(blob.audit).toBe(auditArr);
         });
 
         it('preserves draft settings written into existing.settings (SettingsPage save regression)', () => {

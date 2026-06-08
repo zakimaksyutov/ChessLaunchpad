@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import ChessboardControl from './ChessboardControl';
 import { Chess } from "chess.js";
 import { FSRSCardData } from '../models/FSRSCardData';
+import { AuditEntry } from '../models/AuditData';
 import { TrainingEngine, EnginePhase } from '../services/TrainingEngine';
 import { TraversalStep } from '../services/PathPlanner';
 import { Annotation } from '../models/Annotation';
@@ -23,6 +24,12 @@ const soundSuccess = new Audio(soundSuccessFile);
 interface TrainingPageControlProps {
     repertoires: RepertoireEntry[];
     fsrsCards: Record<string, FSRSCardData>;
+    /**
+     * Shared FSRS-audit array on `RepertoireData.audit`. The engine mutates
+     * it in place via `AuditService`; the parent persists the same reference
+     * on save. See `docs/product-specs/FSRS-AUDIT.md`.
+     */
+    audit?: AuditEntry[];
     onTraversalComplete: (cardsRated: number, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;
     onQueueStats: (stats: { dueCount: number; newCount: number; reviewCount: number; learningCount: number; totalCards: number }) => void;
     onCardRated: () => void;
@@ -42,6 +49,7 @@ const TEACHING_TO_RECALL_PAUSE_MS = 1200;
 const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     repertoires,
     fsrsCards,
+    audit,
     onTraversalComplete,
     onQueueStats,
     onCardRated,
@@ -88,11 +96,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     // Build engine once on mount or when repertoires changes (not when fsrsCards changes from saves).
     // The fsrsCards ref pins the initial flat-map reference so FSRSService can
     // mutate it in place; subsequent prop updates from save round-trips would
-    // otherwise rebuild the engine and lose mid-traversal state.
+    // otherwise rebuild the engine and lose mid-traversal state. The same
+    // ref-pinning logic applies to the FSRS-audit array so AuditService
+    // continues mutating the parent's reference across re-renders.
     const initialFsrsCardsRef = useRef(fsrsCards);
     useEffect(() => { initialFsrsCardsRef.current = fsrsCards; }, [fsrsCards]);
+    const initialAuditRef = useRef(audit);
+    useEffect(() => { initialAuditRef.current = audit; }, [audit]);
     const engine = useMemo<TrainingEngine>(() => {
-        return TrainingEngine.fromRepertoires(repertoires, initialFsrsCardsRef.current);
+        return TrainingEngine.fromRepertoires(repertoires, initialFsrsCardsRef.current, initialAuditRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [repertoires]);
 

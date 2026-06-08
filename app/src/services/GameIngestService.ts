@@ -1,6 +1,7 @@
 import { Chess } from 'chess.js';
 import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
+import { AuditService } from './AuditService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
@@ -251,7 +252,12 @@ function applyIngest(
     const activity = ensureActivity(data);
     const { whiteFens, blackFens } = buildRepertoireFenSets(data.repertoires);
     if (!data.fsrsCards) data.fsrsCards = {};
-    const fsrs = new FSRSService(data.fsrsCards);
+    // Seed the audit array if missing so AuditService can mutate a stable
+    // reference (decode preserves an existing array verbatim; normalize seeds
+    // it too — this is a belt-and-braces guard for ingest paths that may
+    // construct a sparse blob in tests). See `docs/product-specs/FSRS-AUDIT.md`.
+    if (!data.audit) data.audit = [];
+    const fsrs = new FSRSService(data.fsrsCards, new AuditService(data.audit));
 
     // accountKey → linked-account info (for getUserColor)
     const acctLookup = new Map<string, { username: string; platform: Platform }>();
@@ -329,7 +335,7 @@ function processGame(
             const key = FSRSService.makeCardKey(normFenBefore, move.san);
             const card = fsrs.getCards()[key];
             if (card && shouldApplyRating(card.lastReview, game.createdAt)) {
-                fsrs.rateCard(normFenBefore, move.san, true, gameCreatedAt);
+                fsrs.rateCard(normFenBefore, move.san, true, gameCreatedAt, 'ingest');
                 reviewed += 1;
             }
         } else if (beforeIn && !afterIn) {
@@ -339,7 +345,7 @@ function processGame(
             const keys = Object.keys(cards).filter(k => k.startsWith(prefix));
             for (const k of keys) {
                 if (!shouldApplyRating(cards[k].lastReview, game.createdAt)) continue;
-                fsrs.rateCardByKey(k, false, gameCreatedAt);
+                fsrs.rateCardByKey(k, false, gameCreatedAt, 'ingest');
             }
             return { reviewed, hadMistake: true };
         }
