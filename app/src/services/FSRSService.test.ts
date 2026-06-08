@@ -458,4 +458,93 @@ describe('FSRSService', () => {
             }
         });
     });
+
+    describe('audit hook (FSRS-AUDIT)', () => {
+        // These tests exercise the FSRSService → AuditService bridge end-to-end
+        // through the real scheduler so we catch any pre-call snapshot ordering
+        // bugs (the auditor must see the BEFORE state, not the post-scheduler
+        // state). The AuditService unit tests live in `AuditService.test.ts`.
+        it('records an Again trigger on a Review-state card with `source`', async () => {
+            const { AuditService } = await import('./AuditService');
+            const audit: any[] = [];
+            const auditor = new AuditService(audit);
+
+            // Seed a Review-state card by rating Good a few times
+            const service = new FSRSService({}, auditor);
+            const t0 = new Date('2026-04-20T00:00:00Z');
+            service.rateCard('fen1', 'e4', true, t0, 'target');     // New → Learning
+            service.rateCard('fen1', 'e4', true, new Date('2026-05-01T00:00:00Z'), 'target'); // Learning → Review
+            const before = service.getCards()['fen1::e4'];
+            expect(before.state).toBe(State.Review);
+            // Two Goods on a New-state pre-call → no audit triggers
+            expect(audit).toEqual([]);
+
+            // Now an Again on the Review-state card → must trigger a watch
+            service.rateCard('fen1', 'e4', false, new Date('2026-05-15T00:00:00Z'), 'target');
+            expect(audit).toHaveLength(1);
+            expect(audit[0].k).toBe('fen1::e4');
+            expect(audit[0].events[0].s).toBe('target');
+            // before.state must equal Review (i.e. NOT the post-Again state)
+            expect(audit[0].before[8]).toBe(State.Review);
+        });
+
+        it('does NOT record anything when `source` is omitted (opt-in by call site)', async () => {
+            const { AuditService } = await import('./AuditService');
+            const audit: any[] = [];
+            const auditor = new AuditService(audit);
+
+            const service = new FSRSService({}, auditor);
+            const t0 = new Date('2026-04-20T00:00:00Z');
+            service.rateCard('fen1', 'e4', true, t0);                // no source
+            service.rateCard('fen1', 'e4', true, new Date('2026-05-01T00:00:00Z'));
+            service.rateCard('fen1', 'e4', false, new Date('2026-05-15T00:00:00Z')); // no source
+
+            expect(audit).toEqual([]);
+        });
+
+        it('does NOT trigger on the bootstrap Again of a fresh New card', async () => {
+            const { AuditService } = await import('./AuditService');
+            const audit: any[] = [];
+            const auditor = new AuditService(audit);
+
+            // Brand-new card → first rating sees pre-call state = New (no record)
+            const service = new FSRSService({}, auditor);
+            service.rateCard('fen1', 'e4', false, new Date('2026-04-20T00:00:00Z'), 'learn');
+
+            expect(audit).toEqual([]);
+        });
+
+        it('a throwing auditor does NOT break scheduling (swallowed via try/catch)', () => {
+            // Builds a real AuditService-shaped object whose onRate throws.
+            // Mimics the corrupt-blob hazard called out in the edge-cases
+            // review: an audit entry whose .events isn't an array.
+            const throwingAuditor = {
+                onRate() { throw new Error('boom'); },
+            } as any;
+            const service = new FSRSService({}, throwingAuditor);
+
+            // Establish a Review-state card so a later Again would normally
+            // trigger an audit record (and therefore invoke the throwing hook).
+            const t0 = new Date('2026-04-20T00:00:00Z');
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                service.rateCard('fen1', 'e4', true, t0, 'target');
+                service.rateCard('fen1', 'e4', true, new Date('2026-05-01T00:00:00Z'), 'target');
+                expect(service.getCards()['fen1::e4'].state).toBe(State.Review);
+
+                // Now the Again that would call into the throwing auditor.
+                // Must NOT throw; card mutation must still apply.
+                expect(() =>
+                    service.rateCard('fen1', 'e4', false, new Date('2026-05-15T00:00:00Z'), 'target')
+                ).not.toThrow();
+
+                // Card was rated successfully despite the audit throw
+                const after = service.getCards()['fen1::e4'];
+                expect(after.lapses).toBe(1);
+                expect(warn).toHaveBeenCalled();
+            } finally {
+                warn.mockRestore();
+            }
+        });
+    });
 });

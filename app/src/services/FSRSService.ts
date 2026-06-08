@@ -1,5 +1,7 @@
 import { createEmptyCard, fsrs, Rating, State, FSRS, Card, computeDecayFactor, default_w } from 'ts-fsrs';
 import { FSRSCardData } from '../models/FSRSCardData';
+import { AuditEventSource } from '../models/AuditData';
+import { AuditService } from './AuditService';
 
 // Decay/factor for our standalone interval math (`intervalFromStability`,
 // `computeInterval`). These MUST stay in lockstep with the decay the scheduler
@@ -49,8 +51,12 @@ let _maxInterval: number = DEFAULT_MAX_INTERVAL;
 export class FSRSService {
     private scheduler: FSRS;
     private cards: Record<string, FSRSCardData>;
+    private auditor: AuditService | undefined;
 
-    constructor(cards: Record<string, FSRSCardData> = {}) {
+    constructor(
+        cards: Record<string, FSRSCardData> = {},
+        auditor?: AuditService,
+    ) {
         this.scheduler = fsrs({
             request_retention: FSRSService.getRetention(),
             maximum_interval: FSRSService.getMaxInterval(),
@@ -58,6 +64,7 @@ export class FSRSService {
             enable_short_term: true
         });
         this.cards = cards;
+        this.auditor = auditor;
     }
 
     static makeCardKey(normalizedFen: string, moveSan: string): string {
@@ -69,13 +76,40 @@ export class FSRSService {
         return { fen: key.substring(0, idx), san: key.substring(idx + 2) };
     }
 
-    rateCard(normalizedFen: string, moveSan: string, correct: boolean, now: Date): void {
+    /**
+     * Apply a Good/Again rating to the card identified by (fen, san).
+     *
+     * `source` is an optional FSRS-audit tag identifying the call site
+     * (target/warmup/cooldown/branch/learn/ingest). When both `source` and
+     * a constructor-supplied auditor are present, the auditor sees the
+     * pre-call card snapshot and decides whether to start watching this
+     * card or to append an event to an existing watch. See
+     * `docs/product-specs/FSRS-AUDIT.md`. Audit failure must never break
+     * scheduling, so:
+     *   1. we capture the snapshot BEFORE the scheduler mutates `this.cards`
+     *      (ordering guarantees the snapshot reflects pre-call state); AND
+     *   2. we wrap the auditor invocation in `try/catch` so a thrown auditor
+     *      (e.g. from a malformed persisted entry slipping past decode)
+     *      cannot abort the traversal step or ingest run that called us.
+     */
+    rateCard(
+        normalizedFen: string,
+        moveSan: string,
+        correct: boolean,
+        now: Date,
+        source?: AuditEventSource,
+    ): void {
         const key = FSRSService.makeCardKey(normalizedFen, moveSan);
 
+        // Snapshot the pre-call card for the auditor before we replace the
+        // entry below. We pass the live object reference rather than cloning
+        // because `packCardForAudit` reads scalar fields only and we hand off
+        // synchronously inside this method — the auditor never holds the ref.
+        const beforeSnapshot = this.cards[key];
+
         let card: Card;
-        const existing = this.cards[key];
-        if (existing) {
-            card = this.hydrate(existing);
+        if (beforeSnapshot) {
+            card = this.hydrate(beforeSnapshot);
         } else {
             card = createEmptyCard(now);
         }
@@ -83,11 +117,27 @@ export class FSRSService {
         const rating = correct ? Rating.Good : Rating.Again;
         const result = this.scheduler.next(card, now, rating);
         this.cards[key] = FSRSService.serialize(result.card);
+
+        if (this.auditor && source) {
+            try {
+                this.auditor.onRate(key, beforeSnapshot, rating, now.getTime(), source);
+            } catch (err) {
+                // Diagnostic-only failure — log and continue. The scheduler
+                // mutation above has already landed and the caller's
+                // traversal/ingest must not be aborted by audit corruption.
+                console.warn('FSRSService: audit hook failed', err);
+            }
+        }
     }
 
-    rateCardByKey(key: string, correct: boolean, now: Date): void {
+    rateCardByKey(
+        key: string,
+        correct: boolean,
+        now: Date,
+        source?: AuditEventSource,
+    ): void {
         const { fen, san } = FSRSService.parseCardKey(key);
-        this.rateCard(fen, san, correct, now);
+        this.rateCard(fen, san, correct, now, source);
     }
 
     getCards(): Record<string, FSRSCardData> {

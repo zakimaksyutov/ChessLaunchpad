@@ -689,4 +689,70 @@ describe('BlobCodec', () => {
             expect(w.positions[fenAfter(['e4'])].moves).toEqual({});
         });
     });
+
+    describe('audit field (temporary FSRS diagnostic)', () => {
+        it('round-trips a populated `audit` array verbatim', () => {
+            const root = startFen();
+            const data = baseData([whiteRep({ [root]: { moves: {} } }), blackRep()]);
+            data.audit = [
+                {
+                    k: `${root}::e4`,
+                    before: [1_700_000_000_000, 12.5, 4.2, 3, 7, 0, 8, 1, 2, 1_690_000_000_000],
+                    events: [
+                        { ts: 1_700_000_001_000, r: 1, s: 'target' },
+                        { ts: 1_700_000_002_000, r: 3, s: 'target' },
+                    ],
+                },
+            ];
+
+            const enc = encodePersistedBlob(data);
+            const dec = decodePersistedBlob(jsonClone(enc));
+
+            expect(dec.audit).toEqual(data.audit);
+        });
+
+        it('omits `audit` from the wire when the array is empty', () => {
+            const root = startFen();
+            const data = baseData([whiteRep({ [root]: { moves: {} } }), blackRep()]);
+            data.audit = [];
+
+            const enc = encodePersistedBlob(data);
+
+            expect('audit' in enc).toBe(false);
+        });
+
+        it('omits `audit` from the wire when the field is undefined', () => {
+            const root = startFen();
+            const data = baseData([whiteRep({ [root]: { moves: {} } }), blackRep()]);
+
+            const enc = encodePersistedBlob(data);
+
+            expect('audit' in enc).toBe(false);
+        });
+
+        it('decodes a blob without `audit` as `audit: undefined` (no field seeded)', () => {
+            // The codec is concerned with the wire shape only; seeding an empty
+            // array on load is RepertoireDataUtils.normalize's job.
+            const root = startFen();
+            const data = baseData([whiteRep({ [root]: { moves: {} } }), blackRep()]);
+
+            const enc = encodePersistedBlob(data);
+            const dec = decodePersistedBlob(jsonClone(enc));
+
+            expect(dec.audit).toBeUndefined();
+        });
+
+        it('silently drops a non-array `audit` field rather than throwing', () => {
+            // Audit is a diagnostic side-channel; a corrupt audit must not
+            // block decode of the user's actual repertoire data.
+            const root = startFen();
+            const data = baseData([whiteRep({ [root]: { moves: {} } }), blackRep()]);
+            const enc = encodePersistedBlob(data) as any;
+            enc.audit = { not: 'an array' };
+
+            const dec = decodePersistedBlob(jsonClone(enc));
+
+            expect(dec.audit).toBeUndefined();
+        });
+    });
 });

@@ -7,6 +7,7 @@ import {
     MoveEntry,
 } from '../models/Repertoires';
 import { RepertoireData } from '../models/RepertoireData';
+import { AuditEntry } from '../models/AuditData';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
 
 /**
@@ -76,6 +77,13 @@ export interface PersistedBlobV3 {
     settings?: RepertoireData['settings'];
     activity?: RepertoireData['activity'];
     games?: RepertoireData['games'];
+    /**
+     * Temporary FSRS audit trail. See `docs/product-specs/FSRS-AUDIT.md`.
+     * Field is additive; older blobs and fresh accounts omit it entirely.
+     * Encode also omits it when the array is absent or empty so the wire
+     * stays clean for users with no captures.
+     */
+    audit?: AuditEntry[];
 }
 
 // Sentinel meaning "this move's child position is not stored in the repertoire".
@@ -98,6 +106,16 @@ function packCard(card: FSRSCardData): PackedCard {
         return [d, card.stability, card.difficulty, card.elapsedDays, card.scheduledDays, card.learningSteps, card.reps, card.lapses, card.state, lr];
     }
     return [d, card.stability, card.difficulty, card.elapsedDays, card.scheduledDays, card.learningSteps, card.reps, card.lapses, card.state];
+}
+
+/**
+ * Exposed wrapper around `packCard` for the FSRS audit pipeline so
+ * `AuditService` can snapshot the pre-call FSRS card in the same packed
+ * shape that's used on the wire. Keeping a single packer guarantees the
+ * snapshot format stays in lockstep with `PackedCard`.
+ */
+export function packCardForAudit(card: FSRSCardData): PackedCard {
+    return packCard(card);
 }
 
 function unpackCard(packed: unknown): FSRSCardData {
@@ -173,13 +191,20 @@ export function encodePersistedBlob(data: RepertoireData): PersistedBlobV3 {
     const reps = data.repertoires ?? [];
     const outReps: PersistedRepertoireEntryV3[] = reps.map(encodeRepertoireV3);
 
-    return {
+    const blob: PersistedBlobV3 = {
         v: PERSISTED_BLOB_VERSION,
         repertoires: outReps,
         settings: data.settings,
         activity: data.activity,
         games: data.games,
     };
+    // Only ship `audit` when it has at least one entry. Empty arrays add
+    // wire noise and a `[]` for every user is misleading — the spec wants
+    // the field "absent on existing blobs" when there's nothing to report.
+    if (data.audit && data.audit.length > 0) {
+        blob.audit = data.audit;
+    }
+    return blob;
 }
 
 function encodeRepertoireV3(rep: RepertoireEntry): PersistedRepertoireEntryV3 {
@@ -323,12 +348,21 @@ export function decodePersistedBlob(raw: unknown): RepertoireData {
     const persisted = raw as PersistedBlobV3;
     const outReps: RepertoireEntry[] = (persisted.repertoires ?? []).map(decodeRepertoireV3);
 
-    return {
+    const out: RepertoireData = {
         repertoires: outReps,
         settings: persisted.settings,
         activity: persisted.activity,
         games: persisted.games,
     };
+    // Pass `audit` through verbatim. The field is opaque to the codec; the
+    // FSRS audit pipeline (`AuditService`) owns its shape and invariants.
+    // We accept it only when it parses as an array — a non-array `audit`
+    // from a corrupt blob is silently dropped rather than crashing decode,
+    // because audit is a diagnostic side-channel, not user data.
+    if (Array.isArray(persisted.audit)) {
+        out.audit = persisted.audit;
+    }
+    return out;
 }
 
 function decodeRepertoireV3(rep: PersistedRepertoireEntryV3): RepertoireEntry {

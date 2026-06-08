@@ -142,6 +142,7 @@ const TrainingPage: React.FC = () => {
             <TrainingPageControl
                 repertoires={repertoireData.repertoires ?? []}
                 fsrsCards={repertoireData.fsrsCards ?? {}}
+                audit={repertoireData.audit}
                 onTraversalComplete={handleTraversalComplete}
                 onQueueStats={handleQueueStats}
                 onCardRated={handleCardRated}

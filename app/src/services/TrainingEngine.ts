@@ -1,7 +1,9 @@
 import { Chess } from 'chess.js';
 import { State } from 'ts-fsrs';
 import { FSRSCardData } from '../models/FSRSCardData';
+import { AuditEntry, AuditEventSource } from '../models/AuditData';
 import { FSRSService } from './FSRSService';
+import { AuditService } from './AuditService';
 import { RepertoireGraph } from './RepertoireGraph';
 import { ReviewQueue } from './ReviewQueue';
 import { PathPlanner, TraversalPlan, TraversalStep } from './PathPlanner';
@@ -50,6 +52,30 @@ const DEFAULT_CONTEXT_DEPTH = 2;
 let _contextDepth: number = DEFAULT_CONTEXT_DEPTH;
 
 /**
+ * Map a `TraversalStep.role` to the FSRS-audit source enum.
+ *
+ * `target` / `warm-up` / `cool-down` cover every role that can actually
+ * surface a user rate call via `executePlayerMove`'s regular-traversal path.
+ * `'autoplay'` is handled here for switch exhaustiveness only — autoplay
+ * steps never reach the user-rate branch (they advance via
+ * `advanceAutoplay` without rating), so the value is effectively dead.
+ * If a new role is ever added to `StepRole`, TypeScript exhaustiveness
+ * checking will flag this switch via the `never` assertion.
+ */
+function auditSourceForRole(role: TraversalStep['role']): AuditEventSource {
+    switch (role) {
+        case 'warm-up':   return 'warmup';
+        case 'cool-down': return 'cooldown';
+        case 'target':    return 'target';
+        case 'autoplay':  return 'target';
+        default: {
+            const _exhaustive: never = role;
+            return _exhaustive;
+        }
+    }
+}
+
+/**
  * Orchestrates the traversal lifecycle for FSRSv2 training.
  * Manages queue building, path planning, move handling, rating, and phase transitions.
  */
@@ -83,7 +109,8 @@ export class TrainingEngine {
 
     constructor(
         pgns: { pgn: string; orientation: 'white' | 'black'; annotations?: Record<string, Annotation[]> }[],
-        fsrsCards: Record<string, FSRSCardData>
+        fsrsCards: Record<string, FSRSCardData>,
+        audit?: AuditEntry[],
     ) {
         const graph = new RepertoireGraph(pgns);
         // Merge annotations from all PGNs, partitioned by orientation
@@ -97,13 +124,20 @@ export class TrainingEngine {
                 }
             }
         }
-        this.init(graph, fsrsCards, annotations);
+        this.init(graph, fsrsCards, annotations, audit);
     }
 
     /**
      * Construct from the position-centric `repertoires` shape. The flat
      * `fsrsCards` map is the in-memory authority (FSRSService mutates it
      * directly); annotations come straight from the position dict.
+     *
+     * `audit` (optional) is the shared FSRS-audit array on the blob
+     * (`RepertoireData.audit`). When provided, the engine wires an
+     * `AuditService` into its FSRSService so failing-recall trajectories
+     * are captured per `docs/product-specs/FSRS-AUDIT.md`. The engine
+     * mutates the array in place — the caller keeps the reference and
+     * persists it on save.
      *
      * Both this and the PGN constructor route through `init()` to keep
      * graph/planner/annotation hydration consistent — any future per-edge
@@ -112,6 +146,7 @@ export class TrainingEngine {
     static fromRepertoires(
         repertoires: RepertoireEntry[],
         fsrsCards: Record<string, FSRSCardData>,
+        audit?: AuditEntry[],
     ): TrainingEngine {
         const engine = Object.create(TrainingEngine.prototype) as TrainingEngine;
         // Re-create the field-initializer defaults that `new` would set —
@@ -143,7 +178,7 @@ export class TrainingEngine {
                 annotations.set(`${orientation}::${fen}`, [...anns]);
             }
         }
-        engine.init(graph, fsrsCards, annotations);
+        engine.init(graph, fsrsCards, annotations, audit);
         return engine;
     }
 
@@ -156,9 +191,11 @@ export class TrainingEngine {
         graph: RepertoireGraph,
         fsrsCards: Record<string, FSRSCardData>,
         annotations: Map<string, Annotation[]>,
+        audit?: AuditEntry[],
     ): void {
         this.graph = graph;
-        this.fsrsService = new FSRSService(fsrsCards);
+        const auditor = audit ? new AuditService(audit) : undefined;
+        this.fsrsService = new FSRSService(fsrsCards, auditor);
         this.queue = new ReviewQueue();
         const contextDepth = TrainingEngine.getContextDepth();
         this.planner = new PathPlanner(this.graph, this.fsrsService, contextDepth);
@@ -323,7 +360,7 @@ export class TrainingEngine {
                 // Only rate cards that are part of the new card set being taught
                 const isNewCard = this.plan!.newCardKeys.includes(step.cardKey);
                if (isNewCard) {
-                   this.fsrsService.rateCardByKey(step.cardKey, false, new Date());
+                   this.fsrsService.rateCardByKey(step.cardKey, false, new Date(), 'learn');
                    this.cardsRated++;
                    this._learnedCount++;  // recall-pass Again is "learned", not a mistake
                    this.queue.remove(step.cardKey);
@@ -355,7 +392,7 @@ export class TrainingEngine {
             // Planned move — rate normally
             const hadError = this.errorFens.has(currentFen);
             const isCorrect = !hadError && !this.hintRequested;
-            this.fsrsService.rateCardByKey(step.cardKey, isCorrect, new Date());
+            this.fsrsService.rateCardByKey(step.cardKey, isCorrect, new Date(), auditSourceForRole(step.role));
             this.cardsRated++;
             if (step.role === 'target') {
                 if (isCorrect) {
@@ -395,7 +432,7 @@ export class TrainingEngine {
             // Valid repertoire move at a branch point
             if (!this.branchAlternativesPlayed.has(edge.cardKey)) {
                 // Rate this unplanned move as Good (FSRS update only, not counted as reviewed)
-                this.fsrsService.rateCardByKey(edge.cardKey, true, new Date());
+                this.fsrsService.rateCardByKey(edge.cardKey, true, new Date(), 'branch');
                 this.cardsRated++;
                 this.queue.remove(edge.cardKey);
                 this.branchAlternativesPlayed.add(edge.cardKey);

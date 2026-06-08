@@ -751,6 +751,55 @@ describe('GameIngestService', () => {
         expect(events[0].phase).toBe('fetching');
         expect(events[1]).toEqual({ phase: 'done', gamesProcessed: 0 });
     });
+
+    describe('FSRS audit integration', () => {
+        // End-to-end coverage of the audit wiring through real game ingest.
+        // Bootstraps the card into Review state via direct FSRSService calls,
+        // then deviates to provoke a real recall failure that must be recorded.
+        it('records a deviation Again on a Review-state card with source `ingest`', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5', 'white');
+            const data = makeData([variant]);
+            const positionChess = new Chess();
+            positionChess.move('e4'); positionChess.move('e5');
+            const fenAfterE5 = normalizeFenResetHalfmoveClock(positionChess.fen());
+            const nf3Key = FSRSService.makeCardKey(fenAfterE5, 'Nf3');
+
+            // Bootstrap: advance the Nf3 card to Review state. Two Goods on
+            // separate days take a New card through Learning → Review with
+            // the short-term scheduler. We mutate data.fsrsCards directly
+            // (no prepareDataForSave) so the MockDal clones a blob with the
+            // bootstrapped flat map intact — the wire shape strips
+            // fsrsCards, so going through prepareDataForSave first would
+            // lose the bootstrap state.
+            const fsrs1 = new FSRSService(data.fsrsCards!);
+            fsrs1.rateCard(fenAfterE5, 'Nf3', true, new Date(FAKE_NOW.getTime() - 30 * 24 * 60 * 60 * 1000));
+            fsrs1.rateCard(fenAfterE5, 'Nf3', true, new Date(FAKE_NOW.getTime() - 25 * 24 * 60 * 60 * 1000));
+            expect(data.fsrsCards![nf3Key].state).toBe(2 /* Review */);
+
+            // Now ingest a game that deviates at move 2 — user plays d4 instead of Nf3
+            const game = lichessGame({
+                id: 'g-audit',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 d4',
+            });
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+
+            // The persisted blob now has an audit entry for the Nf3 card
+            expect(dal.data.audit).toBeDefined();
+            expect(dal.data.audit).toHaveLength(1);
+            const entry = dal.data.audit![0];
+            expect(entry.k).toBe(nf3Key);
+            expect(entry.events).toHaveLength(1);
+            expect(entry.events[0].s).toBe('ingest');
+            expect(entry.events[0].r).toBe(1 /* Again */);
+            // before is packed; element 8 is `state` and must be Review (=2).
+            expect(entry.before[8]).toBe(2);
+        });
+    });
 });
 
 function buildChesscomGame(opts: {
