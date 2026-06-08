@@ -104,8 +104,8 @@ test.describe('Dashboard — game sync drives FSRS', () => {
 
     // All three pre-rated cards should be in Review state by now.
     for (const card of Object.values(preRatedCards)) {
-      expect(card.st).toBe(State.Review);
-      expect(card.lr).toBeDefined();
+      expect(card.state).toBe(State.Review);
+      expect(card.lastReview).toBeDefined();
     }
 
     // ── 5. Compute page-clock offset so earliest due is 1 hour out ──
@@ -124,7 +124,7 @@ test.describe('Dashboard — game sync drives FSRS', () => {
     // Quick sanity: gameCreatedAt must be ≥ every card's lr for
     // shouldApplyRating() to pass.
     for (const card of Object.values(preRatedCards)) {
-      const lrMs = new Date(card.lr!).getTime();
+      const lrMs = new Date(card.lastReview!).getTime();
       expect(lrMs).toBeLessThanOrEqual(gameCreatedAtMs);
     }
 
@@ -213,13 +213,13 @@ test.describe('Dashboard — game sync drives FSRS', () => {
     expect(newNf6, 'Nf6 card present after save').toBeDefined();
 
     // ── e4: Good rating from Review state ──────────────────────────
-    expect(newE4.st).toBe(State.Review);
-    expect(newE4.r).toBe(prevE4.r + 1);
+    expect(newE4.state).toBe(State.Review);
+    expect(newE4.reps).toBe(prevE4.reps + 1);
     // Good preserves or increases stability; never resets lapses.
-    expect(newE4.l).toBe(prevE4.l);
-    expect(newE4.s).toBeGreaterThanOrEqual(prevE4.s);
+    expect(newE4.lapses).toBe(prevE4.lapses);
+    expect(newE4.stability).toBeGreaterThanOrEqual(prevE4.stability);
     // last_review is stamped to the game's createdAt.
-    expect(new Date(newE4.lr!).getTime()).toBe(gameCreatedAtMs);
+    expect(new Date(newE4.lastReview!).getTime()).toBe(gameCreatedAtMs);
     // New due is anchored at gameCreatedAt + new interval, which must
     // be later than the previous (gameCreatedAt is later than prev lr,
     // and new stability ≥ prev stability).
@@ -229,11 +229,11 @@ test.describe('Dashboard — game sync drives FSRS', () => {
     expect(newE4DueMs).toBeGreaterThan(prevE4DueMs);
 
     // ── Nf3: Good rating from Review state (same shape as e4) ──────
-    expect(newNf3.st).toBe(State.Review);
-    expect(newNf3.r).toBe(prevNf3.r + 1);
-    expect(newNf3.l).toBe(prevNf3.l);
-    expect(newNf3.s).toBeGreaterThanOrEqual(prevNf3.s);
-    expect(new Date(newNf3.lr!).getTime()).toBe(gameCreatedAtMs);
+    expect(newNf3.state).toBe(State.Review);
+    expect(newNf3.reps).toBe(prevNf3.reps + 1);
+    expect(newNf3.lapses).toBe(prevNf3.lapses);
+    expect(newNf3.stability).toBeGreaterThanOrEqual(prevNf3.stability);
+    expect(new Date(newNf3.lastReview!).getTime()).toBe(gameCreatedAtMs);
     const newNf3DueMs = FSRSService.computeDueDate(newNf3).getTime();
     const prevNf3DueMs = FSRSService.computeDueDate(prevNf3).getTime();
     expect(newNf3DueMs).toBeGreaterThan(gameCreatedAtMs);
@@ -243,14 +243,14 @@ test.describe('Dashboard — game sync drives FSRS', () => {
     // The black game played c5 instead of Nf6 from the position after
     // 1. c4. GameIngestService rates all sibling cards at that FEN
     // Again — Nf6 is the only one.
-    expect(newNf6.st).toBe(State.Relearning);
-    expect(newNf6.l).toBe(prevNf6.l + 1);
+    expect(newNf6.state).toBe(State.Relearning);
+    expect(newNf6.lapses).toBe(prevNf6.lapses + 1);
     // Lapses always increment, regardless of relearning steps.
     // last_review is the game timestamp (black game is +1ms).
-    expect(new Date(newNf6.lr!).getTime()).toBe(gameCreatedAtMs + 1);
+    expect(new Date(newNf6.lastReview!).getTime()).toBe(gameCreatedAtMs + 1);
     // Due is short — roughly gameCreatedAt + relearning step (~10 min,
     // ts-fsrs default). Use a generous tolerance to absorb fuzz/config.
-    const newNf6DueMs = new Date(newNf6.d).getTime();
+    const newNf6DueMs = new Date(newNf6.due).getTime();
     expect(newNf6DueMs).toBeGreaterThan(gameCreatedAtMs);
     expect(newNf6DueMs - (gameCreatedAtMs + 1)).toBeLessThan(60 * 60 * 1000);
 

@@ -27,7 +27,7 @@ function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
         if (!isDue && (nextDueMs === null || dueMs < nextDueMs)) {
             nextDueMs = dueMs;
         }
-        switch (card.st as State) {
+        switch (card.state as State) {
             case State.New: newCount++; dueNow++; break;
             case State.Learning: learning++; if (isDue) dueNow++; break;
             case State.Review:

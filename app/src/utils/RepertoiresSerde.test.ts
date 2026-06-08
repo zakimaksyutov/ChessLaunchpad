@@ -23,7 +23,7 @@ function fenAfter(moves: string[]): string {
 }
 
 function reviewCard(): FSRSCardData {
-    return { d: '2030-01-01T00:00:00.000Z', s: 50, di: 2, e: 5, sd: 30, ls: 0, r: 10, l: 1, st: State.Review };
+    return { due: '2030-01-01T00:00:00.000Z', stability: 50, difficulty: 2, elapsedDays: 5, scheduledDays: 30, learningSteps: 0, reps: 10, lapses: 1, state: State.Review };
 }
 
 describe('RepertoiresSerde', () => {

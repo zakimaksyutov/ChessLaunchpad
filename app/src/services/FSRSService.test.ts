@@ -25,16 +25,16 @@ describe('FSRSService', () => {
             const cardData = cards['fen1::e4'];
 
             expect(cardData).toBeDefined();
-            expect(cardData.st).toBe(State.Learning); // New → Learning after first Good with short-term enabled
-            expect(cardData.r).toBe(1);
-            expect(cardData.l).toBe(0);
-            expect(cardData.lr).toBe(now.toISOString());
+            expect(cardData.state).toBe(State.Learning); // New → Learning after first Good with short-term enabled
+            expect(cardData.reps).toBe(1);
+            expect(cardData.lapses).toBe(0);
+            expect(cardData.lastReview).toBe(now.toISOString());
 
             // Rate again to advance the card
-            const due = new Date(cardData.d);
+            const due = new Date(cardData.due);
             service.rateCard('fen1', 'e4', true, due);
             const updated = cards['fen1::e4'];
-            expect(updated.r).toBe(2);
+            expect(updated.reps).toBe(2);
         });
 
         it('should preserve last_review as ISO string', () => {
@@ -43,7 +43,7 @@ describe('FSRSService', () => {
             service.rateCard('fen1', 'Nf3', true, now);
 
             const card = service.getCards()['fen1::Nf3'];
-            expect(card.lr).toBe('2026-04-20T12:00:00.000Z');
+            expect(card.lastReview).toBe('2026-04-20T12:00:00.000Z');
         });
     });
 
@@ -56,8 +56,8 @@ describe('FSRSService', () => {
             const card = service.getCards()['fen1::e4'];
 
             expect(card).toBeDefined();
-            expect(card.r).toBe(1);
-            expect(card.l).toBe(0);
+            expect(card.reps).toBe(1);
+            expect(card.lapses).toBe(0);
         });
 
         it('should create a new card on first encounter and rate as Again', () => {
@@ -68,10 +68,10 @@ describe('FSRSService', () => {
             const card = service.getCards()['fen1::e4'];
 
             expect(card).toBeDefined();
-            expect(card.r).toBe(1);
+            expect(card.reps).toBe(1);
             // Again on a New card produces lower stability and higher difficulty than Good
-            expect(card.s).toBeLessThan(1);
-            expect(card.di).toBeGreaterThan(5);
+            expect(card.stability).toBeLessThan(1);
+            expect(card.difficulty).toBeGreaterThan(5);
         });
 
         it('should update existing card state', () => {
@@ -83,12 +83,12 @@ describe('FSRSService', () => {
             const after1 = service.getCards()['fen1::e4'];
 
             // Second review at due time
-            const due = new Date(after1.d);
+            const due = new Date(after1.due);
             service.rateCard('fen1', 'e4', true, due);
             const after2 = service.getCards()['fen1::e4'];
 
-            expect(after2.r).toBe(2);
-            expect(after2.s).toBeGreaterThanOrEqual(after1.s); // Stability preserved or increases on transition
+            expect(after2.reps).toBe(2);
+            expect(after2.stability).toBeGreaterThanOrEqual(after1.stability); // Stability preserved or increases on transition
         });
 
         it('should mutate the shared cards map in-place', () => {
@@ -166,16 +166,16 @@ describe('FSRSService', () => {
 
         describe('estimateDailyLoad', () => {
             const makeCard = (s: number, st: State = State.Review, lr: string | undefined = '2026-01-01T00:00:00Z'): FSRSCardData => ({
-                d: '2026-02-01T00:00:00Z',
-                s,
-                di: 5,
-                e: 0,
-                sd: 10,
-                ls: 0,
-                r: 1,
-                l: 0,
-                st,
-                lr,
+                due: '2026-02-01T00:00:00Z',
+                stability: s,
+                difficulty: 5,
+                elapsedDays: 0,
+                scheduledDays: 10,
+                learningSteps: 0,
+                reps: 1,
+                lapses: 0,
+                state: st,
+                lastReview: lr,
             });
 
             it('returns zero for an empty deck', () => {
@@ -238,19 +238,19 @@ describe('FSRSService', () => {
                 FSRSService.setRetention(0.97);
                 FSRSService.setMaxInterval(90);
                 const card: FSRSCardData = {
-                    d: '2026-02-01T00:00:00Z',
-                    s: 25,
-                    di: 5,
-                    e: 0,
-                    sd: 10,
-                    ls: 0,
-                    r: 1,
-                    l: 0,
-                    st: State.Review,
-                    lr: '2026-01-01T00:00:00Z',
+                    due: '2026-02-01T00:00:00Z',
+                    stability: 25,
+                    difficulty: 5,
+                    elapsedDays: 0,
+                    scheduledDays: 10,
+                    learningSteps: 0,
+                    reps: 1,
+                    lapses: 0,
+                    state: State.Review,
+                    lastReview: '2026-01-01T00:00:00Z',
                 };
                 const fromComputeInterval = FSRSService.computeInterval(card);
-                const fromHelper = FSRSService.intervalFromStability(card.s, 0.97, 90);
+                const fromHelper = FSRSService.intervalFromStability(card.stability, 0.97, 90);
                 expect(fromComputeInterval).toBe(fromHelper);
             });
 
@@ -339,7 +339,7 @@ describe('FSRSService', () => {
     //     standard preset, including the 2-day floor in
     //     `intervalFromStability` and the way `computeDueDate` advances "now"
     //     from one review to the next (the production code path always reads
-    //     the recomputed due, never the stored `card.d`).
+    //     the recomputed due, never the stored `card.due`).
     //   - Catch silent behavioral drift from ts-fsrs minor-version bumps,
     //     `default_w` updates, or accidental tweaks to scheduler config.
     //
@@ -381,13 +381,13 @@ describe('FSRSService', () => {
             };
 
             const actual: Array<{
-                S: number; D: number; sd: number; st: number;
-                r: number; l: number; d: string; lr: string;
+                stability: number; difficulty: number; scheduledDays: number; state: number;
+                reps: number; lapses: number; due: string; lastReview: string;
             }> = [];
             const record = (c: FSRSCardData) => {
                 actual.push({
-                    S: c.s, D: c.di, sd: c.sd, st: c.st,
-                    r: c.r, l: c.l, d: c.d, lr: c.lr!,
+                    stability: c.stability, difficulty: c.difficulty, scheduledDays: c.scheduledDays, state: c.state,
+                    reps: c.reps, lapses: c.lapses, due: c.due, lastReview: c.lastReview!,
                 });
             };
 
@@ -399,44 +399,44 @@ describe('FSRSService', () => {
             // Per-step snapshot. Each entry is the state *after* applying the
             // rating at that step. Generated by running this same sequence.
             const EXPECTED = [
-                { S: 0.212,        D: 6.4133,     sd: 0,  st: 1, r: 1,  l: 0, d: '2026-01-01T00:01:00.000Z', lr: '2026-01-01T00:00:00.000Z' },
-                { S: 0.24668919,   D: 6.40211507, sd: 0,  st: 1, r: 2,  l: 0, d: '2026-01-01T00:11:00.000Z', lr: '2026-01-01T00:01:00.000Z' },
-                { S: 0.28420636,   D: 6.39094132, sd: 1,  st: 2, r: 3,  l: 0, d: '2026-01-02T00:11:00.000Z', lr: '2026-01-01T00:11:00.000Z' },
-                { S: 2.83275337,   D: 6.37977875, sd: 2,  st: 2, r: 4,  l: 0, d: '2026-01-05T00:11:00.000Z', lr: '2026-01-03T00:11:00.000Z' },
-                { S: 7.41043294,   D: 6.36862734, sd: 2,  st: 2, r: 5,  l: 0, d: '2026-01-07T00:11:00.000Z', lr: '2026-01-05T00:11:00.000Z' },
-                { S: 11.9985981,   D: 6.35748708, sd: 3,  st: 2, r: 6,  l: 0, d: '2026-01-10T00:11:00.000Z', lr: '2026-01-07T00:11:00.000Z' },
-                { S: 18.41835342,  D: 6.34635796, sd: 5,  st: 2, r: 7,  l: 0, d: '2026-01-15T00:11:00.000Z', lr: '2026-01-10T00:11:00.000Z' },
-                { S: 26.51992591,  D: 6.33523997, sd: 6,  st: 2, r: 8,  l: 0, d: '2026-01-20T00:11:00.000Z', lr: '2026-01-14T00:11:00.000Z' },
-                { S: 37.9389438,   D: 6.3241331,  sd: 8,  st: 2, r: 9,  l: 0, d: '2026-01-28T00:11:00.000Z', lr: '2026-01-20T00:11:00.000Z' },
-                { S: 52.41221308,  D: 6.31303734, sd: 12, st: 2, r: 10, l: 0, d: '2026-02-09T00:11:00.000Z', lr: '2026-01-28T00:11:00.000Z' },
-                { S: 72.87323311,  D: 6.30195267, sd: 16, st: 2, r: 11, l: 0, d: '2026-02-25T00:11:00.000Z', lr: '2026-02-09T00:11:00.000Z' },
-                { S: 98.862555,    D: 6.29087909, sd: 22, st: 2, r: 12, l: 0, d: '2026-03-19T00:11:00.000Z', lr: '2026-02-25T00:11:00.000Z' },
-                { S: 132.86397179, D: 6.27981658, sd: 30, st: 2, r: 13, l: 0, d: '2026-04-18T00:11:00.000Z', lr: '2026-03-19T00:11:00.000Z' },
-                { S: 3.65486447,   D: 8.76242937, sd: 0,  st: 3, r: 14, l: 1, d: '2026-04-18T00:21:00.000Z', lr: '2026-04-18T00:11:00.000Z' },
-                { S: 3.65486447,   D: 8.74889531, sd: 1,  st: 2, r: 15, l: 1, d: '2026-04-19T00:21:00.000Z', lr: '2026-04-18T00:21:00.000Z' },
-                { S: 5.91088436,   D: 8.73537478, sd: 2,  st: 2, r: 16, l: 1, d: '2026-04-22T00:21:00.000Z', lr: '2026-04-20T00:21:00.000Z' },
-                { S: 8.17645367,   D: 8.72186777, sd: 3,  st: 2, r: 17, l: 1, d: '2026-04-25T00:21:00.000Z', lr: '2026-04-22T00:21:00.000Z' },
-                { S: 10.42032281,  D: 8.70837427, sd: 3,  st: 2, r: 18, l: 1, d: '2026-04-27T00:21:00.000Z', lr: '2026-04-24T00:21:00.000Z' },
-                { S: 12.63782999,  D: 8.69489427, sd: 4,  st: 2, r: 19, l: 1, d: '2026-04-30T00:21:00.000Z', lr: '2026-04-26T00:21:00.000Z' },
-                { S: 15.81488936,  D: 8.68142775, sd: 4,  st: 2, r: 20, l: 1, d: '2026-05-03T00:21:00.000Z', lr: '2026-04-29T00:21:00.000Z' },
-                { S: 19.89257457,  D: 8.66797469, sd: 5,  st: 2, r: 21, l: 1, d: '2026-05-08T00:21:00.000Z', lr: '2026-05-03T00:21:00.000Z' },
-                { S: 23.92871312,  D: 8.65453508, sd: 6,  st: 2, r: 22, l: 1, d: '2026-05-13T00:21:00.000Z', lr: '2026-05-07T00:21:00.000Z' },
-                { S: 28.83237464,  D: 8.64110891, sd: 7,  st: 2, r: 23, l: 1, d: '2026-05-19T00:21:00.000Z', lr: '2026-05-12T00:21:00.000Z' },
-                { S: 34.57160081,  D: 8.62769617, sd: 8,  st: 2, r: 24, l: 1, d: '2026-05-26T00:21:00.000Z', lr: '2026-05-18T00:21:00.000Z' },
-                { S: 41.9636924,   D: 8.61429684, sd: 10, st: 2, r: 25, l: 1, d: '2026-06-05T00:21:00.000Z', lr: '2026-05-26T00:21:00.000Z' },
-                { S: 50.12014917,  D: 8.60091091, sd: 11, st: 2, r: 26, l: 1, d: '2026-06-15T00:21:00.000Z', lr: '2026-06-04T00:21:00.000Z' },
-                { S: 59.83183529,  D: 8.58753837, sd: 13, st: 2, r: 27, l: 1, d: '2026-06-28T00:21:00.000Z', lr: '2026-06-15T00:21:00.000Z' },
-                { S: 71.04827564,  D: 8.5741792,  sd: 16, st: 2, r: 28, l: 1, d: '2026-07-14T00:21:00.000Z', lr: '2026-06-28T00:21:00.000Z' },
-                { S: 84.49200647,  D: 8.56083339, sd: 19, st: 2, r: 29, l: 1, d: '2026-08-02T00:21:00.000Z', lr: '2026-07-14T00:21:00.000Z' },
-                { S: 100.08961852, D: 8.54750093, sd: 22, st: 2, r: 30, l: 1, d: '2026-08-24T00:21:00.000Z', lr: '2026-08-02T00:21:00.000Z' },
-                { S: 117.78185084, D: 8.5341818,  sd: 26, st: 2, r: 31, l: 1, d: '2026-09-19T00:21:00.000Z', lr: '2026-08-24T00:21:00.000Z' },
-                { S: 138.23368936, D: 8.52087599, sd: 31, st: 2, r: 32, l: 1, d: '2026-10-20T00:21:00.000Z', lr: '2026-09-19T00:21:00.000Z' },
-                { S: 162.06889013, D: 8.50758348, sd: 36, st: 2, r: 33, l: 1, d: '2026-11-25T00:21:00.000Z', lr: '2026-10-20T00:21:00.000Z' },
-                { S: 189.19385404, D: 8.49430427, sd: 42, st: 2, r: 34, l: 1, d: '2027-01-06T00:21:00.000Z', lr: '2026-11-25T00:21:00.000Z' },
-                { S: 220.20029025, D: 8.48103834, sd: 49, st: 2, r: 35, l: 1, d: '2027-02-24T00:21:00.000Z', lr: '2027-01-06T00:21:00.000Z' },
-                { S: 255.64995984, D: 8.46778567, sd: 57, st: 2, r: 36, l: 1, d: '2027-04-22T00:21:00.000Z', lr: '2027-02-24T00:21:00.000Z' },
-                { S: 296.07851898, D: 8.45454625, sd: 66, st: 2, r: 37, l: 1, d: '2027-06-27T00:21:00.000Z', lr: '2027-04-22T00:21:00.000Z' },
-                { S: 341.99919457, D: 8.44132007, sd: 76, st: 2, r: 38, l: 1, d: '2027-09-11T00:21:00.000Z', lr: '2027-06-27T00:21:00.000Z' },
+                { stability: 0.212, difficulty: 6.4133, scheduledDays: 0, state: 1, reps: 1, lapses: 0, due: '2026-01-01T00:01:00.000Z', lastReview: '2026-01-01T00:00:00.000Z' },
+                { stability: 0.24668919, difficulty: 6.40211507, scheduledDays: 0, state: 1, reps: 2, lapses: 0, due: '2026-01-01T00:11:00.000Z', lastReview: '2026-01-01T00:01:00.000Z' },
+                { stability: 0.28420636, difficulty: 6.39094132, scheduledDays: 1, state: 2, reps: 3, lapses: 0, due: '2026-01-02T00:11:00.000Z', lastReview: '2026-01-01T00:11:00.000Z' },
+                { stability: 2.83275337, difficulty: 6.37977875, scheduledDays: 2, state: 2, reps: 4, lapses: 0, due: '2026-01-05T00:11:00.000Z', lastReview: '2026-01-03T00:11:00.000Z' },
+                { stability: 7.41043294, difficulty: 6.36862734, scheduledDays: 2, state: 2, reps: 5, lapses: 0, due: '2026-01-07T00:11:00.000Z', lastReview: '2026-01-05T00:11:00.000Z' },
+                { stability: 11.9985981, difficulty: 6.35748708, scheduledDays: 3, state: 2, reps: 6, lapses: 0, due: '2026-01-10T00:11:00.000Z', lastReview: '2026-01-07T00:11:00.000Z' },
+                { stability: 18.41835342, difficulty: 6.34635796, scheduledDays: 5, state: 2, reps: 7, lapses: 0, due: '2026-01-15T00:11:00.000Z', lastReview: '2026-01-10T00:11:00.000Z' },
+                { stability: 26.51992591, difficulty: 6.33523997, scheduledDays: 6, state: 2, reps: 8, lapses: 0, due: '2026-01-20T00:11:00.000Z', lastReview: '2026-01-14T00:11:00.000Z' },
+                { stability: 37.9389438, difficulty: 6.3241331, scheduledDays: 8, state: 2, reps: 9, lapses: 0, due: '2026-01-28T00:11:00.000Z', lastReview: '2026-01-20T00:11:00.000Z' },
+                { stability: 52.41221308, difficulty: 6.31303734, scheduledDays: 12, state: 2, reps: 10, lapses: 0, due: '2026-02-09T00:11:00.000Z', lastReview: '2026-01-28T00:11:00.000Z' },
+                { stability: 72.87323311, difficulty: 6.30195267, scheduledDays: 16, state: 2, reps: 11, lapses: 0, due: '2026-02-25T00:11:00.000Z', lastReview: '2026-02-09T00:11:00.000Z' },
+                { stability: 98.862555, difficulty: 6.29087909, scheduledDays: 22, state: 2, reps: 12, lapses: 0, due: '2026-03-19T00:11:00.000Z', lastReview: '2026-02-25T00:11:00.000Z' },
+                { stability: 132.86397179, difficulty: 6.27981658, scheduledDays: 30, state: 2, reps: 13, lapses: 0, due: '2026-04-18T00:11:00.000Z', lastReview: '2026-03-19T00:11:00.000Z' },
+                { stability: 3.65486447, difficulty: 8.76242937, scheduledDays: 0, state: 3, reps: 14, lapses: 1, due: '2026-04-18T00:21:00.000Z', lastReview: '2026-04-18T00:11:00.000Z' },
+                { stability: 3.65486447, difficulty: 8.74889531, scheduledDays: 1, state: 2, reps: 15, lapses: 1, due: '2026-04-19T00:21:00.000Z', lastReview: '2026-04-18T00:21:00.000Z' },
+                { stability: 5.91088436, difficulty: 8.73537478, scheduledDays: 2, state: 2, reps: 16, lapses: 1, due: '2026-04-22T00:21:00.000Z', lastReview: '2026-04-20T00:21:00.000Z' },
+                { stability: 8.17645367, difficulty: 8.72186777, scheduledDays: 3, state: 2, reps: 17, lapses: 1, due: '2026-04-25T00:21:00.000Z', lastReview: '2026-04-22T00:21:00.000Z' },
+                { stability: 10.42032281, difficulty: 8.70837427, scheduledDays: 3, state: 2, reps: 18, lapses: 1, due: '2026-04-27T00:21:00.000Z', lastReview: '2026-04-24T00:21:00.000Z' },
+                { stability: 12.63782999, difficulty: 8.69489427, scheduledDays: 4, state: 2, reps: 19, lapses: 1, due: '2026-04-30T00:21:00.000Z', lastReview: '2026-04-26T00:21:00.000Z' },
+                { stability: 15.81488936, difficulty: 8.68142775, scheduledDays: 4, state: 2, reps: 20, lapses: 1, due: '2026-05-03T00:21:00.000Z', lastReview: '2026-04-29T00:21:00.000Z' },
+                { stability: 19.89257457, difficulty: 8.66797469, scheduledDays: 5, state: 2, reps: 21, lapses: 1, due: '2026-05-08T00:21:00.000Z', lastReview: '2026-05-03T00:21:00.000Z' },
+                { stability: 23.92871312, difficulty: 8.65453508, scheduledDays: 6, state: 2, reps: 22, lapses: 1, due: '2026-05-13T00:21:00.000Z', lastReview: '2026-05-07T00:21:00.000Z' },
+                { stability: 28.83237464, difficulty: 8.64110891, scheduledDays: 7, state: 2, reps: 23, lapses: 1, due: '2026-05-19T00:21:00.000Z', lastReview: '2026-05-12T00:21:00.000Z' },
+                { stability: 34.57160081, difficulty: 8.62769617, scheduledDays: 8, state: 2, reps: 24, lapses: 1, due: '2026-05-26T00:21:00.000Z', lastReview: '2026-05-18T00:21:00.000Z' },
+                { stability: 41.9636924, difficulty: 8.61429684, scheduledDays: 10, state: 2, reps: 25, lapses: 1, due: '2026-06-05T00:21:00.000Z', lastReview: '2026-05-26T00:21:00.000Z' },
+                { stability: 50.12014917, difficulty: 8.60091091, scheduledDays: 11, state: 2, reps: 26, lapses: 1, due: '2026-06-15T00:21:00.000Z', lastReview: '2026-06-04T00:21:00.000Z' },
+                { stability: 59.83183529, difficulty: 8.58753837, scheduledDays: 13, state: 2, reps: 27, lapses: 1, due: '2026-06-28T00:21:00.000Z', lastReview: '2026-06-15T00:21:00.000Z' },
+                { stability: 71.04827564, difficulty: 8.5741792, scheduledDays: 16, state: 2, reps: 28, lapses: 1, due: '2026-07-14T00:21:00.000Z', lastReview: '2026-06-28T00:21:00.000Z' },
+                { stability: 84.49200647, difficulty: 8.56083339, scheduledDays: 19, state: 2, reps: 29, lapses: 1, due: '2026-08-02T00:21:00.000Z', lastReview: '2026-07-14T00:21:00.000Z' },
+                { stability: 100.08961852, difficulty: 8.54750093, scheduledDays: 22, state: 2, reps: 30, lapses: 1, due: '2026-08-24T00:21:00.000Z', lastReview: '2026-08-02T00:21:00.000Z' },
+                { stability: 117.78185084, difficulty: 8.5341818, scheduledDays: 26, state: 2, reps: 31, lapses: 1, due: '2026-09-19T00:21:00.000Z', lastReview: '2026-08-24T00:21:00.000Z' },
+                { stability: 138.23368936, difficulty: 8.52087599, scheduledDays: 31, state: 2, reps: 32, lapses: 1, due: '2026-10-20T00:21:00.000Z', lastReview: '2026-09-19T00:21:00.000Z' },
+                { stability: 162.06889013, difficulty: 8.50758348, scheduledDays: 36, state: 2, reps: 33, lapses: 1, due: '2026-11-25T00:21:00.000Z', lastReview: '2026-10-20T00:21:00.000Z' },
+                { stability: 189.19385404, difficulty: 8.49430427, scheduledDays: 42, state: 2, reps: 34, lapses: 1, due: '2027-01-06T00:21:00.000Z', lastReview: '2026-11-25T00:21:00.000Z' },
+                { stability: 220.20029025, difficulty: 8.48103834, scheduledDays: 49, state: 2, reps: 35, lapses: 1, due: '2027-02-24T00:21:00.000Z', lastReview: '2027-01-06T00:21:00.000Z' },
+                { stability: 255.64995984, difficulty: 8.46778567, scheduledDays: 57, state: 2, reps: 36, lapses: 1, due: '2027-04-22T00:21:00.000Z', lastReview: '2027-02-24T00:21:00.000Z' },
+                { stability: 296.07851898, difficulty: 8.45454625, scheduledDays: 66, state: 2, reps: 37, lapses: 1, due: '2027-06-27T00:21:00.000Z', lastReview: '2027-04-22T00:21:00.000Z' },
+                { stability: 341.99919457, difficulty: 8.44132007, scheduledDays: 76, state: 2, reps: 38, lapses: 1, due: '2027-09-11T00:21:00.000Z', lastReview: '2027-06-27T00:21:00.000Z' },
             ];
 
             expect(actual).toHaveLength(EXPECTED.length);
@@ -446,15 +446,15 @@ describe('FSRSService', () => {
                 // Float fields: pinned to ~7 significant figures. That's
                 // tighter than any plausible round-off but loose enough to
                 // tolerate ts-fsrs patch-level math tweaks if any occur.
-                expect(a.S).toBeCloseTo(e.S, 5);
-                expect(a.D).toBeCloseTo(e.D, 5);
+                expect(a.stability).toBeCloseTo(e.stability, 5);
+                expect(a.difficulty).toBeCloseTo(e.difficulty, 5);
                 // Integers / strings: must match exactly.
-                expect(a.sd).toBe(e.sd);
-                expect(a.st).toBe(e.st);
-                expect(a.r).toBe(e.r);
-                expect(a.l).toBe(e.l);
-                expect(a.d).toBe(e.d);
-                expect(a.lr).toBe(e.lr);
+                expect(a.scheduledDays).toBe(e.scheduledDays);
+                expect(a.state).toBe(e.state);
+                expect(a.reps).toBe(e.reps);
+                expect(a.lapses).toBe(e.lapses);
+                expect(a.due).toBe(e.due);
+                expect(a.lastReview).toBe(e.lastReview);
             }
         });
     });

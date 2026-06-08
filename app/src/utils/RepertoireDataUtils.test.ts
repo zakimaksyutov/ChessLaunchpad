@@ -60,7 +60,7 @@ describe('RepertoireDataUtils', () => {
 
         it('keeps pre-existing inline cards on user-turn moves', () => {
             const root = startFen();
-            const card: FSRSCardData = { d: '2026-05-01T00:00:00.000Z', s: 10, di: 5, e: 1, sd: 7, ls: 0, r: 5, l: 0, st: 2 };
+            const card: FSRSCardData = { due: '2026-05-01T00:00:00.000Z', stability: 10, difficulty: 5, elapsedDays: 1, scheduledDays: 7, learningSteps: 0, reps: 5, lapses: 0, state: 2 };
             const cardKey = FSRSService.makeCardKey(root, 'e4');
             const reps = pgnToRepertoires(
                 [{ pgn: '1. e4 e5', orientation: 'white' }],
@@ -144,7 +144,7 @@ describe('RepertoireDataUtils', () => {
 
             // Mutate a card on the flat map (simulating FSRSService.rateCard).
             const cardKey = FSRSService.makeCardKey(startFen(), 'e4');
-            const fresh: FSRSCardData = { d: '2030-01-01T00:00:00.000Z', s: 99, di: 1, e: 0, sd: 1, ls: 0, r: 1, l: 0, st: 1 };
+            const fresh: FSRSCardData = { due: '2030-01-01T00:00:00.000Z', stability: 99, difficulty: 1, elapsedDays: 0, scheduledDays: 1, learningSteps: 0, reps: 1, lapses: 0, state: 1 };
             data.fsrsCards![cardKey] = fresh;
 
             const blob = RepertoireDataUtils.prepareDataForSave(data);
@@ -178,7 +178,7 @@ describe('RepertoireDataUtils', () => {
             // `repertoires` but no top-level `fsrsCards` — prepareDataForSave
             // must NOT delete the inline cards.
             const root = startFen();
-            const reviewCard: FSRSCardData = { d: '2030-01-01T00:00:00.000Z', s: 50, di: 2, e: 5, sd: 30, ls: 0, r: 10, l: 1, st: 2 };
+            const reviewCard: FSRSCardData = { due: '2030-01-01T00:00:00.000Z', stability: 50, difficulty: 2, elapsedDays: 5, scheduledDays: 30, learningSteps: 0, reps: 10, lapses: 1, state: 2 };
             const importedBlob: RepertoireData = {
                 repertoires: [
                     {
@@ -227,8 +227,8 @@ describe('RepertoireDataUtils', () => {
             const white = blob.repertoires!.find(r => r.orientation === 'white')!;
             const root = startFen();
             expect(white.positions[root].moves['e4'].card).toBeDefined();
-            // ensureCard creates cards in State.New (st: 0).
-            expect(white.positions[root].moves['e4'].card!.st).toBe(0);
+            // ensureCard creates cards in State.New (state: 0).
+            expect(white.positions[root].moves['e4'].card!.state).toBe(0);
         });
     });
 

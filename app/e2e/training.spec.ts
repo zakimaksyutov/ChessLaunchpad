@@ -216,7 +216,7 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
     const saved = saves[0].body as {
-      fsrsCards: Record<string, { st: number; r: number }>;
+      fsrsCards: Record<string, { state: number; reps: number; learningSteps: number; due: string }>;
     };
 
     // Card keys: "{normalized_fen}::{SAN}"
@@ -224,26 +224,26 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
     const nf3Key = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
 
     expect(saved.fsrsCards[e4Key]).toBeDefined();
-    expect(saved.fsrsCards[e4Key].st).toBeGreaterThan(0);   // no longer New
-    expect(saved.fsrsCards[e4Key].r).toBeGreaterThan(0);     // has been reviewed
-    expect(saved.fsrsCards[e4Key].ls).toBe(0);               // rated Again (ls=0)
+    expect(saved.fsrsCards[e4Key].state).toBeGreaterThan(0);   // no longer New
+    expect(saved.fsrsCards[e4Key].reps).toBeGreaterThan(0);     // has been reviewed
+    expect(saved.fsrsCards[e4Key].learningSteps).toBe(0);       // rated Again (learningSteps=0)
 
     expect(saved.fsrsCards[nf3Key]).toBeDefined();
-    expect(saved.fsrsCards[nf3Key].st).toBeGreaterThan(0);
-    expect(saved.fsrsCards[nf3Key].r).toBeGreaterThan(0);
-    expect(saved.fsrsCards[nf3Key].ls).toBe(0);              // rated Again (ls=0), not Good
+    expect(saved.fsrsCards[nf3Key].state).toBeGreaterThan(0);
+    expect(saved.fsrsCards[nf3Key].reps).toBeGreaterThan(0);
+    expect(saved.fsrsCards[nf3Key].learningSteps).toBe(0);      // rated Again, not Good
 
     // Both cards should be due within 2 minutes (Again → 1-min learning step)
     const now = Date.now();
-    const e4Due = new Date(saved.fsrsCards[e4Key].d).getTime();
-    const nf3Due = new Date(saved.fsrsCards[nf3Key].d).getTime();
+    const e4Due = new Date(saved.fsrsCards[e4Key].due).getTime();
+    const nf3Due = new Date(saved.fsrsCards[nf3Key].due).getTime();
     const twoMinMs = 2 * 60 * 1000;
     expect(e4Due - now).toBeLessThan(twoMinMs);
     expect(nf3Due - now).toBeLessThan(twoMinMs);
 
     // ── After recall: cards are not immediately due ────────────────
     // After recall, cards are rated "Again" and enter Learning state
-    // (st=1) with a short relearning interval (~1 min). The engine
+    // (state=1) with a short relearning interval (~1 min). The engine
     // correctly reports "No cards to train" until they become due.
     const noCardsMsg = page.getByText('No cards to train.');
     await expect(noCardsMsg).toBeVisible({ timeout: 5_000 });
@@ -256,7 +256,7 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
     await page.goto('/#/training');
 
     // ── Regular training (review pass) ──────────────────────────────
-    // Cards are Learning (st=1) and now due → regular review mode.
+    // Cards are Learning (state=1) and now due → regular review mode.
     await expect(board).toBeVisible({ timeout: 10_000 });
     await expectStartingPosition(page);
 
@@ -283,18 +283,18 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
     // Second save should arrive (after regular review)
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(2);
 
-    // Verify due dates after regular review — both rated Good (ls=1),
+    // Verify due dates after regular review — both rated Good (learningSteps=1),
     // next learning step is ~10 min, so due date should be well under 1 hour.
-    const saved2 = saves[1].body as { fsrsCards: Record<string, { d: string; ls: number; st: number }> };
+    const saved2 = saves[1].body as { fsrsCards: Record<string, { due: string; learningSteps: number; state: number }> };
     const now2 = Date.now();
     const oneHourMs = 60 * 60 * 1000;
-    const e4Due2 = new Date(saved2.fsrsCards[e4Key].d).getTime();
-    const nf3Due2 = new Date(saved2.fsrsCards[nf3Key].d).getTime();
+    const e4Due2 = new Date(saved2.fsrsCards[e4Key].due).getTime();
+    const nf3Due2 = new Date(saved2.fsrsCards[nf3Key].due).getTime();
     expect(e4Due2 - now2).toBeLessThan(oneHourMs);
     expect(nf3Due2 - now2).toBeLessThan(oneHourMs);
     // Both should have advanced to learning step 1
-    expect(saved2.fsrsCards[e4Key].ls).toBe(1);
-    expect(saved2.fsrsCards[nf3Key].ls).toBe(1);
+    expect(saved2.fsrsCards[e4Key].learningSteps).toBe(1);
+    expect(saved2.fsrsCards[nf3Key].learningSteps).toBe(1);
 
     // Cards are not due yet (~10 min learning step) — should see empty state again
     await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
@@ -392,20 +392,20 @@ test.describe('Training page — one black variant (1. e4 e5)', () => {
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
     const saved = saves[0].body as {
-      fsrsCards: Record<string, { st: number; r: number; ls: number; d: string }>;
+      fsrsCards: Record<string, { state: number; reps: number; learningSteps: number; due: string }>;
     };
 
     // Card key: "{normalized_fen_before_e5}::e5"
     const e5Key = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1::e5';
 
     expect(saved.fsrsCards[e5Key]).toBeDefined();
-    expect(saved.fsrsCards[e5Key].st).toBeGreaterThan(0);   // no longer New
-    expect(saved.fsrsCards[e5Key].r).toBeGreaterThan(0);     // has been reviewed
-    expect(saved.fsrsCards[e5Key].ls).toBe(0);               // rated Again (ls=0)
+    expect(saved.fsrsCards[e5Key].state).toBeGreaterThan(0);   // no longer New
+    expect(saved.fsrsCards[e5Key].reps).toBeGreaterThan(0);     // has been reviewed
+    expect(saved.fsrsCards[e5Key].learningSteps).toBe(0);       // rated Again
 
     // Card should be due within 2 minutes (Again → 1-min learning step)
     const now = Date.now();
-    const e5Due = new Date(saved.fsrsCards[e5Key].d).getTime();
+    const e5Due = new Date(saved.fsrsCards[e5Key].due).getTime();
     const twoMinMs = 2 * 60 * 1000;
     expect(e5Due - now).toBeLessThan(twoMinMs);
 
@@ -439,13 +439,13 @@ test.describe('Training page — one black variant (1. e4 e5)', () => {
     // Second save should arrive (after regular review)
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(2);
 
-    // Verify due dates after regular review — rated Good (ls=1)
-    const saved2 = saves[1].body as { fsrsCards: Record<string, { d: string; ls: number; st: number }> };
+    // Verify due dates after regular review — rated Good (learningSteps=1)
+    const saved2 = saves[1].body as { fsrsCards: Record<string, { due: string; learningSteps: number; state: number }> };
     const now2 = Date.now();
     const oneHourMs = 60 * 60 * 1000;
-    const e5Due2 = new Date(saved2.fsrsCards[e5Key].d).getTime();
+    const e5Due2 = new Date(saved2.fsrsCards[e5Key].due).getTime();
     expect(e5Due2 - now2).toBeLessThan(oneHourMs);
-    expect(saved2.fsrsCards[e5Key].ls).toBe(1);
+    expect(saved2.fsrsCards[e5Key].learningSteps).toBe(1);
 
     // Card is not due yet — should see empty state again
     await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
@@ -496,10 +496,10 @@ test.describe('Training page — shared edge from both colors', () => {
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
     const saved1 = saves[0].body as {
-      fsrsCards: Record<string, { st: number; r: number; ls: number }>;
+      fsrsCards: Record<string, { state: number; reps: number; learningSteps: number }>;
     };
     expect(saved1.fsrsCards[e4Key]).toBeDefined();
-    expect(saved1.fsrsCards[e4Key].st).toBeGreaterThan(0);
+    expect(saved1.fsrsCards[e4Key].state).toBeGreaterThan(0);
 
     // ── 2nd traversal: black e5 (teach + recall) ─────────────────────
     // Engine auto-starts the next card after a 500ms delay.
@@ -526,10 +526,10 @@ test.describe('Training page — shared edge from both colors', () => {
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(2);
 
     const saved2 = saves[1].body as {
-      fsrsCards: Record<string, { st: number; r: number; ls: number }>;
+      fsrsCards: Record<string, { state: number; reps: number; learningSteps: number }>;
     };
     expect(saved2.fsrsCards[e5Key]).toBeDefined();
-    expect(saved2.fsrsCards[e5Key].st).toBeGreaterThan(0);
+    expect(saved2.fsrsCards[e5Key].state).toBeGreaterThan(0);
 
     // Both cards trained — no more cards to train
     await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
@@ -559,12 +559,12 @@ test.describe('Training page — shared edge from both colors', () => {
     await dragPiece(page, rbb, 'e7', 'e5', 'black');
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(4);
 
-    // Verify final FSRS state — both cards rated Good (ls=1)
+    // Verify final FSRS state — both cards rated Good (learningSteps=1)
     const saved4 = saves[3].body as {
-      fsrsCards: Record<string, { d: string; ls: number; st: number }>;
+      fsrsCards: Record<string, { due: string; learningSteps: number; state: number }>;
     };
-    expect(saved4.fsrsCards[e4Key].ls).toBe(1);
-    expect(saved4.fsrsCards[e5Key].ls).toBe(1);
+    expect(saved4.fsrsCards[e4Key].learningSteps).toBe(1);
+    expect(saved4.fsrsCards[e5Key].learningSteps).toBe(1);
 
     await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
   });
@@ -637,17 +637,17 @@ test.describe('Teaching with known prefix (e4 studied, Nf3 new)', () => {
     // ── Verify only Nf3 was rated ─────────────────────────────────
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
     const saved = saves[0].body as {
-      fsrsCards: Record<string, { st: number; r: number; ls: number }>;
+      fsrsCards: Record<string, { state: number; reps: number; learningSteps: number }>;
     };
 
     // Nf3 should have been rated (no longer New)
     expect(saved.fsrsCards[nf3CardKey]).toBeDefined();
-    expect(saved.fsrsCards[nf3CardKey].st).toBeGreaterThan(0);
+    expect(saved.fsrsCards[nf3CardKey].state).toBeGreaterThan(0);
 
     // e4 should remain untouched (it was autoplayed, not re-rated)
     expect(saved.fsrsCards[e4CardKey]).toBeDefined();
-    expect(saved.fsrsCards[e4CardKey].st).toBe(2); // still Review
-    expect(saved.fsrsCards[e4CardKey].r).toBe(3);  // reps unchanged from rateGoodNTimes(3)
+    expect(saved.fsrsCards[e4CardKey].state).toBe(2); // still Review
+    expect(saved.fsrsCards[e4CardKey].reps).toBe(3);  // reps unchanged from rateGoodNTimes(3)
   });
 });
 
@@ -874,18 +874,18 @@ test.describe('Training page — incorrect moves then correct (1. e4 e5 2. Nf3)'
     await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
     const saved = saves[0].body as {
-      fsrsCards: Record<string, { ls: number; st: number; l: number }>;
+      fsrsCards: Record<string, { learningSteps: number; state: number; lapses: number }>;
     };
     const e4Key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1::e4';
     const nf3Key =
       'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1::Nf3';
 
     // e4 was played correctly → rated Good (stays Review, no lapses)
-    expect(saved.fsrsCards[e4Key].st).toBe(2);  // Review
-    expect(saved.fsrsCards[e4Key].l).toBe(0);   // no lapses
+    expect(saved.fsrsCards[e4Key].state).toBe(2);  // Review
+    expect(saved.fsrsCards[e4Key].lapses).toBe(0); // no lapses
     // Nf3 had errors → rated Again (Relearning, 1 lapse)
-    expect(saved.fsrsCards[nf3Key].st).toBe(3);  // Relearning
-    expect(saved.fsrsCards[nf3Key].l).toBe(1);   // 1 lapse
+    expect(saved.fsrsCards[nf3Key].state).toBe(3);  // Relearning
+    expect(saved.fsrsCards[nf3Key].lapses).toBe(1); // 1 lapse
   });
 
 });
