@@ -279,13 +279,33 @@ export class FSRSService {
 
     /**
      * Compute the FSRS scheduling interval (days) for a given stability,
-     * target retention, and max-interval cap. Matches the formula used by
-     * `computeInterval`, but parameterized so it can be evaluated against
-     * preset candidates without mutating global settings.
+     * target retention, and max-interval cap.
+     *
+     * This must match what the ts-fsrs scheduler produces, so that
+     * `computeDueDate` agrees with the stored `card.d` whenever the retention
+     * hasn't changed (and stays close to what ts-fsrs *would* have produced
+     * when the retention does change).
+     *
+     * The base formula `(R^(1/decay) - 1) / factor × S` is the inverse of the
+     * forgetting curve and matches `FSRSAlgorithm.next_interval`. On top of
+     * that, the short-term Review scheduler enforces
+     * `good_interval ≥ hard_interval + 1`, with `hard_interval ≥ 1`, so a
+     * Good rating in Review state is always scheduled at least 2 days out.
+     * Since this helper is only ever called for Review-state cards
+     * (see `computeInterval` and `estimateDailyLoad`), we apply the same
+     * 2-day floor.
+     *
+     * Note: ts-fsrs's exact `good_interval` also depends on the hypothetical
+     * `hard_stability` of the same review (which depends on the *pre-review*
+     * stability we don't store), so for stabilities where `round(hard_S × mod)`
+     * lifts to ≥ 2 the scheduler bumps Good to `hard_interval + 1`. We can't
+     * reproduce that without pre-review state; the residual error is bounded
+     * to ±1 day in a narrow stability band and converges to zero for both
+     * small (≤ ~6) and large (≥ ~15) stabilities.
      */
     static intervalFromStability(stability: number, retention: number, maxInterval: number): number {
-        const raw = Math.max(Math.round((stability / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1)), 1);
-        return Math.min(raw, maxInterval);
+        const raw = Math.round((stability / FACTOR) * (Math.pow(retention, 1 / DECAY) - 1));
+        return Math.min(Math.max(raw, 2), maxInterval);
     }
 
     /**

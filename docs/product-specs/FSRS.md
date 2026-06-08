@@ -109,3 +109,7 @@ All settings are synced to the backend and roam across devices.
 
 - Cards are saved to the backend after each traversal completion as part of `RepertoireData.fsrsCards`.
 - A 300 ms inter-traversal delay allows the success sound to finish before the next traversal begins.
+
+## Backlog
+
+- **Exact due dates when retention hasn't changed.** `FSRSService.computeDueDate` currently recomputes the due date from `(lastReview, stability, currentRetention, currentMaxInterval)`. Our standalone formula can't perfectly mirror ts-fsrs's short-term scheduler (which bumps `good_interval ≥ hard_interval + 1` using a hypothetical `hard_stability` we don't store), so the recomputed due date drifts ±1 day from what ts-fsrs originally scheduled — even when the user hasn't touched retention. Fix: stamp each card with the `request_retention` (and optionally `max_interval`) used at scheduling time. When `computeDueDate` sees that stamp matches the current settings, return the stored `card.d` verbatim (exact). Only fall back to the approximate formula when the stamp differs (retention/preset changed). Worst-case approximation window per card is one interval; the next review re-anchors the card to ts-fsrs's authoritative `d`. Wire-format option: only emit the stamp when it differs from the blob's `settings.retention`, so the happy path stays at 10-element packed cards.

@@ -563,14 +563,17 @@ describe('TrainingEngine', () => {
             TrainingEngine.setContextDepth(0);
             const startFen = normalizeFenResetHalfmoveClock(new Chess().fen());
             const cardKeyE4 = `${startFen}::e4`;
-            const pastDue = new Date(Date.now() - 86400000).toISOString();
+            // 5 days ago — far enough in the past that computeDueDate places
+            // the card past due even with the 2-day minimum interval that
+            // matches ts-fsrs's short-term Review scheduler.
+            const lastReview = new Date(Date.now() - 5 * 86400000).toISOString();
 
             const engine = makeEngine(
                 [makePgnInput('1. e4', 'white')],
                 {
                     [cardKeyE4]: {
-                        d: pastDue, s: 1, di: 5, e: 1, sd: 1,
-                        ls: 0, r: 1, l: 0, st: 2, lr: pastDue,
+                        d: lastReview, s: 1, di: 5, e: 1, sd: 2,
+                        ls: 0, r: 1, l: 0, st: 2, lr: lastReview,
                     },
                 }
             );
