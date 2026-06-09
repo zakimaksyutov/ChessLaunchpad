@@ -43,6 +43,8 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 - Eviction removes only `records`; the day's other counters stay.
 - If one day alone exceeds 100, keep it intact.
 
+**Invariant:** a day's `records.length` is either equal to its `ingested` count, or `0`. Empty `records` with non-zero `ingested` means that day's games were evicted.
+
 Record every game the ingest pass processes (any game with a determinable user color), regardless of whether its moves matched the repertoire.
 
 Unlinking an account purges its stored game records (the games where the user played under that account), mirroring the /games page behavior.
