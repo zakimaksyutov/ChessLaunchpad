@@ -4,7 +4,7 @@
 
 Persist a user's recent games in the synced repertoire blob so they follow the user across devices. Games are nested inside the Dashboard activity feed — each game filed under the day it was played (see [`DASHBOARD.md`](./DASHBOARD.md)).
 
-**Scope:** capture games during the existing Dashboard ingest pass ([`GAME-INGEST.md`](./GAME-INGEST.md)). The **/games page is unchanged** — it keeps its own IndexedDB cache.
+**Scope:** two parts. (1) Capture games during the existing Dashboard ingest pass ([`GAME-INGEST.md`](./GAME-INGEST.md)). (2) Tighten the **/games page** analysis flow (see "/games analysis" below). Changes to /games behavior are specified here, not in [`GAMES.md`](./GAMES.md); a later pass reconciles the two.
 
 ## Storage location
 
@@ -48,3 +48,12 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 Record every game the ingest pass processes (any game with a determinable user color), regardless of whether its moves matched the repertoire.
 
 Unlinking an account purges its stored game records (the games where the user played under that account), mirroring the /games page behavior.
+
+## /games analysis
+
+The current /games analysis is jarring — unsolicited popups and long progress bars. Gate it on a connected Lichess account.
+
+- **Theory source:** the masters opening explorer (`explorer.lichess.org/masters`) is the essential "is this move still in theory" source. It requires a Lichess OAuth token (existing `LichessAuthService`).
+- **Requirement:** analysis runs only when a Lichess account is **connected** (OAuth, not just a linked username).
+- **When not connected:** do not run analysis. Show a single inline "Connect Lichess" prompt instead of popups, with a "Don't have one? Create a free account" link to Lichess signup (`https://lichess.org/signup`).
+- **Platform asymmetry:** this is Lichess-only — Chess.com has no explorer or equivalent token. A Chess.com-only user must still connect a *Lichess* account to get masters theory.
