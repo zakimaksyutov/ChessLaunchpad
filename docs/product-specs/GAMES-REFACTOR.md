@@ -26,7 +26,9 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
       "sp": "blitz",            // speed / time class
       "rt": 1,                  // rated: 0 | 1
       "o": "Italian Game",      // opening name
-      "ev": [20, 15, -150]      // optional: per-ply evals (cp), absent on chess.com
+      "ev": [20, 15, -150],     // optional: per-ply evals (cp), absent on chess.com
+      "an": { … },              // optional: masters-theory verdict; present = analysis done (see below)
+      "op": { … }               // optional: saved opponent-analysis result (see below)
     }
   ]
 }
@@ -34,7 +36,7 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 
 **Derived, not stored:** user color / orientation and which account is the user — matched at read time from `wa`/`ba` against the linked accounts.
 
-**Not stored:** annotations, clock-per-move, raw analysis (best lines / comments). All recomputable from `m` + repertoire.
+**Not stored:** full annotations (highlights, mini-board), clock-per-move, raw analysis prose. All recomputable in-memory from `m` + repertoire + `ev`. Only the **masters-derived theory verdict** (`an`) is stored, because it depends on a rate-limited network source and cannot be recomputed offline. `an` carries an invalidation marker so it is recomputed when the repertoire changes.
 
 ## Retention
 
@@ -57,3 +59,48 @@ The current /games analysis is jarring — unsolicited popups and long progress 
 - **Requirement:** analysis runs only when a Lichess account is **connected** (OAuth, not just a linked username).
 - **When not connected:** do not run analysis. Show a single inline "Connect Lichess" prompt instead of popups, with a "Don't have one? Create a free account" link to Lichess signup (`https://lichess.org/signup`).
 - **Platform asymmetry:** this is Lichess-only — Chess.com has no explorer or equivalent token. A Chess.com-only user must still connect a *Lichess* account to get masters theory.
+
+### No IndexedDB — backend is the source of truth
+
+The /games page drops all device-local storage. The three current IndexedDB stores (downloaded games, masters cache, opponent-analysis results) are removed; everything reads from the backend records.
+
+- **Two-phase write:** Dashboard ingest writes the game facts (no `an`). The /games page, when Lichess is connected, analyzes records that lack `an`, then writes the compact verdict back to the record. Once written, it syncs across devices — a game is analyzed once, then instant everywhere.
+- **Show only analyzed games:** the list renders only records that have `an`. Annotation highlights and mini-board are recomputed in-memory from the record on render.
+- **Stream in:** un-analyzed records are processed **newest-first** through a sequential queue (bounded by the masters rate limit). A progress indicator ("Analyzing… N of M") shows while the queue drains; each game is inserted at its date position as its `an` is written.
+- **Opponent analysis:** its result also persists in the backend record (compact — counts + a few game links), not IndexedDB.
+
+### `an` — masters-theory verdict
+
+Present once a game is analyzed (the page's "done" marker). Holds only the masters-dependent decisions; everything else is recomputed.
+
+```jsonc
+"an": {
+  "f": "<fingerprint>",   // repertoire FEN-set fingerprint; mismatch ⇒ stale ⇒ re-analyze
+  "tv": [                 // verdict per ambiguous opponent move (15–44cp drop zone)
+    { "ply": 12, "in": true },   // masters say still theory
+    { "ply": 16, "in": false }   // out of theory (resolved value; "no data" stored as its default)
+  ]
+}
+```
+
+- Verdicts are keyed by `ply` (replay is deterministic, so plies are stable).
+- Empty `tv` is valid — a game with no ambiguous positions is still analyzed (`an` present).
+
+### `op` — saved opponent-analysis result
+
+Optional, on-demand (only for eligible games the user chose to analyze). Independent of `an`.
+
+```jsonc
+"op": {
+  "m": 842,               // opponent games analyzed
+  "nb": 7,                // count reaching fenBefore (after opponent's out-of-rep move)
+  "na": 2,                // count reaching fenAfter (after user's bad response)
+  "os": "Nxe4",           // opponent move SAN (critical)
+  "us": "exd6",           // user move SAN (critical)
+  "rb": [ { "d": 1715000000000, "u": "https://lichess.org/abc" } ],  // ≤5 recent before-games
+  "ra": [ { "d": 1714000000000, "u": "https://lichess.org/xyz" } ],  // ≤5 recent after-games
+  "at": 1716700000000     // analyzedAt (ms) — for staleness
+}
+```
+
+- **Derived, not stored:** threat level (from `nb`), platform (= record `p`), opponent username (the non-user side of `wa`/`ba`).
