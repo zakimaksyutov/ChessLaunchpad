@@ -295,3 +295,18 @@ Settings Page                  Games Page
 | Repertoire FEN set | ~50KB (computed in memory, not stored) |
 
 IndexedDB storage is effectively unlimited for this volume.
+
+---
+
+## Backlog
+
+### Detecting user mistakes when eval data is unavailable
+
+Today, classifying a deviation as a *mistake* (vs. still in theory) requires a centipawn drop between `fenBefore` and `fenAfter`. We compute drops from two sources in priority order: static `ExplorerEvals` (any Stockfish-evaluated opening FEN) and embedded Lichess `analysis[]`. When **both** miss for a ply, the annotator falls through to "benefit of the doubt — treat as in theory" (`GameAnnotationService.ts`, no-eval branch around line 497). The masters DB is **not** consulted in this branch — only when an eval-based drop lands in the 15–44 cp ambiguous zone.
+
+Consequence:
+
+- **Chess.com games** carry no embedded evals. Plies whose `fenAfter` is also off-`ExplorerEvals` (typical for unusual / blundered moves) silently render as "in theory" and never get flagged as user mistakes.
+- **Lichess games without server analysis** (no `evals=true` at fetch time, or the user didn't request analysis on Lichess) behave identically — `ExplorerEvals` is the only signal, and it goes silent the moment the position leaves common theory.
+
+Future work: route the no-eval branch into a masters lookup the same way the ambiguous-eval branch already does (`≥1 master game → in theory`, `0 → out of theory`, `no data → optimistic default`). That would let us classify off-book deviations without needing a per-ply eval source, closing the Chess.com gap and the no-analysis-Lichess gap in one change.
