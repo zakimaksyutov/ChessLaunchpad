@@ -34,6 +34,10 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 }
 ```
 
+**Ingest normalization:**
+- `wa`/`ba` are stored **lowercased** (canonical account handle) and matched **case-insensitively**. One rule for orientation derivation and unlink-purge, no casing surprises. (Trade-off: display shows the lowercased handle. If provider display-casing matters, the alternative is store exact-case + lowercase only at compare — same storage cost.)
+- For Chess.com, `o` lives only in the PGN `[ECOUrl …]` header, which is discarded when the PGN is reduced to bare SAN `m`. **Extract `o` before stripping** — it is not recoverable from `m`. (Lichess is unaffected: `o` is a separate field.)
+
 **Derived, not stored:** user color / orientation and which account is the user — matched at read time from `wa`/`ba` against the linked accounts.
 
 **Not stored:** full annotations (highlights, mini-board), clock-per-move, raw analysis prose. All recomputable in-memory from `m` + repertoire + `ev`. Only the **masters-derived theory verdict** (`an`) is stored, because it depends on a rate-limited network source and cannot be recomputed offline.
@@ -89,15 +93,18 @@ Present once a game is analyzed (the page's "done" marker). Holds only the maste
 
 ```jsonc
 "an": {
-  "tv": [                 // verdict per ambiguous opponent move (15–44cp drop zone)
-    { "ply": 12, "in": true },   // masters say still theory
-    { "ply": 16, "in": false }   // out of theory (resolved value; "no data" stored as its default)
+  "tv": [                 // RESOLVED masters verdicts for ambiguous opponent moves (15–44cp)
+    { "ply": 12, "in": true },   // confirmed in theory
+    { "ply": 16, "in": false }   // confirmed out of theory
+    // no-data plies are OMITTED (sparse map) — see below
   ]
 }
 ```
 
-- Verdicts are keyed by `ply` (replay is deterministic, so plies are stable).
-- Empty `tv` is valid — a game with no ambiguous positions is still analyzed (`an` present).
+- Verdicts are keyed by `ply` (replay is deterministic, so plies are stable). `in` = "still in theory."
+- `tv` is a **sparse map of resolved verdicts only**. An ambiguous ply that masters had **no data** for is omitted, not stored as `false`. This avoids conflating "confirmed out of theory" with "no data" — a one-way door — and lets a future pass retry only the no-data plies without a full re-analyze.
+- At render, a ply the recompute deems ambiguous but absent from `tv` = no-data = the engine's existing **optimistic in-theory default** (matches `GameAnnotationService` today). Note this is *in*-theory, not out.
+- Empty `tv` is valid — a game with no ambiguous positions (or all ambiguous plies were no-data) is still analyzed once `an` is present.
 
 ### `op` — saved opponent-analysis result
 
@@ -105,6 +112,7 @@ Optional, on-demand (only for eligible games the user chose to analyze). Indepen
 
 ```jsonc
 "op": {
+  "ply": 14,              // anchor: ply of the analyzed deviation (the user's bad move)
   "m": 842,               // opponent games analyzed
   "nb": 7,                // count reaching fenBefore (after opponent's out-of-rep move)
   "na": 2,                // count reaching fenAfter (after user's bad response)
@@ -116,4 +124,6 @@ Optional, on-demand (only for eligible games the user chose to analyze). Indepen
 }
 ```
 
+- **`ply` anchors the analysis to a specific deviation.** `os`/`us` SAN strings are not unique within a game, and `m` is immutable so the ply is a stable key (same basis as `tv`'s ply keys). Render attaches `op` to the recomputed deviation at that ply; if no current deviation sits there (e.g. after a repertoire change), treat the saved `op` as stale.
+- One analysis per game today. Supporting **multiple** opponent analyses per game later is a clean extension: `op` becomes an array of these objects, each keyed by its `ply`.
 - **Derived, not stored:** threat level (from `nb`), platform (= record `p`), opponent username (the non-user side of `wa`/`ba`).
