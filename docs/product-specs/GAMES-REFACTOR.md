@@ -35,7 +35,7 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 ```
 
 **Ingest normalization:**
-- `wa`/`ba` are stored **lowercased** (canonical account handle) and matched **case-insensitively**. One rule for orientation derivation and unlink-purge, no casing surprises. (Trade-off: display shows the lowercased handle. If provider display-casing matters, the alternative is store exact-case + lowercase only at compare — same storage cost.)
+- `wa`/`ba` are stored in the provider's **exact case** (so display keeps `DrNykterstein`, not `drnykterstein`), and matched **case-insensitively** — lowercase only at compare time for orientation derivation and unlink-purge. Same storage cost as lowercasing, no display regression.
 - For Chess.com, `o` lives only in the PGN `[ECOUrl …]` header, which is discarded when the PGN is reduced to bare SAN `m`. **Extract `o` before stripping** — it is not recoverable from `m`. (Lichess is unaffected: `o` is a separate field.)
 
 **Derived, not stored:** user color / orientation and which account is the user — matched at read time from `wa`/`ba` against the linked accounts.
@@ -50,6 +50,10 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 - On overflow: evict the **oldest day's games as a whole**, repeating oldest-first until ≤ 100. Never partial.
 - Eviction removes only `records`; the day's other counters stay.
 - If one day alone exceeds 100, keep it intact.
+
+**Where eviction runs:** eviction is part of the **shared record-append write path in the ingest pass** — it runs every time records are appended, regardless of whether ingest was triggered by the Dashboard or by the /games landing flow. Neither entry point can leave the blob over-cap. The /games flow adds **no separate eviction**; it relies on this and analyzes only the survivors.
+
+**`records` vs `recentIds` (do not consolidate):** ingest dedup keeps using `games.{accountKey}.recentIds` (per-account 50-ID ring; see [`GAME-INGEST.md`](./GAME-INGEST.md)) as its **source of truth**. `records` is display/analysis data only — it evicts by whole days and is lossy-er, so it **cannot** bound the 5-day dedup window. The two stores coexist independently; collapsing them into one breaks dedup.
 
 **Invariant:** a day's `records.length` is either equal to its `ingested` count, or `0`. Empty `records` with non-zero `ingested` means that day's games were evicted.
 
@@ -80,7 +84,7 @@ On opening /games:
 
 0. **Render immediately** from existing records that already have `an` (sorted, newest first).
 1. **Background download** — trigger the same game sync the Dashboard runs ([`GAME-INGEST.md`](./GAME-INGEST.md)), the same silent way (render first, sync after). New games are persisted; this step alone causes no list movement.
-2. **Evict, then persist** — apply the 100-game eviction (Retention) as part of that persist, *before* analysis, so masters budget is never spent on games about to be dropped.
+2. **Persist (append + evict)** — the shared ingest write path appends new records and applies the 100-game eviction (see Retention). This runs in ingest itself, so it happens whether triggered here or by the Dashboard. Because eviction precedes analysis, masters budget is never spent on games about to be dropped.
 3. **Analyze newest-first** — process records lacking `an` one at a time, **newest first**, through a sequential queue (bounded by the masters rate limit). Analysis order is an internal scheduling concern; newest-first means the game the user most likely came for resolves first.
 4. **Reveal as-ready — no gate** — the moment a game's `an` is written, insert it at its sorted position (top of the list in the common case). Games appear one by one as they complete; there is no withholding of newer games behind an unfinished older one. A spinner pinned to the top of the list shows progress ("Analyzing N of M").
 5. **Sync-only games** — a game needing no masters lookup is marked analyzed (`an` written) and revealed like any other, as soon as it's processed.
