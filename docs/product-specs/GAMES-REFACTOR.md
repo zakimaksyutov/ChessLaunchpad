@@ -74,6 +74,8 @@ The current /games analysis is jarring — unsolicited popups and long progress 
 
 The /games page drops all device-local storage. The three current IndexedDB stores (downloaded games, masters cache, opponent-analysis results) are removed; everything reads from the backend records.
 
+- **No migration:** existing IndexedDB data is **not** migrated — the stores are simply dropped. Records repopulate from the next sync; analysis re-runs on demand. No backfill of old games into the backend.
+- **No masters cache at all:** the masters IndexedDB cache is gone and nothing replaces it. Because `an` persists each game's verdict, a done game is never re-queried. Within an analysis pass each ambiguous position is queried directly — positions rarely recur across games, so no in-memory memo is warranted.
 - **Two-phase write:** Dashboard ingest writes the game facts (no `an`). The /games page, when Lichess is connected, analyzes records that lack `an`, then writes the compact verdict back to the record. Once written, it syncs across devices — a game is analyzed once, then instant everywhere.
 - **Show only analyzed games:** the list renders only records that have `an`. Annotation highlights and mini-board are recomputed in-memory from the record on render.
 - **Opponent analysis:** its result also persists in the backend record (compact — counts + a few game links), not IndexedDB.
