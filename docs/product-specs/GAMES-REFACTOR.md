@@ -86,8 +86,16 @@ On opening /games:
 1. **Background download** — trigger the same game sync the Dashboard runs ([`GAME-INGEST.md`](./GAME-INGEST.md)), the same silent way (render first, sync after). New games are persisted; this step alone causes no list movement.
 2. **Persist (append + evict)** — the shared ingest write path appends new records and applies the 100-game eviction (see Retention). This runs in ingest itself, so it happens whether triggered here or by the Dashboard. Because eviction precedes analysis, masters budget is never spent on games about to be dropped.
 3. **Analyze newest-first** — process records lacking `an` one at a time, **newest first**, through a sequential queue (bounded by the masters rate limit). Analysis order is an internal scheduling concern; newest-first means the game the user most likely came for resolves first.
-4. **Reveal as-ready — no gate** — the moment a game's `an` is written, insert it at its sorted position (top of the list in the common case). Games appear one by one as they complete; there is no withholding of newer games behind an unfinished older one. A spinner pinned to the top of the list shows progress ("Analyzing N of M").
+4. **Reveal as-ready — no gate** — the moment a game's `an` is written, insert it at its sorted position (top of the list in the common case). Games appear one by one as they complete; there is no withholding of newer games behind an unfinished older one. A spinner pinned to the top of the list shows the two-level progress below.
 5. **Sync-only games** — a game needing no masters lookup is marked analyzed (`an` written) and revealed like any other, as soon as it's processed.
+
+#### Progress indicator
+
+Pinned to the top of the list: a single progress bar plus one line of text.
+
+- **Bar — unit is a game.** It has `N` increments (`N` = games queued for analysis this pass) and advances **exactly one notch when a game finishes** — never mid-game. Each tick ≈ one new row appearing (reveal-as-ready).
+- **Text — `Game {X} of {N} · position {Y} of {K}`** (copy adjustable). `X` = current game (1-based); `K` = masters positions to analyze in *this* game (ambiguous opponent moves); `Y` = current lookup, counting up as each completes. While `Y` climbs, the **bar stays put**; when the game finishes the bar ticks and `Y`/`K` reset for the next game.
+- A **sync-only game** (`K` = 0) shows no position counter; the bar simply advances a notch when it's processed.
 
 **Batched writes:** `an` results are flushed to the backend in batches (e.g., every N games or on queue-drain), not one PUT per game, to limit full-blob churn. Writes use the standard optimistic-concurrency PUT; on a 412 conflict, re-fetch and re-apply (verdicts are deterministic, so redo is safe — this also covers concurrent devices/tabs).
 
