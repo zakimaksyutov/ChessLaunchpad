@@ -36,7 +36,9 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 
 **Derived, not stored:** user color / orientation and which account is the user — matched at read time from `wa`/`ba` against the linked accounts.
 
-**Not stored:** full annotations (highlights, mini-board), clock-per-move, raw analysis prose. All recomputable in-memory from `m` + repertoire + `ev`. Only the **masters-derived theory verdict** (`an`) is stored, because it depends on a rate-limited network source and cannot be recomputed offline. `an` carries an invalidation marker so it is recomputed when the repertoire changes.
+**Not stored:** full annotations (highlights, mini-board), clock-per-move, raw analysis prose. All recomputable in-memory from `m` + repertoire + `ev`. Only the **masters-derived theory verdict** (`an`) is stored, because it depends on a rate-limited network source and cannot be recomputed offline.
+
+**No automatic invalidation:** `an`/`op` are not invalidated when the repertoire changes. A stale verdict simply persists; the user re-runs it via the existing "Re-analyze" context-menu action, which clears `an` (and `op`) for that game so it re-queues.
 
 ## Retention
 
@@ -66,8 +68,20 @@ The /games page drops all device-local storage. The three current IndexedDB stor
 
 - **Two-phase write:** Dashboard ingest writes the game facts (no `an`). The /games page, when Lichess is connected, analyzes records that lack `an`, then writes the compact verdict back to the record. Once written, it syncs across devices — a game is analyzed once, then instant everywhere.
 - **Show only analyzed games:** the list renders only records that have `an`. Annotation highlights and mini-board are recomputed in-memory from the record on render.
-- **Stream in:** un-analyzed records are processed **newest-first** through a sequential queue (bounded by the masters rate limit). A progress indicator ("Analyzing… N of M") shows while the queue drains; each game is inserted at its date position as its `an` is written.
 - **Opponent analysis:** its result also persists in the backend record (compact — counts + a few game links), not IndexedDB.
+
+### Landing flow
+
+On opening /games:
+
+0. **Render immediately** from existing records that already have `an` (sorted, newest first).
+1. **Background download** — trigger the same game sync the Dashboard runs ([`GAME-INGEST.md`](./GAME-INGEST.md)), the same silent way (render first, sync after). New games are persisted; this step alone causes no list movement.
+2. **Evict, then persist** — apply the 100-game eviction (Retention) as part of that persist, *before* analysis, so masters budget is never spent on games about to be dropped.
+3. **Analyze oldest-first** — process records lacking `an` one at a time, **oldest first**, through a sequential queue (bounded by the masters rate limit).
+4. **Reveal in sorted order** — when the oldest non-analyzed game finishes, insert it at its sorted position (top in the common case). A progress indicator ("Analyzing… N of M") shows while the queue drains.
+5. **Sync-only games** — a game needing no masters lookup is marked analyzed (`an` written) immediately, but is **not revealed until the oldest non-analyzed game ahead of it is ready** — reveal stays in order. (Accepted risk: a stuck oldest game blocks newer reveals; expected game counts are small.)
+
+**Batched writes:** `an` results are flushed to the backend in batches (e.g., every N games or on queue-drain), not one PUT per game, to limit full-blob churn. Writes use the standard optimistic-concurrency PUT; on a 412 conflict, re-fetch and re-apply (verdicts are deterministic, so redo is safe — this also covers concurrent devices/tabs).
 
 ### `an` — masters-theory verdict
 
@@ -75,7 +89,6 @@ Present once a game is analyzed (the page's "done" marker). Holds only the maste
 
 ```jsonc
 "an": {
-  "f": "<fingerprint>",   // repertoire FEN-set fingerprint; mismatch ⇒ stale ⇒ re-analyze
   "tv": [                 // verdict per ambiguous opponent move (15–44cp drop zone)
     { "ply": 12, "in": true },   // masters say still theory
     { "ply": 16, "in": false }   // out of theory (resolved value; "no data" stored as its default)
@@ -99,7 +112,7 @@ Optional, on-demand (only for eligible games the user chose to analyze). Indepen
   "us": "exd6",           // user move SAN (critical)
   "rb": [ { "d": 1715000000000, "u": "https://lichess.org/abc" } ],  // ≤5 recent before-games
   "ra": [ { "d": 1714000000000, "u": "https://lichess.org/xyz" } ],  // ≤5 recent after-games
-  "at": 1716700000000     // analyzedAt (ms) — for staleness
+  "at": 1716700000000     // analyzedAt (ms) — when computed
 }
 ```
 
