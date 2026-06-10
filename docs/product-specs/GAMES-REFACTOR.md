@@ -81,9 +81,9 @@ On opening /games:
 0. **Render immediately** from existing records that already have `an` (sorted, newest first).
 1. **Background download** — trigger the same game sync the Dashboard runs ([`GAME-INGEST.md`](./GAME-INGEST.md)), the same silent way (render first, sync after). New games are persisted; this step alone causes no list movement.
 2. **Evict, then persist** — apply the 100-game eviction (Retention) as part of that persist, *before* analysis, so masters budget is never spent on games about to be dropped.
-3. **Analyze oldest-first** — process records lacking `an` one at a time, **oldest first**, through a sequential queue (bounded by the masters rate limit).
-4. **Reveal in sorted order** — when the oldest non-analyzed game finishes, insert it at its sorted position (top in the common case). A progress indicator ("Analyzing… N of M") shows while the queue drains.
-5. **Sync-only games** — a game needing no masters lookup is marked analyzed (`an` written) immediately, but is **not revealed until the oldest non-analyzed game ahead of it is ready** — reveal stays in order. (Accepted risk: a stuck oldest game blocks newer reveals; expected game counts are small.)
+3. **Analyze newest-first** — process records lacking `an` one at a time, **newest first**, through a sequential queue (bounded by the masters rate limit). Analysis order is an internal scheduling concern; newest-first means the game the user most likely came for resolves first.
+4. **Reveal as-ready — no gate** — the moment a game's `an` is written, insert it at its sorted position (top of the list in the common case). Games appear one by one as they complete; there is no withholding of newer games behind an unfinished older one. A spinner pinned to the top of the list shows progress ("Analyzing N of M").
+5. **Sync-only games** — a game needing no masters lookup is marked analyzed (`an` written) and revealed like any other, as soon as it's processed.
 
 **Batched writes:** `an` results are flushed to the backend in batches (e.g., every N games or on queue-drain), not one PUT per game, to limit full-blob churn. Writes use the standard optimistic-concurrency PUT; on a 412 conflict, re-fetch and re-apply (verdicts are deterministic, so redo is safe — this also covers concurrent devices/tabs).
 
