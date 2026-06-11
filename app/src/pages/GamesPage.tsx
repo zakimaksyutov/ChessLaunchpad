@@ -59,6 +59,7 @@ import {
 } from '../services/OpponentAnalysisService';
 import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuilder';
 import { runIngest } from '../services/GameIngestService';
+import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
 import {
     MastersMemoEntry,
@@ -625,99 +626,21 @@ const GamesPage: React.FC = () => {
     }, [allRecords, reannotatingKeys]);
 
     /**
-     * Sticky session ordering: rows already shown keep their slot. New
-     * rows compare their timestamp against the current session's bounds:
-     *
-     *   - If newer than (or equal to) the current head, insert at top.
-     *   - If older than the current tail, append at bottom.
-     *   - Otherwise (mid-list), use the timestamp-sorted position.
-     *
-     * This matches the spec's "newer-newer at top, older-older at bottom"
-     * behavior — only **late-arriving older** sync games go to the bottom,
-     * so a freshly analyzed game with a brand-new `t` still appears first.
-     *
-     * Re-annotating rows retain their slot — the GC step preserves keys
-     * for any record still in `reannotatingKeys`, so a transient re-run
-     * doesn't shuffle them to the bottom on return.
+     * Sticky session ordering: rows already shown keep their slot; new
+     * rows are placed by timestamp relative to the current bounds.
+     * Re-annotating rows stay in `renderableRows` via the prior-`an`
+     * overlay above, so they're treated as `known`. See
+     * `orderRowsSticky` for the ordering protocol.
      */
     const orderedRows = useMemo(() => {
-        const seen = new Set<string>();
-        const known: { record: GameRecord; userLower: string }[] = [];
-        const fresh: { record: GameRecord; userLower: string }[] = [];
-        for (const row of renderableRows) {
-            const key = `${row.record.p}:${row.record.id}`;
-            seen.add(key);
-            if (sessionOrderRef.current.has(key)) {
-                known.push(row);
-            } else {
-                fresh.push(row);
-            }
-        }
-        // Known rows: stable in their assigned session-order slot.
-        known.sort((a, b) => {
-            const ai = sessionOrderRef.current.get(`${a.record.p}:${a.record.id}`)!;
-            const bi = sessionOrderRef.current.get(`${b.record.p}:${b.record.id}`)!;
-            return ai - bi;
-        });
-        // Fresh rows: sort newest-first internally, then splice in based on `t`.
-        fresh.sort((a, b) => b.record.t - a.record.t);
-
-        // Merge fresh rows into known rows by timestamp: fresh rows whose
-        // `t` >= known head go on top (newest first); fresh rows whose
-        // `t` <= known tail go to the bottom (late-arriving older syncs);
-        // others insert into time-sorted position. We approximate this by
-        // walking known by stored session-order (which itself was assigned
-        // by time order initially), and treating fresh rows whose `t` is
-        // newer than known[0] as front-pushes.
-        let combined: { record: GameRecord; userLower: string }[];
-        if (known.length === 0) {
-            combined = fresh;
-        } else {
-            const headT = known[0].record.t;
-            const tailT = known[known.length - 1].record.t;
-            const front: typeof fresh = [];
-            const back: typeof fresh = [];
-            const middle: typeof fresh = [];
-            for (const row of fresh) {
-                if (row.record.t >= headT) front.push(row);
-                else if (row.record.t <= tailT) back.push(row);
-                else middle.push(row);
-            }
-            // middle: rare — slot into known by linear scan once.
-            const merged: typeof known = [];
-            let mi = 0;
-            for (const k of known) {
-                while (mi < middle.length && middle[mi].record.t > k.record.t) {
-                    merged.push(middle[mi]);
-                    mi++;
-                }
-                merged.push(k);
-            }
-            while (mi < middle.length) {
-                merged.push(middle[mi]);
-                mi++;
-            }
-            combined = [...front, ...merged, ...back];
-        }
-
-        // Persist session indices for the combined order (so subsequent
-        // renders find every row in `sessionOrderRef`).
-        for (let i = 0; i < combined.length; i++) {
-            const key = `${combined[i].record.p}:${combined[i].record.id}`;
-            if (!sessionOrderRef.current.has(key)) {
-                sessionOrderRef.current.set(key, sessionOrderRef.current.size);
-            }
-        }
-        // Garbage-collect keys for rows that genuinely fell off — but
-        // preserve slots for records being re-annotated (their `an` is
-        // momentarily absent in the blob but they're rendered via the
-        // prior `an` overlay above).
-        for (const key of [...sessionOrderRef.current.keys()]) {
-            if (!seen.has(key) && !reannotatingKeys.has(key)) {
-                sessionOrderRef.current.delete(key);
-            }
-        }
-        return combined;
+        type RowPayload = { record: GameRecord; userLower: string };
+        const orderable: OrderableRow<RowPayload>[] = renderableRows.map(r => ({
+            key: `${r.record.p}:${r.record.id}`,
+            t: r.record.t,
+            payload: r,
+        }));
+        const ordered = orderRowsSticky(orderable, sessionOrderRef.current, reannotatingKeys);
+        return ordered.map(o => o.payload);
     }, [renderableRows, reannotatingKeys]);
 
     // Annotation cache: re-render against fresh data; recompute when records or
