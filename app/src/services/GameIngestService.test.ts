@@ -907,6 +907,30 @@ describe('GameIngestService', () => {
             expect(rec.ev).toEqual([20, null, 10_000]);
         });
 
+        it('requests the opening block on bulk Lichess fetches and stores the name', async () => {
+            const variant = makeVariant('1. e4 e5', 'white');
+            const data = makeData([variant]);
+            const game = lichessGame({
+                id: 'rec-op',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3 Nc6',
+            });
+            // The bulk endpoint returns `opening` only when `opening=true` is on
+            // the URL — without that flag the freshly-ingested record would land
+            // with `o` undefined and the /games row would show no opening name
+            // until the user hit Re-annotate.
+            game.opening = { name: "King's Knight Opening", eco: 'C40', ply: 3 };
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+            const fetchedUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+            expect(fetchedUrl).toContain('opening=true');
+            const rec = dal.data.activity!.practiceLog[0].games!.records![0];
+            expect(rec.o).toBe("King's Knight Opening");
+        });
+
         it('does not populate ev on Chess.com records', async () => {
             const variant = makeVariant('1. e4 e5', 'white');
             const data = makeData([variant]);

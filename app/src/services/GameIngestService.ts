@@ -465,6 +465,12 @@ async function fetchLichessGames(
         // Per-ply server evals — GameRecordBuilder stores them as `record.ev`,
         // which drives eval-drop badges and ambiguous-zone masters checks.
         evals: 'true',
+        // Opening name — GameRecordBuilder reads `opening.name` into `record.o`
+        // and the /games page renders it next to each row. Without this flag
+        // the bulk endpoint omits the `opening` block entirely, so freshly
+        // ingested rows would show no opening name until a per-game
+        // Re-annotate refetched through `/game/export/{id}?opening=true`.
+        opening: 'true',
     });
 
     const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params}`;
