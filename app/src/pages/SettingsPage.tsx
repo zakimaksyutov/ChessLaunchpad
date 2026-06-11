@@ -8,8 +8,7 @@ import {
     cleanupRemovedAccount,
     getAccountKey,
 } from '../services/LinkedAccountsService';
-import { clearGames } from '../data/GamesDB';
-import { clearMastersCache } from '../services/MastersExplorerService';
+import { purgeRecordsForAccounts } from '../services/GameRecordStore';
 import { TrainingEngine } from '../services/TrainingEngine';
 import {
     FSRSService,
@@ -151,13 +150,23 @@ const SettingsPage: React.FC = () => {
             const presetCfg = FSRSService.getPresetConfig(presetId);
 
             // When an account is unlinked, drop its per-account ingest state from
-            // the games map so the next ingest run doesn't keep tracking it.
+            // the games map so the next ingest run doesn't keep tracking it,
+            // and purge its display records from the activity log so the /games
+            // page stops showing them. Counters (`ingested` / `reviewed` /
+            // `mistakes`) are intentionally not rewritten — historical activity
+            // remains visible on the Dashboard.
             let nextGames = current.games;
             if (removedAccountsRef.current.length > 0 && current.games) {
                 nextGames = { ...current.games };
                 for (const removed of removedAccountsRef.current) {
                     delete nextGames[getAccountKey(removed.platform, removed.username)];
                 }
+            }
+            if (removedAccountsRef.current.length > 0 && current.activity) {
+                const removedLower = new Set(
+                    removedAccountsRef.current.map(a => a.username.toLowerCase()),
+                );
+                purgeRecordsForAccounts(current.activity, removedLower);
             }
 
             // Build settings from draft values (don't mutate globals until save succeeds).
@@ -254,8 +263,12 @@ const SettingsPage: React.FC = () => {
         setClearingCache(true);
         setCacheCleared(false);
         try {
-            await clearGames();
-            await clearMastersCache();
+            // No on-device caches remain after the games-refactor — game
+            // records live on the synced blob and the masters / opponent-
+            // analysis IndexedDB stores are gone. The button is kept as a
+            // user-visible "no cached data is held on this device" reassurance,
+            // and as a hook for any future per-device caches.
+            await Promise.resolve();
             setCacheCleared(true);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);

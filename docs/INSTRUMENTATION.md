@@ -51,7 +51,7 @@ The Games page includes detailed debug logging for its annotation/highlighting l
 
 ## Activation
 
-Click the **⋯** menu on any game row, then click **Re-annotate**. The game's annotation is recomputed and a detailed ply-by-ply trace is written to the browser console.
+Click the **⋯** menu on any game row, then click **Re-annotate**. The game's annotation is recomputed and a detailed ply-by-ply trace is written to the browser console. For Lichess records, this also re-fetches the game from the provider before re-annotating, so newly-available server-side evals are reflected in the trace.
 
 No URL parameters are needed. Debug logs are **not** produced during regular annotation (sync, initial page load, or masters-triggered re-annotation) — only when the user explicitly re-annotates a game.
 

@@ -800,6 +800,187 @@ describe('GameIngestService', () => {
             expect(entry.before[8]).toBe(2);
         });
     });
+
+    describe('game-record capture (GAMES-REFACTOR)', () => {
+        it('appends a GameRecord to the per-day games.records', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            const game = lichessGame({
+                id: 'rec1',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+
+            const entry = dal.data.activity!.practiceLog.find(e => e.games);
+            expect(entry).toBeDefined();
+            expect(entry!.games!.records).toBeDefined();
+            expect(entry!.games!.records!.length).toBe(1);
+            const rec = entry!.games!.records![0];
+            expect(rec.id).toBe('rec1');
+            expect(rec.p).toBe('l');
+            expect(rec.t).toBe(game.createdAt);
+            expect(rec.m).toBe('e4 e5 Nf3');
+        });
+
+        it('preserves provider casing on wa/ba in the persisted record', async () => {
+            const variant = makeVariant('1. e4 e5', 'white');
+            const data = makeData([variant]);
+            const game = lichessGame({
+                id: 'rec-casing',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5',
+            });
+            // Override the players to use mixed-case display names. The `id`
+            // field is the lichess-canonical lowercase form.
+            game.players = {
+                white: { user: { id: 'me', name: 'Me' } },
+                black: { user: { id: 'opp', name: 'DrNykterstein' } },
+            };
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+            const rec = dal.data.activity!.practiceLog[0].games!.records![0];
+            expect(rec.wa).toBe('Me');
+            expect(rec.ba).toBe('DrNykterstein');
+        });
+
+        it('extracts the opening name from a Chess.com ECOUrl before stripping the PGN', async () => {
+            const variant = makeVariant('1. e4 c5', 'white');
+            const data = makeData([variant]);
+            const game = buildChesscomGame({
+                uuid: 'cc-rec1',
+                endTimeSec: Math.floor((FAKE_NOW.getTime() - 60 * 60 * 1000) / 1000),
+                userIsWhite: true,
+                moves: '1. e4 c5',
+            });
+            // Splice an ECOUrl header into the PGN.
+            game.pgn = (game.pgn as string).replace(
+                '[Result "*"]',
+                '[Result "*"]\n[ECOUrl "https://www.chess.com/openings/Sicilian-Defense"]',
+            );
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                statusText: 'OK',
+                headers: new Headers(),
+                json: async () => ({ games: [game] }),
+                text: async () => JSON.stringify({ games: [game] }),
+            } as unknown as Response);
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+            const rec = dal.data.activity!.practiceLog[0].games!.records![0];
+            expect(rec.o).toBe('Sicilian Defense');
+            // m is the SAN-only form.
+            expect(rec.m.startsWith('e4 c5')).toBe(true);
+        });
+
+        it('captures per-ply evals (with null sentinels) for Lichess games', async () => {
+            const variant = makeVariant('1. e4 e5', 'white');
+            const data = makeData([variant]);
+            const game = lichessGame({
+                id: 'rec-ev',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            game.analysis = [
+                { eval: 20 },
+                {},          // missing → null
+                { mate: 3 }, // mate → MATE_CP
+            ];
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+            // The fetch must request server evals or `analysis` never arrives.
+            const fetchedUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+            expect(fetchedUrl).toContain('evals=true');
+            const rec = dal.data.activity!.practiceLog[0].games!.records![0];
+            expect(rec.ev).toEqual([20, null, 10_000]);
+        });
+
+        it('does not populate ev on Chess.com records', async () => {
+            const variant = makeVariant('1. e4 e5', 'white');
+            const data = makeData([variant]);
+            const game = buildChesscomGame({
+                uuid: 'cc-no-ev',
+                endTimeSec: Math.floor((FAKE_NOW.getTime() - 60 * 60 * 1000) / 1000),
+                userIsWhite: true,
+                moves: '1. e4 e5',
+            });
+            (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                statusText: 'OK',
+                headers: new Headers(),
+                json: async () => ({ games: [game] }),
+                text: async () => JSON.stringify({ games: [game] }),
+            } as unknown as Response);
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+            const rec = dal.data.activity!.practiceLog[0].games!.records![0];
+            expect(rec.ev).toBeUndefined();
+            expect(rec.p).toBe('c');
+        });
+
+        it('applies the 100-record eviction (oldest-day whole)', async () => {
+            const variant = makeVariant('1. e4 e5', 'white');
+            const data = makeData([variant]);
+            // Pre-seed activity with 100 records on a "yesterday" date so any
+            // newly-ingested game today pushes us over the cap and evicts the
+            // older day whole.
+            const yesterday = new Date(FAKE_NOW.getTime() - 24 * 60 * 60 * 1000);
+            const yyyy = yesterday.getFullYear();
+            const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
+            const dd = String(yesterday.getDate()).padStart(2, '0');
+            const dateStr = `${yyyy}-${mm}-${dd}`;
+            const existingRecords = Array.from({ length: 100 }, (_, i) => ({
+                id: `old${i}`,
+                p: 'l' as const,
+                t: yesterday.getTime() + i * 1000,
+                m: 'e4 e5',
+                wa: 'me',
+                ba: 'opp',
+                res: 'draw' as const,
+                rt: 1 as const,
+            }));
+            data.activity!.practiceLog.push({
+                date: dateStr,
+                reviewed: 0, mistakes: 0, learned: 0, traversals: 0, timeSeconds: 0,
+                games: { ingested: 100, reviewed: 0, mistakes: 0, records: existingRecords },
+            });
+
+            const newGame = lichessGame({
+                id: 'newToday',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([newGame]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+
+            // Oldest day's records should be wiped; counters preserved.
+            const oldDay = dal.data.activity!.practiceLog.find(e => e.date === dateStr)!;
+            expect(oldDay.games!.records!.length).toBe(0);
+            expect(oldDay.games!.ingested).toBe(100); // counter preserved
+
+            // Today should have the new record.
+            const todayDay = dal.data.activity!.practiceLog.find(e => e.date !== dateStr)!;
+            expect(todayDay.games!.records!.length).toBe(1);
+            expect(todayDay.games!.records![0].id).toBe('newToday');
+        });
+    });
 });
 
 function buildChesscomGame(opts: {

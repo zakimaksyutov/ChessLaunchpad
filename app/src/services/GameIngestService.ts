@@ -16,6 +16,8 @@ import {
     getDateStringForTimestamp,
 } from './ActivityService';
 import { getUserColor, buildPgn } from './GameAnnotationService';
+import { buildGameRecord } from './GameRecordBuilder';
+import { appendGameRecord, evictOverflowingRecords } from './GameRecordStore';
 import {
     RepertoireData,
     GameIngestState,
@@ -281,7 +283,25 @@ function applyIngest(
         entry.games.ingested += 1;
         entry.games.reviewed += result.reviewed;
         entry.games.mistakes += result.hadMistake ? 1 : 0;
+
+        // Persist a compact `GameRecord` alongside the counters so the
+        // /games page can render this game across devices. The record
+        // captures display facts only — analysis verdicts (`an`/`op`) are
+        // written later by the /games analysis pass. Build failures (e.g.
+        // unparseable provider payload) are silent — the game still counts
+        // for ingest, we just have no record to render.
+        const record = buildGameRecord(game.gameData, acct.username, acct.platform);
+        if (record) {
+            appendGameRecord(activity, record);
+        }
     }
+
+    // Eviction is part of the shared record-append write path: every time
+    // records are appended we re-trim to MAX_TOTAL_RECORDS. Running this
+    // here (not on the read side) means the /games landing flow only ever
+    // analyzes surviving records — masters budget is never spent on games
+    // about to be dropped.
+    evictOverflowingRecords(activity);
 
     // FSRSService mutates the shared cards object passed in the constructor, so
     // data.fsrsCards is already up to date. Set it explicitly for clarity.
@@ -442,6 +462,9 @@ async function fetchLichessGames(
         sort: 'dateAsc',
         max: LICHESS_MAX_PER_REQUEST.toString(),
         since: sinceMs.toString(),
+        // Per-ply server evals — GameRecordBuilder stores them as `record.ev`,
+        // which drives eval-drop badges and ambiguous-zone masters checks.
+        evals: 'true',
     });
 
     const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params}`;

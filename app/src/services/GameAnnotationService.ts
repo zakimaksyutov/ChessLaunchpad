@@ -3,10 +3,10 @@ import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { ExplorerEvals } from '../models/ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 import type { Platform } from './LinkedAccountsService';
-import { parseChesscomTimeControl } from './ChesscomGamesService';
+import { parseChesscomTimeControl } from './ChesscomTimeControl';
 import type { MoveStats } from './MastersExplorerService';
 
-/** Duck-typed interface for masters data lookup (satisfied by both MastersLookup and MastersCache). */
+/** Duck-typed interface for masters data lookup (satisfied by `MastersLookup` and the `AnVerdictLookup` built from persisted `an.tv`). */
 export interface MastersLookupLike {
     getMoveStats(fen: string, moveSan: string): MoveStats | null;
     isOutOfTheory(fen: string, moveSan: string): boolean | null;

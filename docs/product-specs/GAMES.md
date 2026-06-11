@@ -220,7 +220,7 @@ Opponent-analysis results are persisted separately from downloaded Games data:
 
 Cache invalidation rules:
 
-- **Re-annotate** clears the game's saved opponent-analysis result and aborts any in-flight analysis for that game.
+- **Re-annotate** clears the game's saved opponent-analysis result and aborts any in-flight analysis. For Lichess records it also re-queries the provider's single-game export so newly-available server evals are picked up; refetch failures silently fall back to the cached record.
 - Saved analysis remains visible until re-annotation occurs.
 
 ## 4. Repertoire Cross-Reference

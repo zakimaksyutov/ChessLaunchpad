@@ -1,4 +1,12 @@
-import { openDB, type IDBPDatabase } from 'idb';
+// ---------------------------------------------------------------------------
+// MastersExplorerService — Lichess Masters opening explorer client.
+//
+// No IndexedDB. The Games-page refactor (`docs/product-specs/GAMES-REFACTOR.md`)
+// drops the persistent masters cache: ambiguous-zone verdicts are now stored
+// per-game on the synced repertoire blob (`an.tv`) so a game is analyzed once
+// and the result syncs across devices. Within a single analysis pass positions
+// rarely recur across games, so an in-memory memo is not warranted either.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,115 +49,25 @@ export const MIN_MASTER_GAMES_ABSOLUTE = 50;
 /** Minimum percentage of position's total games for a move to be theory. */
 export const MIN_MOVE_PERCENTAGE = 5;
 
-/** Delay between API requests in milliseconds. */
-const MASTERS_RATE_LIMIT_MS = 1000;
+/** Delay between API requests in milliseconds (Lichess rate limit). */
+export const MASTERS_RATE_LIMIT_MS = 1000;
 
 const MASTERS_API_URL = 'https://explorer.lichess.org/masters';
 
-// ---------------------------------------------------------------------------
-// IndexedDB cache
-// ---------------------------------------------------------------------------
-
-const MASTERS_DB_NAME = 'chesslaunchpad-masters-explorer';
-const MASTERS_DB_VERSION = 1;
-const MASTERS_STORE = 'positions';
-
-let mastersDbPromise: Promise<IDBPDatabase> | null = null;
-
-function getMastersDB(): Promise<IDBPDatabase> {
-    if (!mastersDbPromise) {
-        mastersDbPromise = openDB(MASTERS_DB_NAME, MASTERS_DB_VERSION, {
-            upgrade(db) {
-                if (!db.objectStoreNames.contains(MASTERS_STORE)) {
-                    db.createObjectStore(MASTERS_STORE);
-                }
-            },
-        });
-    }
-    return mastersDbPromise;
-}
-
 /**
  * Compact FEN key: piece placement + side + castling + en passant.
- * Strips halfmove clock and fullmove number so transpositions cache-hit.
+ * Strips halfmove clock and fullmove number so transpositions hit the same
+ * entry across game histories.
  */
 export function toMastersCacheKey(fen: string): string {
     return fen.split(' ').slice(0, 4).join(' ');
 }
 
-async function getPersistedMasters(key: string): Promise<MastersPositionResult | null> {
-    try {
-        const db = await getMastersDB();
-        const val = await db.get(MASTERS_STORE, key);
-        return val ?? null;
-    } catch {
-        return null;
-    }
-}
-
-async function persistMasters(key: string, result: MastersPositionResult): Promise<void> {
-    try {
-        const db = await getMastersDB();
-        await db.put(MASTERS_STORE, result, key);
-    } catch {
-        // Best-effort persistence
-    }
-}
-
-/** Load all cached master positions from IndexedDB. */
-async function getAllPersistedMasters(): Promise<Map<string, MastersPositionResult>> {
-    const result = new Map<string, MastersPositionResult>();
-    try {
-        const db = await getMastersDB();
-        const tx = db.transaction(MASTERS_STORE, 'readonly');
-        let cursor = await tx.store.openCursor();
-        while (cursor) {
-            result.set(cursor.key as string, cursor.value as MastersPositionResult);
-            cursor = await cursor.continue();
-        }
-    } catch {
-        // Best-effort — return whatever we managed to read
-    }
-    return result;
-}
-
-/** Bulk-delete master positions from IndexedDB by their compact FEN keys. */
-async function deleteMasterKeys(keys: string[]): Promise<void> {
-    if (keys.length === 0) return;
-    try {
-        const db = await getMastersDB();
-        const tx = db.transaction(MASTERS_STORE, 'readwrite');
-        for (const key of keys) {
-            tx.store.delete(key);
-        }
-        await tx.done;
-    } catch {
-        // Best-effort
-    }
-}
-
 // ---------------------------------------------------------------------------
-// In-memory cache
-// ---------------------------------------------------------------------------
-
-const memoryCache = new Map<string, MastersPositionResult>();
-
-// ---------------------------------------------------------------------------
-// Rate-limited fetch queue
+// Rate-limited fetch
 // ---------------------------------------------------------------------------
 
 let lastRequestTime = 0;
-
-/** Clear both in-memory and IndexedDB masters caches. */
-export async function clearMastersCache(): Promise<void> {
-    memoryCache.clear();
-    try {
-        const db = await getMastersDB();
-        await db.clear(MASTERS_STORE);
-    } catch {
-        // Best-effort
-    }
-}
 
 async function rateLimitedDelay(): Promise<void> {
     const now = Date.now();
@@ -184,48 +102,78 @@ function parseApiResponse(data: Record<string, unknown>, fen: string): MastersPo
 }
 
 /**
- * Fetch masters data for a single position from the Lichess API.
- * Returns null on error.
+ * Fetch outcome for a single masters position query.
+ *
+ *   - `{ kind: 'ok', result }` — HTTP 200, parsed body.
+ *   - `{ kind: 'no-data' }`    — HTTP 200, but no relevant master games for
+ *                                this position (response was OK but empty).
+ *                                Reserved for explicit emptiness; today the
+ *                                API still returns a `result` with empty
+ *                                `moves` rather than a separate signal, so
+ *                                `fetchMastersOutcome` always returns `ok`
+ *                                and callers classify "no data" themselves
+ *                                via `getMoveStats(...) === null`.
+ *   - `{ kind: 'error' }`      — Transient: network failure, rate-limit (429),
+ *                                non-2xx response. **Do not** treat as no-data
+ *                                — analysis pass refuses to write `an.tv` for
+ *                                erroring plies so the game re-queues next pass.
+ *
+ * The distinction matters because the spec's sparse `tv` map (`docs/product-specs/GAMES-REFACTOR.md`)
+ * defines `omitted ply == no-data → optimistic in-theory default`. Conflating
+ * "we couldn't reach the server" with "200 + zero games" would lock a
+ * potentially-wrong optimistic verdict in forever.
  */
-export async function fetchMastersPosition(
+export type MastersFetchOutcome =
+    | { kind: 'ok'; result: MastersPositionResult }
+    | { kind: 'error' };
+
+/**
+ * Variant of `fetchMastersPosition` that distinguishes HTTP/network errors
+ * from successful responses. Always honors the 1 req/sec rate limit (via
+ * the shared `lastRequestTime` inside the fetcher).
+ *
+ * Callers that don't care about the error/ok distinction can keep using
+ * `fetchMastersPosition` (which collapses both into `null`); the analysis
+ * pass uses this richer variant so transient errors don't bake into `an`.
+ */
+export async function fetchMastersOutcome(
     fen: string,
     token: string,
-    fetchFn: typeof fetch = fetch
-): Promise<MastersPositionResult | null> {
-    const key = toMastersCacheKey(fen);
-
-    // Check in-memory cache
-    const memCached = memoryCache.get(key);
-    if (memCached) return memCached;
-
-    // Check IndexedDB cache
-    const persisted = await getPersistedMasters(key);
-    if (persisted) {
-        memoryCache.set(key, persisted);
-        return persisted;
-    }
-
-    // Rate-limited API call
+    fetchFn: typeof fetch = fetch,
+): Promise<MastersFetchOutcome> {
     await rateLimitedDelay();
-
     try {
         const url = `${MASTERS_API_URL}?fen=${encodeURIComponent(fen)}`;
         const response = await fetchFn(url, {
             headers: { 'Authorization': `Bearer ${token}` },
         });
-        if (!response.ok) return null;
-
+        if (!response.ok) return { kind: 'error' };
         const data = await response.json();
-        const result = parseApiResponse(data, fen);
-
-        // Cache the result
-        memoryCache.set(key, result);
-        await persistMasters(key, result);
-
-        return result;
+        return { kind: 'ok', result: parseApiResponse(data, fen) };
     } catch {
-        return null;
+        return { kind: 'error' };
     }
+}
+
+/**
+ * Fetch masters data for a single position from the Lichess API.
+ * Returns null on error or rate-limit response. Honors the 1 req/sec rate limit.
+ *
+ * **Use `fetchMastersOutcome` when you need to distinguish transient HTTP/network
+ * errors from successful responses** (e.g., to refuse persisting a verdict
+ * derived from an error response).
+ *
+ * Caller is responsible for caching — within one `/games` analysis pass the
+ * page does that via a single `MastersLookup` instance accumulated for the
+ * batch; across passes verdicts persist on the per-game `an.tv` map.
+ */
+export async function fetchMastersPosition(
+    fen: string,
+    token: string,
+    fetchFn: typeof fetch = fetch,
+): Promise<MastersPositionResult | null> {
+    const outcome = await fetchMastersOutcome(fen, token, fetchFn);
+    return outcome.kind === 'ok' ? outcome.result : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,18 +190,33 @@ function computeMoveStats(posResult: MastersPositionResult, moveSan: string): Mo
 }
 
 /** Classify a move as out-of-theory (true), in-theory (false), or unknown (null) from its stats. */
-function classifyOutOfTheory(stats: MoveStats | null): boolean | null {
+export function classifyOutOfTheory(stats: MoveStats | null): boolean | null {
     if (stats === null) return null;
     if (stats.moveGames >= MIN_MASTER_GAMES_ABSOLUTE) return false;
     return stats.moveGames < MIN_MASTER_GAMES || stats.percentage < MIN_MOVE_PERCENTAGE;
 }
 
+/**
+ * In-memory lookup for a batch of fetched master positions, satisfying
+ * the duck-typed `MastersLookupLike` interface that `GameAnnotationService`
+ * consumes. Build by calling `add(fen, result)` for each fetched position;
+ * `getMoveStats` returns `null` for any position not added.
+ */
 export class MastersLookup {
     private results = new Map<string, MastersPositionResult>();
 
-    /** Add a fetched result to the lookup. */
     add(fen: string, result: MastersPositionResult): void {
         this.results.set(toMastersCacheKey(fen), result);
+    }
+
+    /** Number of positions cached. */
+    get size(): number {
+        return this.results.size;
+    }
+
+    /** Returns true if the position has been added (does not affect any counter). */
+    has(fen: string): boolean {
+        return this.results.has(toMastersCacheKey(fen));
     }
 
     /**
@@ -271,120 +234,5 @@ export class MastersLookup {
      */
     isOutOfTheory(fen: string, moveSan: string): boolean | null {
         return classifyOutOfTheory(this.getMoveStats(fen, moveSan));
-    }
-}
-
-// ---------------------------------------------------------------------------
-// MastersCache — hit-counted cache with lifecycle management
-// ---------------------------------------------------------------------------
-
-interface CacheEntry {
-    result: MastersPositionResult;
-    hitCount: number;
-}
-
-/**
- * A cache of master positions loaded from IndexedDB at page load.
- * Tracks hit counts so unused positions can be purged after Sync Games.
- *
- * Implements the same query interface as MastersLookup (getMoveStats, isOutOfTheory)
- * so it can be passed to annotateGame.
- */
-export class MastersCache {
-    private entries = new Map<string, CacheEntry>();
-
-    /** Load all cached master positions from IndexedDB into memory (hitCount=0). */
-    static async loadAll(): Promise<MastersCache> {
-        const cache = new MastersCache();
-        const persisted = await getAllPersistedMasters();
-        for (const [key, result] of persisted) {
-            cache.entries.set(key, { result, hitCount: 0 });
-        }
-        return cache;
-    }
-
-    /** Number of cached positions. */
-    get size(): number {
-        return this.entries.size;
-    }
-
-    /**
-     * Get stats for a specific move from a position.
-     * Increments hitCount when the position is found.
-     * Returns null if the position isn't cached.
-     */
-    getMoveStats(fen: string, moveSan: string): MoveStats | null {
-        const entry = this.entries.get(toMastersCacheKey(fen));
-        if (!entry) return null;
-
-        entry.hitCount++;
-        return computeMoveStats(entry.result, moveSan);
-    }
-
-    /**
-     * Check whether a move should be considered out-of-theory based on masters data.
-     * Returns true if out of theory, false if in theory, null if no data.
-     * Note: hitCount is incremented by the underlying getMoveStats call.
-     */
-    isOutOfTheory(fen: string, moveSan: string): boolean | null {
-        return classifyOutOfTheory(this.getMoveStats(fen, moveSan));
-    }
-
-    /** Check whether a position is cached (does NOT increment hitCount). */
-    has(fen: string): boolean {
-        return this.entries.has(toMastersCacheKey(fen));
-    }
-
-    /**
-     * Fetch a position from cache or API. If cached, increments hitCount and returns.
-     * If not cached, fetches from the Lichess API (rate-limited), stores in
-     * IndexedDB and memory with hitCount=1.
-     * Returns null on API error.
-     */
-    async fetchOrGet(
-        fen: string,
-        token: string,
-        fetchFn: typeof fetch = fetch
-    ): Promise<MastersPositionResult | null> {
-        const key = toMastersCacheKey(fen);
-        const entry = this.entries.get(key);
-        if (entry) {
-            entry.hitCount++;
-            return entry.result;
-        }
-
-        // Not in cache — fetch from API (respects rate limit and page budget)
-        const result = await fetchMastersPosition(fen, token, fetchFn);
-        if (result) {
-            this.entries.set(key, { result, hitCount: 1 });
-        }
-        return result;
-    }
-
-    /** Reset all hit counts to 0 (call before a new annotation cycle). */
-    resetHitCounts(): void {
-        for (const entry of this.entries.values()) {
-            entry.hitCount = 0;
-        }
-    }
-
-    /**
-     * Delete positions with hitCount=0 from both memory and IndexedDB.
-     * Returns the number of positions deleted.
-     */
-    async purgeUnused(): Promise<number> {
-        const keysToDelete: string[] = [];
-        for (const [key, entry] of this.entries) {
-            if (entry.hitCount === 0) {
-                keysToDelete.push(key);
-            }
-        }
-
-        for (const key of keysToDelete) {
-            this.entries.delete(key);
-        }
-
-        await deleteMasterKeys(keysToDelete);
-        return keysToDelete.length;
     }
 }

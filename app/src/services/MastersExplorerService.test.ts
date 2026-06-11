@@ -1,59 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     MastersLookup,
-    MastersCache,
     fetchMastersPosition,
+    fetchMastersOutcome,
+    classifyOutOfTheory,
+    toMastersCacheKey,
     MIN_MASTER_GAMES,
     MIN_MOVE_PERCENTAGE,
 } from './MastersExplorerService';
-
-// Mock IDB cursor for getAllPersistedMasters and bulk operations
-let mockStore: Record<string, unknown> = {};
-
-const createMockCursor = (entries: [string, unknown][]) => {
-    let index = 0;
-    const cursor = {
-        get key() { return entries[index]?.[0]; },
-        get value() { return entries[index]?.[1]; },
-        continue: vi.fn(() => {
-            index++;
-            return index < entries.length ? Promise.resolve(cursor) : Promise.resolve(null);
-        }),
-    };
-    return entries.length > 0 ? cursor : null;
-};
-
-vi.mock('idb', () => ({
-    openDB: vi.fn(() => {
-        const store = {
-            get: vi.fn((key: string) => Promise.resolve(mockStore[key])),
-            put: vi.fn((value: unknown, key: string) => {
-                mockStore[key] = value;
-                return Promise.resolve();
-            }),
-            delete: vi.fn((key: string) => {
-                delete mockStore[key];
-                return Promise.resolve();
-            }),
-            openCursor: vi.fn(() => {
-                const entries = Object.entries(mockStore);
-                return Promise.resolve(createMockCursor(entries));
-            }),
-        };
-        return Promise.resolve({
-            get: store.get,
-            put: store.put,
-            clear: vi.fn(() => {
-                mockStore = {};
-                return Promise.resolve();
-            }),
-            transaction: vi.fn(() => ({
-                store,
-                done: Promise.resolve(),
-            })),
-        });
-    }),
-}));
 
 describe('MastersLookup', () => {
     describe('getMoveStats', () => {
@@ -72,7 +26,6 @@ describe('MastersLookup', () => {
                     { san: 'd4', white: 20, draws: 15, black: 15, total: 50 },
                 ],
             });
-
             const stats = lookup.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e4');
             expect(stats).not.toBeNull();
             expect(stats!.moveGames).toBe(50);
@@ -85,11 +38,8 @@ describe('MastersLookup', () => {
             lookup.add('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
                 fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
                 totalGames: 100,
-                moves: [
-                    { san: 'e4', white: 50, draws: 30, black: 20, total: 100 },
-                ],
+                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
             });
-
             const stats = lookup.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'a3');
             expect(stats).not.toBeNull();
             expect(stats!.moveGames).toBe(0);
@@ -103,8 +53,6 @@ describe('MastersLookup', () => {
                 totalGames: 100,
                 moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
             });
-
-            // Same position with different move numbers should match
             const stats = lookup.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5 10', 'e4');
             expect(stats).not.toBeNull();
             expect(stats!.moveGames).toBe(100);
@@ -124,10 +72,9 @@ describe('MastersLookup', () => {
                 totalGames: 200,
                 moves: [
                     { san: 'e4', white: 100, draws: 50, black: 50, total: 200 },
-                    { san: 'a3', white: 2, draws: 1, black: 1, total: 4 }, // < 5 games
+                    { san: 'a3', white: 2, draws: 1, black: 1, total: 4 },
                 ],
             });
-
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'a3')).toBe(true);
         });
 
@@ -138,10 +85,9 @@ describe('MastersLookup', () => {
                 totalGames: 200,
                 moves: [
                     { san: 'e4', white: 100, draws: 50, black: 42, total: 192 },
-                    { san: 'b3', white: 3, draws: 2, black: 3, total: 8 }, // 8/200 = 4% < 5%
+                    { san: 'b3', white: 3, draws: 2, black: 3, total: 8 },
                 ],
             });
-
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'b3')).toBe(true);
         });
 
@@ -152,7 +98,6 @@ describe('MastersLookup', () => {
                 totalGames: 100,
                 moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
             });
-
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'h4')).toBe(true);
         });
 
@@ -166,7 +111,6 @@ describe('MastersLookup', () => {
                     { san: 'd4', white: 20, draws: 15, black: 15, total: 50 },
                 ],
             });
-
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e4')).toBe(false);
         });
 
@@ -177,10 +121,9 @@ describe('MastersLookup', () => {
                 totalGames: 100,
                 moves: [
                     { san: 'e4', white: 90, draws: 5, black: 0, total: 95 },
-                    { san: 'c3', white: 2, draws: 2, black: 1, total: 5 }, // exactly 5 games, 5%
+                    { san: 'c3', white: 2, draws: 2, black: 1, total: 5 },
                 ],
             });
-
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'c3')).toBe(false);
         });
 
@@ -191,11 +134,9 @@ describe('MastersLookup', () => {
                 totalGames: 10000,
                 moves: [
                     { san: 'e4', white: 5000, draws: 2000, black: 2900, total: 9900 },
-                    { san: 'd6', white: 30, draws: 10, black: 10, total: 50 }, // 50 games, 0.5%
+                    { san: 'd6', white: 30, draws: 10, black: 10, total: 50 },
                 ],
             });
-
-            // 50 games >= MIN_MASTER_GAMES_ABSOLUTE → in theory despite 0.5% share
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'd6')).toBe(false);
         });
 
@@ -206,21 +147,58 @@ describe('MastersLookup', () => {
                 totalGames: 10000,
                 moves: [
                     { san: 'e4', white: 5000, draws: 2000, black: 2951, total: 9951 },
-                    { san: 'a3', white: 20, draws: 15, black: 14, total: 49 }, // 49 games, 0.49%
+                    { san: 'a3', white: 20, draws: 15, black: 14, total: 49 },
                 ],
             });
-
-            // 49 games < MIN_MASTER_GAMES_ABSOLUTE and 0.49% < MIN_MOVE_PERCENTAGE → out of theory
             expect(lookup.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'a3')).toBe(true);
+        });
+    });
+
+    describe('size + has', () => {
+        it('reports size and has correctly', () => {
+            const lookup = new MastersLookup();
+            expect(lookup.size).toBe(0);
+            lookup.add('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
+                fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                totalGames: 100,
+                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
+            });
+            expect(lookup.size).toBe(1);
+            expect(lookup.has('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')).toBe(true);
+            expect(lookup.has('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5 10')).toBe(true);
+            expect(lookup.has('other w KQkq -')).toBe(false);
         });
     });
 });
 
-describe('fetchMastersPosition', () => {
-    beforeEach(() => {
-        mockStore = {};
+describe('classifyOutOfTheory', () => {
+    it('returns null for null stats', () => {
+        expect(classifyOutOfTheory(null)).toBeNull();
     });
+    it('returns false when moveGames >= MIN_MASTER_GAMES_ABSOLUTE (50)', () => {
+        expect(classifyOutOfTheory({ moveGames: 50, totalGames: 10000, percentage: 0.5 })).toBe(false);
+    });
+    it('returns true when moveGames < MIN_MASTER_GAMES', () => {
+        expect(classifyOutOfTheory({ moveGames: 4, totalGames: 100, percentage: 4 })).toBe(true);
+    });
+    it('returns true when percentage < MIN_MOVE_PERCENTAGE despite enough moveGames', () => {
+        expect(classifyOutOfTheory({ moveGames: 10, totalGames: 1000, percentage: 1 })).toBe(true);
+    });
+    it('returns false when moveGames >= MIN_MASTER_GAMES and percentage >= MIN_MOVE_PERCENTAGE', () => {
+        expect(classifyOutOfTheory({ moveGames: 10, totalGames: 100, percentage: 10 })).toBe(false);
+    });
+});
 
+describe('toMastersCacheKey', () => {
+    it('strips halfmove and fullmove counters', () => {
+        expect(toMastersCacheKey('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'))
+            .toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -');
+        expect(toMastersCacheKey('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5 10'))
+            .toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -');
+    });
+});
+
+describe('fetchMastersPosition', () => {
     it('parses API response correctly', async () => {
         const mockResponse = {
             ok: true,
@@ -239,11 +217,11 @@ describe('fetchMastersPosition', () => {
         const result = await fetchMastersPosition(
             'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
             'test-token',
-            mockFetch
+            mockFetch,
         );
 
         expect(result).not.toBeNull();
-        expect(result!.totalGames).toBe(90); // 80 + 10
+        expect(result!.totalGames).toBe(90);
         expect(result!.moves).toHaveLength(2);
         expect(result!.moves[0].san).toBe('c4');
         expect(result!.moves[0].total).toBe(80);
@@ -257,11 +235,10 @@ describe('fetchMastersPosition', () => {
             json: () => Promise.resolve({ moves: [] }),
         })) as unknown as typeof fetch;
 
-        // Use a unique FEN that won't be cached from the previous test
         await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 2',
             'my-token-123',
-            mockFetch
+            mockFetch,
         );
 
         expect(mockFetch).toHaveBeenCalledOnce();
@@ -277,11 +254,10 @@ describe('fetchMastersPosition', () => {
             status: 429,
         })) as unknown as typeof fetch;
 
-        // Use a unique FEN
         const result = await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1',
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 3',
             'token',
-            mockFetch
+            mockFetch,
         );
 
         expect(result).toBeNull();
@@ -290,14 +266,51 @@ describe('fetchMastersPosition', () => {
     it('returns null on fetch error', async () => {
         const mockFetch = vi.fn(() => Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
 
-        // Use a unique FEN
         const result = await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq - 0 1',
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 4',
             'token',
-            mockFetch
+            mockFetch,
         );
 
         expect(result).toBeNull();
+    });
+});
+
+describe('fetchMastersOutcome', () => {
+    it('returns kind=ok with parsed result on success', async () => {
+        const mockFetch = vi.fn(() => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ moves: [{ san: 'e4', white: 1, draws: 2, black: 3 }] }),
+        })) as unknown as typeof fetch;
+        const outcome = await fetchMastersOutcome(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 5',
+            'token',
+            mockFetch,
+        );
+        expect(outcome.kind).toBe('ok');
+        if (outcome.kind === 'ok') {
+            expect(outcome.result.moves[0].san).toBe('e4');
+        }
+    });
+
+    it('returns kind=error on non-ok response (distinct from no-data)', async () => {
+        const mockFetch = vi.fn(() => Promise.resolve({ ok: false, status: 429 })) as unknown as typeof fetch;
+        const outcome = await fetchMastersOutcome(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 6',
+            'token',
+            mockFetch,
+        );
+        expect(outcome.kind).toBe('error');
+    });
+
+    it('returns kind=error on network error', async () => {
+        const mockFetch = vi.fn(() => Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
+        const outcome = await fetchMastersOutcome(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 7',
+            'token',
+            mockFetch,
+        );
+        expect(outcome.kind).toBe('error');
     });
 });
 
@@ -308,238 +321,5 @@ describe('constants', () => {
 
     it('MIN_MOVE_PERCENTAGE is 5', () => {
         expect(MIN_MOVE_PERCENTAGE).toBe(5);
-    });
-});
-
-describe('MastersCache', () => {
-    beforeEach(() => {
-        mockStore = {};
-    });
-
-    describe('loadAll', () => {
-        it('loads empty cache when DB is empty', async () => {
-            const cache = await MastersCache.loadAll();
-            expect(cache.size).toBe(0);
-        });
-
-        it('loads all positions from DB with hitCount=0', async () => {
-            const position = {
-                fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -',
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-            mockStore['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -'] = position;
-
-            const cache = await MastersCache.loadAll();
-            expect(cache.size).toBe(1);
-        });
-    });
-
-    describe('getMoveStats', () => {
-        it('returns null for unknown position', async () => {
-            const cache = await MastersCache.loadAll();
-            expect(cache.getMoveStats('unknown/fen w KQkq - 0 1', 'e4')).toBeNull();
-        });
-
-        it('returns stats and increments hitCount for known position', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-
-            const cache = await MastersCache.loadAll();
-            const stats = cache.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e4');
-            expect(stats).not.toBeNull();
-            expect(stats!.moveGames).toBe(100);
-            expect(stats!.percentage).toBe(100);
-
-            // Position won't be purged since hitCount > 0
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(0);
-        });
-    });
-
-    describe('isOutOfTheory', () => {
-        it('returns null for unknown position', async () => {
-            const cache = await MastersCache.loadAll();
-            expect(cache.isOutOfTheory('unknown/fen w KQkq - 0 1', 'e4')).toBeNull();
-        });
-
-        it('returns true for rare move', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 200,
-                moves: [
-                    { san: 'e4', white: 100, draws: 50, black: 46, total: 196 },
-                    { san: 'h3', white: 2, draws: 1, black: 1, total: 4 },
-                ],
-            };
-
-            const cache = await MastersCache.loadAll();
-            expect(cache.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'h3')).toBe(true);
-        });
-
-        it('returns false when move has >= MIN_MASTER_GAMES_ABSOLUTE games despite low percentage', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 10000,
-                moves: [
-                    { san: 'e4', white: 5000, draws: 2000, black: 2950, total: 9950 },
-                    { san: 'd6', white: 20, draws: 15, black: 15, total: 50 }, // 50 games, 0.5%
-                ],
-            };
-
-            const cache = await MastersCache.loadAll();
-            expect(cache.isOutOfTheory('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'd6')).toBe(false);
-        });
-    });
-
-    describe('has', () => {
-        it('returns false for uncached position', async () => {
-            const cache = await MastersCache.loadAll();
-            expect(cache.has('unknown/fen w KQkq - 0 1')).toBe(false);
-        });
-
-        it('returns true for cached position without incrementing hitCount', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-
-            const cache = await MastersCache.loadAll();
-            expect(cache.has('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')).toBe(true);
-
-            // has() does NOT increment hitCount, so position should be purged
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(1);
-        });
-    });
-
-    describe('fetchOrGet', () => {
-        it('returns cached position and increments hitCount', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-
-            const cache = await MastersCache.loadAll();
-            const mockFetch = vi.fn() as unknown as typeof fetch;
-
-            const result = await cache.fetchOrGet(
-                'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-                'token',
-                mockFetch
-            );
-
-            expect(result).not.toBeNull();
-            expect(result!.totalGames).toBe(100);
-            expect(mockFetch).not.toHaveBeenCalled();
-
-            // hitCount > 0, won't be purged
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(0);
-        });
-
-        it('fetches from API when not cached and stores with hitCount=1', async () => {
-            const cache = await MastersCache.loadAll();
-            const mockFetch = vi.fn(() => Promise.resolve({
-                ok: true,
-                json: () => Promise.resolve({
-                    moves: [{ san: 'Nf3', white: 10, draws: 5, black: 5 }],
-                }),
-            })) as unknown as typeof fetch;
-
-            const result = await cache.fetchOrGet(
-                'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1',
-                'token',
-                mockFetch
-            );
-
-            expect(result).not.toBeNull();
-            expect(result!.moves[0].san).toBe('Nf3');
-            expect(cache.size).toBe(1);
-
-            // hitCount=1, won't be purged
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(0);
-        });
-    });
-
-    describe('resetHitCounts', () => {
-        it('resets all counts to 0', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-
-            const cache = await MastersCache.loadAll();
-
-            // Access to increment hitCount
-            cache.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e4');
-
-            // Reset
-            cache.resetHitCounts();
-
-            // Now purge should remove it
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(1);
-            expect(cache.size).toBe(0);
-        });
-    });
-
-    describe('purgeUnused', () => {
-        it('deletes positions with hitCount=0 and keeps those with hitCount>0', async () => {
-            const key1 = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            const key2 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -';
-            mockStore[key1] = {
-                fen: key1,
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-            mockStore[key2] = {
-                fen: key2,
-                totalGames: 80,
-                moves: [{ san: 'e5', white: 40, draws: 20, black: 20, total: 80 }],
-            };
-
-            const cache = await MastersCache.loadAll();
-            expect(cache.size).toBe(2);
-
-            // Access only position 1
-            cache.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e4');
-
-            // Purge — should delete position 2 (hitCount=0)
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(1);
-            expect(cache.size).toBe(1);
-            expect(cache.has('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')).toBe(true);
-            expect(cache.has('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1')).toBe(false);
-        });
-
-        it('returns 0 when all positions have been accessed', async () => {
-            const key = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
-            mockStore[key] = {
-                fen: key,
-                totalGames: 100,
-                moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
-            };
-
-            const cache = await MastersCache.loadAll();
-            cache.getMoveStats('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'e4');
-
-            const purged = await cache.purgeUnused();
-            expect(purged).toBe(0);
-            expect(cache.size).toBe(1);
-        });
     });
 });

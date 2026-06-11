@@ -5,7 +5,7 @@ import {
     OpponentAnalysisResult,
     OpponentGameRef,
     computeThreatLevel,
-} from '../data/OpponentAnalysisDB';
+} from '../models/OpponentAnalysis';
 
 const MAX_GAMES = 1000;
 const MAX_RECENT_REFS = 5;
@@ -16,7 +16,8 @@ export interface OpponentAnalysisProgress {
 }
 
 export interface AnalyzeOpponentParams {
-    gameId: string;
+    /** Record id (provider id, no prefix). */
+    recordId: string;
     opponentUsername: string;
     platform: Platform;
     /** Normalized FEN of position before user's bad move */
@@ -292,9 +293,10 @@ export async function analyzeOpponentGames(
     onProgress?.({ gamesDownloaded: games.length, phase: 'complete' });
 
     return {
-        gameId: params.gameId,
+        recordId: params.recordId,
         opponentUsername: params.opponentUsername,
         platform: params.platform,
+        targetPly: params.targetPly,
         gamesAnalyzed: games.length,
         positionBeforeCount,
         positionAfterCount,
@@ -304,5 +306,53 @@ export async function analyzeOpponentGames(
         userMoveSan: params.userMoveSan,
         threatLevel: computeThreatLevel(positionBeforeCount),
         analyzedAt: Date.now(),
+    };
+}
+
+/**
+ * Map a render-side `OpponentAnalysisResult` to the compact persisted
+ * `GameRecord.op` shape. Drops the derived fields (`threatLevel`,
+ * `platform`, `opponentUsername`) that are recomputable on render.
+ */
+export function toPersistedOp(result: OpponentAnalysisResult): NonNullable<import('../models/RepertoireData').GameRecord['op']> {
+    return {
+        ply: result.targetPly,
+        m: result.gamesAnalyzed,
+        nb: result.positionBeforeCount,
+        na: result.positionAfterCount,
+        os: result.opponentMoveSan,
+        us: result.userMoveSan,
+        rb: result.recentBeforeGames.map(ref => ({ d: ref.date, u: ref.url })),
+        ra: result.recentAfterGames.map(ref => ({ d: ref.date, u: ref.url })),
+        at: result.analyzedAt,
+    };
+}
+
+/**
+ * Hydrate a persisted `op` back into the in-memory `OpponentAnalysisResult`
+ * the UI consumes. Derives `threatLevel` from `nb` and `opponentUsername`
+ * from the supplied record + linked-account context.
+ */
+export function fromPersistedOp(
+    op: NonNullable<import('../models/RepertoireData').GameRecord['op']>,
+    record: { id: string; p: 'l' | 'c'; wa: string; ba: string },
+    userColor: 'white' | 'black',
+): OpponentAnalysisResult {
+    const opponentUsername = userColor === 'white' ? record.ba : record.wa;
+    const platform: Platform = record.p === 'c' ? 'chess.com' : 'lichess';
+    return {
+        recordId: record.id,
+        opponentUsername,
+        platform,
+        targetPly: op.ply,
+        gamesAnalyzed: op.m,
+        positionBeforeCount: op.nb,
+        positionAfterCount: op.na,
+        recentBeforeGames: op.rb.map(r => ({ date: r.d, url: r.u })),
+        recentAfterGames: op.ra.map(r => ({ date: r.d, url: r.u })),
+        opponentMoveSan: op.os,
+        userMoveSan: op.us,
+        threatLevel: computeThreatLevel(op.nb),
+        analyzedAt: op.at,
     };
 }

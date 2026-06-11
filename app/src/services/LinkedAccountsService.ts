@@ -1,5 +1,3 @@
-import { deleteGamesForAccount } from '../data/GamesDB';
-
 export type Platform = 'lichess' | 'chess.com';
 
 export interface LinkedAccount {
@@ -11,10 +9,6 @@ let _linkedAccounts: LinkedAccount[] = [];
 
 export function getAccountKey(platform: Platform, username: string): string {
     return `${platform}:${username.toLowerCase()}`;
-}
-
-export function getSyncTimestampKey(platform: Platform, username: string): string {
-    return `chesslaunchpad:lastSyncTimestamp:${platform}:${username.toLowerCase()}`;
 }
 
 export function getLinkedAccounts(): LinkedAccount[] {
@@ -30,28 +24,20 @@ export function setLinkedAccounts(accounts: LinkedAccount[]): void {
 }
 
 /**
- * Advance the sync watermark for an account to at least `timestamp`.
- * Used after grooming to prevent re-fetching deleted games.
- * Stays in localStorage — it's local cache, not a user setting.
+ * Clean up local state for a removed account. Called after a successful
+ * Settings save persists the account removal.
+ *
+ * Today this is a no-op — the prior implementation deleted IndexedDB
+ * `games` rows and removed the `chesslaunchpad:lastSyncTimestamp:*`
+ * localStorage watermark, but the post-refactor design stores game
+ * records on the synced blob (purged server-side by the next ingest's
+ * `purgeRecordsForAccounts` call) and uses `data.games.{key}.watermarkMs`
+ * on the blob for sync watermarks — neither survives on the device.
+ *
+ * The function is preserved as a documented seam so Settings doesn't
+ * grow inline knowledge of the change; future per-device caches (if any)
+ * have a single place to register cleanup.
  */
-export function advanceSyncWatermark(platform: Platform, username: string, timestamp: number): void {
-    const key = getSyncTimestampKey(platform, username.toLowerCase());
-    try {
-        const raw = localStorage.getItem(key);
-        const current = raw ? parseInt(raw, 10) : 0;
-        if (timestamp > current) {
-            localStorage.setItem(key, timestamp.toString());
-        }
-    } catch { /* localStorage unavailable */ }
-}
-
-/**
- * Clean up local data for a removed account (call after successful backend save).
- */
-export function cleanupRemovedAccount(username: string, platform: Platform): void {
-    const normalized = username.toLowerCase();
-    try {
-        localStorage.removeItem(getSyncTimestampKey(platform, normalized));
-    } catch { /* localStorage unavailable */ }
-    deleteGamesForAccount(platform, normalized).catch(() => { /* best-effort cleanup */ });
+export function cleanupRemovedAccount(_username: string, _platform: Platform): void {
+    // Intentionally empty — see doc comment above.
 }

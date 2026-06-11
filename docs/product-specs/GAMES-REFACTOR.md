@@ -42,7 +42,7 @@ Game records live in each day's `activity.practiceLog[].games` sub-object, next 
 
 **Not stored:** full annotations (highlights, mini-board), clock-per-move, raw analysis prose. All recomputable in-memory from `m` + repertoire + `ev`. Only the **masters-derived theory verdict** (`an`) is stored, because it depends on a rate-limited network source and cannot be recomputed offline.
 
-**No automatic invalidation:** `an`/`op` are not invalidated when the repertoire changes. A stale verdict simply persists; the user re-runs it via the existing "Re-analyze" context-menu action, which clears `an` (and `op`) for that game so it re-queues.
+**No automatic invalidation:** `an`/`op` are not invalidated when the repertoire changes. A stale verdict simply persists; the user re-runs it via the existing "Re-annotate" context-menu action, which clears `an` (and `op`) for that game so it re-queues.
 
 ## Retention
 
@@ -116,7 +116,7 @@ Present once a game is analyzed (the page's "done" marker). Holds only the maste
 ```
 
 - Verdicts are keyed by `ply` (replay is deterministic, so plies are stable). `in` = "still in theory."
-- `tv` is a **sparse map of resolved verdicts only**. An ambiguous ply that masters had **no data** for is omitted, not stored as `false`. This avoids conflating "confirmed out of theory" with "no data" — a one-way door — and lets a future pass retry only the no-data plies without a full re-analyze.
+- `tv` is a **sparse map of resolved verdicts only**. An ambiguous ply that masters had **no data** for is omitted, not stored as `false`. This avoids conflating "confirmed out of theory" with "no data" — a one-way door — and lets a future pass retry only the no-data plies without a full re-annotate.
 - At render, a ply the recompute deems ambiguous but absent from `tv` = no-data = the engine's existing **optimistic in-theory default** (matches `GameAnnotationService` today). Note this is *in*-theory, not out.
 - Empty `tv` is valid — a game with no ambiguous positions (or all ambiguous plies were no-data) is still analyzed once `an` is present.
 
