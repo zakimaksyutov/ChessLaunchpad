@@ -49,7 +49,7 @@ export interface AnalysisJob {
 export type AnalysisProgress =
     | { phase: 'planning' }
     | { phase: 'analyzing'; gameIndex: number; gameTotal: number; positionIndex: number; positionTotal: number }
-    | { phase: 'flushing' }
+    | { phase: 'flushing'; gameIndex?: number; gameTotal?: number }
     | { phase: 'idle' };
 
 /**

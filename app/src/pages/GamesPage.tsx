@@ -74,8 +74,58 @@ type SyncState =
     | { phase: 'syncing' }
     | { phase: 'synced'; at: Date };
 
-const SyncStatusIndicator: React.FC<{ status: SyncState }> = ({ status }) => {
+/** Show a progress bar instead of the silent spinner when a sync discovers
+ *  more than this many games to analyze. Below the threshold (the typical
+ *  day-to-day case), the spinner is enough — we don't want the bar flashing
+ *  up for every 1-2 game refresh. */
+const SYNC_PROGRESS_BAR_THRESHOLD = 3;
+
+const SyncStatusIndicator: React.FC<{
+    status: SyncState;
+    analysisProgress: AnalysisProgress;
+}> = ({ status, analysisProgress }) => {
     if (status.phase === 'syncing') {
+        const progressTotal =
+            (analysisProgress.phase === 'analyzing' || analysisProgress.phase === 'flushing')
+                ? analysisProgress.gameTotal
+                : undefined;
+        const progressIndex =
+            (analysisProgress.phase === 'analyzing' || analysisProgress.phase === 'flushing')
+                ? analysisProgress.gameIndex
+                : undefined;
+
+        if (
+            progressTotal !== undefined &&
+            progressIndex !== undefined &&
+            progressTotal > SYNC_PROGRESS_BAR_THRESHOLD
+        ) {
+            const pct = Math.max(0, Math.min(100, (progressIndex / progressTotal) * 100));
+            return (
+                <span
+                    className="games-sync-status games-sync-status-active games-sync-status-progress"
+                    role="status"
+                    aria-live="polite"
+                    title={`Analyzing ${progressIndex} of ${progressTotal} games`}
+                >
+                    <span className="games-sync-progress-text">
+                        Analyzing {progressIndex} of {progressTotal} games…
+                    </span>
+                    <span
+                        className="games-sync-progress-bar"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={progressTotal}
+                        aria-valuenow={progressIndex}
+                    >
+                        <span
+                            className="games-sync-progress-fill"
+                            style={{ width: `${pct}%` }}
+                        />
+                    </span>
+                </span>
+            );
+        }
+
         return (
             <span
                 className="games-sync-status games-sync-status-active"
@@ -828,7 +878,11 @@ const GamesPage: React.FC = () => {
                 }
 
                 if (pendingFlush.length > 0 && !abort.signal.aborted) {
-                    setAnalysisProgress({ phase: 'flushing' });
+                    setAnalysisProgress(prev =>
+                        prev.phase === 'analyzing'
+                            ? { phase: 'flushing', gameIndex: prev.gameIndex, gameTotal: prev.gameTotal }
+                            : { phase: 'flushing' }
+                    );
                     const { data: fresh3 } = await flushAnUpdates(dal, pendingFlush);
                     if (!abort.signal.aborted) setData(fresh3);
                 }
@@ -1103,7 +1157,7 @@ const GamesPage: React.FC = () => {
                         )}
                         {syncStatus && (
                             <span className="games-sync-controls">
-                                <SyncStatusIndicator status={syncStatus} />
+                                <SyncStatusIndicator status={syncStatus} analysisProgress={analysisProgress} />
                                 <button
                                     type="button"
                                     className="games-sync-button"
