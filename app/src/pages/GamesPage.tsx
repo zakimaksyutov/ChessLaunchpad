@@ -64,6 +64,40 @@ import {
 } from '../services/GameRecordAnalysisPlanner';
 import './GamesPage.css';
 
+function formatSyncTime(d: Date): string {
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+type SyncState =
+    | { phase: 'syncing' }
+    | { phase: 'synced'; at: Date };
+
+const SyncStatusIndicator: React.FC<{ status: SyncState }> = ({ status }) => {
+    if (status.phase === 'syncing') {
+        return (
+            <span
+                className="games-sync-status games-sync-status-active"
+                role="status"
+                aria-live="polite"
+                title="Syncing games from linked accounts"
+            >
+                <span className="games-sync-spinner" aria-hidden="true" />
+                <span>Syncing games…</span>
+            </span>
+        );
+    }
+    return (
+        <span
+            className="games-sync-status"
+            role="status"
+            aria-live="polite"
+            title={`Last sync at ${status.at.toLocaleString()}`}
+        >
+            Synced @ {formatSyncTime(status.at)}
+        </span>
+    );
+};
+
 const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
     ok: 'move-out-of-theory',
     inaccuracy: 'move-eot-inaccuracy',
@@ -424,6 +458,7 @@ const GamesPage: React.FC = () => {
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
     const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({ phase: 'idle' });
     const [analysisError, setAnalysisError] = useState<string>('');
+    const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
     const [blockedByLichessCount, setBlockedByLichessCount] = useState(0);
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
@@ -758,6 +793,7 @@ const GamesPage: React.FC = () => {
             try {
                 // Step 1 + 2: ingest (writes records + evicts). The ingest pipeline
                 // is the shared write path for record append + eviction.
+                setSyncStatus(prev => (prev?.phase === 'syncing' ? prev : { phase: 'syncing' }));
                 setAnalysisProgress({ phase: 'planning' });
                 await runIngest(dal);
 
@@ -871,6 +907,9 @@ const GamesPage: React.FC = () => {
                 setAnalysisError(msg);
                 setAnalysisProgress({ phase: 'idle' });
             } finally {
+                // Stamp the sync time on every completion path (success, error,
+                // empty-run) — matches the Dashboard's silent-error contract.
+                setSyncStatus({ phase: 'synced', at: new Date() });
                 passStartedRef.current = false;
                 if (passAbortRef.current === abort) {
                     passAbortRef.current = null;
@@ -1073,38 +1112,47 @@ const GamesPage: React.FC = () => {
     const showLichessPrompt = lichessAuthReady && !lichessConnected;
     const linkedHasLichess = linkedAccounts.some(a => a.platform === 'lichess');
 
-    const progressBarPct = (() => {
-        if (analysisProgress.phase !== 'analyzing') return 0;
-        const { gameIndex, gameTotal, positionIndex, positionTotal } = analysisProgress;
-        const completedGames = Math.max(0, gameIndex - 1);
-        const fractional = positionTotal > 0 ? positionIndex / positionTotal : 0;
-        return Math.min(100, ((completedGames + fractional) / gameTotal) * 100);
-    })();
-
     return (
         <div className="games-page">
             <div className="games-header">
                 <div className="linked-accounts-header">
                     <h1 className="games-title">Games</h1>
-                    {linkedAccounts.length > 0 ? (
-                        <ul className="header-accounts-list">
-                            {linkedAccounts.map((account) => (
-                                <li key={`${account.platform}:${account.username}`}>
-                                    <span className="header-account-icon" aria-hidden="true">
-                                        {account.platform === 'chess.com' ? '♔' : '♞'}
-                                    </span>
-                                    <span className="header-account-name">{account.username}</span>
-                                    <span className="header-account-platform">
-                                        {account.platform === 'chess.com' ? 'Chess.com' : 'Lichess'}
-                                    </span>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <Link to="/settings" className="configure-accounts-link">
-                            Configure linked accounts
-                        </Link>
-                    )}
+                    <div className="header-accounts-row">
+                        {linkedAccounts.length > 0 ? (
+                            <ul className="header-accounts-list">
+                                {linkedAccounts.map((account) => (
+                                    <li key={`${account.platform}:${account.username}`}>
+                                        <span className="header-account-icon" aria-hidden="true">
+                                            {account.platform === 'chess.com' ? '♔' : '♞'}
+                                        </span>
+                                        <span className="header-account-name">{account.username}</span>
+                                        <span className="header-account-platform">
+                                            {account.platform === 'chess.com' ? 'Chess.com' : 'Lichess'}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <Link to="/settings" className="configure-accounts-link">
+                                Configure linked accounts
+                            </Link>
+                        )}
+                        {syncStatus && (
+                            <span className="games-sync-controls">
+                                <SyncStatusIndicator status={syncStatus} />
+                                <button
+                                    type="button"
+                                    className="games-sync-button"
+                                    onClick={() => runAnalysisPass()}
+                                    disabled={syncStatus.phase === 'syncing'}
+                                    title="Sync games now"
+                                    aria-label="Sync games now"
+                                >
+                                    ↻
+                                </button>
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -1124,35 +1172,6 @@ const GamesPage: React.FC = () => {
                             {' '}Chess.com games render without it.
                         </>
                     )}
-                </div>
-            )}
-
-            {analysisProgress.phase === 'planning' && (
-                <div className="analysis-progress">
-                    <div className="analysis-progress-text">Looking for new games…</div>
-                </div>
-            )}
-
-            {analysisProgress.phase === 'analyzing' && (
-                <div className="analysis-progress">
-                    <div className="analysis-progress-text">
-                        Game {analysisProgress.gameIndex} of {analysisProgress.gameTotal}
-                        {analysisProgress.positionTotal > 0 && (
-                            <> · masters check {analysisProgress.positionIndex} of {analysisProgress.positionTotal}</>
-                        )}
-                    </div>
-                    <div className="analysis-progress-bar">
-                        <div className="analysis-progress-fill" style={{ width: `${progressBarPct}%` }} />
-                    </div>
-                    <div className="analysis-progress-hint">
-                        You can leave this page — we&apos;ll pick up where you left off when you return.
-                    </div>
-                </div>
-            )}
-
-            {analysisProgress.phase === 'flushing' && (
-                <div className="analysis-progress">
-                    <div className="analysis-progress-text">Saving progress…</div>
                 </div>
             )}
 
