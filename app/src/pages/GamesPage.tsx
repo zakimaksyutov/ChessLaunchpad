@@ -750,7 +750,7 @@ const GamesPage: React.FC = () => {
      *   1. background ingest (so new games land)
      *   2. eviction happens inside ingest
      *   3. plan ambiguous positions per record (no network)
-     *   4. analyze newest-first, sequentially, batched flush back
+     *   4. analyze oldest-first, sequentially, batched flush back
      */
     /**
      * Run the analysis pass and expose a promise that resolves when the

@@ -87,7 +87,7 @@ On opening /games:
 0. **Render immediately** from existing records that already have `an` (sorted, newest first).
 1. **Background download** — trigger the same game sync the Dashboard runs ([`GAME-INGEST.md`](./GAME-INGEST.md)), the same silent way (render first, sync after). New games are persisted; this step alone causes no list movement.
 2. **Persist (append + evict)** — the shared ingest write path appends new records and applies the 100-game eviction (see Retention). This runs in ingest itself, so it happens whether triggered here or by the Dashboard. Because eviction precedes analysis, masters budget is never spent on games about to be dropped.
-3. **Analyze newest-first** — process records lacking `an` one at a time, **newest first**, through a sequential queue (bounded by the masters rate limit). Analysis order is an internal scheduling concern; newest-first means the game the user most likely came for resolves first.
+3. **Analyze oldest-first** — process records lacking `an` one at a time, **oldest first**, through a sequential queue (bounded by the masters rate limit). Analysis order is an internal scheduling concern.
 4. **Reveal as-ready — no gate** — the moment a game's `an` is written, insert it at its sorted position (top of the list in the common case). Games appear one by one as they complete; there is no withholding of newer games behind an unfinished older one. A spinner pinned to the top of the list shows the two-level progress below.
 5. **Sync-only games** — a game needing no masters lookup is marked analyzed (`an` written) and revealed like any other, as soon as it's processed.
 

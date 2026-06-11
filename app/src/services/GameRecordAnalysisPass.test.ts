@@ -92,12 +92,12 @@ describe('buildAnalysisPlan', () => {
         expect(plan).toEqual([]);
     });
 
-    it('includes records lacking an, sorted newest-first', () => {
+    it('includes records lacking an, sorted oldest-first', () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'old', t: BASE_DATE - 1000 * 60 * 60 * 24 }));
         appendGameRecord(data.activity!, rec({ id: 'new', t: BASE_DATE }));
         const plan = buildAnalysisPlan(data, null);
-        expect(plan.map(j => j.record.id)).toEqual(['new', 'old']);
+        expect(plan.map(j => j.record.id)).toEqual(['old', 'new']);
     });
 
     it('orphans records whose linked account was unlinked', () => {

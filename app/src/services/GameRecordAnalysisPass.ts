@@ -95,14 +95,13 @@ export function buildAnalysisPlan(
     }
 
     const jobs: AnalysisJob[] = [];
-    // Walk newest-first so the user sees the most recently played games
-    // first. Iterate days in descending order, then sort within-day by `t`
-    // descending.
-    const sortedDays = [...activity.practiceLog].sort((a, b) => b.date.localeCompare(a.date));
+    // Walk oldest-first. Iterate days in ascending order, then sort
+    // within-day by `t` ascending.
+    const sortedDays = [...activity.practiceLog].sort((a, b) => a.date.localeCompare(b.date));
     for (const day of sortedDays) {
         const records = day.games?.records;
         if (!records || records.length === 0) continue;
-        const sortedRecords = [...records].sort((a, b) => b.t - a.t);
+        const sortedRecords = [...records].sort((a, b) => a.t - b.t);
         for (const record of sortedRecords) {
             if (record.an !== undefined) continue;
 
