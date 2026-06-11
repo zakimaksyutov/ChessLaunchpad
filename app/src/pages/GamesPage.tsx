@@ -44,6 +44,7 @@ import {
     persistOpponentAnalysis,
     persistReannotateClear,
     persistReannotateRefresh,
+    persistDeleteRecordsFromTimestamp,
 } from '../services/GameRecordAnalysisPass';
 import {
     getAllRecordsNewestFirst,
@@ -229,6 +230,8 @@ interface GameRowProps {
     opIsStale: boolean;
     onReannotate: (record: GameRecord, userLower: string) => void;
     onAnalyzeOpponent: (record: GameRecord) => void;
+    /** DEBUG / TEMP — delete this record and every newer one. */
+    onDeleteFromHere: (record: GameRecord) => void;
 }
 
 const GameRow: React.FC<GameRowProps> = ({
@@ -242,6 +245,7 @@ const GameRow: React.FC<GameRowProps> = ({
     opIsStale,
     onReannotate,
     onAnalyzeOpponent,
+    onDeleteFromHere,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -367,6 +371,13 @@ const GameRow: React.FC<GameRowProps> = ({
                                                 Opponent analysis ✓
                                             </button>
                                         )}
+                                        {/* DEBUG / TEMP — remove before merging. */}
+                                        <button
+                                            className="game-overflow-debug"
+                                            onClick={() => { setMenuOpen(false); onDeleteFromHere(record); }}
+                                        >
+                                            Delete from here (debug)
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -1106,6 +1117,36 @@ const GamesPage: React.FC = () => {
     }, [dal, analyzingRecordKey, orderedRows, annotationByKey]);
 
     // ─────────────────────────────────────────────────────────────────────
+    // DEBUG / TEMP — "Delete from here" action (remove before merging)
+    // ─────────────────────────────────────────────────────────────────────
+
+    const handleDeleteFromHere = useCallback(async (record: GameRecord) => {
+        if (!dal) return;
+        const confirmed = window.confirm(
+            `[DEBUG] Delete this game and every newer one?\n\nThis removes every record with t >= ${record.t} from the saved blob. There is no undo.`,
+        );
+        if (!confirmed) return;
+
+        // Abort any in-flight analysis pass and wait for it to unwind so
+        // it can't race-write `an` against a record we're about to delete.
+        passAbortRef.current?.abort();
+        const inflight = passDonePromiseRef.current;
+        if (inflight) {
+            try { await inflight; } catch { /* swallowed by pass */ }
+        }
+
+        try {
+            const fresh = await persistDeleteRecordsFromTimestamp(dal, record.t);
+            setData(fresh);
+            // Re-run the pass so anything left without `an` (shouldn't be
+            // many — eviction kept the older records intact) gets picked up.
+            await runAnalysisPass();
+        } catch (e) {
+            console.warn('[DEBUG] Delete-from-here failed:', e);
+        }
+    }, [dal, runAnalysisPass]);
+
+    // ─────────────────────────────────────────────────────────────────────
     // Render
     // ─────────────────────────────────────────────────────────────────────
 
@@ -1238,6 +1279,7 @@ const GamesPage: React.FC = () => {
                                 analyzeDisabled={analyzingRecordKey !== null}
                                 onReannotate={handleReannotate}
                                 onAnalyzeOpponent={handleAnalyzeOpponent}
+                                onDeleteFromHere={handleDeleteFromHere}
                             />
                         );
                     })}
