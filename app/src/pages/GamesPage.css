@@ -293,10 +293,6 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     margin-bottom: 0.75rem;
     border: 2px solid transparent;
-    /* Smooth fallback for the FLIP-driven slot changes — also covers
-       resize-induced layout shifts where rects didn't change between
-       renders so useFlipReorder skipped the animation. */
-    transition: background-color 180ms ease, border-color 180ms ease;
 }
 
 /* Skeleton placeholder — shown while a row is queued for the current
@@ -304,31 +300,17 @@
    neighbors when its `an` finally lands. The min-height is calibrated
    to approximate a typical hydrated row (mini board + header + 2-3
    line PGN + one summary callout) so that when the skeleton finally
-   hydrates, the row's height barely changes — minimizing the layout
-   cascade that FLIP would otherwise have to animate. */
+   hydrates, the row's height barely changes. */
 .game-row-pending {
     background: #fafbfc;
     min-height: 152px;
-    animation: game-row-pending-fade-in 200ms ease both;
-}
-
-@keyframes game-row-pending-fade-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
 }
 
 .game-mini-board-skeleton {
     width: 100%;
     height: 100%;
     border-radius: 4px;
-    background: linear-gradient(
-        90deg,
-        #eef0f3 0%,
-        #f5f7fa 50%,
-        #eef0f3 100%
-    );
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+    background: #eef0f3;
 }
 
 .game-pgn-skeleton {
@@ -342,14 +324,7 @@
     display: block;
     height: 0.7rem;
     border-radius: 4px;
-    background: linear-gradient(
-        90deg,
-        #eef0f3 0%,
-        #f5f7fa 50%,
-        #eef0f3 100%
-    );
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+    background: #eef0f3;
 }
 
 .skeleton-line-w55 { width: 55%; }
@@ -363,25 +338,13 @@
 .skeleton-block {
     display: block;
     border-radius: 4px;
-    background: linear-gradient(
-        90deg,
-        #eef0f3 0%,
-        #f5f7fa 50%,
-        #eef0f3 100%
-    );
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+    background: #eef0f3;
     margin-top: 0.35rem;
 }
 
 .skeleton-block-summary {
     width: 60%;
     height: 1.4rem;
-}
-
-@keyframes skeleton-shimmer {
-    0%   { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
 }
 
 .game-pending-badge {
@@ -391,18 +354,6 @@
     padding: 0.1rem 0.5rem;
     border-radius: 10px;
     letter-spacing: 0.02em;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .game-mini-board-skeleton,
-    .skeleton-line,
-    .skeleton-block,
-    .game-row-pending {
-        animation: none;
-    }
-    .game-row {
-        transition: none;
-    }
 }
 
 .game-row-deviation {

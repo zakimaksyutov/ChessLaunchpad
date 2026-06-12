@@ -61,7 +61,6 @@ import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuild
 import { runIngest } from '../services/GameIngestService';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
 import { selectRenderableRows } from '../services/GameRowSelection';
-import { useFlipReorder } from '../services/useFlipReorder';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
 import {
     MastersMemoEntry,
@@ -393,7 +392,6 @@ const GameRow: React.FC<GameRowProps> = ({
     return (
         <div
             className={`game-row${tileClass}${reannotating ? ' game-row-reannotating' : ''}${pending ? ' game-row-pending' : ''}`}
-            data-flip-key={`${record.p}:${record.id}`}
             aria-busy={pending || undefined}
         >
             <div className="game-mini-board">
@@ -1310,7 +1308,7 @@ const GamesPage: React.FC = () => {
                     )}
                 </div>
             ) : (
-                <GamesList orderedRows={orderedRows}>
+                <GamesList>
                     {orderedRows.map(({ record, userLower, pending }) => {
                         const key = `${record.p}:${record.id}`;
                         const annotation = annotationByKey.get(key) ?? null;
@@ -1348,32 +1346,15 @@ const GamesPage: React.FC = () => {
 export type { Activity, AnalysisJob };
 
 /**
- * Direct parent of the rendered `GameRow` elements. Owns the ref handed
- * to `useFlipReorder`, so when rows shift their slots (skeleton →
- * content hydration, sticky-ordering reflow, late-arriving rows) they
- * animate smoothly from the prior position to the new one instead of
- * snapping.
+ * Direct parent of the rendered `GameRow` elements. Plain wrapper —
+ * no reorder animation; skeleton rows simply snap into place when
+ * inserted or hydrated.
  */
 const GamesList: React.FC<{
-    orderedRows: ReadonlyArray<{ record: GameRecord; userLower: string; pending: boolean }>;
     children: React.ReactNode;
-}> = ({ orderedRows, children }) => {
-    // Callback-ref pattern: state-as-ref so the FLIP hook gets a real
-    // re-render once the container is mounted (a plain useRef wouldn't
-    // — refs are an escape hatch from the render cycle and the hook
-    // would skip its very first snapshot).
-    const [container, setContainer] = useState<HTMLDivElement | null>(null);
-    // Hash the visible row ordering + per-row pending state so the FLIP
-    // hook re-snapshots whenever the visual list changes meaningfully:
-    // inserts, removals, reorder, or a pending→hydrated transition
-    // (which typically grows the row and shifts its neighbors).
-    const orderingKey = useMemo(
-        () => orderedRows.map(r => `${r.record.p}:${r.record.id}:${r.pending ? 'p' : 'r'}`).join('|'),
-        [orderedRows],
-    );
-    useFlipReorder(container, [orderingKey]);
+}> = ({ children }) => {
     return (
-        <div className="games-list" ref={setContainer}>
+        <div className="games-list">
             {children}
         </div>
     );
