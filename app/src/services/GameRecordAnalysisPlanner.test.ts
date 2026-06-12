@@ -135,8 +135,7 @@ describe('buildVerdictFromPlan', () => {
             fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
             totalGames: 100, moves: [{ san: 'e4', white: 50, draws: 25, black: 25, total: 100 }],
         });
-        const rec = makeRecord({ m: 'e4 e5' });
-        const verdict = buildVerdictFromPlan(plan, rec, lookup);
+        const verdict = buildVerdictFromPlan(plan, lookup);
         expect(verdict.tv).toEqual([{ ply: 2, in: true }]);
     });
 
@@ -149,7 +148,7 @@ describe('buildVerdictFromPlan', () => {
             fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
             totalGames: 100, moves: [{ san: 'e4', white: 50, draws: 25, black: 25, total: 100 }], // a3 missing
         });
-        const verdict = buildVerdictFromPlan(plan, makeRecord({ m: 'a3' }), lookup);
+        const verdict = buildVerdictFromPlan(plan, lookup);
         // Spec §`an`: no-data plies are OMITTED, not stored as out-of-theory.
         // This avoids the one-way conflation between "confirmed out of theory"
         // and "we have no information."
@@ -168,7 +167,7 @@ describe('buildVerdictFromPlan', () => {
                 { san: 'h3', white: 2, draws: 1, black: 1, total: 4 }, // 4 games < MIN_MASTER_GAMES, rare but present
             ],
         });
-        const verdict = buildVerdictFromPlan(plan, makeRecord({ m: 'h3' }), lookup);
+        const verdict = buildVerdictFromPlan(plan, lookup);
         expect(verdict.tv).toEqual([{ ply: 4, in: false }]);
     });
 
@@ -177,7 +176,7 @@ describe('buildVerdictFromPlan', () => {
             { moveIndex: 0, plyIndex: 2, fenBefore: 'not-in-lookup', moveSan: 'e4' },
         ];
         const lookup = new MastersLookup();
-        const verdict = buildVerdictFromPlan(plan, makeRecord({ m: 'e4 e5' }), lookup);
+        const verdict = buildVerdictFromPlan(plan, lookup);
         expect(verdict.tv).toBeUndefined();
     });
 });

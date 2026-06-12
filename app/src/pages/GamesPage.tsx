@@ -725,9 +725,9 @@ const GamesPage: React.FC = () => {
             t: r.record.t,
             payload: r,
         }));
-        const ordered = orderRowsSticky(orderable, sessionOrderRef.current, reannotatingKeys);
+        const ordered = orderRowsSticky(orderable, sessionOrderRef.current);
         return ordered.map(o => o.payload);
-    }, [renderableRows, reannotatingKeys]);
+    }, [renderableRows]);
 
     // Annotation cache: re-render against fresh data; recompute when records or
     // repertoire change. Per-row memoization is automatic via the row component

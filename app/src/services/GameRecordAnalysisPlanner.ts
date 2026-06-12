@@ -67,7 +67,6 @@ export function planAmbiguousPositions(
  */
 export function buildVerdictFromPlan(
     plan: AmbiguousTheoryPosition[],
-    record: GameRecord,
     lookup: MastersLookup,
 ): MastersTheoryVerdict {
     const tv: MastersTheoryPlyVerdict[] = [];
@@ -84,7 +83,6 @@ export function buildVerdictFromPlan(
         if (verdict === null) continue;
         tv.push({ ply: pos.plyIndex, in: !verdict });
     }
-    void record;
     if (tv.length === 0) return {};
     return { tv };
 }

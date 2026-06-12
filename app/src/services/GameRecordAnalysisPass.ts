@@ -35,15 +35,12 @@ const MAX_FLUSH_RETRIES = 3;
  *                       `getRecordUserColor`).
  *   - `plan`           : ambiguous positions discovered before any lookup
  *                       (drives the `K` in the progress text).
- *   - `priorAn`        : the record's existing `an` field (if any) — used by
- *                       Re-annotate to roll back on transient failure.
  */
 export interface AnalysisJob {
     record: GameRecord;
     accountKey: string;
     userLower: string;
     plan: AmbiguousTheoryPosition[];
-    priorAn?: MastersTheoryVerdict;
 }
 
 export type AnalysisProgress =
@@ -128,7 +125,7 @@ export function buildAnalysisPlan(
 
             const repertoireFens = color === 'white' ? fenSets.whiteFens : fenSets.blackFens;
             const plan = planAmbiguousPositions(record, userLower, repertoireFens, explorerEvals);
-            jobs.push({ record, accountKey, userLower, plan, priorAn: record.an });
+            jobs.push({ record, accountKey, userLower, plan });
         }
     }
     return jobs;
@@ -228,7 +225,7 @@ export async function analyzeOneGame(
     if (anyError) {
         return { record, skipped: true };
     }
-    const an = buildVerdictFromPlan(plan, record, lookup);
+    const an = buildVerdictFromPlan(plan, lookup);
     return { record, an, skipped: false };
 }
 

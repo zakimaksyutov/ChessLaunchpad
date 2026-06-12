@@ -21,7 +21,6 @@ export interface OrderableRow<T> {
 export function orderRowsSticky<T>(
     renderable: ReadonlyArray<OrderableRow<T>>,
     sessionOrder: Map<string, number>,
-    _reannotatingKeys: ReadonlySet<string> = new Set(),
 ): OrderableRow<T>[] {
     const known: OrderableRow<T>[] = [];
     const fresh: OrderableRow<T>[] = [];

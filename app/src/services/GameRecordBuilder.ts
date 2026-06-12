@@ -115,8 +115,7 @@ function buildLichessRecord(
         // emit the decimal so `parseTcToClock` on the render side can
         // round-trip the value.
         const initialMin = clock.initial / 60;
-        // Trim a redundant `.0` when the value is an integer.
-        const minStr = Number.isInteger(initialMin) ? String(initialMin) : String(initialMin);
+        const minStr = String(initialMin);
         tc = `${minStr}+${clock.increment}`;
     }
 
