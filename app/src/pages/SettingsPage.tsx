@@ -5,7 +5,6 @@ import {
     setLinkedAccounts,
     LinkedAccount,
     Platform,
-    cleanupRemovedAccount,
     getAccountKey,
 } from '../services/LinkedAccountsService';
 import { purgeRecordsForAccounts } from '../services/GameRecordStore';
@@ -53,10 +52,6 @@ const SettingsPage: React.FC = () => {
     // Lichess integration (separate, not part of Save/Discard)
     const [lichessLoading, setLichessLoading] = useState(false);
     const { connected, login, logout } = useLichessAuth();
-
-    // Cache clearing
-    const [clearingCache, setClearingCache] = useState(false);
-    const [cacheCleared, setCacheCleared] = useState(false);
 
     // Import/Export
     const [importing, setImporting] = useState(false);
@@ -194,10 +189,6 @@ const SettingsPage: React.FC = () => {
             setLinkedAccounts(linkedAccounts);
             setCommittedPresetId(presetId);
 
-            // Clean up local data for removed accounts after successful save
-            for (const removed of removedAccountsRef.current) {
-                cleanupRemovedAccount(removed.username, removed.platform);
-            }
             removedAccountsRef.current = [];
 
             setIsDirty(false);
@@ -257,25 +248,6 @@ const SettingsPage: React.FC = () => {
     const handleLichessDisconnect = async () => {
         setLichessLoading(true);
         try { await logout(); } finally { setLichessLoading(false); }
-    };
-
-    const handleClearCache = async () => {
-        setClearingCache(true);
-        setCacheCleared(false);
-        try {
-            // No on-device caches remain after the games-refactor — game
-            // records live on the synced blob and the masters / opponent-
-            // analysis IndexedDB stores are gone. The button is kept as a
-            // user-visible "no cached data is held on this device" reassurance,
-            // and as a hook for any future per-device caches.
-            await Promise.resolve();
-            setCacheCleared(true);
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            setErrorMessage(`Failed to clear cache: ${msg}`);
-        } finally {
-            setClearingCache(false);
-        }
     };
 
     // ── Import / Export ────────────────────────────────────────────────
@@ -657,25 +629,6 @@ const SettingsPage: React.FC = () => {
                         accept=".chess"
                         onChange={handleImportFileSelected}
                     />
-                </div>
-            </div>
-
-            <div className="settings-card">
-                <h1>Data Cache</h1>
-                <p className="settings-description">
-                    Remove all downloaded games and sync timestamps.
-                </p>
-                {cacheCleared && (
-                    <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
-                )}
-                <div className="cache-info">
-                    <button
-                        className="secondary"
-                        onClick={handleClearCache}
-                        disabled={clearingCache}
-                    >
-                        {clearingCache ? 'Clearing…' : 'Clear Cache'}
-                    </button>
                 </div>
             </div>
         </div>

@@ -3,7 +3,6 @@ import {
     getAccountKey,
     getLinkedAccounts,
     setLinkedAccounts,
-    cleanupRemovedAccount,
     LinkedAccount,
 } from './LinkedAccountsService';
 
@@ -47,17 +46,6 @@ describe('LinkedAccountsService', () => {
 
         it('returns an empty array when no accounts are set', () => {
             expect(getLinkedAccounts()).toEqual([]);
-        });
-    });
-
-    describe('cleanupRemovedAccount', () => {
-        it('is a no-op after the games-refactor (no IndexedDB or watermark to clear)', () => {
-            // Sanity: linked accounts and localStorage are untouched.
-            setLinkedAccounts([{ platform: 'lichess', username: 'alice' }]);
-            localStorage.setItem('chesslaunchpad:other', 'preserved');
-            cleanupRemovedAccount('alice', 'lichess');
-            expect(getLinkedAccounts()).toEqual([{ platform: 'lichess', username: 'alice' }]);
-            expect(localStorage.getItem('chesslaunchpad:other')).toBe('preserved');
         });
     });
 });
