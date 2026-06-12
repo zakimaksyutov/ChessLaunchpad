@@ -2,9 +2,9 @@ import { GameRecord } from '../models/RepertoireData';
 import { ExplorerEvals } from '../models/ExplorerEvals';
 import {
     annotateGame,
+    deriveEotPositions as deriveEotPositionsImport,
     GameAnnotation,
     MastersLookupLike,
-    getOpponentName,
     getGameMetadata,
     GameMetadata,
 } from './GameAnnotationService';
@@ -164,10 +164,6 @@ export function getRecordOpponentName(
     return color === 'white' ? record.ba : record.wa;
 }
 
-// Silence unused-import lint — `getOpponentName` is re-exported only
-// for callers still using the raw-payload path.
-export { getOpponentName };
-
 /**
  * Derive the end-of-theory positions for the first out-of-rep eval-drop
  * move in an annotated record — mirrors `deriveEotPositions` but works
@@ -185,7 +181,3 @@ export function deriveRecordEotPositions(
     const gameData = recordToLichessGameData(record);
     return deriveEotPositionsImport(gameData, annotation, accountUsernameLower, 'lichess');
 }
-// Imported below to keep the public re-export cluster at the top.
-
-import { deriveEotPositions as deriveEotPositionsImport } from './GameAnnotationService';
-

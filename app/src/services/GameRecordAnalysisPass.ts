@@ -1,5 +1,4 @@
 import {
-    Activity,
     GameRecord,
     MastersTheoryVerdict,
     RepertoireData,
@@ -508,10 +507,3 @@ export async function persistDeleteRecordsFromTimestamp(
     }
     return await dal.retrieveRepertoireData();
 }
-
-/**
- * Silence unused-import warnings.
- * `Activity` is used implicitly through `findRecord` and the flush merge
- * walks `activity.practiceLog`; keep the import for the explicit signature.
- */
-export type { Activity };

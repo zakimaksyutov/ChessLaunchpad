@@ -8,7 +8,6 @@ import {
     LinkedAccount,
 } from '../services/LinkedAccountsService';
 import {
-    Activity,
     GameRecord,
     OpponentAnalysisRecord,
     RepertoireData,
@@ -33,7 +32,6 @@ import {
     buildLookupFromAn,
 } from '../services/GameRecordAnalysisPlanner';
 import {
-    AnalysisJob,
     AnalysisProgress,
     AnalyzedGameOutcome,
     ANALYSIS_FLUSH_BATCH,
@@ -1323,9 +1321,6 @@ const GamesPage: React.FC = () => {
         </div>
     );
 };
-
-// Silence unused imports — these are referenced through types in interfaces above.
-export type { Activity, AnalysisJob };
 
 /**
  * Direct parent of the rendered `GameRow` elements. Plain wrapper —
