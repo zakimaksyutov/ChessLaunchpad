@@ -60,6 +60,8 @@ import {
 import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuilder';
 import { runIngest } from '../services/GameIngestService';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
+import { selectRenderableRows } from '../services/GameRowSelection';
+import { useFlipReorder } from '../services/useFlipReorder';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
 import {
     MastersMemoEntry,
@@ -269,6 +271,13 @@ interface GameRowProps {
     opponentAnalysis: OpponentAnalysisResult | null;
     /** True when this record is currently being re-annotated. */
     reannotating: boolean;
+    /**
+     * True when this row is a skeleton placeholder — record is queued for
+     * analysis but the verdict hasn't landed yet. Shimmer placeholders
+     * are rendered in place of the mini board / PGN / summaries to
+     * reserve the row's slot before content lands.
+     */
+    pending: boolean;
     /** Current opponent-analysis download progress (only for the active row). */
     analyzeProgress: OpponentAnalysisProgress | null;
     /** True when any row is currently running opponent-analysis. */
@@ -291,6 +300,7 @@ const GameRow: React.FC<GameRowProps> = ({
     annotation,
     opponentAnalysis,
     reannotating,
+    pending,
     analyzeProgress,
     analyzeDisabled,
     opIsStale,
@@ -381,17 +391,25 @@ const GameRow: React.FC<GameRowProps> = ({
     const allowAnalyzeAction = eotSummary !== null && (opponentAnalysis === null || opIsStale);
 
     return (
-        <div className={`game-row${tileClass}${reannotating ? ' game-row-reannotating' : ''}`}>
+        <div
+            className={`game-row${tileClass}${reannotating ? ' game-row-reannotating' : ''}${pending ? ' game-row-pending' : ''}`}
+            data-flip-key={`${record.p}:${record.id}`}
+            aria-busy={pending || undefined}
+        >
             <div className="game-mini-board">
-                <ChessBoard
-                    fen={boardFen}
-                    orientation={annotation?.miniBoardOrientation ?? meta.userColor ?? 'white'}
-                    interactive={false}
-                    coordinates={false}
-                    turnColor="white"
-                    legalMoves={new Map()}
-                    annotations={boardAnnotations}
-                />
+                {pending ? (
+                    <div className="game-mini-board-skeleton" aria-hidden="true" />
+                ) : (
+                    <ChessBoard
+                        fen={boardFen}
+                        orientation={annotation?.miniBoardOrientation ?? meta.userColor ?? 'white'}
+                        interactive={false}
+                        coordinates={false}
+                        turnColor="white"
+                        legalMoves={new Map()}
+                        annotations={boardAnnotations}
+                    />
+                )}
             </div>
             <div className="game-info">
                 <div className="game-header-row">
@@ -406,32 +424,34 @@ const GameRow: React.FC<GameRowProps> = ({
                             <a className="game-source-link" href={meta.gameUrl} target="_blank" rel="noopener noreferrer">
                                 {record.p === 'c' ? '♔ View on Chess.com' : '♞ View on Lichess'}
                             </a>
-                            <div className="game-overflow-menu" ref={menuRef}>
-                                <button
-                                    className="game-overflow-button"
-                                    onClick={() => setMenuOpen(prev => !prev)}
-                                    aria-label="Game options"
-                                >⋯</button>
-                                {menuOpen && (
-                                    <div className="game-overflow-dropdown">
-                                        <button onClick={() => { setMenuOpen(false); onReannotate(record, userLower); }}>
-                                            Re-annotate
-                                        </button>
-                                        {showOpponentAnalysis && (
-                                            <button disabled className="game-overflow-done">
-                                                Opponent analysis ✓
+                            {!pending && (
+                                <div className="game-overflow-menu" ref={menuRef}>
+                                    <button
+                                        className="game-overflow-button"
+                                        onClick={() => setMenuOpen(prev => !prev)}
+                                        aria-label="Game options"
+                                    >⋯</button>
+                                    {menuOpen && (
+                                        <div className="game-overflow-dropdown">
+                                            <button onClick={() => { setMenuOpen(false); onReannotate(record, userLower); }}>
+                                                Re-annotate
                                             </button>
-                                        )}
-                                        {/* DEBUG / TEMP — remove before merging. */}
-                                        <button
-                                            className="game-overflow-debug"
-                                            onClick={() => { setMenuOpen(false); onDeleteFromHere(record); }}
-                                        >
-                                            Delete from here (debug)
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
+                                            {showOpponentAnalysis && (
+                                                <button disabled className="game-overflow-done">
+                                                    Opponent analysis ✓
+                                                </button>
+                                            )}
+                                            {/* DEBUG / TEMP — remove before merging. */}
+                                            <button
+                                                className="game-overflow-debug"
+                                                onClick={() => { setMenuOpen(false); onDeleteFromHere(record); }}
+                                            >
+                                                Delete from here (debug)
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </span>
                     </div>
                 </div>
@@ -439,71 +459,83 @@ const GameRow: React.FC<GameRowProps> = ({
                 <div className="game-details-row">
                     {meta.openingName && <span className="game-opening">{meta.openingName}</span>}
                     {reannotating && <span className="game-reannotating-badge">Re-annotating…</span>}
+                    {pending && <span className="game-pending-badge">Analyzing…</span>}
                 </div>
 
-                {annotation && annotation.moves.length > 0 && (
-                    <div className="game-pgn">
-                        {annotation.moves.map((move, idx) => (
-                            <React.Fragment key={idx}>
-                                {move.moveNumber !== undefined && (
-                                    <span className="move-number">{move.moveNumber}.&nbsp;</span>
-                                )}
-                                <span className={getMoveClassName(move)}>{move.san}</span>
-                                {' '}
-                            </React.Fragment>
-                        ))}
+                {pending ? (
+                    <div className="game-pgn-skeleton" aria-hidden="true">
+                        <span className="skeleton-line skeleton-line-w70" />
+                        <span className="skeleton-line skeleton-line-w85" />
+                        <span className="skeleton-line skeleton-line-w55" />
+                        <span className="skeleton-block skeleton-block-summary" />
                     </div>
-                )}
-
-                {annotation?.deviation && (
-                    <div className="game-deviation-summary">
-                        <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 2L1 21h22L12 2z" fill="#9b59b6"/>
-                            <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
-                        </svg>
-                        Repertoire has{' '}
-                        <strong>
-                            {annotation.deviation.repertoireMoves.map(m => m.san).join(', ') || '?'}
-                        </strong>{' '}but you played{' '}
-                        <strong>{annotation.deviation.userMove.san}</strong>
-                    </div>
-                )}
-
-                {eotSummary && (
-                    <div className="game-eot-summary">
-                        <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
-                            <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
-                        </svg>
-                        Out of repertoire – you played <strong>{eotSummary.userSan}</strong> ({eotSummary.category})
-                        {allowAnalyzeAction && !analyzeProgress && (
-                            <a
-                                className="analyze-opponent-link"
-                                role="button"
-                                onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(record)}
-                                aria-disabled={analyzeDisabled}
-                            >
-                                Analyze opponent
-                            </a>
+                ) : (
+                    <>
+                        {annotation && annotation.moves.length > 0 && (
+                            <div className="game-pgn">
+                                {annotation.moves.map((move, idx) => (
+                                    <React.Fragment key={idx}>
+                                        {move.moveNumber !== undefined && (
+                                            <span className="move-number">{move.moveNumber}.&nbsp;</span>
+                                        )}
+                                        <span className={getMoveClassName(move)}>{move.san}</span>
+                                        {' '}
+                                    </React.Fragment>
+                                ))}
+                            </div>
                         )}
-                    </div>
-                )}
 
-                {analyzeProgress && analyzeProgress.phase === 'downloading' && (
-                    <div className="opponent-analysis-progress">
-                        <span className="opponent-analysis-progress-text">
-                            Analyzing opponent&apos;s games… {analyzeProgress.gamesDownloaded}
-                        </span>
-                        <div className="opponent-analysis-progress-bar">
-                            <div
-                                className="opponent-analysis-progress-fill"
-                                style={{ width: `${Math.min(100, (analyzeProgress.gamesDownloaded / 1000) * 100)}%` }}
-                            />
-                        </div>
-                    </div>
-                )}
+                        {annotation?.deviation && (
+                            <div className="game-deviation-summary">
+                                <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2L1 21h22L12 2z" fill="#9b59b6"/>
+                                    <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
+                                </svg>
+                                Repertoire has{' '}
+                                <strong>
+                                    {annotation.deviation.repertoireMoves.map(m => m.san).join(', ') || '?'}
+                                </strong>{' '}but you played{' '}
+                                <strong>{annotation.deviation.userMove.san}</strong>
+                            </div>
+                        )}
 
-                {showOpponentAnalysis && <OpponentAnalysisDisplay analysis={opponentAnalysis!} />}
+                        {eotSummary && (
+                            <div className="game-eot-summary">
+                                <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
+                                    <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
+                                </svg>
+                                Out of repertoire – you played <strong>{eotSummary.userSan}</strong> ({eotSummary.category})
+                                {allowAnalyzeAction && !analyzeProgress && (
+                                    <a
+                                        className="analyze-opponent-link"
+                                        role="button"
+                                        onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(record)}
+                                        aria-disabled={analyzeDisabled}
+                                    >
+                                        Analyze opponent
+                                    </a>
+                                )}
+                            </div>
+                        )}
+
+                        {analyzeProgress && analyzeProgress.phase === 'downloading' && (
+                            <div className="opponent-analysis-progress">
+                                <span className="opponent-analysis-progress-text">
+                                    Analyzing opponent&apos;s games… {analyzeProgress.gamesDownloaded}
+                                </span>
+                                <div className="opponent-analysis-progress-bar">
+                                    <div
+                                        className="opponent-analysis-progress-fill"
+                                        style={{ width: `${Math.min(100, (analyzeProgress.gamesDownloaded / 1000) * 100)}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {showOpponentAnalysis && <OpponentAnalysisDisplay analysis={opponentAnalysis!} />}
+                    </>
+                )}
             </div>
         </div>
     );
@@ -550,6 +582,17 @@ const GamesPage: React.FC = () => {
     const passDonePromiseRef = useRef<Promise<void> | null>(null);
     /** Memoize the record-key→position-in-the-sticky-session-list so late-arriving games go to the bottom. */
     const sessionOrderRef = useRef<Map<string, number>>(new Map());
+    /**
+     * Records that the current analysis pass has planned but not yet
+     * analyzed. Rendered as skeleton placeholders so the row's slot is
+     * reserved *before* the verdict lands — eliminates the "rows pop in
+     * newest-first, push everything down" jumping effect that used to
+     * happen as each game's `an` arrived.
+     *
+     * Populated right after `filterRunnableJobs` returns; trimmed as
+     * each game's `an` lands; cleared in the pass's `finally`.
+     */
+    const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(new Set());
 
     const measurePerf = useMemo(() => getMeasurePerf(), []);
     const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
@@ -653,27 +696,22 @@ const GamesPage: React.FC = () => {
      * Renderable rows: those with `an` present, PLUS records currently
      * being re-annotated (whose `an` has been cleared in the blob but for
      * which we hold a `priorAn` to keep the row visible until the new
-     * verdict lands or the re-run fails).
+     * verdict lands or the re-run fails), PLUS records queued for the
+     * current analysis pass (rendered as skeletons so the row's slot is
+     * reserved before content arrives).
      *
-     * When the prior `an` is present we **clone** the record and inject
-     * it onto the clone so downstream annotation/render works against the
-     * prior verdict without mutating the canonical blob copy.
+     * Re-annotation overlay takes precedence over the skeleton state so
+     * a re-annotating row keeps showing its prior `an` instead of
+     * collapsing into a placeholder. See `selectRenderableRows`.
      */
     const renderableRows = useMemo(() => {
-        const out: { record: GameRecord; userLower: string }[] = [];
-        for (const r of allRecords) {
-            const key = `${r.record.p}:${r.record.id}`;
-            if (r.record.an !== undefined) {
-                out.push(r);
-            } else if (reannotatingKeys.has(key)) {
-                const prior = priorAnByKeyRef.current.get(key);
-                if (prior !== undefined) {
-                    out.push({ record: { ...r.record, an: prior }, userLower: r.userLower });
-                }
-            }
-        }
-        return out;
-    }, [allRecords, reannotatingKeys]);
+        return selectRenderableRows(
+            allRecords,
+            reannotatingKeys,
+            priorAnByKeyRef.current,
+            pendingAnalysisKeys,
+        );
+    }, [allRecords, reannotatingKeys, pendingAnalysisKeys]);
 
     /**
      * Sticky session ordering: rows already shown keep their slot; new
@@ -683,7 +721,7 @@ const GamesPage: React.FC = () => {
      * `orderRowsSticky` for the ordering protocol.
      */
     const orderedRows = useMemo(() => {
-        type RowPayload = { record: GameRecord; userLower: string };
+        type RowPayload = { record: GameRecord; userLower: string; pending: boolean };
         const orderable: OrderableRow<RowPayload>[] = renderableRows.map(r => ({
             key: `${r.record.p}:${r.record.id}`,
             t: r.record.t,
@@ -696,14 +734,22 @@ const GamesPage: React.FC = () => {
     // Annotation cache: re-render against fresh data; recompute when records or
     // repertoire change. Per-row memoization is automatic via the row component
     // (GameRow takes the record + userLower; useMemo within keys on those).
+    // Pending (skeleton) rows are skipped — they intentionally render
+    // without an annotation, and computing one against an un-analyzed
+    // record would just produce a partial verdict that flickers a moment
+    // before the real one lands.
     const annotationByKey = useMemo(() => {
         const map = new Map<string, GameAnnotation | null>();
         if (!fenSets || !explorerEvals) return map;
-        for (const { record, userLower } of orderedRows) {
+        for (const { record, userLower, pending } of orderedRows) {
+            const key = `${record.p}:${record.id}`;
+            if (pending) {
+                map.set(key, null);
+                continue;
+            }
             const color = getRecordUserColor(record, userLower);
             const fens = color === 'white' ? fenSets.whiteFens : color === 'black' ? fenSets.blackFens : new Set<string>();
             const lookup = buildLookupFromAn(record);
-            const key = `${record.p}:${record.id}`;
             // Fire the Re-annotate one-shot debug log on the first render
             // where the row is no longer showing the prior-`an` overlay —
             // i.e. when the fresh verdict (or the restored prior `an`) is
@@ -722,7 +768,8 @@ const GamesPage: React.FC = () => {
     // no longer the first non-ok user out-of-rep response in the annotation.
     const opByKey = useMemo(() => {
         const map = new Map<string, { live: OpponentAnalysisResult; stale: boolean }>();
-        for (const { record, userLower } of orderedRows) {
+        for (const { record, userLower, pending } of orderedRows) {
+            if (pending) continue;
             if (!record.op) continue;
             const key = `${record.p}:${record.id}`;
             const ann = annotationByKey.get(key);
@@ -798,6 +845,15 @@ const GamesPage: React.FC = () => {
                     return;
                 }
 
+                // Reserve a skeleton slot for every runnable job *before* the
+                // analyze loop starts. Each row appears immediately as a
+                // pending placeholder in its final newest-first slot, then
+                // hydrates in place when its `an` lands — eliminating the
+                // newest-first jump-and-push effect that used to happen as
+                // games completed one at a time.
+                const runnableKeys = runnable.map(j => `${j.record.p}:${j.record.id}`);
+                setPendingAnalysisKeys(new Set(runnableKeys));
+
                 // Step 4: run sequentially with per-pass memo.
                 const memo = new Map<string, MastersMemoEntry>();
                 const pendingFlush: AnalyzedGameOutcome[] = [];
@@ -864,6 +920,17 @@ const GamesPage: React.FC = () => {
                                 return next;
                             });
                         }
+                        // Drop the skeleton slot — the row now has `an` and
+                        // can render normally. The next render hydrates the
+                        // existing placeholder in place (no reorder), which
+                        // combined with FLIP transitions yields a smooth
+                        // skeleton → content swap.
+                        setPendingAnalysisKeys(prev => {
+                            if (!prev.has(recKey)) return prev;
+                            const next = new Set(prev);
+                            next.delete(recKey);
+                            return next;
+                        });
                     }
 
                     if (pendingFlush.length >= ANALYSIS_FLUSH_BATCH) {
@@ -898,6 +965,11 @@ const GamesPage: React.FC = () => {
                 // Stamp the sync time on every completion path (success, error,
                 // empty-run) — matches the Dashboard's silent-error contract.
                 setSyncStatus({ phase: 'synced', at: new Date() });
+                // Drop any remaining skeleton slots. The per-game drop in
+                // the analyze loop handles successful completions; this
+                // covers abort / error / network-skip leftovers so we don't
+                // leak permanent skeleton rows after the pass ends.
+                setPendingAnalysisKeys(prev => (prev.size === 0 ? prev : new Set()));
                 passStartedRef.current = false;
                 if (passAbortRef.current === abort) {
                     passAbortRef.current = null;
@@ -1238,8 +1310,8 @@ const GamesPage: React.FC = () => {
                     )}
                 </div>
             ) : (
-                <>
-                    {orderedRows.map(({ record, userLower }) => {
+                <GamesList orderedRows={orderedRows}>
+                    {orderedRows.map(({ record, userLower, pending }) => {
                         const key = `${record.p}:${record.id}`;
                         const annotation = annotationByKey.get(key) ?? null;
                         const op = opByKey.get(key);
@@ -1252,6 +1324,7 @@ const GamesPage: React.FC = () => {
                                 opponentAnalysis={op?.live ?? null}
                                 opIsStale={op?.stale ?? false}
                                 reannotating={reannotatingKeys.has(key)}
+                                pending={pending}
                                 analyzeProgress={analyzingRecordKey === key ? analyzeProgress : null}
                                 analyzeDisabled={analyzingRecordKey !== null}
                                 onReannotate={handleReannotate}
@@ -1265,7 +1338,7 @@ const GamesPage: React.FC = () => {
                             Showing your last {MAX_TOTAL_RECORDS} analyzed games. Older games are dropped as you play new ones.
                         </div>
                     )}
-                </>
+                </GamesList>
             )}
         </div>
     );
@@ -1273,5 +1346,37 @@ const GamesPage: React.FC = () => {
 
 // Silence unused imports — these are referenced through types in interfaces above.
 export type { Activity, AnalysisJob };
+
+/**
+ * Direct parent of the rendered `GameRow` elements. Owns the ref handed
+ * to `useFlipReorder`, so when rows shift their slots (skeleton →
+ * content hydration, sticky-ordering reflow, late-arriving rows) they
+ * animate smoothly from the prior position to the new one instead of
+ * snapping.
+ */
+const GamesList: React.FC<{
+    orderedRows: ReadonlyArray<{ record: GameRecord; userLower: string; pending: boolean }>;
+    children: React.ReactNode;
+}> = ({ orderedRows, children }) => {
+    // Callback-ref pattern: state-as-ref so the FLIP hook gets a real
+    // re-render once the container is mounted (a plain useRef wouldn't
+    // — refs are an escape hatch from the render cycle and the hook
+    // would skip its very first snapshot).
+    const [container, setContainer] = useState<HTMLDivElement | null>(null);
+    // Hash the visible row ordering + per-row pending state so the FLIP
+    // hook re-snapshots whenever the visual list changes meaningfully:
+    // inserts, removals, reorder, or a pending→hydrated transition
+    // (which typically grows the row and shifts its neighbors).
+    const orderingKey = useMemo(
+        () => orderedRows.map(r => `${r.record.p}:${r.record.id}:${r.pending ? 'p' : 'r'}`).join('|'),
+        [orderedRows],
+    );
+    useFlipReorder(container, [orderingKey]);
+    return (
+        <div className="games-list" ref={setContainer}>
+            {children}
+        </div>
+    );
+};
 
 export default GamesPage;
