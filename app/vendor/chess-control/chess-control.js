@@ -325,7 +325,7 @@ function T({ fen: e, orientation: l = "white", onMove: u, interactive: d = !0, w
 			return;
 		}
 		Ee.current?.(ne(_e, M, De.current));
-	}, [_e, M]), n(() => {
+	}, [_e, M]), r(() => {
 		if (Y) {
 			He(Y);
 			return;
