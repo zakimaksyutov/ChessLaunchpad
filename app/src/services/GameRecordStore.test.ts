@@ -5,7 +5,6 @@ import {
     evictOverflowingRecords,
     findRecord,
     getAllRecordsNewestFirst,
-    iterAllRecords,
     purgeRecordsForAccounts,
     MAX_TOTAL_RECORDS,
 } from './GameRecordStore';
@@ -223,7 +222,7 @@ describe('purgeRecordsForAccounts', () => {
     });
 });
 
-describe('findRecord / iterAllRecords / getAllRecordsNewestFirst', () => {
+describe('findRecord / getAllRecordsNewestFirst', () => {
     it('findRecord returns the record + its entry', () => {
         const activity = emptyActivity();
         appendGameRecord(activity, makeRecord({ id: 'a', t: BASE_DATE }));
@@ -243,14 +242,6 @@ describe('findRecord / iterAllRecords / getAllRecordsNewestFirst', () => {
     it('findRecord returns null when missing', () => {
         const activity = emptyActivity();
         expect(findRecord(activity, 'nope', 'l')).toBeNull();
-    });
-
-    it('iterAllRecords yields oldest-first', () => {
-        const activity = emptyActivity();
-        appendGameRecord(activity, makeRecord({ id: 'today', t: BASE_DATE }));
-        appendGameRecord(activity, makeRecord({ id: 'yesterday', t: BASE_DATE - DAY_MS }));
-        const ids = [...iterAllRecords(activity)].map(r => r.id);
-        expect(ids).toEqual(['yesterday', 'today']);
     });
 
     it('getAllRecordsNewestFirst yields newest-first', () => {

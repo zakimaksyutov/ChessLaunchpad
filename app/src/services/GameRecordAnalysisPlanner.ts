@@ -53,10 +53,11 @@ export function planAmbiguousPositions(
  * planned ambiguous positions. Verdicts are sparse — only positions the
  * lookup returned data for **and** has a definite verdict for are emitted.
  *
- * Routes through `classifyLookupOutcome`-style classification:
- *   - `ok-with-data`  → emit `{ ply, in: !outOfTheory }`
- *   - `ok-no-data`    → omit (sparse `tv` per spec)
- *   - lookup miss     → omit (same path; caller refused to add to lookup)
+ * Per-ply classification:
+ *   - lookup miss (`getMoveStats === null`)        → omit
+ *   - 200 + zero games for position or SAN         → omit (no-data)
+ *   - `classifyOutOfTheory` returns null           → omit
+ *   - otherwise                                    → emit `{ ply, in: !outOfTheory }`
  *
  * The "no-data ⇒ omit" rule is what makes the spec's optimistic-in-theory
  * fallback work at render time and what lets a future pass retry only
@@ -171,18 +172,6 @@ export function buildLookupFromAn(record: GameRecord): AnVerdictLookup {
 }
 
 /**
- * Outcome of analyzing a single ambiguous position in the pass.
- *
- *   - `'ok-with-data'` — masters returned a result; verdict resolved.
- *   - `'ok-no-data'`   — masters returned a result but with no relevant
- *                       moves for this san; verdict treated as null → ply
- *                       omitted from `tv` (sparse map; optimistic default).
- *   - `'error'`        — transient HTTP/network failure; the parent game
- *                       must NOT be marked analyzed so it re-queues next pass.
- */
-export type AmbiguousLookupOutcome = 'ok-with-data' | 'ok-no-data' | 'error';
-
-/**
  * Per-pass dedup memo entry. Distinguishes successful (cached) results
  * from errors so a single recurring failure isn't re-tried at full rate
  * within the same pass.
@@ -221,37 +210,4 @@ export async function fetchMastersWithMemo(
         : { kind: 'error' };
     memo.set(key, entry);
     return entry;
-}
-
-/**
- * Classify a memo entry + masters move stats into the per-position outcome
- * used by the analysis pass.
- */
-export function classifyLookupOutcome(
-    memoEntry: MastersMemoEntry,
-    moveSan: string,
-): AmbiguousLookupOutcome {
-    if (memoEntry.kind === 'error') return 'error';
-    const stats = computeMoveStatsFromResult(memoEntry.result, moveSan);
-    // Treat "0 master games at this san" as no-data — same as the sparse
-    // map's no-data semantics. classifyOutOfTheory of a non-null stats with
-    // 0 games returns `true` (out of theory by the < MIN_MASTER_GAMES rule),
-    // but the spec says we should treat that as "no data → omit" rather
-    // than "confirmed out of theory" — out-of-theory is reserved for moves
-    // that ARE played by masters but in low proportion.
-    //
-    // Re-reading the spec lines 119–120 ("no data → omit"): the conservative
-    // read is that "no data for this exact san" means absence of a verdict.
-    // We bias toward omission to keep `tv` honest.
-    if (stats.totalGames === 0) return 'ok-no-data';
-    if (stats.moveGames === 0) return 'ok-no-data';
-    return 'ok-with-data';
-}
-
-function computeMoveStatsFromResult(result: MastersPositionResult, moveSan: string): MoveStats {
-    const moveData = result.moves.find(m => m.san === moveSan);
-    const moveGames = moveData ? moveData.total : 0;
-    const totalGames = result.totalGames;
-    const percentage = totalGames > 0 ? (moveGames / totalGames) * 100 : 0;
-    return { moveGames, totalGames, percentage };
 }

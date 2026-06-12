@@ -104,15 +104,9 @@ function parseApiResponse(data: Record<string, unknown>, fen: string): MastersPo
 /**
  * Fetch outcome for a single masters position query.
  *
- *   - `{ kind: 'ok', result }` — HTTP 200, parsed body.
- *   - `{ kind: 'no-data' }`    — HTTP 200, but no relevant master games for
- *                                this position (response was OK but empty).
- *                                Reserved for explicit emptiness; today the
- *                                API still returns a `result` with empty
- *                                `moves` rather than a separate signal, so
- *                                `fetchMastersOutcome` always returns `ok`
- *                                and callers classify "no data" themselves
- *                                via `getMoveStats(...) === null`.
+ *   - `{ kind: 'ok', result }` — HTTP 200, parsed body. Callers classify
+ *                                "no data for this san" themselves via
+ *                                `getMoveStats(...) === null` or zero counts.
  *   - `{ kind: 'error' }`      — Transient: network failure, rate-limit (429),
  *                                non-2xx response. **Do not** treat as no-data
  *                                — analysis pass refuses to write `an.tv` for
@@ -128,13 +122,13 @@ export type MastersFetchOutcome =
     | { kind: 'error' };
 
 /**
- * Variant of `fetchMastersPosition` that distinguishes HTTP/network errors
- * from successful responses. Always honors the 1 req/sec rate limit (via
- * the shared `lastRequestTime` inside the fetcher).
+ * Fetch masters data for a single position from the Lichess API, surfacing
+ * the HTTP/network error vs. success distinction. Always honors the 1 req/sec
+ * rate limit (via the shared `lastRequestTime` inside the fetcher).
  *
- * Callers that don't care about the error/ok distinction can keep using
- * `fetchMastersPosition` (which collapses both into `null`); the analysis
- * pass uses this richer variant so transient errors don't bake into `an`.
+ * Caller is responsible for caching — within one `/games` analysis pass the
+ * page does that via a single `MastersLookup` instance accumulated for the
+ * batch; across passes verdicts persist on the per-game `an.tv` map.
  */
 export async function fetchMastersOutcome(
     fen: string,
@@ -153,27 +147,6 @@ export async function fetchMastersOutcome(
     } catch {
         return { kind: 'error' };
     }
-}
-
-/**
- * Fetch masters data for a single position from the Lichess API.
- * Returns null on error or rate-limit response. Honors the 1 req/sec rate limit.
- *
- * **Use `fetchMastersOutcome` when you need to distinguish transient HTTP/network
- * errors from successful responses** (e.g., to refuse persisting a verdict
- * derived from an error response).
- *
- * Caller is responsible for caching — within one `/games` analysis pass the
- * page does that via a single `MastersLookup` instance accumulated for the
- * batch; across passes verdicts persist on the per-game `an.tv` map.
- */
-export async function fetchMastersPosition(
-    fen: string,
-    token: string,
-    fetchFn: typeof fetch = fetch,
-): Promise<MastersPositionResult | null> {
-    const outcome = await fetchMastersOutcome(fen, token, fetchFn);
-    return outcome.kind === 'ok' ? outcome.result : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,11 +185,6 @@ export class MastersLookup {
     /** Number of positions cached. */
     get size(): number {
         return this.results.size;
-    }
-
-    /** Returns true if the position has been added (does not affect any counter). */
-    has(fen: string): boolean {
-        return this.results.has(toMastersCacheKey(fen));
     }
 
     /**

@@ -376,20 +376,3 @@ export function getRecordUserColor(
     if (record.ba.toLowerCase() === target) return 'black';
     return null;
 }
-
-/**
- * Resolve the linked-account key (`${platform}:${usernameLower}`) for a
- * stored `GameRecord` by case-insensitively matching the record's white /
- * black names against the supplied lowercase account-name lookup.
- *
- * Returns `null` when neither side matches — typical for the rare game
- * between two linked accounts after one was unlinked.
- */
-export function findRecordAccountKey(
-    record: GameRecord,
-    accountKeysByLowerName: ReadonlyMap<string, string>,
-): string | null {
-    return accountKeysByLowerName.get(record.wa.toLowerCase())
-        ?? accountKeysByLowerName.get(record.ba.toLowerCase())
-        ?? null;
-}

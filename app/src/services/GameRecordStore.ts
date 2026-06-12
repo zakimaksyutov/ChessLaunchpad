@@ -115,20 +115,6 @@ export function countRecords(log: PracticeLogEntry[]): number {
 }
 
 /**
- * Iterate every `GameRecord` across the practice log in date-then-time
- * order (oldest first). Useful for read-side consumers.
- */
-export function* iterAllRecords(activity: Activity): Generator<GameRecord> {
-    for (const entry of activity.practiceLog) {
-        const records = entry.games?.records;
-        if (!records || records.length === 0) continue;
-        // Within a day, sort by `t` ascending so callers get a stable order.
-        const sorted = [...records].sort((a, b) => a.t - b.t);
-        for (const r of sorted) yield r;
-    }
-}
-
-/**
  * Return all records as an array, newest first (descending by `t`).
  * The render-side ordering the /games page wants.
  */

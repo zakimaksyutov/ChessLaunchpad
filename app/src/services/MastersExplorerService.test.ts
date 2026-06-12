@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
     MastersLookup,
-    fetchMastersPosition,
     fetchMastersOutcome,
     classifyOutOfTheory,
     toMastersCacheKey,
@@ -154,8 +153,8 @@ describe('MastersLookup', () => {
         });
     });
 
-    describe('size + has', () => {
-        it('reports size and has correctly', () => {
+    describe('size', () => {
+        it('reports size correctly', () => {
             const lookup = new MastersLookup();
             expect(lookup.size).toBe(0);
             lookup.add('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
@@ -164,9 +163,6 @@ describe('MastersLookup', () => {
                 moves: [{ san: 'e4', white: 50, draws: 30, black: 20, total: 100 }],
             });
             expect(lookup.size).toBe(1);
-            expect(lookup.has('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')).toBe(true);
-            expect(lookup.has('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5 10')).toBe(true);
-            expect(lookup.has('other w KQkq -')).toBe(false);
         });
     });
 });
@@ -198,84 +194,6 @@ describe('toMastersCacheKey', () => {
     });
 });
 
-describe('fetchMastersPosition', () => {
-    it('parses API response correctly', async () => {
-        const mockResponse = {
-            ok: true,
-            json: () => Promise.resolve({
-                white: 30,
-                draws: 50,
-                black: 20,
-                moves: [
-                    { san: 'c4', white: 25, draws: 40, black: 15 },
-                    { san: 'c3', white: 0, draws: 5, black: 5 },
-                ],
-            }),
-        };
-        const mockFetch = vi.fn(() => Promise.resolve(mockResponse)) as unknown as typeof fetch;
-
-        const result = await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            'test-token',
-            mockFetch,
-        );
-
-        expect(result).not.toBeNull();
-        expect(result!.totalGames).toBe(90);
-        expect(result!.moves).toHaveLength(2);
-        expect(result!.moves[0].san).toBe('c4');
-        expect(result!.moves[0].total).toBe(80);
-        expect(result!.moves[1].san).toBe('c3');
-        expect(result!.moves[1].total).toBe(10);
-    });
-
-    it('passes Authorization header with token', async () => {
-        const mockFetch = vi.fn(() => Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ moves: [] }),
-        })) as unknown as typeof fetch;
-
-        await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 2',
-            'my-token-123',
-            mockFetch,
-        );
-
-        expect(mockFetch).toHaveBeenCalledOnce();
-        const callArgs = (mockFetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-        expect(callArgs[1]).toEqual(expect.objectContaining({
-            headers: { 'Authorization': 'Bearer my-token-123' },
-        }));
-    });
-
-    it('returns null on non-ok response', async () => {
-        const mockFetch = vi.fn(() => Promise.resolve({
-            ok: false,
-            status: 429,
-        })) as unknown as typeof fetch;
-
-        const result = await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 3',
-            'token',
-            mockFetch,
-        );
-
-        expect(result).toBeNull();
-    });
-
-    it('returns null on fetch error', async () => {
-        const mockFetch = vi.fn(() => Promise.reject(new Error('Network error'))) as unknown as typeof fetch;
-
-        const result = await fetchMastersPosition(
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 4',
-            'token',
-            mockFetch,
-        );
-
-        expect(result).toBeNull();
-    });
-});
-
 describe('fetchMastersOutcome', () => {
     it('returns kind=ok with parsed result on success', async () => {
         const mockFetch = vi.fn(() => Promise.resolve({
@@ -291,6 +209,49 @@ describe('fetchMastersOutcome', () => {
         if (outcome.kind === 'ok') {
             expect(outcome.result.moves[0].san).toBe('e4');
         }
+    });
+
+    it('parses per-move totals (white + draws + black) and aggregate totalGames', async () => {
+        const mockFetch = vi.fn(() => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+                moves: [
+                    { san: 'c4', white: 25, draws: 40, black: 15 },
+                    { san: 'c3', white: 0, draws: 5, black: 5 },
+                ],
+            }),
+        })) as unknown as typeof fetch;
+        const outcome = await fetchMastersOutcome(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            'token',
+            mockFetch,
+        );
+        expect(outcome.kind).toBe('ok');
+        if (outcome.kind === 'ok') {
+            expect(outcome.result.totalGames).toBe(90);
+            expect(outcome.result.moves).toHaveLength(2);
+            expect(outcome.result.moves[0].total).toBe(80);
+            expect(outcome.result.moves[1].total).toBe(10);
+        }
+    });
+
+    it('passes Authorization header with token', async () => {
+        const mockFetch = vi.fn(() => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ moves: [] }),
+        })) as unknown as typeof fetch;
+
+        await fetchMastersOutcome(
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 2',
+            'my-token-123',
+            mockFetch,
+        );
+
+        expect(mockFetch).toHaveBeenCalledOnce();
+        const callArgs = (mockFetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(callArgs[1]).toEqual(expect.objectContaining({
+            headers: { 'Authorization': 'Bearer my-token-123' },
+        }));
     });
 
     it('returns kind=error on non-ok response (distinct from no-data)', async () => {

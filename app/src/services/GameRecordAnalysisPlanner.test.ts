@@ -4,7 +4,6 @@ import {
     buildLookupFromAn,
     fetchMastersWithMemo,
     MastersMemoEntry,
-    classifyLookupOutcome,
     buildVerdictFromPlan,
     planAmbiguousPositions,
 } from './GameRecordAnalysisPlanner';
@@ -123,24 +122,6 @@ describe('fetchMastersWithMemo', () => {
         const out = await fetchMastersWithMemo('any', 'tok', memo, ctrl.signal, mockFetch);
         expect(out.kind).toBe('error');
         expect(mockFetch).not.toHaveBeenCalled();
-    });
-});
-
-describe('classifyLookupOutcome', () => {
-    it('returns error for an error memo entry', () => {
-        expect(classifyLookupOutcome({ kind: 'error' }, 'e4')).toBe('error');
-    });
-    it('returns ok-with-data when the move has stats', () => {
-        const result = { fen: 'x', totalGames: 100, moves: [{ san: 'e4', white: 50, draws: 25, black: 25, total: 100 }] };
-        expect(classifyLookupOutcome({ kind: 'ok', result }, 'e4')).toBe('ok-with-data');
-    });
-    it('returns ok-no-data when the position has totalGames=0', () => {
-        const result = { fen: 'x', totalGames: 0, moves: [] };
-        expect(classifyLookupOutcome({ kind: 'ok', result }, 'e4')).toBe('ok-no-data');
-    });
-    it('returns ok-no-data when the san has 0 games', () => {
-        const result = { fen: 'x', totalGames: 100, moves: [{ san: 'd4', white: 50, draws: 25, black: 25, total: 100 }] };
-        expect(classifyLookupOutcome({ kind: 'ok', result }, 'e4')).toBe('ok-no-data');
     });
 });
 

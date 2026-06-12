@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
     buildGameRecord,
     getRecordUserColor,
-    findRecordAccountKey,
     MAX_RECORD_PLIES,
 } from './GameRecordBuilder';
 
@@ -239,19 +238,5 @@ describe('getRecordUserColor', () => {
     it('returns null when neither side matches', () => {
         const rec = buildGameRecord(lichessGame(), 'me', 'lichess')!;
         expect(getRecordUserColor(rec, 'stranger')).toBeNull();
-    });
-});
-
-describe('findRecordAccountKey', () => {
-    it('resolves the account key by matching wa or ba', () => {
-        const rec = buildGameRecord(lichessGame(), 'me', 'lichess')!;
-        const map = new Map([['me', 'lichess:me']]);
-        expect(findRecordAccountKey(rec, map)).toBe('lichess:me');
-    });
-
-    it('returns null when neither side is linked', () => {
-        const rec = buildGameRecord(lichessGame(), 'me', 'lichess')!;
-        const map = new Map([['stranger', 'lichess:stranger']]);
-        expect(findRecordAccountKey(rec, map)).toBeNull();
     });
 });
