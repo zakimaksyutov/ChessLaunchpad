@@ -6,7 +6,7 @@ Items here are tracked but not currently scheduled. Move to the appropriate spec
 
 ### Remove `cleanupLegacyIndexedDB` boot sweep
 
-After the `GAMES-REFACTOR` shipped, the old `/games` page's three IndexedDB databases (`chesslaunchpad-games-db`, `chesslaunchpad-masters-explorer`, `chesslaunchpad-opponent-analysis`) are no longer used. `app/src/utils/cleanupLegacyIDB.ts` is called once on boot to delete them, gated by a `localStorage` flag (`chesslaunchpad:legacyIDBCleanup:v1`).
+After the games-page rewrite (see `docs/product-specs/GAMES.md`), the old `/games` page's three IndexedDB databases (`chesslaunchpad-games-db`, `chesslaunchpad-masters-explorer`, `chesslaunchpad-opponent-analysis`) are no longer used. `app/src/utils/cleanupLegacyIDB.ts` is called once on boot to delete them, gated by a `localStorage` flag (`chesslaunchpad:legacyIDBCleanup:v1`).
 
 Once a reasonable adoption window has passed and existing users have launched the new version at least once, delete:
 

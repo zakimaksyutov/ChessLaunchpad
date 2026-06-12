@@ -8,7 +8,7 @@ import { getDateStringForTimestamp, getOrCreateEntryByDate } from './ActivitySer
  * (date-ascending), repeating until the total ≤ MAX_TOTAL_RECORDS.
  *
  * Eviction never partials a day; if a single day alone exceeds the cap,
- * its records are retained intact. See `docs/product-specs/GAMES-REFACTOR.md`
+ * its records are retained intact. See `docs/product-specs/GAMES.md`
  * Retention section.
  */
 export const MAX_TOTAL_RECORDS = 100;

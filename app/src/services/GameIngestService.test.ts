@@ -801,7 +801,7 @@ describe('GameIngestService', () => {
         });
     });
 
-    describe('game-record capture (GAMES-REFACTOR)', () => {
+    describe('game-record capture', () => {
         it('appends a GameRecord to the per-day games.records', async () => {
             const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
             const data = makeData([variant]);

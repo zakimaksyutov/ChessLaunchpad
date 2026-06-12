@@ -9,7 +9,7 @@ export interface PracticeLogGameCounters {
     mistakes: number;   // Games containing at least one deviation (one per game)
     /**
      * Per-day game records — display/analysis data for the /games page.
-     * See `docs/product-specs/GAMES-REFACTOR.md`.
+     * See `docs/product-specs/GAMES.md` and `docs/product-specs/GAME-INGEST.md`.
      *
      * Invariant: `records.length` is either equal to `ingested`, or `0`.
      * Empty `records` with non-zero `ingested` means this day's records
@@ -31,7 +31,7 @@ export type GameRecordResult = 'win' | 'draw' | 'loss';
  * `activity.practiceLog[].games.records`. Field names are intentionally
  * short — these are persisted on every blob PUT and 100 of them adds up.
  *
- * See `docs/product-specs/GAMES-REFACTOR.md` for field definitions.
+ * See `docs/product-specs/GAMES.md` for field semantics.
  */
 export interface GameRecord {
     /** Provider id (lichess game id | chess.com uuid) — no prefix. */

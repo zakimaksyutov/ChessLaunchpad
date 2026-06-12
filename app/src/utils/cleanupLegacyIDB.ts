@@ -1,6 +1,7 @@
 /**
- * One-time best-effort cleanup of IndexedDB stores retired by the
- * `docs/product-specs/GAMES-REFACTOR.md` refactor.
+ * One-time best-effort cleanup of IndexedDB stores retired by the games-page
+ * rewrite (see `docs/product-specs/GAMES.md` — game records and analysis now
+ * live on the synced repertoire blob, not on-device).
  *
  * The three IndexedDB databases used by the old /games page —
  *   - `chesslaunchpad-games-db`        (downloaded games)

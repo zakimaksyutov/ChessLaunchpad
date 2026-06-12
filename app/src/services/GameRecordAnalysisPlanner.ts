@@ -60,7 +60,7 @@ export function planAmbiguousPositions(
  *
  * The "no-data ⇒ omit" rule is what makes the spec's optimistic-in-theory
  * fallback work at render time and what lets a future pass retry only
- * no-data plies (`docs/product-specs/GAMES-REFACTOR.md`).
+ * no-data plies (`docs/product-specs/GAMES.md`).
  *
  * Empty `tv` is the valid done-with-no-resolved-verdicts state.
  */

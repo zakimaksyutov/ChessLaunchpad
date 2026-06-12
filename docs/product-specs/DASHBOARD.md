@@ -96,6 +96,7 @@ The optional `games` sub-object aggregates ratings produced by the game-ingest p
 | `ingested`  | number | Total games processed by ingest on this date (one per eligible game).             |
 | `reviewed`  | number | In-repertoire user moves rated Good via ingest. Distinct from top-level `reviewed`. |
 | `mistakes`  | number | Game-ingest deviations rated Again. Counted **once per game**, not per sibling card. |
+| `records`   | array  | *(Optional)* Compact `GameRecord` entries for each processed game — display data for the Games page (see [`GAMES.md`](./GAMES.md)). Invariant: `records.length` equals `ingested`, or `0` (the day's records were evicted by the 100-game total cap). |
 
 Top-level `reviewed`/`mistakes` (training) and `games.reviewed`/`games.mistakes` (ingest) are **separate counters** — they never double-count. Accuracy and streak calculations use only the top-level training counters.
 
@@ -112,6 +113,7 @@ Top-level `reviewed`/`mistakes` (training) and `games.reviewed`/`games.mistakes`
 - The log is kept sorted ascending by `date` after every mutation so streak code can walk backward deterministically.
 - When the log reaches 30 entries, the oldest is dropped.
 - Empty entries (all counters zero, including `games`) are not retained.
+- Game-ingest also appends each processed game's `GameRecord` to that day's `games.records`, subject to a 100-record total cap across all days (oldest day's records evicted as a whole on overflow). See [`GAME-INGEST.md`](./GAME-INGEST.md) §6.
 
 ### 2.2 Lifetime totals
 

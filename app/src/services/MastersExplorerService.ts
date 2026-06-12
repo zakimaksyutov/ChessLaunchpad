@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // MastersExplorerService — Lichess Masters opening explorer client.
 //
-// No IndexedDB. The Games-page refactor (`docs/product-specs/GAMES-REFACTOR.md`)
+// No IndexedDB. The Games page (`docs/product-specs/GAMES.md`)
 // drops the persistent masters cache: ambiguous-zone verdicts are now stored
 // per-game on the synced repertoire blob (`an.tv`) so a game is analyzed once
 // and the result syncs across devices. Within a single analysis pass positions
@@ -118,7 +118,7 @@ function parseApiResponse(data: Record<string, unknown>, fen: string): MastersPo
  *                                — analysis pass refuses to write `an.tv` for
  *                                erroring plies so the game re-queues next pass.
  *
- * The distinction matters because the spec's sparse `tv` map (`docs/product-specs/GAMES-REFACTOR.md`)
+ * The distinction matters because the spec's sparse `tv` map (`docs/product-specs/GAMES.md`)
  * defines `omitted ply == no-data → optimistic in-theory default`. Conflating
  * "we couldn't reach the server" with "200 + zero games" would lock a
  * potentially-wrong optimistic verdict in forever.
