@@ -1198,7 +1198,6 @@ const GamesPage: React.FC = () => {
     // ─────────────────────────────────────────────────────────────────────
 
     const showLichessPrompt = lichessAuthReady && !lichessConnected;
-    const linkedHasLichess = linkedAccounts.some(a => a.platform === 'lichess');
 
     return (
         <div className="games-page">
@@ -1244,29 +1243,12 @@ const GamesPage: React.FC = () => {
                 </div>
             </div>
 
-            {showLichessPrompt && (
-                <div className="lichess-warning">
-                    {linkedHasLichess ? (
-                        <>
-                            To analyze your Lichess games against the masters opening explorer,{' '}
-                            <Link to="/settings">connect your Lichess account</Link>.{' '}
-                            <a href="https://lichess.org/signup" target="_blank" rel="noopener noreferrer">Don&apos;t have one? Create a free account.</a>
-                        </>
-                    ) : (
-                        <>
-                            To use master-game theory analysis,{' '}
-                            <Link to="/settings">connect a Lichess account</Link>.{' '}
-                            <a href="https://lichess.org/signup" target="_blank" rel="noopener noreferrer">Don&apos;t have one? Create a free account.</a>
-                            {' '}Chess.com games render without it.
-                        </>
-                    )}
-                </div>
-            )}
-
             {blockedByLichessCount > 0 && !lichessConnected && (
                 <div className="lichess-warning">
-                    {blockedByLichessCount} game{blockedByLichessCount === 1 ? '' : 's'} awaiting masters analysis —{' '}
-                    <Link to="/settings">connect Lichess</Link> to view{' '}
+                    {blockedByLichessCount} game{blockedByLichessCount === 1 ? '' : 's'} (not shown){' '}
+                    {blockedByLichessCount === 1 ? 'requires' : 'require'} additional analysis using masters opening explorer.{' '}
+                    <Link to="/settings">Connect to Lichess</Link> to finish analysis of{' '}
+                    {blockedByLichessCount === 1 ? 'this game' : 'these games'} and to see{' '}
                     {blockedByLichessCount === 1 ? 'it' : 'them'}.
                 </div>
             )}
