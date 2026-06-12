@@ -30,6 +30,7 @@ import {
 } from '../services/RecordAnnotation';
 import {
     buildLookupFromAn,
+    MastersMemoEntry,
 } from '../services/GameRecordAnalysisPlanner';
 import {
     AnalysisProgress,
@@ -60,9 +61,6 @@ import { runIngest } from '../services/GameIngestService';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
 import { selectRenderableRows } from '../services/GameRowSelection';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
-import {
-    MastersMemoEntry,
-} from '../services/GameRecordAnalysisPlanner';
 import './GamesPage.css';
 
 function formatSyncTime(d: Date): string {
@@ -794,12 +792,10 @@ const GamesPage: React.FC = () => {
      *   2. eviction happens inside ingest
      *   3. plan ambiguous positions per record (no network)
      *   4. analyze oldest-first, sequentially, batched flush back
-     */
-    /**
-     * Run the analysis pass and expose a promise that resolves when the
-     * pass's `finally` has run. Callers (Re-annotate, the cleanup effect)
-     * await this promise to chain new passes / cancellation safely
-     * without busy-waiting.
+     *
+     * Returns a promise that resolves when the pass's `finally` has run.
+     * Callers (Re-annotate, the cleanup effect) await this promise to
+     * chain new passes / cancellation safely without busy-waiting.
      */
     const runAnalysisPass = useCallback((): Promise<void> => {
         if (!dal) return Promise.resolve();
@@ -918,9 +914,7 @@ const GamesPage: React.FC = () => {
                         }
                         // Drop the skeleton slot — the row now has `an` and
                         // can render normally. The next render hydrates the
-                        // existing placeholder in place (no reorder), which
-                        // combined with FLIP transitions yields a smooth
-                        // skeleton → content swap.
+                        // existing placeholder in place (no reorder).
                         setPendingAnalysisKeys(prev => {
                             if (!prev.has(recKey)) return prev;
                             const next = new Set(prev);
@@ -1288,7 +1282,7 @@ const GamesPage: React.FC = () => {
                     )}
                 </div>
             ) : (
-                <GamesList>
+                <div className="games-list">
                     {orderedRows.map(({ record, userLower, pending }) => {
                         const key = `${record.p}:${record.id}`;
                         const annotation = annotationByKey.get(key) ?? null;
@@ -1316,23 +1310,8 @@ const GamesPage: React.FC = () => {
                             Showing your last {MAX_TOTAL_RECORDS} analyzed games. Older games are dropped as you play new ones.
                         </div>
                     )}
-                </GamesList>
+                </div>
             )}
-        </div>
-    );
-};
-
-/**
- * Direct parent of the rendered `GameRow` elements. Plain wrapper —
- * no reorder animation; skeleton rows simply snap into place when
- * inserted or hydrated.
- */
-const GamesList: React.FC<{
-    children: React.ReactNode;
-}> = ({ children }) => {
-    return (
-        <div className="games-list">
-            {children}
         </div>
     );
 };

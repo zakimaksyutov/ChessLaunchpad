@@ -237,20 +237,6 @@ export async function analyzeOneGame(
  *
  * Verdicts whose target record is missing from the fresh blob (evicted
  * by a concurrent ingest, purged by an unlink) are silently dropped.
- * Verdicts for a record that already gained a non-empty `an` in the fresh
- * blob (another tab analyzed it first) prefer the fresh value — verdicts
- * are deterministic but two tabs may have used slightly different masters
- * responses; we let the freshest write win.
- */
-/**
- * Flush a batch of `(p, id) → an` updates back to the blob via the DAL,
- * with field-scoped 412 reconciliation (re-fetch fresh blob → merge in
- * pending updates by record `(p, id)` → drop merges for records that
- * no longer exist → re-PUT). Returns the fresh blob the caller should
- * adopt as its render state, plus the count of writes that landed.
- *
- * Verdicts whose target record is missing from the fresh blob (evicted
- * by a concurrent ingest, purged by an unlink) are silently dropped.
  *
  * Conflict resolution: if the fresh record already has **any** `an`
  * (including an empty `{}` / `{tv: []}` sync-only done-state), defer to
