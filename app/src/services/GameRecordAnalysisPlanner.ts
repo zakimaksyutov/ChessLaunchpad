@@ -54,14 +54,20 @@ export function planAmbiguousPositions(
  * lookup returned data for **and** has a definite verdict for are emitted.
  *
  * Per-ply classification:
- *   - lookup miss (`getMoveStats === null`)        → omit
- *   - 200 + zero games for position or SAN         → omit (no-data)
+ *   - lookup miss (`getMoveStats === null`)        → omit (no fetch / errored)
+ *   - 200 + zero games for the **position**        → omit (no-data: masters
+ *                                                    don't know this position)
  *   - `classifyOutOfTheory` returns null           → omit
  *   - otherwise                                    → emit `{ ply, in: !outOfTheory }`
  *
- * The "no-data ⇒ omit" rule is what makes the spec's optimistic-in-theory
- * fallback work at render time and what lets a future pass retry only
- * no-data plies (`docs/product-specs/GAMES.md`).
+ * Note: `moveGames === 0` with `totalGames > 0` is NOT no-data — it means
+ * masters know the position and this SAN was simply never played, which is
+ * a confirmed out-of-theory signal. `classifyOutOfTheory` returns `true`
+ * in that case and we emit `{ in: false }`.
+ *
+ * The "no-data ⇒ omit" rule (totalGames === 0 only) is what makes the
+ * spec's optimistic-in-theory fallback work at render time and what lets
+ * a future pass retry only no-data plies (`docs/product-specs/GAMES.md`).
  *
  * Empty `tv` is the valid done-with-no-resolved-verdicts state.
  */
@@ -73,12 +79,11 @@ export function buildVerdictFromPlan(
     for (const pos of plan) {
         const stats = lookup.getMoveStats(pos.fenBefore, pos.moveSan);
         if (stats === null) continue;
-        // No-data classification: HTTP 200 but masters reports zero games
-        // for either the position or the specific SAN. Sparse-map rule:
-        // omit and let render fall through to the optimistic in-theory
-        // default. Conflating this with "confirmed out of theory" is a
-        // one-way door the spec explicitly forbids.
-        if (stats.totalGames === 0 || stats.moveGames === 0) continue;
+        // No-data only when masters returned zero games for the position
+        // itself. `moveGames === 0 && totalGames > 0` is confirmed
+        // out-of-theory (masters know this position but never played the
+        // SAN) — let classifyOutOfTheory decide.
+        if (stats.totalGames === 0) continue;
         const verdict = classifyOutOfTheory(stats);
         if (verdict === null) continue;
         tv.push({ ply: pos.plyIndex, in: !verdict });

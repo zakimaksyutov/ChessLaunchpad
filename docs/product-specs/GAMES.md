@@ -54,7 +54,7 @@ A status pill next to the Games header shows the current state — syncing (spin
 
 Verdicts are keyed by **ply** (replay is deterministic) and only populated for opponent moves whose eval drop lands in the **ambiguous zone (15–44 cp)**. Below 15 cp is trivially in-theory; ≥ 45 cp is out-of-theory; both are decidable locally.
 
-- **Sparse-map rule.** A ply that masters had **no data** for is omitted, not stored as `false`. At render, an ambiguous ply absent from `tv` falls through to the engine's optimistic in-theory default. This avoids conflating "confirmed out of theory" with "no data" — a one-way door — and lets a later pass retry only the no-data plies.
+- **Sparse-map rule.** A ply that masters had **no data** for — i.e. the masters API returned `totalGames === 0` for the position — is omitted, not stored as `false`. At render, an ambiguous ply absent from `tv` falls through to the engine's optimistic in-theory default. This avoids conflating "confirmed out of theory" with "no data" — a one-way door — and lets a later pass retry only the no-data plies. Note that a position with `totalGames > 0` but where the opponent's SAN was never played is **not** no-data; that's a confirmed out-of-theory signal (`{ in: false }`).
 - **Empty `tv` is valid.** A game with no ambiguous positions, or all ambiguous plies returned no-data, is still considered analyzed once `an` is present.
 - **No automatic invalidation.** `an` is not cleared when the repertoire changes. A stale verdict simply persists; the user re-runs it via Re-annotate.
 

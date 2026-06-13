@@ -139,7 +139,7 @@ describe('buildVerdictFromPlan', () => {
         expect(verdict.tv).toEqual([{ ply: 2, in: true }]);
     });
 
-    it('omits plies when masters has no significant data for the SAN (no-data, not out-of-theory)', () => {
+    it('emits an out-of-theory verdict when masters has data for the position but the SAN was never played', () => {
         const plan: AmbiguousTheoryPosition[] = [
             { moveIndex: 0, plyIndex: 4, fenBefore: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moveSan: 'a3' },
         ];
@@ -149,9 +149,27 @@ describe('buildVerdictFromPlan', () => {
             totalGames: 100, moves: [{ san: 'e4', white: 50, draws: 25, black: 25, total: 100 }], // a3 missing
         });
         const verdict = buildVerdictFromPlan(plan, lookup);
+        // Masters know the position (totalGames=100) but a3 was never
+        // played — that's confirmed out-of-theory, not "no data."
+        // "No data" is reserved for totalGames === 0 (masters don't know
+        // the position at all).
+        expect(verdict.tv).toEqual([{ ply: 4, in: false }]);
+    });
+
+    it('omits plies when masters reports zero games for the position itself (true no-data)', () => {
+        const plan: AmbiguousTheoryPosition[] = [
+            { moveIndex: 0, plyIndex: 6, fenBefore: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moveSan: 'e4' },
+        ];
+        const lookup = new MastersLookup();
+        // 200 OK but the position is unknown to masters: no moves, totalGames=0.
+        lookup.add('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
+            fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            totalGames: 0, moves: [],
+        });
+        const verdict = buildVerdictFromPlan(plan, lookup);
         // Spec §`an`: no-data plies are OMITTED, not stored as out-of-theory.
-        // This avoids the one-way conflation between "confirmed out of theory"
-        // and "we have no information."
+        // This avoids conflating "we have no information" with "confirmed
+        // out of theory" and lets a future pass retry the no-data ply.
         expect(verdict.tv).toBeUndefined();
     });
 
