@@ -137,16 +137,6 @@ export interface DeviationInfo {
     repertoireMoves: { from: string; to: string; san: string }[];
 }
 
-export interface MissingEvalPosition {
-    /** Index into the moves[] array */
-    moveIndex: number;
-    /** Ply index (0-based) */
-    plyIndex: number;
-    fenBefore: string;
-    fenAfter: string;
-    isWhiteMove: boolean;
-}
-
 /** Opponent move in the ambiguous eval-drop zone (15–44 cp) needing masters DB check. */
 export interface AmbiguousTheoryPosition {
     /** Index into the moves[] array */
@@ -167,8 +157,6 @@ export interface GameAnnotation {
     miniBoardOrientation: 'white' | 'black';
     /** Deviation details for arrow display on the mini board */
     deviation?: DeviationInfo;
-    /** Positions where eval data was needed but unavailable from sources 1+2 */
-    missingEvalPositions?: MissingEvalPosition[];
     /** Opponent moves in the ambiguous zone (15–44 cp) that need masters DB verification */
     ambiguousTheoryPositions?: AmbiguousTheoryPosition[];
 }
@@ -365,7 +353,6 @@ export function annotateGame(
     if (debugThis) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor} vs ${opponentName}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}, hasEmbeddedEvals=${embeddedEvals !== null}`);
 
     const moves: AnnotatedMove[] = [];
-    const missingEvalPositions: MissingEvalPosition[] = [];
     const ambiguousTheoryPositions: AmbiguousTheoryPosition[] = [];
     let postTheoryAnalysis = false;
     let theoryEndPly = 0;
@@ -452,7 +439,6 @@ export function annotateGame(
                 }
             } else {
                 reason += ', no eval data for drop calc';
-                missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent left the user's repertoire.
@@ -529,7 +515,6 @@ export function annotateGame(
                 }
             } else {
                 reason += ', no eval data for drop calc';
-                missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (postTheoryAnalysis && !isUserMove) {
             // Subsequent opponent move — three-zone check
@@ -566,7 +551,6 @@ export function annotateGame(
             } else {
                 highlight = 'out-of-repertoire';
                 reason += ', no eval data for opponent drop → continue';
-                missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else {
             highlight = 'out-of-theory';
@@ -614,7 +598,6 @@ export function annotateGame(
         miniBoardFen,
         miniBoardOrientation: userColor,
         deviation,
-        missingEvalPositions: missingEvalPositions.length > 0 ? missingEvalPositions : undefined,
         ambiguousTheoryPositions: ambiguousTheoryPositions.length > 0 ? ambiguousTheoryPositions : undefined,
     };
 }

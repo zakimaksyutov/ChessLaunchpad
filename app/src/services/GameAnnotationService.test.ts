@@ -697,22 +697,6 @@ describe('annotateGame', () => {
             expect(bc4Move.evalDrop!.evalDrop).toBe(13);
         });
 
-        it('collects missing eval positions when no source has data', () => {
-            const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
-
-            // Game with user deviation but no eval data at all
-            const gameData = makeGameData('e4 e5 Nf3 Nc6 Bc4 Nf6', 'user', 'opp');
-
-            const result = annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
-
-            expect(result).not.toBeNull();
-            expect(result!.missingEvalPositions).toBeDefined();
-            expect(result!.missingEvalPositions!.length).toBeGreaterThan(0);
-            // The deviation move (Bc4 at ply 4) should be in missing positions
-            const bc4Missing = result!.missingEvalPositions!.find(p => p.plyIndex === 4);
-            expect(bc4Missing).toBeDefined();
-        });
-
         it('uses embedded evals for out-of-repertoire-response moves', () => {
             // Repertoire: 1. e4 e5 2. Nf3 Nc6
             const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
