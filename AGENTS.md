@@ -66,6 +66,7 @@ yarn dev
   - `public/` — Static assets
   - `vendor/chess-control/` — Vendored chess-control library (built dist files)
 - `openings/` — Opening database files and merge scripts
+- `BACKLOG.md` — Cross-cutting backlog of items tracked but not currently scheduled (see file for current items).
 - `docs/` — Technical specifications
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
   - `REPERTOIRE-STORAGE.md` — Position-centric repertoire data model and v3 wire format reference

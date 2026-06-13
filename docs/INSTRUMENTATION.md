@@ -100,7 +100,7 @@ For ambiguous moves, the masters API checks if the move is played by masters:
 - If < 5 absolute master games OR < 5% of position's total games → `out-of-theory`
 - Otherwise → `out-of-repertoire` (in theory, continue analysis)
 
-Masters data is fetched asynchronously (rate-limited to 1 req/sec) and cached in IndexedDB (`chesslaunchpad-masters-explorer`). The first annotation pass marks ambiguous positions optimistically as `out-of-repertoire`; once masters data arrives, affected games are re-annotated.
+Masters data is fetched asynchronously (rate-limited to 1 req/sec) and accumulated in an in-memory `MastersLookup` for the current analysis batch; across passes, per-ply verdicts persist on each game's `an.tv` map on the synced repertoire blob. The first annotation pass marks ambiguous positions optimistically as `out-of-repertoire`; once masters data arrives, affected games are re-annotated.
 
 ## Fields
 
