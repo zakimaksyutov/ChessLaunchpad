@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveEotPositions, annotateGame, type GameAnnotation } from '../services/GameAnnotationService';
+import { deriveEotPositions, annotateGame } from '../services/GameAnnotationService';
 import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
 

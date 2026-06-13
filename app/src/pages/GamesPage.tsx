@@ -771,7 +771,7 @@ const GamesPage: React.FC = () => {
                 }
             }
             const lookup = buildLookupFromAn(record);
-            const ann = annotateRecord(record, userLower, fens, explorerEvals, lookup, undefined, wantDebug);
+            const ann = annotateRecord(record, userLower, fens, explorerEvals, lookup, wantDebug);
             if (wantDebug) debugRecordKeysRef.current.delete(key);
             cache.set(record, { an: record.an, fens, explorerEvals, annotation: ann });
             map.set(key, ann);
@@ -784,7 +784,7 @@ const GamesPage: React.FC = () => {
     // no longer the first non-ok user out-of-rep response in the annotation.
     const opByKey = useMemo(() => {
         const map = new Map<string, { live: OpponentAnalysisResult; stale: boolean }>();
-        for (const { record, userLower, pending } of orderedRows) {
+        for (const { record, pending } of orderedRows) {
             if (pending) continue;
             if (!record.op) continue;
             const key = `${record.p}:${record.id}`;

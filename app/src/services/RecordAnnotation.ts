@@ -97,7 +97,6 @@ export function annotateRecord(
     repertoireFens: Set<string>,
     explorerEvals: ExplorerEvals | null,
     mastersLookup?: MastersLookupLike,
-    maxPlies: number = 30,
     debug?: boolean,
 ): GameAnnotation | null {
     const userColor = getRecordUserColor(record, accountUsernameLower);
@@ -110,7 +109,7 @@ export function annotateRecord(
         accountUsernameLower,
         repertoireFens,
         explorerEvals,
-        maxPlies,
+        30,
         'lichess',
         mastersLookup,
         debug,

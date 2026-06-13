@@ -384,12 +384,7 @@ describe('annotateGame', () => {
 
     describe('playing as black', () => {
         it('correctly identifies user moves for black player', () => {
-            // Repertoire for black: 1. e4 e5
-            const blackRepMoves = ['e4', 'e5'];
-            const blackRepFens = buildRepertoireFens([blackRepMoves]);
-
-            // Game: 1. e4 e5 2. Nf3 d6 (user as black deviates with d6 instead of Nc6, etc.)
-            // But we need a rep that goes further. Let's use: 1. e4 e5 2. Nf3 Nc6
+            // Repertoire: 1. e4 e5 2. Nf3 Nc6
             const blackRepMoves2 = ['e4', 'e5', 'Nf3', 'Nc6'];
             const blackRepFens2 = buildRepertoireFens([blackRepMoves2]);
 
