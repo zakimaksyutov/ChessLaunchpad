@@ -387,7 +387,7 @@ const GameRow: React.FC<GameRowProps> = ({
 
     return (
         <div
-            className={`game-row${tileClass}${reannotating ? ' game-row-reannotating' : ''}${pending ? ' game-row-pending' : ''}`}
+            className={`game-row${tileClass}${pending ? ' game-row-pending' : ''}`}
             aria-busy={pending || undefined}
         >
             <div className="game-mini-board">
@@ -772,7 +772,7 @@ const GamesPage: React.FC = () => {
             // as the first EOT eval-drop?
             let stale = true;
             if (ann) {
-                const eot = deriveRecordEotPositions(record, userLower, ann);
+                const eot = deriveRecordEotPositions(record, ann);
                 if (eot && eot.targetPly === record.op.ply) stale = false;
             }
             map.set(key, { live, stale });
@@ -1098,7 +1098,7 @@ const GamesPage: React.FC = () => {
         if (!row) return;
         const ann = annotationByKey.get(key);
         if (!ann) return;
-        const eot = deriveRecordEotPositions(record, row.userLower, ann);
+        const eot = deriveRecordEotPositions(record, ann);
         if (!eot) return;
         const userColor = getRecordUserColor(record, row.userLower);
         if (!userColor) return;

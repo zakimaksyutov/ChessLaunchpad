@@ -57,7 +57,7 @@ describe('deriveEotPositions', () => {
         const annotation = annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
         expect(annotation).not.toBeNull();
 
-        const result = deriveEotPositions(gameData, annotation!, 'me', 'lichess');
+        const result = deriveEotPositions(gameData, annotation!, 'lichess');
         expect(result).toBeNull();
     });
 
@@ -93,7 +93,7 @@ describe('deriveEotPositions', () => {
         expect(eotMove!.san).toBe('d4');
         expect(eotMove!.evalDrop!.category).toBe('blunder');
 
-        const result = deriveEotPositions(gameData, annotation!, 'me', 'lichess');
+        const result = deriveEotPositions(gameData, annotation!, 'lichess');
         expect(result).not.toBeNull();
         expect(result!.userSan).toBe('d4');
         expect(result!.opponentSan).toBe('d6');
@@ -126,7 +126,7 @@ describe('deriveEotPositions', () => {
         const annotation = annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
         expect(annotation).not.toBeNull();
 
-        const result = deriveEotPositions(gameData, annotation!, 'me', 'lichess');
+        const result = deriveEotPositions(gameData, annotation!, 'lichess');
         expect(result).not.toBeNull();
         expect(result!.userSan).toBe('d5');
         expect(result!.opponentSan).toBe('d4');

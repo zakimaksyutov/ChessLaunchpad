@@ -175,9 +175,8 @@ export function getRecordOpponentName(
  */
 export function deriveRecordEotPositions(
     record: GameRecord,
-    accountUsernameLower: string,
     annotation: GameAnnotation,
 ): ReturnType<typeof deriveEotPositionsImport> | null {
     const gameData = recordToLichessGameData(record);
-    return deriveEotPositionsImport(gameData, annotation, accountUsernameLower, 'lichess');
+    return deriveEotPositionsImport(gameData, annotation, 'lichess');
 }

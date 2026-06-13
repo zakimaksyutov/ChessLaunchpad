@@ -125,7 +125,7 @@ describe('deriveRecordEotPositions', () => {
         const fens = buildRepertoireFenSets(reps);
         const rec = makeLichessRecord({ m: 'e4 e5 Nf3' });
         const ann = annotateRecord(rec, 'me', fens.whiteFens, null);
-        const eot = deriveRecordEotPositions(rec, 'me', ann!);
+        const eot = deriveRecordEotPositions(rec, ann!);
         expect(eot).toBeNull();
     });
 });

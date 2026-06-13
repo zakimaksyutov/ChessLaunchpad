@@ -188,7 +188,7 @@ function resolveLichessResult(
  * plies, so we round-trip the distinction by using `null` here rather than
  * a sentinel zero. JSON natively supports `null` inside number arrays.
  */
-export type RecordPlyEval = number | null;
+type RecordPlyEval = number | null;
 
 /**
  * Extract per-ply centipawn evals from a Lichess `analysis[]` array.

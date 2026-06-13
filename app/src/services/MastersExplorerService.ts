@@ -50,7 +50,7 @@ export const MIN_MASTER_GAMES_ABSOLUTE = 50;
 export const MIN_MOVE_PERCENTAGE = 5;
 
 /** Delay between API requests in milliseconds (Lichess rate limit). */
-export const MASTERS_RATE_LIMIT_MS = 1000;
+const MASTERS_RATE_LIMIT_MS = 1000;
 
 const MASTERS_API_URL = 'https://explorer.lichess.org/masters';
 

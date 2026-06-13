@@ -301,16 +301,8 @@ export function buildPgn(gameData: Record<string, unknown>, platform: Platform):
     return buildPgnFromLichessData(gameData);
 }
 
-/**
- * Annotate a game's moves against the user's repertoire FEN set.
- *
- * @param gameData Raw Lichess NDJSON object
- * @param username Lichess username (for determining user's color)
- * @param repertoireFens Set of normalized FENs for the user's color in this game
- * @param evals ExplorerEvals instance for eval-drop computation
- * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
- */
-export function getOpponentName(
+/** Return the opponent's display name as provided by the source platform. */
+function getOpponentName(
     gameData: Record<string, unknown>,
     userColor: 'white' | 'black',
     platform: Platform
@@ -323,6 +315,15 @@ export function getOpponentName(
     return getPlayerInfo(players, opponentColor).name;
 }
 
+/**
+ * Annotate a game's moves against the user's repertoire FEN set.
+ *
+ * @param gameData Raw Lichess NDJSON object
+ * @param username Lichess username (for determining user's color)
+ * @param repertoireFens Set of normalized FENs for the user's color in this game
+ * @param evals ExplorerEvals instance for eval-drop computation
+ * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
+ */
 export function annotateGame(
     gameData: Record<string, unknown>,
     username: string,
@@ -850,7 +851,6 @@ export interface EotPositions {
 export function deriveEotPositions(
     gameData: Record<string, unknown>,
     annotation: GameAnnotation,
-    username: string,
     platform: Platform
 ): EotPositions | null {
     // Find the first out-of-repertoire-response with a non-ok eval drop
