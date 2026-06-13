@@ -1143,7 +1143,7 @@ const GamesPage: React.FC = () => {
                     opponentMoveSan: eot.opponentSan,
                     userMoveSan: eot.userSan,
                     targetPly: eot.targetPly,
-                    excludeGameUrl: meta.gameUrl,
+                    excludeGameUrl: meta.gameUrl.replace(/\/(white|black)$/, ''),
                 },
                 (progress) => setAnalyzeProgress(progress),
                 abort.signal,
