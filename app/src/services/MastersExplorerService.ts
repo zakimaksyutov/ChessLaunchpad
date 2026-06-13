@@ -12,7 +12,7 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export interface MastersMoveStats {
+interface MastersMoveStats {
     san: string;
     white: number;
     draws: number;

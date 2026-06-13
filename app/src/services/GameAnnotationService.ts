@@ -34,7 +34,7 @@ const AMBIGUOUS_THEORY_THRESHOLD = 15;
 /** Large cp value used when analysis reports a forced mate. */
 const MATE_CP = 10_000;
 
-export type EvalSource = 'explorer' | 'embedded' | 'cloud' | 'none';
+type EvalSource = 'explorer' | 'embedded' | 'cloud' | 'none';
 
 /**
  * Extract per-ply centipawn evals from the Lichess `analysis` array.
@@ -108,7 +108,7 @@ function lookupEvals(
     return null;
 }
 
-export type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-repertoire-response' | 'out-of-repertoire' | 'out-of-theory';
+type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-repertoire-response' | 'out-of-repertoire' | 'out-of-theory';
 
 export interface AnnotatedMove {
     /** SAN of the move */
@@ -128,7 +128,7 @@ export interface AnnotatedMove {
 }
 
 /** Info about the first user deviation from repertoire */
-export interface DeviationInfo {
+interface DeviationInfo {
     /** FEN of the position before the deviation (after opponent's move) */
     fen: string;
     /** The move the user actually played (red arrow) */
@@ -807,7 +807,7 @@ function getGameMetadataChesscom(gameData: Record<string, unknown>, username: st
 // End-of-theory position derivation (for opponent analysis)
 // ---------------------------------------------------------------------------
 
-export interface EotPositions {
+interface EotPositions {
     /** Normalized FEN of position before the user's bad move (after opponent's move) */
     fenBefore: string;
     /** Normalized FEN of position after the user's bad move */

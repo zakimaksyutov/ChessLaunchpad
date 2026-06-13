@@ -3,7 +3,7 @@ import { LinkedAccount } from "../services/LinkedAccountsService";
 import { RepertoireEntry } from "./Repertoires";
 import { AuditEntry } from "./AuditData";
 
-export interface PracticeLogGameCounters {
+interface PracticeLogGameCounters {
     ingested: number;   // Games processed on this date
     reviewed: number;   // Good ratings from in-repertoire user moves
     mistakes: number;   // Games containing at least one deviation (one per game)
@@ -21,10 +21,10 @@ export interface PracticeLogGameCounters {
 }
 
 /** Compact per-platform label persisted on game records (`"l" | "c"`). */
-export type GameRecordPlatform = 'l' | 'c';
+type GameRecordPlatform = 'l' | 'c';
 
 /** Result from the user's POV. */
-export type GameRecordResult = 'win' | 'draw' | 'loss';
+type GameRecordResult = 'win' | 'draw' | 'loss';
 
 /**
  * Compact, sync-friendly per-game record stored inside
@@ -132,7 +132,7 @@ export interface OpponentAnalysisRecord {
     at: number;
 }
 
-export interface OpponentAnalysisGameRef {
+interface OpponentAnalysisGameRef {
     /** Game date (ms). */
     d: number;
     /** Game URL. */
