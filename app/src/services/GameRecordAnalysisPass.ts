@@ -27,24 +27,17 @@ const MAX_FLUSH_RETRIES = 3;
 /**
  * One step in the analysis pass — a single game's pre-analysis snapshot.
  *
- *   - `record`         : the game being analyzed.
- *   - `accountKey`     : `${platform}:${usernameLower}` — used to look up
- *                       the linked account's lowercase username.
- *   - `userLower`      : linked account's lowercase username (for
- *                       `getRecordUserColor`).
- *   - `plan`           : ambiguous positions discovered before any lookup
- *                       (drives the `K` in the progress text).
+ *   - `record` : the game being analyzed.
+ *   - `plan`   : ambiguous positions discovered before any lookup.
  */
 export interface AnalysisJob {
     record: GameRecord;
-    accountKey: string;
-    userLower: string;
     plan: AmbiguousTheoryPosition[];
 }
 
 export type AnalysisProgress =
     | { phase: 'planning' }
-    | { phase: 'analyzing'; gameIndex: number; gameTotal: number; positionIndex: number; positionTotal: number }
+    | { phase: 'analyzing'; gameIndex: number; gameTotal: number }
     | { phase: 'flushing'; gameIndex?: number; gameTotal?: number }
     | { phase: 'idle' };
 
@@ -106,16 +99,14 @@ export function buildAnalysisPlan(
             // platform agrees with `record.p`.
             const recordPlatform = record.p === 'c' ? 'chess.com' : 'lichess';
             let userLower: string | null = null;
-            let accountKey: string | null = null;
             for (const [key, name] of accountLookup) {
                 if (!key.startsWith(`${recordPlatform}:`)) continue;
                 if (record.wa.toLowerCase() === name || record.ba.toLowerCase() === name) {
                     userLower = name;
-                    accountKey = key;
                     break;
                 }
             }
-            if (!userLower || !accountKey) continue;
+            if (!userLower) continue;
 
             // Pre-flight: ensure userColor resolves (defensive — corrupt
             // record would otherwise crash the engine).
@@ -124,7 +115,7 @@ export function buildAnalysisPlan(
 
             const repertoireFens = color === 'white' ? fenSets.whiteFens : fenSets.blackFens;
             const plan = planAmbiguousPositions(record, userLower, repertoireFens, explorerEvals);
-            jobs.push({ record, accountKey, userLower, plan });
+            jobs.push({ record, plan });
         }
     }
     return jobs;
@@ -180,7 +171,6 @@ export async function analyzeOneGame(
     job: AnalysisJob,
     token: string | null,
     memo: Map<string, MastersMemoEntry>,
-    onPositionProgress: (positionIndex: number, positionTotal: number) => void,
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch,
 ): Promise<AnalyzedGameOutcome> {
@@ -206,7 +196,6 @@ export async function analyzeOneGame(
     for (let i = 0; i < plan.length; i++) {
         if (signal?.aborted) return { record, skipped: true };
         const pos = plan[i];
-        onPositionProgress(i + 1, plan.length);
         const entry = await fetchMastersWithMemo(pos.fenBefore, token, memo, signal, fetchFn);
         if (entry.kind === 'error') {
             anyError = true;

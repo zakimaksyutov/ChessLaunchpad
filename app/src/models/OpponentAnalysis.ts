@@ -1,5 +1,3 @@
-import type { Platform } from '../services/LinkedAccountsService';
-
 export type ThreatLevel = 'low' | 'moderate' | 'high' | 'very-high';
 
 export interface OpponentGameRef {
@@ -12,19 +10,13 @@ export interface OpponentGameRef {
 /**
  * In-memory shape of an opponent-analysis result. The persisted shape
  * (`GameRecord.op`) is more compact — it stores raw counts/refs and the
- * page derives `threatLevel`/`platform`/`opponentUsername` at render.
+ * page derives `threatLevel` at render.
  *
  * This type is kept for the analysis pipeline (`OpponentAnalysisService`)
  * and the live UI; the page maps between this and `OpponentAnalysisRecord`
  * (the persisted form) when reading and writing the blob.
  */
 export interface OpponentAnalysisResult {
-    /** Record id (provider id, no prefix). */
-    recordId: string;
-    /** Source-record platform ('lichess' | 'chess.com'). */
-    platform: Platform;
-    /** Opponent's display name (provider casing). */
-    opponentUsername: string;
     /** Ply of the analyzed user deviation in the source record's `m`. */
     targetPly: number;
     /** Number of opponent games downloaded and scanned. */

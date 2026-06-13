@@ -112,8 +112,6 @@ describe('filterRunnableJobs', () => {
     it('runs Chess.com games regardless of Lichess connection', () => {
         const job = {
             record: rec({ id: 'cc', t: BASE_DATE, p: 'c' as const }),
-            accountKey: 'chess.com:me',
-            userLower: 'me',
             plan: [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }],
         };
         const { runnable, blockedByLichess } = filterRunnableJobs([job], false);
@@ -124,8 +122,6 @@ describe('filterRunnableJobs', () => {
     it('runs Lichess sync-only games (K=0) regardless of connection', () => {
         const job = {
             record: rec({ id: 'l1', t: BASE_DATE }),
-            accountKey: 'lichess:me',
-            userLower: 'me',
             plan: [],
         };
         const { runnable, blockedByLichess } = filterRunnableJobs([job], false);
@@ -136,8 +132,6 @@ describe('filterRunnableJobs', () => {
     it('blocks Lichess K>0 games when disconnected', () => {
         const job = {
             record: rec({ id: 'l1', t: BASE_DATE }),
-            accountKey: 'lichess:me',
-            userLower: 'me',
             plan: [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }],
         };
         const { runnable, blockedByLichess } = filterRunnableJobs([job], false);
@@ -148,8 +142,6 @@ describe('filterRunnableJobs', () => {
     it('runs Lichess K>0 games when connected', () => {
         const job = {
             record: rec({ id: 'l1', t: BASE_DATE }),
-            accountKey: 'lichess:me',
-            userLower: 'me',
             plan: [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }],
         };
         const { runnable, blockedByLichess } = filterRunnableJobs([job], true);
@@ -272,8 +264,6 @@ describe('analyzeOneGame — Chess.com short-circuit (review feedback)', () => {
         const { analyzeOneGame } = await import('./GameRecordAnalysisPass');
         const job: AnalysisJob = {
             record: rec({ id: 'cc1', t: BASE_DATE, p: 'c' }),
-            accountKey: 'chess.com:me',
-            userLower: 'me',
             // Chess.com can land in the ambiguous zone via ExplorerEvals
             // (fenBefore has evals, fenAfter doesn't → engine flags ambiguous).
             // The short-circuit must bypass the masters loop entirely.
@@ -283,7 +273,7 @@ describe('analyzeOneGame — Chess.com short-circuit (review feedback)', () => {
         };
         const memo = new Map();
         const noFetch = (() => Promise.reject(new Error('fetch should not be called for chess.com records'))) as unknown as typeof fetch;
-        const outcome = await analyzeOneGame(job, null /* no lichess token */, memo, () => {}, undefined, noFetch);
+        const outcome = await analyzeOneGame(job, null /* no lichess token */, memo, undefined, noFetch);
         expect(outcome.skipped).toBe(false);
         expect(outcome.an).toEqual({});
     });
@@ -292,15 +282,13 @@ describe('analyzeOneGame — Chess.com short-circuit (review feedback)', () => {
         const { analyzeOneGame } = await import('./GameRecordAnalysisPass');
         const job: AnalysisJob = {
             record: rec({ id: 'l1', t: BASE_DATE }),
-            accountKey: 'lichess:me',
-            userLower: 'me',
             plan: [
                 { moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' },
             ],
         };
         const memo = new Map();
         const noFetch = (() => Promise.reject(new Error('should not fetch without token'))) as unknown as typeof fetch;
-        const outcome = await analyzeOneGame(job, null, memo, () => {}, undefined, noFetch);
+        const outcome = await analyzeOneGame(job, null, memo, undefined, noFetch);
         expect(outcome.skipped).toBe(true);
     });
 });

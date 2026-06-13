@@ -767,9 +767,7 @@ const GamesPage: React.FC = () => {
             if (!record.op) continue;
             const key = `${record.p}:${record.id}`;
             const ann = annotationByKey.get(key);
-            const userColor = getRecordUserColor(record, userLower);
-            if (!userColor) continue;
-            const live = fromPersistedOp(record.op, record, userColor);
+            const live = fromPersistedOp(record.op);
             // Stale check: does the live deviation at this ply still exist
             // as the first EOT eval-drop?
             let stale = true;
@@ -858,22 +856,11 @@ const GamesPage: React.FC = () => {
                         phase: 'analyzing',
                         gameIndex: i + 1,
                         gameTotal: runnable.length,
-                        positionIndex: 0,
-                        positionTotal: job.plan.length,
                     });
                     const outcome = await analyzeOneGame(
                         job,
                         lichessToken,
                         memo,
-                        (positionIndex, positionTotal) => {
-                            setAnalysisProgress({
-                                phase: 'analyzing',
-                                gameIndex: i + 1,
-                                gameTotal: runnable.length,
-                                positionIndex,
-                                positionTotal,
-                            });
-                        },
                         abort.signal,
                     );
                     if (outcome.skipped) {
@@ -1127,7 +1114,6 @@ const GamesPage: React.FC = () => {
         try {
             const result = await analyzeOpponentGames(
                 {
-                    recordId: record.id,
                     opponentUsername: opponentName,
                     platform,
                     fenBefore: eot.fenBefore,
