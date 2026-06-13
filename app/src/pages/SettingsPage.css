@@ -255,22 +255,14 @@
   cursor: not-allowed;
 }
 
-/* Data Cache section */
-.cache-section {
-  margin-top: 1.5rem;
-}
-
+/* Shared button-row layout (used by Repertoire Backup and similar action rows) */
 .cache-info {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
-.cache-count {
-  font-size: 0.95rem;
-  color: #444;
-}
-
+/* Inline success banner (e.g., "Settings saved.") */
 .cache-success {
   background-color: #e6f4ea;
   border: 1px solid #81c995;

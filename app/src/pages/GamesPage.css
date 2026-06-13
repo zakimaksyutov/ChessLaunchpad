@@ -26,6 +26,7 @@
     flex-direction: column;
     gap: 0.35rem;
     min-width: 0;
+    flex: 1;
 }
 
 .games-title {
@@ -34,6 +35,15 @@
     color: #666;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+/* Row holding the accounts list (left) and the sync indicator (right). */
+.header-accounts-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
 .header-accounts-list {
@@ -80,6 +90,105 @@
     text-decoration: underline;
 }
 
+/* Inline sync status anchored to the accounts row — no layout shift. */
+.games-sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #888;
+    white-space: nowrap;
+    /* Fixed line-height keeps the box the same size whether the spinner
+       is present (syncing) or not (synced), so the text doesn't jump. */
+    line-height: 1rem;
+}
+
+.games-sync-status-active {
+    color: #2c5d8f;
+}
+
+/* Inline progress bar shown in place of the spinner when a sync discovers
+   many games to analyze (see SYNC_PROGRESS_BAR_THRESHOLD in GamesPage.tsx). */
+.games-sync-status-progress {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+    line-height: 1.1;
+}
+
+.games-sync-progress-text {
+    font-size: 0.75rem;
+    color: #2c5d8f;
+    white-space: nowrap;
+}
+
+.games-sync-progress-bar {
+    display: block;
+    width: 9rem;
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.games-sync-progress-fill {
+    display: block;
+    height: 100%;
+    background: #2c5d8f;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* Manual sync button — sits next to the status text. */
+.games-sync-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+}
+
+.games-sync-button {
+    background: none;
+    border: 1px solid #ccc;
+    color: #666;
+    border-radius: 4px;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.games-sync-button:hover:not(:disabled) {
+    background: #f0f0f0;
+    color: #333;
+    border-color: #999;
+}
+
+.games-sync-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.games-sync-spinner {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 2px solid #b6cee6;
+    border-top-color: #2c5d8f;
+    border-radius: 50%;
+    animation: games-sync-spin 0.8s linear infinite;
+}
+
+@keyframes games-sync-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .games-sync-spinner { animation: none; }
+}
+
 /* Lichess warning banner */
 .lichess-warning {
     width: 100%;
@@ -97,37 +206,6 @@
     font-weight: 500;
 }
 
-.sync-button {
-    padding: 0.5rem 1.25rem;
-    border-radius: 4px;
-    border: none;
-    cursor: pointer;
-    background-color: rgb(0, 130, 210);
-    color: #fff;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-
-.sync-button:hover:not(:disabled) {
-    background-color: rgb(0, 110, 190);
-}
-
-.sync-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.sync-progress {
-    width: 100%;
-    text-align: center;
-    padding: 0.75rem;
-    background: #e8f4fd;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    color: #1a6fa0;
-    font-size: 0.9rem;
-}
-
 .games-error {
     width: 100%;
     background-color: #ffe3e3;
@@ -136,16 +214,6 @@
     padding: 0.75rem;
     margin-bottom: 1rem;
     color: #8a1c1c;
-}
-
-.games-info {
-    width: 100%;
-    background-color: #e8f4fd;
-    border: 1px solid #90caf9;
-    border-radius: 4px;
-    padding: 0.75rem;
-    margin-bottom: 1rem;
-    color: #1a6fa0;
 }
 
 .games-empty {
@@ -169,6 +237,11 @@
 }
 
 /* Game Row */
+.games-list {
+    width: 100%;
+    display: block;
+}
+
 .game-row {
     width: 100%;
     display: flex;
@@ -179,6 +252,79 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     margin-bottom: 0.75rem;
     border: 2px solid transparent;
+}
+
+/* Skeleton placeholder — shown while a row is queued for the current
+   analysis pass. Reserves the slot so the row doesn't pop in and shove
+   neighbors when its `an` finally lands. The min-height is calibrated
+   to approximate a typical hydrated row (mini board + header + 2-3
+   line PGN + one summary callout) so that when the skeleton finally
+   hydrates, the row's height barely changes. */
+.game-row-pending {
+    background: #fafbfc;
+    min-height: 152px;
+}
+
+.game-mini-board-skeleton {
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+    background: #eef0f3;
+}
+
+.game-pgn-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.25rem 0;
+}
+
+.skeleton-line {
+    display: block;
+    height: 0.7rem;
+    border-radius: 4px;
+    background: #eef0f3;
+}
+
+.skeleton-line-w55 { width: 55%; }
+.skeleton-line-w70 { width: 70%; }
+.skeleton-line-w85 { width: 85%; }
+
+/* Block-style placeholder representing the typical deviation / EOT
+   summary callout that appears below the PGN on most hydrated rows.
+   Including it in the skeleton keeps row heights stable across the
+   skeleton → hydrated transition. */
+.skeleton-block {
+    display: block;
+    border-radius: 4px;
+    background: #eef0f3;
+    margin-top: 0.35rem;
+}
+
+.skeleton-block-summary {
+    width: 60%;
+    height: 1.4rem;
+}
+
+.game-pending-badge {
+    font-size: 0.78rem;
+    color: #888;
+    background: #f0f2f5;
+    padding: 0.1rem 0.5rem;
+    border-radius: 10px;
+    letter-spacing: 0.02em;
+}
+
+/* Pill shown on a row that already has annotations but is being
+   re-analyzed (manual "Re-annotate" action). Amber tint distinguishes
+   it from the grey first-pass `.game-pending-badge`. */
+.game-reannotating-badge {
+    font-size: 0.78rem;
+    color: #8a6d3b;
+    background: #fcf3df;
+    padding: 0.1rem 0.5rem;
+    border-radius: 10px;
+    letter-spacing: 0.02em;
 }
 
 .game-row-deviation {
@@ -323,6 +469,16 @@
 
 .game-overflow-dropdown button:hover {
     background: #f5f5f5;
+}
+
+/* DEBUG / TEMP — remove together with the "Delete from here" menu item. */
+.game-overflow-dropdown button.game-overflow-debug {
+    color: #c0392b;
+    border-top: 1px solid #eee;
+}
+
+.game-overflow-dropdown button.game-overflow-debug:hover {
+    background: #fdecea;
 }
 
 .game-opening {
@@ -546,12 +702,6 @@
 
     .games-title {
         font-size: 0.88rem;
-    }
-
-    .sync-button {
-        width: 100%;
-        text-align: center;
-        padding: 0.65rem 1.25rem;
     }
 
     .game-row {

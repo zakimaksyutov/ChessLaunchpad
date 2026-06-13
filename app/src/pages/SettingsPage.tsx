@@ -5,11 +5,9 @@ import {
     setLinkedAccounts,
     LinkedAccount,
     Platform,
-    cleanupRemovedAccount,
     getAccountKey,
 } from '../services/LinkedAccountsService';
-import { clearGames } from '../data/GamesDB';
-import { clearMastersCache } from '../services/MastersExplorerService';
+import { purgeRecordsForAccounts } from '../services/GameRecordStore';
 import { TrainingEngine } from '../services/TrainingEngine';
 import {
     FSRSService,
@@ -54,10 +52,6 @@ const SettingsPage: React.FC = () => {
     // Lichess integration (separate, not part of Save/Discard)
     const [lichessLoading, setLichessLoading] = useState(false);
     const { connected, login, logout } = useLichessAuth();
-
-    // Cache clearing
-    const [clearingCache, setClearingCache] = useState(false);
-    const [cacheCleared, setCacheCleared] = useState(false);
 
     // Import/Export
     const [importing, setImporting] = useState(false);
@@ -151,13 +145,23 @@ const SettingsPage: React.FC = () => {
             const presetCfg = FSRSService.getPresetConfig(presetId);
 
             // When an account is unlinked, drop its per-account ingest state from
-            // the games map so the next ingest run doesn't keep tracking it.
+            // the games map so the next ingest run doesn't keep tracking it,
+            // and purge its display records from the activity log so the /games
+            // page stops showing them. Counters (`ingested` / `reviewed` /
+            // `mistakes`) are intentionally not rewritten — historical activity
+            // remains visible on the Dashboard.
             let nextGames = current.games;
             if (removedAccountsRef.current.length > 0 && current.games) {
                 nextGames = { ...current.games };
                 for (const removed of removedAccountsRef.current) {
                     delete nextGames[getAccountKey(removed.platform, removed.username)];
                 }
+            }
+            if (removedAccountsRef.current.length > 0 && current.activity) {
+                const removedLower = new Set(
+                    removedAccountsRef.current.map(a => a.username.toLowerCase()),
+                );
+                purgeRecordsForAccounts(current.activity, removedLower);
             }
 
             // Build settings from draft values (don't mutate globals until save succeeds).
@@ -185,10 +189,6 @@ const SettingsPage: React.FC = () => {
             setLinkedAccounts(linkedAccounts);
             setCommittedPresetId(presetId);
 
-            // Clean up local data for removed accounts after successful save
-            for (const removed of removedAccountsRef.current) {
-                cleanupRemovedAccount(removed.username, removed.platform);
-            }
             removedAccountsRef.current = [];
 
             setIsDirty(false);
@@ -248,21 +248,6 @@ const SettingsPage: React.FC = () => {
     const handleLichessDisconnect = async () => {
         setLichessLoading(true);
         try { await logout(); } finally { setLichessLoading(false); }
-    };
-
-    const handleClearCache = async () => {
-        setClearingCache(true);
-        setCacheCleared(false);
-        try {
-            await clearGames();
-            await clearMastersCache();
-            setCacheCleared(true);
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            setErrorMessage(`Failed to clear cache: ${msg}`);
-        } finally {
-            setClearingCache(false);
-        }
     };
 
     // ── Import / Export ────────────────────────────────────────────────
@@ -644,25 +629,6 @@ const SettingsPage: React.FC = () => {
                         accept=".chess"
                         onChange={handleImportFileSelected}
                     />
-                </div>
-            </div>
-
-            <div className="settings-card">
-                <h1>Data Cache</h1>
-                <p className="settings-description">
-                    Remove all downloaded games and sync timestamps.
-                </p>
-                {cacheCleared && (
-                    <div className="cache-success">Cache cleared. Sync Games to re-download.</div>
-                )}
-                <div className="cache-info">
-                    <button
-                        className="secondary"
-                        onClick={handleClearCache}
-                        disabled={clearingCache}
-                    >
-                        {clearingCache ? 'Clearing…' : 'Clear Cache'}
-                    </button>
                 </div>
             </div>
         </div>

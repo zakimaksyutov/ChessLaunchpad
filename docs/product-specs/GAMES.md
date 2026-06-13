@@ -2,296 +2,153 @@
 
 ## Overview
 
-A new **Games** page that downloads recent games from linked Lichess and Chess.com accounts, visualizes them as an annotated list, and cross-references each game against the user's repertoire to surface theory coverage and deviation points.
+The **Games** page shows the user's recently played games from linked Lichess and Chess.com accounts, annotated against their repertoire. It surfaces where the user followed theory, where they deviated, and how well they handled deviations by their opponents.
 
----
+Game ingestion is shared with the Dashboard (see [`GAME-INGEST.md`](./GAME-INGEST.md)) — both pages run the same pipeline under a single-flight lock. The Games page reads the resulting records from the synced repertoire blob and adds a per-game **masters-theory verdict** on top.
 
-## 1. Account Linking
+## Account Linking
 
-Users can **list** one or more usernames across supported platforms (no OAuth token required — games are fetched from public APIs).
+Linked accounts live in `settings.linkedAccounts` on the synced blob and are managed on the Settings page. Each entry is `{ platform: 'lichess' | 'chess.com', username }`. No OAuth is required to *list* a username — the public APIs are enough.
 
-Supported platforms:
-- **Lichess** — public NDJSON API
-- **Chess.com** — public archives API
+A separate **Lichess OAuth connection** (Settings → Lichess Integration) is required to query the masters opening explorer for theory verdicts; see "Theory verdicts" below.
 
-- Stored on the user's repertoire blob under `settings.linkedAccounts` (persisted via the backend; not localStorage).
-- Managed on the **Settings** page: a "Linked Accounts" section with a platform dropdown, text input + "Add" button, and a list of existing accounts each with a "Remove" button.
-- Removing an account also clears its sync watermark from `localStorage` and **deletes** the account's cached games from IndexedDB.
-- **Clear Cache** button (in Settings, visible when accounts are linked) deletes all downloaded games from IndexedDB and the Masters Explorer cache. Per-account sync timestamps are **not** reset, so the next sync remains incremental — to force a full re-fetch, unlink and re-link the account.
-- **Logout** clears all Games data: IndexedDB game store, the in-memory linked-accounts cache, and the per-account sync timestamps in `localStorage`.
+Unlinking an account:
+- Removes its per-account ingest state from the blob (`games.{platform}:{user}`).
+- Purges stored `GameRecord` entries whose `wa`/`ba` matches that account from every day's `practiceLog[].games.records`.
+- Per-day counters (`ingested`/`reviewed`/`mistakes`) are left intact — historical activity remains visible on the Dashboard.
 
-```ts
-type Platform = 'lichess' | 'chess.com';
+## Data Source
 
-interface LinkedAccount {
-  platform: Platform;
-  username: string;
-}
-// Persisted as part of the repertoire blob: RepertoireData.settings.linkedAccounts
-```
+The Games page reads from `activity.practiceLog[].games.records[]` on the synced repertoire blob (see [`GAME-INGEST.md`](./GAME-INGEST.md) §1 for the record shape). Records are written by ingest; verdicts (`an`, `op`) are written by the Games page's analysis pass and persist back to the same record. Once written, a verdict syncs across devices — a game is analyzed once, then instant everywhere.
 
-## 2. Game Download
+## Landing Flow
 
-### 2.1 Lichess
+On opening `/games` (logged-in, with linked accounts):
 
-| Parameter | Value |
-|-----------|-------|
-| API | `GET https://lichess.org/api/games/user/{username}` |
-| Format | NDJSON (`Accept: application/x-ndjson`) |
-| Filters | `rated=true`, `perfType=blitz,rapid`, `clocks=true`, `evals=true`, `opening=true` |
-| Batch size | Last **100** games on initial download |
-| Incremental | Track `lastSyncTimestamp` per account in `localStorage`. On subsequent downloads, pass `since={lastSyncTimestamp+1}` with `sort=dateAsc` to fetch all new games. |
+1. **Render immediately** from records that already have `an`, newest first.
+2. **Background ingest** — run the same ingest pipeline the Dashboard runs. New games land as new records; the 100-record retention cap is enforced inside the ingest write path (see below). The two entry points (Dashboard auto, Games page) share the same pipeline, so neither can leave the blob over-cap.
+3. **Plan** — enumerate records lacking `an`, oldest-first; for each, discover the ambiguous-zone opponent moves that need a masters lookup.
+4. **Reserve placeholders** — every queued record gets a **skeleton row** in its final sorted slot before the analyze loop begins. This prevents the "rows pop in newest-first, push everything down" jumping effect as each game's `an` lands.
+5. **Analyze sequentially, oldest-first**. Each game's verdict is computed, written back optimistically to the in-memory tree, and the row hydrates from skeleton to content in place. Verdicts flush to the backend in batches.
+6. A manual **Sync** button (next to the header) re-runs the same pipeline; the auto-trigger and the button share a single-flight lock.
 
-### 2.2 Chess.com
+A **sticky session ordering** keeps already-rendered rows in their slot for the duration of the session; newly arriving rows are placed by their timestamp relative to the current bounds. Without this, an evicted-then-re-ingested game could jump in the list.
 
-| Parameter | Value |
-|-----------|-------|
-| Archives API | `GET https://api.chess.com/pub/player/{username}/games/archives` |
-| Monthly API | `GET https://api.chess.com/pub/player/{username}/games/{YYYY}/{MM}` |
-| Format | JSON with `games[]` array; each game includes a `pgn` field |
-| Filters | `rated=true`, `time_class` in `[blitz, rapid]`, `rules=chess` |
-| Batch size | Last **100** eligible games on initial download |
-| Incremental | Track `lastSyncTimestamp` per account. Fetch all archive months from the watermark month onward, skip games older than watermark. |
-| ID format | `chesscom_{uuid}` (prefixed to avoid collision with Lichess IDs) |
+### Progress indicator
 
-### 2.3 Storage
+A status pill next to the Games header shows the current state — syncing (spinner), analyzing N of M games (progress bar) when the pass has more than a few games to process, or last-sync timestamp once complete. The timestamp is stamped on every completion path (success, error, empty) since failures are silent in the UI.
 
-Downloaded games are stored in **IndexedDB** using the `idb` library:
+## Theory Verdicts (`an`)
 
-| Property | Value |
-|----------|-------|
-| DB name | `chesslaunchpad-games-db` |
-| Store | `games` |
-| Key path | `id` (platform-specific: Lichess game ID or `chesscom_` + UUID) |
-| Indexes | `createdAt`, `username` |
+`an` is the page's "done" marker on a record. It holds only the masters-dependent decisions; everything else is recomputed at render time from `m` + repertoire + `ev`.
 
-Each stored record:
-
-```ts
-interface StoredGame {
-  id: string;
-  createdAt: number;
-  username: string;           // lowercase username
-  platform?: Platform;        // 'lichess' | 'chess.com' (missing = 'lichess' for legacy records)
-  data: Record<string, unknown>;  // raw game object (Lichess NDJSON or Chess.com JSON)
+```jsonc
+"an": {
+  "tv": [                       // RESOLVED masters verdicts only (sparse)
+    { "ply": 12, "in": true },  // confirmed in theory
+    { "ply": 16, "in": false }  // confirmed out of theory
+    // ambiguous plies with no masters data are OMITTED
+  ]
 }
 ```
 
-### 2.4 Sync Watermarks
+Verdicts are keyed by **ply** (replay is deterministic) and only populated for opponent moves whose eval drop lands in the **ambiguous zone (15–44 cp)**. Below 15 cp is trivially in-theory; ≥ 45 cp is out-of-theory; both are decidable locally.
 
-Watermarks are stored per account as:
-```
-localStorage key: chesslaunchpad:lastSyncTimestamp:{platform}:{username}
-```
+- **Sparse-map rule.** A ply that masters had **no data** for — i.e. the masters API returned `totalGames === 0` for the position — is omitted, not stored as `false`. At render, an ambiguous ply absent from `tv` falls through to the engine's optimistic in-theory default. This avoids conflating "confirmed out of theory" with "no data" — a one-way door — and lets a later pass retry only the no-data plies. Note that a position with `totalGames > 0` but where the opponent's SAN was never played is **not** no-data; that's a confirmed out-of-theory signal (`{ in: false }`).
+- **Empty `tv` is valid.** A game with no ambiguous positions, or all ambiguous plies returned no-data, is still considered analyzed once `an` is present.
+- **No automatic invalidation.** `an` is not cleared when the repertoire changes. A stale verdict simply persists; the user re-runs it via Re-annotate.
 
-Download is triggered manually via a **"Sync Games"** button on the Games page. A progress indicator shows "Downloading… N games" while the stream is active. Sync runs for all linked accounts across both platforms.
+### Lichess OAuth gate
 
-Only games from currently linked accounts are displayed. Unlinking an account removes its cached games and sync watermark.
+The masters opening explorer (`explorer.lichess.org/masters`) requires a Lichess OAuth token to query.
 
-## 3. Games Page
+- **Chess.com records** never need masters (they always write `an: {}` immediately).
+- **Lichess records with no ambiguous positions** (K = 0) also write `an: {}` immediately.
+- **Lichess records with K > 0** require a connected Lichess account. When disconnected, these records are held out of the pass and a top-of-page banner counts them and prompts the user to connect.
+- If the user has linked accounts but no Lichess connection, the empty-state copy nudges them to connect.
 
-New route: `/#/games` (protected, requires login). Nav link in the header.
+Transient masters failures (network / HTTP) leave the game unanalyzed — it re-queues on the next pass; a banner counts the deferred games for the current session.
 
-Displays a list of recently downloaded games, most recent first.
+## Re-annotate
 
-### 3.1 Game Row
+Per-row **Re-annotate** (overflow menu) clears `an` and `op` for that record and triggers a fresh analysis pass. While the new verdict is pending, the row stays visible with its **prior `an`** so it doesn't disappear; on failure the prior verdict is restored.
 
-Each game is rendered as a single row containing:
+For **Lichess** records, Re-annotate first re-fetches the game from `/api/game/export/{id}` so any post-ingest server analysis (per-ply evals, refined opening name) is picked up. Chess.com has no per-game endpoint worth the cost; it just re-runs analysis against the cached record.
 
-| Element | Description |
-|---------|-------------|
-| **Mini board** | Small chessboard (≈120px) showing the position at the first theory gap or end of theory. Board oriented to the user's color. |
-| **Annotated PGN** | Opening portion of the game (see §3.2 for highlighting rules). Approximately the first ~30 plies or until theory ends + a short buffer, whichever is longer. |
-| **Players** | Both White and Black player names with ratings; the user's name is visually emphasized. |
-| **Result** | Win / Draw / Loss (from the user's perspective) |
-| **Time control** | e.g., "5+3", "10+0" |
-| **Rated** | Badge indicating rated vs casual |
-| **Opening** | Opening name (from Lichess `opening.name` or Chess.com `ECOUrl` header) |
-| **Date** | Game date |
-| **View on platform** | Link to the game on the originating platform, oriented to the user's color. Lichess: `https://lichess.org/{id}/{color}`. Chess.com: `https://www.chess.com/game/live/{uuid}`. |
+## Render
 
-### 3.2 PGN Annotation & Highlighting
+Each row shows:
 
-For each user move in the displayed PGN, apply the following highlights (in priority order):
+- **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start. When the user deviated, **green arrows** mark the repertoire moves and a **red arrow** marks the move played.
+- **Players** — White / Black names with ratings; the user's side is visually emphasized.
+- **Right column** — Result · Rated/Casual · Speed · Time control · Date · "View on platform" link.
+- **Opening name** (from `o`).
+- **Annotated PGN** with per-move highlighting (see below).
+- **Deviation summary** when the user deviated from repertoire — names the expected repertoire move(s) and the move actually played.
+- **End-of-theory (EOT) summary** when the opponent left repertoire and the user's response was an eval drop (inaccuracy/mistake/blunder).
+- **Opponent analysis** result if `op` is present and not stale (see below).
 
-1. **In-repertoire (positive)** — The position after this move matches a FEN that exists in the user's repertoire data. Highlight with a **green** background. Determined by replaying the game with `chess.js` and checking whether each resulting FEN appears in any variant's move sequence.
+### Move highlighting
 
-2. **Theory deviation with eval drop** — The user deviated from the repertoire (the position before the move is in the repertoire but the move played is not the repertoire move) **and** the deviation caused an eval drop. Eval drops are computed using multiple sources in priority order:
+| Highlight | Condition |
+|---|---|
+| `in-repertoire` (green) | User move whose resulting FEN matches a repertoire position. |
+| `deviation` (purple) | First user move that leaves the repertoire. |
+| `out-of-repertoire-response` (eval-drop colored) | A user move after the **opponent** left repertoire, colored by its eval drop (inaccuracy = gold, mistake = red, blunder = purple). |
+| `out-of-repertoire` / `out-of-theory` (dimmed) | Opponent moves outside repertoire, or any move once theory has truly ended. |
 
-   1. **ExplorerEvals** — Pre-computed static evals for repertoire positions (instant, no network).
-   2. **Embedded Lichess analysis** — Per-ply centipawn evals from the Lichess game's `analysis[]` array, already stored in IndexedDB. Only available for Lichess games with server analysis.
+Eval drops use the same thresholds as the Repertoire page (inaccuracy ≥ 30 cp, mistake ≥ 50 cp, blunder ≥ 70 cp). Eval sources, in priority order:
 
-   Apply the same thresholds already used on the Repertoire page (inaccuracy ≥ 30cp, mistake ≥ 50cp, blunder ≥ 70cp). Highlight with the corresponding eval-drop color.
+1. **`ExplorerEvals`** — pre-computed static evals for repertoire positions (no network).
+2. **Embedded Lichess per-ply evals** (`record.ev`). Absent for Chess.com.
 
-   This also applies when the **opponent** deviates from the repertoire — the user's first response move after the opponent's deviation is evaluated for an eval drop using the same logic. This surfaces whether the user handled the surprise well.
+When neither source has eval data for a ply, the engine falls back to its optimistic in-theory default — the same behavior the Repertoire page uses.
 
-   Moves that are in the repertoire are always **green**, even if they have an eval drop — those drops are intentional choices and are already surfaced on the Repertoire page. Only moves that deviate from the repertoire are candidates for eval-drop highlighting.
+Each row's left border is color-coded for at-a-glance status: purple for user-deviation rows, gold/red/purple for EOT inaccuracy/mistake/blunder, no border otherwise.
 
-   Deviations without eval data are shown with a subtle orange highlight to remain visible.
+## Opponent Analysis (`op`)
 
-3. **Out of repertoire (neutral)** — Opponent moves that leave the user's repertoire but are still within overall theory (reasonable moves with eval drop below the out-of-theory threshold). These are shown in dimmed opponent styling.
+When the EOT summary fires (opponent deviated, user's response was an eval drop), the row's overflow menu shows **"Analyze opponent"**. This downloads up to **1,000** of the opponent's most recent public games from the same platform and counts how many reached the critical positions:
 
-4. **Out of theory (neutral)** — Moves after theory truly ends (opponent blundered out of theory, or all theory connection is lost). Shown in default styling (no highlight).
+- `fenBefore` — after the opponent's out-of-repertoire move.
+- `fenAfter` — after the user's eval-dropped response.
 
-Opponent moves are displayed in a dimmed style to visually distinguish them from user moves.
+Only one row at a time runs opponent analysis; other rows' actions are disabled during a run. A per-row progress bar shows download count.
 
-### 3.3 Mini Board Position
+The result is persisted on the record as `op`:
 
-The mini board shows the position at the **first notable event**, chosen in this priority:
-1. The position where the user first deviated from repertoire.
-2. The position where the user had the first eval-drop (≥ inaccuracy).
-3. The last position that was still in-repertoire (end of theory).
-4. The starting position (if no repertoire overlap at all).
-
-When the user deviated from repertoire, the mini board also shows **arrows**: green arrows for the repertoire moves from that position and a red arrow for the user's actual move.
-
-### 3.4 Deviation & Eval Drop Summaries
-
-Below the PGN, game rows display contextual summaries:
-
-- **Deviation summary** — When the user deviated from repertoire, a text callout shows "Repertoire has **X** but you played **Y**" with a warning icon.
-- **Out-of-repertoire eval drop summary** — When the opponent deviated and the user's response had an eval drop, a summary shows the user's move and its eval-drop category (inaccuracy/mistake/blunder).
-
-### 3.5 Post-Theory Extended Analysis
-
-When the opponent deviates from the repertoire, the system evaluates not just the user's first response but continues analyzing subsequent user moves for eval drops. Analysis stops when the opponent plays a move with an eval drop ≥ 50cp (indicating the opponent left "overall theory"). This surfaces whether the user handled the surprise well across multiple moves.
-
-### 3.6 Game Row Visual Indicators
-
-Game row tiles have a colored left border indicating status:
-- **Purple border** — User deviated from repertoire.
-- **Category-colored border** — Out-of-repertoire eval drop (gold for inaccuracy, red for mistake, purple for blunder).
-- **No border** — Game stayed in repertoire or had no notable events.
-
-### 3.7 Display Limits
-
-The Games page displays at most **100** games. Games are filtered to only those from currently linked accounts and where the user can be identified as a player.
-
-### 3.8 Opponent Theory Detection
-
-When a game has an out-of-repertoire eval-drop summary (the opponent deviated from repertoire and the user's response was an inaccuracy, mistake, or blunder), the row's **⋯** overflow menu shows an **"Analyze opponent games"** action.
-
-| State | Behavior |
-|-------|----------|
-| Eligible game | Overflow menu shows **"Analyze opponent games"** |
-| Saved analysis present | Overflow menu shows **"Opponent analysis ✓"** and the item is disabled |
-| Another row is already analyzing | Other rows' analyze actions are disabled until the active analysis completes or is aborted |
-
-Selecting **"Analyze opponent games"** downloads up to **1,000** of the opponent's most recent public games from the same platform as the source game:
-
-- **Lichess** — NDJSON streaming API
-- **Chess.com** — archives API
-- **Excluded** — bullet games
-- **Auth** — no authentication required; only public APIs are used
-
-The analysis replays each downloaded game with `chess.js` only up to the target ply (the ply of the user's bad move). It normalizes FENs and checks whether the game reached either of these critical positions:
-
-- **`fenBefore`** — the position after the opponent's out-of-repertoire move
-- **`fenAfter`** — the position after the user's inaccurate / mistaken / blunder response
-
-While the download and scan are running, the game row shows a progress indicator below the out-of-repertoire eval-drop summary:
-
-- Text: **"Analyzing opponent's games… N"**
-- A percentage progress bar reflecting download / analysis completion
-
-When analysis completes, the row shows:
-
-- A color-coded status icon
-- Summary text in the form **"Opponent has N games after {oppSan} and K after {userSan} (of M analyzed)"**
-- A threat-level label based on how often the opponent previously reached **`fenBefore`**
-- Links to the opponent's **5 most recent** games that reached those critical positions, labeled by date
-
-Threat levels use the following thresholds:
-
-| `fenBefore` count | Visual treatment | Label |
-|-------------------|------------------|-------|
-| 0-2 | Green info icon | **Opponent likely unfamiliar with this position** |
-| 3-9 | Gold warning icon | **Opponent has some experience here** |
-| 10-24 | Red warning icon | **Opponent knows this position well** |
-| 25+ | Purple exclamation icon | **Opponent is very experienced here** |
-
-Opponent-analysis results are persisted separately from downloaded Games data:
-
-| Property | Value |
-|----------|-------|
-| IndexedDB DB name | `chesslaunchpad-opponent-analysis` |
-| Lifetime | Loaded when the Games page mounts and survives page reloads |
-| Scope | Stores saved opponent-analysis results per analyzed game |
-
-Cache invalidation rules:
-
-- **Re-annotate** clears the game's saved opponent-analysis result and aborts any in-flight analysis for that game.
-- Saved analysis remains visible until re-annotation occurs.
-
-## 4. Repertoire Cross-Reference
-
-To determine whether a position is "in repertoire," the system:
-
-1. Loads the user's `RepertoireData` (same data source as the Training and Repertoire pages).
-2. For each variant, replays the PGN with `chess.js` to build a set of FENs (normalized: halfmove and fullmove clocks reset for transposition matching).
-3. Builds two `Set<string>` — one for white variants, one for black — so each game uses only the FEN set matching the user's color in that game.
-4. While replaying each game, checks each position against the appropriate set.
-
-The FEN sets are computed once (memoized) and shared across all game rows.
-
----
-
-## Technical Notes
-
-### Dependencies
-
-- **`idb`** — Promise wrapper for IndexedDB.
-- **`chess.js`** — Already in the project for PGN replay and FEN generation.
-- **`ExplorerEvals`** / **`EvalDropService`** — Reuse existing services for eval-drop detection.
-- **`LichessCloudEvalService`** — Cloud eval API with IndexedDB persistence (currently disabled for batch annotation; used on-demand by `AnalysisPopover`).
-
-### Eval Sources
-
-The annotation logic tries eval sources in priority order to compute eval drops for post-theory and deviation moves:
-
-| Priority | Source | Scope | Network |
-|----------|--------|-------|---------|
-| 1 | `ExplorerEvals` | Repertoire positions only (static JSON) | No |
-| 2 | Embedded Lichess analysis | Lichess games with server analysis (`analysis[]` in stored game data) | No (already in IndexedDB) |
-
-Embedded evals are single-value (not multi-PV), so `computeConservativeDrop` receives 1-element arrays. Chess.com games do not include embedded evals — only ExplorerEvals applies.
-
-### Data Flow
-
-```
-Settings Page                  Games Page
-─────────────                  ──────────
- [Add Lichess username] ──→ localStorage: linkedAccounts[]
-                                    │
-                              [Sync Games] button
-                                    │
-                         ┌──────────┴──────────┐
-                    Lichess NDJSON API    Chess.com API
-                    (with evals=true)
-                         └──────────┬──────────┘
-                                    │
-                              IndexedDB: games store
-                              (includes raw game data
-                               with embedded analysis)
-                                    │
-                          ┌─────────┴─────────┐
-                          │                   │
-                    RepertoireData      Eval sources
-                          │            ┌──────┴──────┐
-                     FEN matching   ExplorerEvals  Embedded
-                          │          (static JSON)  analysis
-                          │            └──────┬──────┘
-                          └─────────┬─────────┘
-                                    │
-                              Annotated game rows
-                              (PGN + mini board)
+```jsonc
+"op": {
+  "ply": 14,           // anchor — ply of the user's deviation
+  "m": 842,            // opponent games analyzed
+  "nb": 7,             // count reaching fenBefore
+  "na": 2,             // count reaching fenAfter
+  "os": "Nxe4",        // opponent move SAN (critical)
+  "us": "exd6",        // user move SAN (critical)
+  "rb": [...],         // ≤5 recent before-games (date + URL)
+  "ra": [...],         // ≤5 recent after-games (date + URL)
+  "at": 1716700000000  // analyzedAt (ms)
+}
 ```
 
-### Storage Budget
+- Keyed by **ply** so the analysis re-attaches even after a repertoire change. If no deviation sits at that ply after a change (e.g., the user added the played move to their repertoire), `op` is treated as **stale** — hidden from render and the menu action becomes available again.
+- Re-annotate clears `op` along with `an`.
+- One analysis per game today; the shape leaves room for an array later.
 
-| Store | Estimated size |
-|-------|---------------|
-| 100 games × ~5KB each | ~500KB per sync |
-| Repertoire FEN set | ~50KB (computed in memory, not stored) |
+A **threat-level** label is derived from `nb` (`0–2` low, `3–9` moderate, `10–24` high, `25+` very high), with up to 5 recent game links.
 
-IndexedDB storage is effectively unlimited for this volume.
+## Retention
+
+The total number of `GameRecord` entries across every day is capped at **100**. When ingest exceeds the cap, it evicts the **oldest day's records as a whole**, repeating oldest-first until total ≤ 100. Eviction:
+
+- Empties only the `records` array — per-day counters stay so the Dashboard activity feed still shows the day had ingested games.
+- Never partials a day. If a single day alone exceeds the cap, it is preserved intact.
+- Runs inside the shared ingest write path, so masters budget is never spent on games about to be dropped.
+
+The invariant `records.length == ingested || records.length == 0` holds per day (empty `records` with non-zero `ingested` means the day was evicted).
+
+## Out of Scope
+
+- A separate `recentIds` ring (ingest dedup state) keeps using its own 50-ID per-account window. `records` is display data only and cannot bound the 5-day dedup window. See [`GAME-INGEST.md`](./GAME-INGEST.md) §1.
+- Bullet games, variants, daily/correspondence, casual games.
+- Full-game (un-truncated) PGNs on the backend.

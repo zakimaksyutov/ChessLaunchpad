@@ -3,10 +3,10 @@ import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { ExplorerEvals } from '../models/ExplorerEvals';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 import type { Platform } from './LinkedAccountsService';
-import { parseChesscomTimeControl } from './ChesscomGamesService';
+import { parseChesscomTimeControl } from './ChesscomTimeControl';
 import type { MoveStats } from './MastersExplorerService';
 
-/** Duck-typed interface for masters data lookup (satisfied by both MastersLookup and MastersCache). */
+/** Duck-typed interface for masters data lookup (satisfied by `MastersLookup` and the `AnVerdictLookup` built from persisted `an.tv`). */
 export interface MastersLookupLike {
     getMoveStats(fen: string, moveSan: string): MoveStats | null;
     isOutOfTheory(fen: string, moveSan: string): boolean | null;
@@ -34,7 +34,7 @@ const AMBIGUOUS_THEORY_THRESHOLD = 15;
 /** Large cp value used when analysis reports a forced mate. */
 const MATE_CP = 10_000;
 
-export type EvalSource = 'explorer' | 'embedded' | 'cloud' | 'none';
+type EvalSource = 'explorer' | 'embedded' | 'cloud' | 'none';
 
 /**
  * Extract per-ply centipawn evals from the Lichess `analysis` array.
@@ -108,7 +108,7 @@ function lookupEvals(
     return null;
 }
 
-export type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-repertoire-response' | 'out-of-repertoire' | 'out-of-theory';
+type MoveHighlight = 'in-repertoire' | 'deviation' | 'out-of-repertoire-response' | 'out-of-repertoire' | 'out-of-theory';
 
 export interface AnnotatedMove {
     /** SAN of the move */
@@ -128,23 +128,13 @@ export interface AnnotatedMove {
 }
 
 /** Info about the first user deviation from repertoire */
-export interface DeviationInfo {
+interface DeviationInfo {
     /** FEN of the position before the deviation (after opponent's move) */
     fen: string;
     /** The move the user actually played (red arrow) */
     userMove: { from: string; to: string; san: string };
     /** Moves from this position that stay in repertoire (green arrows) */
     repertoireMoves: { from: string; to: string; san: string }[];
-}
-
-export interface MissingEvalPosition {
-    /** Index into the moves[] array */
-    moveIndex: number;
-    /** Ply index (0-based) */
-    plyIndex: number;
-    fenBefore: string;
-    fenAfter: string;
-    isWhiteMove: boolean;
 }
 
 /** Opponent move in the ambiguous eval-drop zone (15–44 cp) needing masters DB check. */
@@ -167,8 +157,6 @@ export interface GameAnnotation {
     miniBoardOrientation: 'white' | 'black';
     /** Deviation details for arrow display on the mini board */
     deviation?: DeviationInfo;
-    /** Positions where eval data was needed but unavailable from sources 1+2 */
-    missingEvalPositions?: MissingEvalPosition[];
     /** Opponent moves in the ambiguous zone (15–44 cp) that need masters DB verification */
     ambiguousTheoryPositions?: AmbiguousTheoryPosition[];
 }
@@ -301,16 +289,8 @@ export function buildPgn(gameData: Record<string, unknown>, platform: Platform):
     return buildPgnFromLichessData(gameData);
 }
 
-/**
- * Annotate a game's moves against the user's repertoire FEN set.
- *
- * @param gameData Raw Lichess NDJSON object
- * @param username Lichess username (for determining user's color)
- * @param repertoireFens Set of normalized FENs for the user's color in this game
- * @param evals ExplorerEvals instance for eval-drop computation
- * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
- */
-export function getOpponentName(
+/** Return the opponent's display name as provided by the source platform. */
+function getOpponentName(
     gameData: Record<string, unknown>,
     userColor: 'white' | 'black',
     platform: Platform
@@ -323,6 +303,15 @@ export function getOpponentName(
     return getPlayerInfo(players, opponentColor).name;
 }
 
+/**
+ * Annotate a game's moves against the user's repertoire FEN set.
+ *
+ * @param gameData Raw Lichess NDJSON object
+ * @param username Lichess username (for determining user's color)
+ * @param repertoireFens Set of normalized FENs for the user's color in this game
+ * @param evals ExplorerEvals instance for eval-drop computation
+ * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
+ */
 export function annotateGame(
     gameData: Record<string, unknown>,
     username: string,
@@ -364,7 +353,6 @@ export function annotateGame(
     if (debugThis) console.groupCollapsed(`[annotate ${gameId}] ${username} as ${userColor} vs ${opponentName}, repertoire size=${repertoireFens.size}, moves=${allMoves.length}, hasEmbeddedEvals=${embeddedEvals !== null}`);
 
     const moves: AnnotatedMove[] = [];
-    const missingEvalPositions: MissingEvalPosition[] = [];
     const ambiguousTheoryPositions: AmbiguousTheoryPosition[] = [];
     let postTheoryAnalysis = false;
     let theoryEndPly = 0;
@@ -451,7 +439,6 @@ export function annotateGame(
                 }
             } else {
                 reason += ', no eval data for drop calc';
-                missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent left the user's repertoire.
@@ -528,7 +515,6 @@ export function annotateGame(
                 }
             } else {
                 reason += ', no eval data for drop calc';
-                missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else if (postTheoryAnalysis && !isUserMove) {
             // Subsequent opponent move — three-zone check
@@ -565,7 +551,6 @@ export function annotateGame(
             } else {
                 highlight = 'out-of-repertoire';
                 reason += ', no eval data for opponent drop → continue';
-                missingEvalPositions.push({ moveIndex: moves.length, plyIndex: i, fenBefore, fenAfter, isWhiteMove });
             }
         } else {
             highlight = 'out-of-theory';
@@ -613,7 +598,6 @@ export function annotateGame(
         miniBoardFen,
         miniBoardOrientation: userColor,
         deviation,
-        missingEvalPositions: missingEvalPositions.length > 0 ? missingEvalPositions : undefined,
         ambiguousTheoryPositions: ambiguousTheoryPositions.length > 0 ? ambiguousTheoryPositions : undefined,
     };
 }
@@ -823,7 +807,7 @@ function getGameMetadataChesscom(gameData: Record<string, unknown>, username: st
 // End-of-theory position derivation (for opponent analysis)
 // ---------------------------------------------------------------------------
 
-export interface EotPositions {
+interface EotPositions {
     /** Normalized FEN of position before the user's bad move (after opponent's move) */
     fenBefore: string;
     /** Normalized FEN of position after the user's bad move */
@@ -850,7 +834,6 @@ export interface EotPositions {
 export function deriveEotPositions(
     gameData: Record<string, unknown>,
     annotation: GameAnnotation,
-    username: string,
     platform: Platform
 ): EotPositions | null {
     // Find the first out-of-repertoire-response with a non-ok eval drop

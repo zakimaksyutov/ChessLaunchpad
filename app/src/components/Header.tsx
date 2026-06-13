@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { clearGames } from '../data/GamesDB';
-import { getLinkedAccounts, setLinkedAccounts } from '../services/LinkedAccountsService';
+import { setLinkedAccounts } from '../services/LinkedAccountsService';
 import { PendingEditNotifier } from '../services/PendingEditNotifier';
 import './Header.css';  // Import the CSS file
 
@@ -78,17 +77,12 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         // Close the dropdown (otherwise it would be autoshown after next login)
         setIsDropdownOpen(false);
 
-        // Clear Games data (IndexedDB + per-account sync timestamps).
-        clearGames().catch(() => { /* best-effort */ });
-
-        // Per-account sync watermarks live in localStorage and are keyed by
-        // platform+username. Iterate the in-memory LinkedAccountsService cache
-        // (the authoritative source for the active session) and clear each
-        // account's watermark so a different user logging into this browser
-        // doesn't inherit them.
-        for (const a of getLinkedAccounts()) {
-            localStorage.removeItem(`chesslaunchpad:lastSyncTimestamp:${a.platform}:${a.username}`);
-        }
+        // Game records live on the synced repertoire blob — no on-device
+        // game cache survives logout. Any leftover legacy localStorage
+        // sync-watermark keys from before the games-refactor are harmless
+        // (the new ingest pipeline reads watermarks from the blob's
+        // `data.games[*].watermarkMs`); the boot-time IDB cleanup also
+        // sweeps the retired stores.
 
         // Reset the in-memory LinkedAccountsService cache so a subsequent
         // login as a different user does not inherit the previous user's
