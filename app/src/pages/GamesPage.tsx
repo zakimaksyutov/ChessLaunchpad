@@ -725,16 +725,25 @@ const GamesPage: React.FC = () => {
         return ordered.map(o => o.payload);
     }, [renderableRows]);
 
-    // Annotation cache: re-render against fresh data; recompute when records or
-    // repertoire change. Per-row memoization is automatic via the row component
-    // (GameRow takes the record + userLower; useMemo within keys on those).
-    // Pending (skeleton) rows are skipped — they intentionally render
-    // without an annotation, and computing one against an un-analyzed
-    // record would just produce a partial verdict that flickers a moment
-    // before the real one lands.
+    // Annotation cache: per-record WeakMap memo so the reveal-as-ready
+    // loop (which fires `setData(d => ({...d}))` per analyzed game) only
+    // re-annotates rows whose `record.an` actually changed — avoiding
+    // quadratic chess.js work on large row counts. Reuse a cached entry
+    // only when `an` / `fens` / `explorerEvals` references all still
+    // match (`record.an` is replaced wholesale by the reveal patch, so
+    // identity is a precise invalidation signal). Pending rows skip
+    // annotation; the Re-annotate debug path bypasses the cache so its
+    // one-shot console log still fires.
+    const annotationCacheRef = useRef<WeakMap<GameRecord, {
+        an: GameRecord['an'];
+        fens: Set<string>;
+        explorerEvals: ExplorerEvals;
+        annotation: GameAnnotation | null;
+    }>>(new WeakMap());
     const annotationByKey = useMemo(() => {
         const map = new Map<string, GameAnnotation | null>();
         if (!fenSets || !explorerEvals) return map;
+        const cache = annotationCacheRef.current;
         for (const { record, userLower, pending } of orderedRows) {
             const key = `${record.p}:${record.id}`;
             if (pending) {
@@ -743,15 +752,28 @@ const GamesPage: React.FC = () => {
             }
             const color = getRecordUserColor(record, userLower);
             const fens = color === 'white' ? fenSets.whiteFens : color === 'black' ? fenSets.blackFens : new Set<string>();
-            const lookup = buildLookupFromAn(record);
             // Fire the Re-annotate one-shot debug log on the first render
             // where the row is no longer showing the prior-`an` overlay —
             // i.e. when the fresh verdict (or the restored prior `an`) is
             // back on the canonical record.
             const wantDebug =
                 debugRecordKeysRef.current.has(key) && !reannotatingKeys.has(key);
+            if (!wantDebug) {
+                const cached = cache.get(record);
+                if (
+                    cached &&
+                    cached.an === record.an &&
+                    cached.fens === fens &&
+                    cached.explorerEvals === explorerEvals
+                ) {
+                    map.set(key, cached.annotation);
+                    continue;
+                }
+            }
+            const lookup = buildLookupFromAn(record);
             const ann = annotateRecord(record, userLower, fens, explorerEvals, lookup, undefined, wantDebug);
             if (wantDebug) debugRecordKeysRef.current.delete(key);
+            cache.set(record, { an: record.an, fens, explorerEvals, annotation: ann });
             map.set(key, ann);
         }
         return map;
