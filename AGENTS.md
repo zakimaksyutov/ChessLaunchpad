@@ -84,7 +84,7 @@ The backend is a REST API (`https://chess-prod-function.azurewebsites.net/api/us
 
 ## Playwright / E2E
 
-Test account credentials are in `.env` at the repo root (git-ignored). Use these to log in during Playwright-based automation.
+Test account credentials are in `.env` at the repo root (git-ignored). Use these to log in during Playwright-based automation. When operating in a git worktree, look for `.env` in the main repository folder (it is not copied into worktrees).
 
 ## Vite Development Notes
 
