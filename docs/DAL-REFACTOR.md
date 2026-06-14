@@ -68,6 +68,14 @@ The `SessionStore` singleton lives for the whole logged-in session. Proxies are 
 
 The SessionStore's cache is the warm state that persists across these mount/unmount cycles. Proxies carry an etag snapshot for their page's lifetime; nothing more.
 
+### Abort signal plumbing
+
+Each page that starts a long-running background write owns one page-scoped `AbortController` (`pageAbortRef`), created at mount and aborted on real unmount. Helpers (`runIngest`, the `GameRecordAnalysisPass.*` persist functions, `OpponentAnalysisService.analyzeOpponentGames`) take a single `signal: AbortSignal` parameter and observe it at their existing checkpoints (between compose and PUT, and inside `fetch` options). Helpers don't need to know about page vs operation distinctions — composition is the caller's concern.
+
+For call sites that need both a page signal and a per-operation signal (the analysis pass aborted by `handleReannotate`, opponent analysis aborted by the row's own controller), combine them at the call site with `AbortSignal.any([pageSignal, opSignal])`. ES2024 `AbortSignal.any` is supported in every browser version the app already targets; if the implementer prefers to avoid it, a 5-line `composeSignals(...signals)` helper that wires `addEventListener('abort')` onto a fresh controller is equivalent and idiomatic. Either way, helpers see a single signal and the test surface (`new AbortController(); pass .signal`) stays identical to today.
+
+**StrictMode caveat.** Calling `pageAbortRef.current.abort()` from a top-level `useEffect` cleanup naively will misfire in dev: React's synthetic mount → unmount → remount cycle fires the cleanup before the remount, so a pass started on first mount gets aborted immediately and looks broken. The existing GamesPage analysis-pass `useEffect` already documents this exact tension (it explicitly skips abort-on-cleanup); the page-lifecycle controller needs equivalent protection. Two idiomatic options: (a) recreate the controller fresh on every effect run (mirror Dashboard's `mountedRef` reset pattern) so the synthetic-cycle abort hits a controller no live work references; (b) defer the abort by a tick (`setTimeout(() => abort(), 0)`) with a flag the remount clears. Implementer's choice; both are common.
+
 ## How this solves the two goals
 
 **Faster navigation.** First page after login fetches via `SessionStore.getSnapshot()` and populates the cache. Every later page mount constructs a proxy pre-populated from the cache; the first `dal.retrieveRepertoireData()` returns the cached data instantly. The repeated GET on each page mount goes away.
