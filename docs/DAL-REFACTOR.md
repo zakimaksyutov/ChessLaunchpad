@@ -9,47 +9,77 @@ Solve two concrete problems:
 
 ## Approach
 
-Introduce a session-scoped **`SessionStore`** singleton that owns the cached snapshot + ETag. Pages stop constructing their own `DataAccessLayer` instances; they read and write through the store. The store does **no** concurrency magic — it passes through the caller's ETag, and surfaces 412 as an exception. The "sync vs training" race is avoided by making `runIngest` abortable and cancelling it on Dashboard/Games unmount.
+Introduce two layers above the existing `IDataAccessLayer`:
 
-- One singleton, scoped to the logged-in user. Parameterized by `(username, password)`; torn down on logout.
-- Caches `(data, etag)` for the session. First `getSnapshot` after login fetches; subsequent calls return the cached pair.
-- `save` takes the caller-provided `etag` and PUTs verbatim. Returns the new `etag` from the server's response (the caller already has the data they sent, so only the new etag is interesting). The cache is updated to the new `(data, etag)` as a side effect. On 412 the store throws `DataAccessError`; the cache is left untouched.
+- **`SessionStore`** — a session-scoped singleton that owns the cached `(data, etag)` and exposes an explicit-etag API (caller provides etag on save; 412 throws).
+- **`DataAccessProxyLayer`** — a per-page instance, created via `SessionStore.createDataAccessProxyLayer()`, that exposes only the two methods pages and helpers use today (`retrieveRepertoireData` / `storeRepertoireData`). It holds its own etag, copied from the SessionStore at creation, and delegates to the SessionStore on every retrieve/store. Pages see the same shape they use today — etag stays hidden from them.
+
+The "sync vs training" race is avoided by making long-running background writes (`runIngest`, `GameRecordAnalysisPass`, `OpponentAnalysisService`) abortable and cancelling them on Dashboard/Games unmount.
+
+- One `SessionStore` singleton, scoped to the logged-in user. Parameterized by `(username, password)`; torn down on logout. Initiates a `GET /variants` immediately on construction (eager fetch) so the first page after login can pick up the cached snapshot without waiting on a fresh network round-trip.
+- Caches `(data, etag)` for the session. `getSnapshot()` returns the cached pair, awaiting the in-flight initial fetch only if called before it completes. The cache is updated on every successful `save` (by any proxy) and on `importBlob`.
+- `SessionStore.save` takes the caller-provided `etag` and PUTs verbatim. Returns the new etag from the server. The cache is updated as a side effect. On 412 the store throws `DataAccessError`; the cache is left untouched.
 - `importBlob` is the only method that bypasses the cached ETag (rescue path for a corrupt server blob).
-- The existing `IDataAccessLayer` stays as the transport so tests can keep injecting a fake.
-- `runIngest` gains an `AbortSignal`. Dashboard and Games pass a signal from their `useEffect` cleanup so navigation aborts the in-flight sync before its PUT lands — this is how the "sync vs training" 412 is prevented in practice.
+- `DataAccessProxyLayer` exposes exactly two methods: `retrieveRepertoireData` and `storeRepertoireData`. On construction it captures `(data, etag)` from `SessionStore.getSnapshot()`. `retrieveRepertoireData()` returns SessionStore's current cached data and updates the proxy's etag (so a retry-loop refetch sees fresh in-tab state). `storeRepertoireData(data)` calls `SessionStore.save(data, this.etag)` and updates `this.etag` from the response. It does not implement the full `IDataAccessLayer` interface — account ops and ETag-bypass remain on the one-shot DAL / SessionStore.importBlob respectively.
+- The existing `IDataAccessLayer` interface stays unchanged so tests keep working without changes.
+- All long-running background writes started by a page gain an `AbortSignal` and tear themselves down on navigation. This covers `runIngest` (Dashboard + Games), the full `GameRecordAnalysisPass` including its batched flushes, and `OpponentAnalysisService` (long-running per-row analyzer on /games). Each page passes a signal from its `useEffect` cleanup. Re-annotate clear/refresh persists are single fast PUTs and are not separately aborted.
 
 ## Surface area
 
-3 methods total. (Account lifecycle — `createAccount`, `deleteAccount` — stays on the existing `IDataAccessLayer`; LoginPage and SettingsPage continue to construct a one-shot DAL for those calls, as they do today.)
+### `SessionStore` — 4 methods
 
 | Method | Used in | Parameters | Returns |
 | --- | --- | --- | --- |
-| `getSnapshot` | Every page on mount | — | `{ data: RepertoireData, etag: string }` (cached) |
-| `save` | Every write site (Training commit, Settings save, Explorer save, ingest pipeline, all GamesPage record edits) | `data: RepertoireData`, `etag: string` | new `etag: string` (cache + etag also updated as a side effect); throws `DataAccessError` (412) on conflict |
+| `getSnapshot` | First page after login; internally by every proxy on construction and on retrieve | — | `{ data: RepertoireData, etag: string }` (cached) |
+| `save` | Internally by every proxy on store | `data: RepertoireData`, `etag: string` | new `etag: string`; throws `DataAccessError` (412) on conflict |
 | `importBlob` | SettingsPage Import (file replace; ETag bypass) | `data: RepertoireData` | `void` (cache + etag updated as a side effect) |
+| `createDataAccessProxyLayer` | Every page on mount | — | a new `DataAccessProxyLayer` pre-populated with the current cached `(data, etag)` |
+
+Account lifecycle (`createAccount`, `deleteAccount`) stays on the existing `IDataAccessLayer`; LoginPage and SettingsPage continue to construct a one-shot DAL for those calls.
+
+### `DataAccessProxyLayer` — 2 methods
+
+| Method | Behavior |
+| --- | --- |
+| `retrieveRepertoireData()` | Returns `SessionStore.getSnapshot().data` (cached, no network); refreshes `this.etag` from the snapshot |
+| `storeRepertoireData(data)` | Calls `SessionStore.save(data, this.etag)`; updates `this.etag` from the response; throws on 412 |
+
+Helpers (`GameRecordAnalysisPass`, `runIngest`, etc.) accept the proxy via a narrow type that covers just these two methods (introduced as a new interface or inferred structurally — implementer's choice). The full `IDataAccessLayer` interface keeps its current shape for the one-shot DAL used by account ops.
+
+### Proxy lifecycle
+
+The `SessionStore` singleton lives for the whole logged-in session. Proxies are short-lived per-page handles:
+
+1. **Page mount** (e.g., user opens /games) → `useMemo` runs → `SessionStore.createDataAccessProxyLayer()` returns a new proxy, pre-populated with the SessionStore's current cached `(data, etag)`.
+2. **Page unmount** (user navigates away) → React drops the component, the proxy reference is dropped, the proxy is garbage-collected. Any in-flight background work using that proxy (`runIngest`, `GameRecordAnalysisPass`, `OpponentAnalysisService.analyzeOpponent`) is aborted via the `useEffect` cleanup signal so it stops before its next PUT.
+3. **Page re-mount** (user navigates back) → a **new** proxy is constructed, again pre-populated from the SessionStore's current cache — which may have moved on (e.g., due to a Training commit on the page they visited in between). The fresh proxy starts with the up-to-date etag automatically.
+
+The SessionStore's cache is the warm state that persists across these mount/unmount cycles. Proxies carry an etag snapshot for their page's lifetime; nothing more.
 
 ## How this solves the two goals
 
-**Faster navigation.** Every page mount calls `store.getSnapshot()`. The first call after login fetches; every subsequent call across page navigation is a cache hit. The repeated GET on each page mount goes away.
+**Faster navigation.** First page after login fetches via `SessionStore.getSnapshot()` and populates the cache. Every later page mount constructs a proxy pre-populated from the cache; the first `dal.retrieveRepertoireData()` returns the cached data instantly. The repeated GET on each page mount goes away.
 
 **Sync vs training.** Within one tab:
 
-- Ingest finished before navigation → cache already has the new data + etag → Training reads it → Training's save uses the current etag → succeeds. ✓
+- Ingest finished before navigation → cache holds post-ingest pair → Training's proxy is pre-populated with it → Training's save uses the current etag → succeeds. ✓
 - Ingest still running at navigation → `AbortSignal` cancels it before PUT → no concurrent writer → Training's save uses the cache's etag → succeeds. ✓ Ingest's fetched games are dropped; the next Dashboard visit re-fetches them.
 - Ingest's PUT already landed before navigation → cache holds the post-ingest pair → Training reads it → save succeeds. ✓
 
-The cancellation contract makes 412 vanishingly rare in normal use. When 412 does occur (e.g., a multi-tab race, or an abort that didn't beat an in-flight PUT), `save` throws and the calling page handles it the same way it does today.
+**Intra-tab concurrent writes** (e.g., analysis pass batch flush + opponent-click handler on /games using the same proxy) behave exactly as today: one helper's `store` may 412, the helper's existing retry loop refetches via `proxy.retrieveRepertoireData()` (which returns the now-current SessionStore cache, including the racing write), re-applies, and retries successfully. No silent loss; no user-visible 412.
+
+When 412 does surface to the page (rare — e.g., a multi-tab race or an abort that didn't beat an in-flight PUT), the calling page handles it the same way it does today.
 
 ## Out of scope
 
-- **Multi-tab races.** Tab A writes; Tab B's cached etag is stale; Tab B's save throws 412. Calling page handles it the same way it does today.
-- **In-store retry / queueing / ETag rewriting.** The store does not attempt to recover from 412 on the caller's behalf. The caller's etag is passed through verbatim.
-- Cross-tab coordination (BroadcastChannel), visibility/focus auto-revalidation, subscribe API. Pages keep using local React state seeded from `getSnapshot` / `save` return values.
+- **Multi-tab races.** Tab A writes; Tab B's cached etag is stale; Tab B's save throws 412. Calling page handles it the same way it does today. Existing retry loops bound their attempts and stop; the user reloads to recover.
+- **In-store concurrency control beyond proxy-level etag tracking.** No serialized write queue, no `refresh()` method. Recovery for in-tab races comes from helpers' existing retry-on-412 loops, which work because the SessionStore cache reflects every in-tab successful save.
+- Cross-tab coordination (BroadcastChannel), visibility/focus auto-revalidation, subscribe API.
 
 ## Migration notes
 
-- Replace each page's `useMemo(() => createDataAccessLayer(...))` with access to the shared `SessionStore`.
-- Replace `dal.retrieveRepertoireData()` with `store.getSnapshot()` and `dal.storeRepertoireData(blob)` with `store.save(blob, etag)`. Pages must thread the etag through their local React state alongside the data (today they don't track etag at all — the DAL hides it).
-- `GameRecordAnalysisPass.ts`'s per-write 412-retry loops (`flushAnUpdates`, `persistOpponentAnalysis`, `persistReannotateClear`, `persistReannotateRefresh`, `persistDeleteRecordsFromTimestamp`) keep their refetch-and-retry shape — but `refetch` now goes through `store.getSnapshot()` (or a `store.refresh()` if added) instead of `dal.retrieveRepertoireData()`, so they share the cache too.
-- `runIngest` gains an `AbortSignal` parameter and bails between its compose / PUT steps if aborted. Dashboard and Games pass a signal from `useEffect` cleanup.
-- `SettingsPage`'s import path keeps using `importBlob` for the ETag-bypass rescue behavior.
+- **Pages — one-line change.** Replace `useMemo(() => createDataAccessLayer(u, p))` with `useMemo(() => sessionStore.createDataAccessProxyLayer())`. Everything else identical. Pages never see an etag.
+- **Helpers — zero changes.** `GameRecordAnalysisPass.ts` (`flushAnUpdates`, `persistOpponentAnalysis`, `persistReannotateClear`, `persistReannotateRefresh`, `persistDeleteRecordsFromTimestamp`) and `runIngest` keep their existing retry-on-412 loops verbatim. They receive a proxy via the same `IDataAccessLayer` interface.
+- **`runIngest`, `GameRecordAnalysisPass`, and `OpponentAnalysisService.analyzeOpponent`** all gain an `AbortSignal` parameter and bail between their compose / PUT steps if aborted. Dashboard and Games pass a signal from `useEffect` cleanup. `GameRecordAnalysisPass` already has internal abort plumbing (`passAbortRef`) for in-page concerns — extend it to also honor the page-lifecycle signal.
+- **`SettingsPage` import** uses `SessionStore.importBlob` directly (single call site; doesn't need to go through a proxy). Replaces today's `dal.fetchEtagOnly()` + `dal.storeRepertoireData()` two-call dance.
+- **Account ops** (LoginPage signup, SettingsPage delete) keep constructing a one-shot `createDataAccessLayer(u, p)` for `createAccount` / `deleteAccount`.
