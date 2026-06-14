@@ -45,9 +45,11 @@ opens unchanged in lichess Studio, ChessBase, SCID.
   annotations but cannot clear them; a round-trip cannot remove an
   annotation set that was added between export and import. To clear
   annotations, edit them on the board.
-- **Atomic**: invalid PGN, illegal SAN, multiple games in the file, or a
-  missing/invalid `[Repertoire]` header rejects the whole import without
-  modifying any state.
+- **Atomic**: invalid PGN, illegal SAN, multiple games in the file, a
+  missing/invalid `[Repertoire]` header, or a non-standard starting
+  position (`[FEN]` / `[SetUp]` present) rejects the whole import without
+  modifying any state. Repertoires always root at the standard starting
+  position.
 
 ## UI
 
