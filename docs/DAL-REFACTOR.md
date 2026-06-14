@@ -37,6 +37,18 @@ The "sync vs training" race is avoided by making long-running background writes 
 
 Account lifecycle (`createAccount`, `deleteAccount`) stays on the existing `IDataAccessLayer`; LoginPage and SettingsPage continue to construct a one-shot DAL for those calls.
 
+#### `importBlob` mechanics
+
+`importBlob` is the only method that bypasses the cached ETag, but it does **not** bypass the server's `If-Match` requirement. The backend enforces `If-Match` on every PUT, so the import-rescue path must obtain a fresh etag from the server — it just can't trust the body the server returns alongside it (the whole point of the rescue path is that the stored blob may be a wire format this client can't decode).
+
+Concretely, `importBlob(data)` performs the same two-step sequence the current `fetchEtagOnly` + `storeRepertoireData` pair performs:
+
+1. `GET /variants` — read the `ETag` response header. **Do not** call `response.json()` / `decodePersistedBlob` on the body (it may be corrupt or a future wire format).
+2. `PUT /variants` with `If-Match: <etag from step 1>` and the encoded `data` as the body. Read the new `ETag` from the response.
+3. On success, replace the SessionStore's cached `(data, etag)` with `(data, newEtag)` so subsequent proxy reads see the imported blob.
+
+Other implementations (PUT with `If-Match: *`, PUT with no `If-Match`) are **not** validated against this backend and must not be substituted — the server may reject them with 412, leaving the user stranded on the corrupt blob with no other recovery path.
+
 ### `DataAccessProxyLayer` — 2 methods
 
 | Method | Behavior |
