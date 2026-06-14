@@ -70,10 +70,15 @@ pasting a new variation in Edit mode.
 The `⋯` menu and the paste box are available in both **Read** and **Edit**
 modes, with one exception: **Export PGN is disabled in Edit mode** (the
 user must Save or Discard first, parallel to how the header nav is
-disabled). Import, in either form, merges directly in Read mode and is
-staged into the pending delta in Edit mode, so the user reviews it via
-the existing **Review & Save** workflow before committing (or discards
-it).
+disabled). Import, in either form, merges directly in Read mode (target
+color = the file's `[Repertoire]` header) and is staged into the pending
+delta in Edit mode, so the user reviews it via the existing **Review &
+Save** workflow before committing (or discards it).
+
+In Edit mode the pending delta is scoped to a single orientation: if the
+imported PGN's `[Repertoire]` header names the **other** color, the
+import is rejected with a clear message (the user can Save or Discard
+first, then re-import).
 
 ## Out of scope
 
