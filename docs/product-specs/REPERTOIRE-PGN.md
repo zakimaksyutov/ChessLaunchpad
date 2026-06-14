@@ -37,17 +37,22 @@ opens unchanged in lichess Studio, ChessBase, SCID.
   other repertoire is untouched.
 - Existing positions and FSRS cards are preserved; new edges and positions
   are added.
-- **Annotations replace** the existing ones at any FEN where the imported
-  PGN attaches a comment. FENs without a comment in the PGN keep their
-  existing annotations.
+- **Annotations replace** the existing ones at a FEN **only when** the
+  imported PGN attaches a comment containing at least one `[%cal …]` or
+  `[%csl …]` token at that position. Empty comments, plain-text comments,
+  and the absence of a comment all leave existing annotations untouched.
+  Consequence (intentional asymmetry): a PGN import can add or replace
+  annotations but cannot clear them; a round-trip cannot remove an
+  annotation set that was added between export and import. To clear
+  annotations, edit them on the board.
 - **Atomic**: invalid PGN, illegal SAN, multiple games in the file, or a
   missing/invalid `[Repertoire]` header rejects the whole import without
   modifying any state.
 
 ## UI
 
-On the Explorer page (`/explorer`), in Read mode, an overflow menu (`⋯`)
-sits to the right of the **Edit repertoire** button with two items:
+On the Explorer page (`/explorer`), an overflow menu (`⋯`) sits to the
+right of the **Edit repertoire** button with two items:
 
 - **Export PGN** — downloads the current orientation's repertoire as
   `.pgn`.
@@ -57,7 +62,13 @@ sits to the right of the **Edit repertoire** button with two items:
 
 Additionally, the page hosts a **PGN paste box** — a labeled textarea
 plus an **Import PGN** button, modeled on lichess's "Import PGN" widget
-— that runs the same import flow on pasted text.
+— that runs the same import flow on pasted text. A typical use is
+pasting a new variation in Edit mode.
+
+The `⋯` menu and the paste box are available in both **Read** and **Edit**
+modes. In Read mode the import merges directly. In Edit mode the import
+is staged into the pending delta, so the user reviews it via the existing
+**Review & Save** workflow before committing (or discards it).
 
 ## Out of scope
 
