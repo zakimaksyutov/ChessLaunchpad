@@ -68,9 +68,12 @@ plus an **Import PGN** button, modeled on lichess's "Import PGN" widget
 pasting a new variation in Edit mode.
 
 The `⋯` menu and the paste box are available in both **Read** and **Edit**
-modes. In Read mode the import merges directly. In Edit mode the import
-is staged into the pending delta, so the user reviews it via the existing
-**Review & Save** workflow before committing (or discards it).
+modes, with one exception: **Export PGN is disabled in Edit mode** (the
+user must Save or Discard first, parallel to how the header nav is
+disabled). Import, in either form, merges directly in Read mode and is
+staged into the pending delta in Edit mode, so the user reviews it via
+the existing **Review & Save** workflow before committing (or discards
+it).
 
 ## Out of scope
 
