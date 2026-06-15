@@ -469,11 +469,16 @@ export class PendingEditModel {
      * No-op if `fen` isn't reachable from root in the current working copy.
      * This prevents creating orphan positions that would later block save
      * with a cryptic codec error. `fen === root` is always allowed.
+     *
+     * Returns `true` if the annotations were applied, `false` if the call
+     * was a no-op (unreachable `fen`). Callers tracking counts (e.g.
+     * `applyImportedPgn`'s summary) use the return value to stay honest
+     * without repeating the reachability walk.
      */
-    setAnnotations(fen: string, orientation: Orientation, annotations: Annotation[]): void {
+    setAnnotations(fen: string, orientation: Orientation, annotations: Annotation[]): boolean {
         const rep = this.getCurrentRepertoire(orientation);
         if (fen !== this.root && !reachableFensFromRoot(rep, this.root).has(fen)) {
-            return;
+            return false;
         }
         if (!rep.positions[fen]) rep.positions[fen] = { moves: {} };
         if (annotations.length === 0) {
@@ -481,6 +486,7 @@ export class PendingEditModel {
         } else {
             rep.positions[fen].annotations = annotations.map(a => ({ ...a }));
         }
+        return true;
     }
 
     /**
@@ -515,14 +521,9 @@ export class PendingEditModel {
             if (result !== null && !alreadyPresent) addedEdges++;
         }
         for (const [fen, anns] of annotationsByFen) {
-            const rep = this.getCurrentRepertoire(orientation);
-            // setAnnotations is a no-op for unreachable FENs; check before
-            // counting so the summary stays honest.
-            if (fen !== this.root && !reachableFensFromRoot(rep, this.root).has(fen)) {
-                continue;
+            if (this.setAnnotations(fen, orientation, anns)) {
+                replacedAnnotations++;
             }
-            this.setAnnotations(fen, orientation, anns);
-            replacedAnnotations++;
         }
         return { addedEdges, replacedAnnotations };
     }
