@@ -375,7 +375,7 @@ export function decodeRepertoirePgn(
             continue;
         }
         if (tok.kind === 'comment') {
-            const parsed = parseAnnotationsFromComment(tok.text, pendingCommentTarget);
+            const parsed = parseAnnotationsFromComment(tok.text);
             if (parsed) {
                 // Replace the entry — within one PGN, the LAST encountered
                 // structured comment at a given FEN wins.
@@ -616,16 +616,8 @@ function tokenizeMovetext(movetext: string): Token[] {
  * the merged annotation list, or `null` if no structured marker was
  * present (plain-text or empty comments → null, so the caller knows not
  * to replace existing annotations).
- *
- * `_targetFen` is currently unused but kept on the signature so a future
- * caller can validate that the squares referenced make sense for the
- * position (we don't enforce it today — lichess doesn't either).
  */
-function parseAnnotationsFromComment(
-    comment: string,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _targetFen: string,
-): Annotation[] | null {
+function parseAnnotationsFromComment(comment: string): Annotation[] | null {
     const result: Annotation[] = [];
 
     // Match [%cal G a1a2 , R b1b2] and similar; tolerate whitespace and
