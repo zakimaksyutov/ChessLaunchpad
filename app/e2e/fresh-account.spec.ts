@@ -56,7 +56,11 @@ async function setupFreshAccount(page: Page, username = 'freshuser') {
             return route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                headers: { ETag: '"fresh-etag-1"' },
+                headers: {
+                    ETag: '"fresh-etag-1"',
+                    // Expose ETag across origins so SessionStore can read it.
+                    'Access-Control-Expose-Headers': 'ETag',
+                },
                 body: '{}',
             });
         }
@@ -64,7 +68,11 @@ async function setupFreshAccount(page: Page, username = 'freshuser') {
             putCount += 1;
             return route.fulfill({
                 status: 200,
-                headers: { ETag: `"fresh-etag-${putCount + 1}"` },
+                headers: {
+                    ETag: `"fresh-etag-${putCount + 1}"`,
+                    // Expose ETag across origins so SessionStore can read it.
+                    'Access-Control-Expose-Headers': 'ETag',
+                },
             });
         }
         return route.continue();

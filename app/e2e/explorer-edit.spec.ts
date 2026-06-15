@@ -189,7 +189,7 @@ test.describe('Explorer page — Edit mode', () => {
         await expect(page.locator('.explorer-save-bar')).toHaveCount(0);
     });
 
-    test('Save surfaces the conflict prompt on a 412 and preserves the pending delta', async ({ page }) => {
+    test('Save surfaces the conflict prompt on a 412 (reload-only recovery)', async ({ page }) => {
         const fixture = buildRepertoireData([
             { pgn: '1. e4', orientation: 'white' },
         ]);
@@ -214,18 +214,17 @@ test.describe('Explorer page — Edit mode', () => {
         const saveBar = page.locator('.explorer-save-bar');
         await expect(saveBar).toBeVisible();
 
-        // Save → Review opens → Save fires PUT → 412 → conflict prompt.
+        // Save → Review opens → Save fires PUT → 412 → global conflict prompt.
         await saveBar.getByRole('button', { name: 'Review & Save' }).click();
         await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
         const dialog = page.getByRole('dialog');
         await expect(dialog).toBeVisible();
         await expect(dialog).toContainText('Repertoire changed elsewhere');
 
-        // Dismissing the conflict prompt (Keep editing) must NOT lose the delta.
-        await dialog.getByRole('button', { name: 'Keep editing' }).click();
-        // We're back in the Review view with the delta intact.
-        await expect(page.locator('.explorer-review')).toBeVisible();
-        await expect(page.locator('.explorer-review')).toContainText(/1 added/);
+        // Per ConflictModal: the only recovery path is a hard reload — no
+        // in-place "Keep editing" dismissal. Verify the Reload button is
+        // present (we don't click it because that would tear down the page).
+        await expect(dialog.getByRole('button', { name: 'Reload' })).toBeVisible();
     });
 
     test('browser Back from Review returns to the main Edit view (delta intact)', async ({ page }) => {
