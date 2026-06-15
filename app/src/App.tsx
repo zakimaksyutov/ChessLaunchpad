@@ -15,13 +15,26 @@ import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext 
 import { createSessionStore, clearSessionStore, tryGetSessionStore } from './data/SessionStore';
 
 const App: React.FC = () => {
-  // Track logged-in user in state
-  const [username, setUsername] = useState<string | null>(null);
+  // Track logged-in user in state.
+  //
+  // Seed from localStorage in the initializer so the very first render
+  // already reflects the authenticated user. Without this, the
+  // `[username]` sync effect below would fire once with the stale
+  // null closure and immediately `clearSessionStore()` the
+  // SessionStore that ProtectedRoute's (child-first) effect just
+  // lazily created — aborting the eager GET /variants and surfacing
+  // "signal is aborted without reason" on a hard refresh of any
+  // protected page.
+  const [username, setUsername] = useState<string | null>(
+    () => localStorage.getItem('username')
+  );
 
   // This ref will help us prevent running the effect twice in Strict Mode
   const didInit = useRef(false);
 
-  // On mount, load username from localStorage (if exists)
+  // On mount, wire up AppInsights for the (possibly already-seeded)
+  // username and emit AppLoad. The username state itself is seeded
+  // synchronously in the useState initializer above.
   useEffect(() => {
     // Only run if we haven't already
     if (didInit.current) {
@@ -31,7 +44,6 @@ const App: React.FC = () => {
 
     const storedName = localStorage.getItem('username');
     if (storedName) {
-      setUsername(storedName);
       setAuthenticatedUserContext(storedName);
     }
 
