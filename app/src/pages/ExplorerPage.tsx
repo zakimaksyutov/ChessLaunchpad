@@ -508,7 +508,6 @@ const ExplorerPage: React.FC = () => {
 
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveInFlight, setSaveInFlight] = useState(false);
-    const [conflictPrompt, setConflictPrompt] = useState(false);
     const [discardPrompt, setDiscardPrompt] = useState(false);
 
     // Tick `now` once a minute so the relative due/last labels update.
@@ -910,7 +909,6 @@ const ExplorerPage: React.FC = () => {
             // User chose to abandon — clear the model so beforeunload (and
             // the next click) don't re-prompt.
             setDiscardPrompt(false);
-            setConflictPrompt(false);
             setPendingModel(null);
             setMode('read');
             // The synchronous click will proceed and React Router will
@@ -1002,7 +1000,11 @@ const ExplorerPage: React.FC = () => {
             await fetchAll(true);
         } catch (err: unknown) {
             if (err instanceof DataAccessError && err.statusCode === 412) {
-                setConflictPrompt(true);
+                // The app-root <ConflictModal> already fired (via
+                // SessionStore.save's notifyConflict) and is showing the
+                // Reload prompt. Don't duplicate the message with a
+                // page-local "Save failed" — the modal owns the recovery
+                // flow and will hard-reload the page on confirm.
             } else {
                 const msg = err instanceof Error ? err.message : String(err);
                 setSaveError(`Save failed: ${msg}`);
@@ -1011,28 +1013,6 @@ const ExplorerPage: React.FC = () => {
             setSaveInFlight(false);
         }
     }, [pendingModel, data, dal, fetchAll, stripReviewParam]);
-
-    /** Conflict prompt: "Refresh" discards local edits and re-fetches.
-     *  The explicit `SessionStore.refresh()` is required because
-     *  `fetchAll` reads from the cache, which is stale after a 412
-     *  (our PUT was the one that failed — nothing updated the cache).
-     *  Without forcing a server-side refresh first, "Refresh" would
-     *  loop on the same stale snapshot. */
-    const handleConflictRefresh = useCallback(async () => {
-        setConflictPrompt(false);
-        setPendingModel(null);
-        setMode('read');
-        stripReviewParam();
-        dataRef.current = null;
-        try {
-            await getSessionStore().refresh();
-        } catch (e) {
-            console.warn('ExplorerPage: refresh failed', e);
-            // Fall through — fetchAll will surface the underlying
-            // error via loadError if the cache is still empty.
-        }
-        await fetchAll(true);
-    }, [fetchAll, stripReviewParam]);
 
     /** Sticky-bar Discard handler (always prompts when delta non-empty). */
     const requestDiscard = useCallback(() => {
@@ -1384,38 +1364,6 @@ const ExplorerPage: React.FC = () => {
                     </div>
                 )}
 
-                {conflictPrompt && (
-                    <div className="explorer-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="conflict-prompt-title">
-                        <div className="explorer-modal">
-                            <h2 id="conflict-prompt-title">Repertoire changed elsewhere</h2>
-                            <p>
-                                Another writer (another tab, a training session, or game
-                                ingestion) updated your repertoire while you were editing.
-                                Saving now would overwrite their changes.
-                            </p>
-                            <p>
-                                <strong>Refresh</strong> discards your local edits and
-                                re-loads the latest state.
-                            </p>
-                            <div className="explorer-modal-actions">
-                                <button
-                                    type="button"
-                                    className="explorer-btn explorer-btn--neutral"
-                                    onClick={() => setConflictPrompt(false)}
-                                >
-                                    Keep editing
-                                </button>
-                                <button
-                                    type="button"
-                                    className="explorer-btn explorer-btn--danger"
-                                    onClick={handleConflictRefresh}
-                                >
-                                    Refresh
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );

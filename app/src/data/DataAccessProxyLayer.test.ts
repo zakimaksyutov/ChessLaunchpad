@@ -29,11 +29,9 @@ function makeFakeStore(initialEtag: string) {
         currentSnap = { data, etag: newEtag };
         return newEtag;
     });
-    const refresh = vi.fn(async () => currentSnap);
     const fakeStore = {
         getSnapshot,
         save,
-        refresh,
         importBlob: vi.fn(),
         createDataAccessProxyLayer: vi.fn(),
         // Inject server-side updates so we can simulate a sibling write.
@@ -104,28 +102,5 @@ describe("DataAccessProxyLayer", () => {
         await proxy.retrieveRepertoireData();
         await proxy.storeRepertoireData(data);
         expect((store.save as any).mock.calls.length).toBe(2);
-    });
-
-    it("calls store.refresh() on 412 so cross-tab retry loops can recover", async () => {
-        const store = makeFakeStore("etag-1");
-        const proxy = new DataAccessProxyLayer(store, "etag-stale");
-        const data = (await store.getSnapshot()).data;
-        await expect(proxy.storeRepertoireData(data)).rejects.toMatchObject({
-            name: "DataAccessError",
-            statusCode: 412,
-        });
-        // refresh was called exactly once (before the 412 was re-thrown).
-        expect((store.refresh as any).mock.calls.length).toBe(1);
-    });
-
-    it("propagates 412 even if refresh fails (refresh failure is non-fatal)", async () => {
-        const store = makeFakeStore("etag-1");
-        (store.refresh as any).mockRejectedValueOnce(new Error("refresh-broke"));
-        const proxy = new DataAccessProxyLayer(store, "etag-stale");
-        const data = (await store.getSnapshot()).data;
-        await expect(proxy.storeRepertoireData(data)).rejects.toMatchObject({
-            name: "DataAccessError",
-            statusCode: 412,
-        });
     });
 });

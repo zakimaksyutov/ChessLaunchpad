@@ -7,6 +7,7 @@ import {
     clearSessionStore,
 } from "./SessionStore";
 import { DataAccessError } from "./DataAccessLayer";
+import { setConflictListener, __clearConflictListener } from "./ConflictNotifier";
 import { RepertoireData } from "../models/RepertoireData";
 import { RepertoireDataUtils } from "../utils/RepertoireDataUtils";
 import { encodePersistedBlob } from "../utils/BlobCodec";
@@ -185,22 +186,55 @@ describe("SessionStore", () => {
         expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it("throws DataAccessError(412) on save conflict and leaves cache untouched", async () => {
+    it("throws DataAccessError(412) on save conflict, fires conflict notifier, and leaves cache untouched", async () => {
         const data = makeData();
 
         fetchMock
             .mockResolvedValueOnce(jsonGetResponse(data, "etag-1"))
             .mockResolvedValueOnce(errorResponse(412, "etag mismatch"));
 
-        const store = new SessionStore("alice", "pw");
-        await store.getSnapshot();
-        await expect(store.save(data, "etag-1")).rejects.toMatchObject({
-            name: "DataAccessError",
-            statusCode: 412,
-        });
-        // Cache still holds the original etag.
-        const snap = await store.getSnapshot();
-        expect(snap.etag).toBe("etag-1");
+        const notified = vi.fn();
+        const unregister = setConflictListener(notified);
+
+        try {
+            const store = new SessionStore("alice", "pw");
+            await store.getSnapshot();
+            await expect(store.save(data, "etag-1")).rejects.toMatchObject({
+                name: "DataAccessError",
+                statusCode: 412,
+            });
+            // Conflict notifier fired exactly once for the 412.
+            expect(notified).toHaveBeenCalledTimes(1);
+            // Cache still holds the original etag.
+            const snap = await store.getSnapshot();
+            expect(snap.etag).toBe("etag-1");
+        } finally {
+            unregister();
+            __clearConflictListener();
+        }
+    });
+
+    it("does NOT fire conflict notifier on non-412 save errors", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-1"))
+            .mockResolvedValueOnce(errorResponse(500, "server boom"));
+
+        const notified = vi.fn();
+        const unregister = setConflictListener(notified);
+
+        try {
+            const store = new SessionStore("alice", "pw");
+            await store.getSnapshot();
+            await expect(store.save(data, "etag-1")).rejects.toMatchObject({
+                name: "DataAccessError",
+                statusCode: 500,
+            });
+            expect(notified).not.toHaveBeenCalled();
+        } finally {
+            unregister();
+            __clearConflictListener();
+        }
     });
 
     it("throws when save response is missing ETag", async () => {
@@ -418,25 +452,6 @@ describe("SessionStore", () => {
         store.dispose();
         resolvePut(putResponse("etag-2"));
         await expect(savePromise).rejects.toThrow(/disposed/i);
-    });
-
-    it("refresh() forces a server GET and replaces the cached snapshot", async () => {
-        const data = makeData();
-        const updated = makeData();
-        updated.settings = { ...updated.settings, contextDepth: 7 };
-        fetchMock
-            .mockResolvedValueOnce(jsonGetResponse(data, "etag-1"))
-            .mockResolvedValueOnce(jsonGetResponse(updated, "etag-fresh"));
-        const store = new SessionStore("alice", "pw");
-        await store.getSnapshot();
-        const refreshed = await store.refresh();
-        expect(refreshed.etag).toBe("etag-fresh");
-        expect(refreshed.data.settings?.contextDepth).toBe(7);
-        // Subsequent snapshot reads the refreshed cache.
-        const snap = await store.getSnapshot();
-        expect(snap.etag).toBe("etag-fresh");
-        expect(snap.data.settings?.contextDepth).toBe(7);
-        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it("parallel getSnapshot callers share the in-flight eager fetch (no duplicate GETs)", async () => {

@@ -423,7 +423,7 @@ describe('GameIngestService', () => {
         expect(state.watermarkMs).toBe(baseMs + 54 * 1000);
     });
 
-    it('retries on 412 conflict and succeeds on retry', async () => {
+    it('on 412 conflict, ingest fails silently without retry (modal-reload owns recovery)', async () => {
         const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
         const data = makeData([variant]);
 
@@ -434,16 +434,22 @@ describe('GameIngestService', () => {
             moves: 'e4 e5 Nf3',
         });
         mockLichessOnce([game]);
-        mockLichessOnce([game]); // for the retry — pipeline refetches games too
 
         setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
         const dal = new MockDal(data);
         dal.nextStoreError = new DataAccessError('precondition failed', 412);
 
-        const result = await runIngest(dal);
-        expect(result.didWrite).toBe(true);
-        expect(dal.retrieveCount).toBeGreaterThanOrEqual(2);
-        expect(dal.storeCount).toBe(2); // first try (412) + retry success
+        // Silence the expected "GameIngest: failed" error log.
+        const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const result = await runIngest(dal);
+            // 412 is swallowed by runIngest's top-level catch; reports a no-op.
+            expect(result.didWrite).toBe(false);
+            expect(result.gamesProcessed).toBe(0);
+            expect(dal.storeCount).toBe(1); // single attempt, no retry
+        } finally {
+            errSpy.mockRestore();
+        }
     });
 
     it('handles black orientation correctly', async () => {

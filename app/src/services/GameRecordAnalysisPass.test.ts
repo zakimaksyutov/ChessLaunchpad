@@ -229,7 +229,7 @@ describe('flushAnUpdates', () => {
         expect(stored.an).toEqual({ tv: [] });
     });
 
-    it('retries on 412 conflict and succeeds on retry', async () => {
+    it('throws on 412 conflict without retry (modal-reload owns recovery)', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
         const dal = new MockDal(data);
@@ -238,15 +238,9 @@ describe('flushAnUpdates', () => {
         const updates: AnalyzedGameOutcome[] = [
             { record: rec({ id: 'g1', t: BASE_DATE }), an: { tv: [{ ply: 4, in: true }] }, skipped: false },
         ];
-        // Silence the expected "412 retry" warning.
-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        try {
-            const { persisted } = await flushAnUpdates(dal, updates);
-            expect(persisted).toBe(1);
-            expect(dal.storeCount).toBe(2); // first attempt 412'd, second succeeded
-        } finally {
-            warn.mockRestore();
-        }
+        await expect(flushAnUpdates(dal, updates))
+            .rejects.toMatchObject({ name: 'DataAccessError', statusCode: 412 });
+        expect(dal.storeCount).toBe(1); // single attempt, no retry
     });
 
     it('handles an empty updates array by returning the fresh blob with persisted=0', async () => {
@@ -392,7 +386,7 @@ describe('persistReannotateRefresh', () => {
         expect(dal.storeCount).toBe(0);
     });
 
-    it('retries on a 412 conflict and ultimately persists the replacement', async () => {
+    it('throws on 412 conflict without retry (modal-reload owns recovery)', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({
             id: 'g1', t: BASE_DATE,
@@ -402,11 +396,9 @@ describe('persistReannotateRefresh', () => {
         const dal = new MockDal(data);
         dal.nextStoreError = new DataAccessError('etag conflict', 412);
         const refreshed = rec({ id: 'g1', t: BASE_DATE, m: 'e4 e5' });
-        const fresh = await persistReannotateRefresh(dal, refreshed);
-        const stored = fresh.activity!.practiceLog[0].games!.records![0];
-        expect(stored.m).toBe('e4 e5');
-        expect(stored.an).toBeUndefined();
-        expect(dal.storeCount).toBe(2);
+        await expect(persistReannotateRefresh(dal, refreshed))
+            .rejects.toMatchObject({ name: 'DataAccessError', statusCode: 412 });
+        expect(dal.storeCount).toBe(1);
     });
 });
 

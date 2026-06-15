@@ -5,6 +5,7 @@ import { extractFsrsCardsFromRepertoires } from "../utils/RepertoiresSerde";
 import { composeSignals } from "../utils/composeSignals";
 import { DataAccessError } from "./DataAccessLayer";
 import { DataAccessProxyLayer } from "./DataAccessProxyLayer";
+import { notifyConflict } from "./ConflictNotifier";
 
 /**
  * Session-scoped, per-user cache of `(RepertoireData, etag)` that sits in
@@ -24,7 +25,10 @@ import { DataAccessProxyLayer } from "./DataAccessProxyLayer";
  *     initial fetch hasn't completed, it awaits it.
  *   - `save(data, etag)` is an explicit-etag API: caller provides the
  *     etag, the store PUTs verbatim with `If-Match`. On 412 the store
- *     throws `DataAccessError` and the cache is left untouched.
+ *     fires the global {@link notifyConflict} (which the app-root
+ *     `<ConflictModal>` turns into a "Reload" prompt) and then throws
+ *     `DataAccessError`. The cache is left untouched; recovery is a
+ *     full page reload — no in-place retry or refresh path is offered.
  *   - `importBlob(data)` is the only method that bypasses the cached
  *     etag — see {@link importBlob} for the mandated GET-then-PUT
  *     sequence (the backend always enforces `If-Match`).
@@ -96,9 +100,9 @@ export class SessionStore {
      * GET (shared across parallel callers) and triggering one on-demand
      * if the cache is still empty.
      *
-     * `data` is a **deep clone** — load-bearing for the retry-on-412
-     * loops in `runIngest` and `GameRecordAnalysisPass` that mutate the
-     * blob before saving: a 412 retry must start from a clean snapshot.
+     * `data` is a **deep clone** so callers can mutate the returned blob
+     * without poisoning the cache (helpers like `flushAnUpdates` mutate
+     * the snapshot in place before saving).
      *
      * We use `JSON.parse(JSON.stringify(...))` rather than
      * `structuredClone` because Vite's default build target supports
@@ -130,8 +134,10 @@ export class SessionStore {
 
     /**
      * PUT `data` with `If-Match: <etag>`. Returns the new etag. On
-     * success the cache is updated to `(data, newEtag)`; on 412 throws
-     * `DataAccessError(412)` and the cache is left untouched.
+     * success the cache is updated to `(data, newEtag)`; on 412 the
+     * store fires {@link notifyConflict} (so the app-root
+     * `<ConflictModal>` can prompt the user to reload) and throws
+     * `DataAccessError(412)`. The cache is left untouched.
      *
      * Optional `signal` is forwarded to the underlying `fetch` so a
      * page-level abort actually cancels the in-flight PUT — the
@@ -167,6 +173,12 @@ export class SessionStore {
         );
 
         if (!response.ok) {
+            // 412 = concurrent writer landed first; fire the global
+            // notifier so the app-root <ConflictModal> can prompt the
+            // user to reload. Other non-OK statuses propagate as-is.
+            if (response.status === 412) {
+                notifyConflict();
+            }
             const msg = await response.text();
             throw new DataAccessError(msg, response.status);
         }
@@ -259,34 +271,6 @@ export class SessionStore {
             );
         }
         return new DataAccessProxyLayer(this, this.cachedEtag);
-    }
-
-    /**
-     * Force a fresh `GET /variants`, replacing the cached `(data, etag)`
-     * with the server's current state. Used by recovery paths that need
-     * to surface server-side changes — notably ExplorerPage's "Refresh"
-     * button in the post-412 conflict modal, which would otherwise
-     * return the same stale snapshot the user just 412'd against.
-     *
-     * Returns the freshly-fetched snapshot. Throws `DataAccessError`
-     * if the GET fails; the cache is left in its prior state on
-     * failure (callers can retry).
-     *
-     * In-flight reads share this fetch (no duplicate GETs).
-     */
-    public async refresh(): Promise<{ data: RepertoireData; etag: string }> {
-        if (!this.inFlightFetchPromise) {
-            this.inFlightFetchPromise = this.fetchAndPopulate()
-                .finally(() => {
-                    if (this.inFlightFetchPromise) this.inFlightFetchPromise = null;
-                });
-            this.inFlightFetchPromise.catch(() => {});
-        }
-        await this.inFlightFetchPromise;
-        return {
-            data: cloneRepertoireData(this.cachedData!),
-            etag: this.cachedEtag!,
-        };
     }
 
     // ── Internals ────────────────────────────────────────────────────

@@ -32,11 +32,13 @@ The "sync vs training" race is avoided by making long-running background writes 
 | --- | --- | --- | --- |
 | `ready` | `ProtectedRoute` (gate before rendering protected page bodies) | — | `Promise<void>` (resolves once the cache is populated; throws `DataAccessError` on fetch failure) |
 | `getSnapshot` | First page after login; internally by every proxy on construction and on retrieve | — | `{ data: RepertoireData, etag: string }` (cached) |
-| `save` | Internally by every proxy on store | `data: RepertoireData`, `etag: string` | new `etag: string`; throws `DataAccessError` (412) on conflict |
+| `save` | Internally by every proxy on store | `data: RepertoireData`, `etag: string` | new `etag: string`; on 412 fires the global conflict notifier (drives the app-root `<ConflictModal>` "Reload" prompt) and throws `DataAccessError` |
 | `importBlob` | SettingsPage Import (file replace; ETag bypass) | `data: RepertoireData` | `void` (cache + etag updated as a side effect) |
 | `createDataAccessProxyLayer` | Every page on mount (synchronous; requires `ready()` to have resolved) | — | a new `DataAccessProxyLayer` pre-populated with the current cached `(data, etag)`; throws if the cache is not yet populated |
 
 Account lifecycle (`createAccount`, `deleteAccount`) stays on the existing `IDataAccessLayer`; LoginPage and SettingsPage continue to construct a one-shot DAL for those calls.
+
+Note: there is no `refresh()` method. Recovery from any 412 is a hard page reload, owned by the app-root `<ConflictModal>` (see *Conflict handling* below).
 
 #### `importBlob` mechanics
 
@@ -55,9 +57,25 @@ Other implementations (PUT with `If-Match: *`, PUT with no `If-Match`) are **not
 | Method | Behavior |
 | --- | --- |
 | `retrieveRepertoireData()` | Returns `SessionStore.getSnapshot().data` (cached, no network); refreshes `this.etag` from the snapshot |
-| `storeRepertoireData(data)` | Calls `SessionStore.save(data, this.etag)`; updates `this.etag` from the response; throws on 412 |
+| `storeRepertoireData(data)` | Calls `SessionStore.save(data, this.etag)`; updates `this.etag` from the response; on 412 the store fires the conflict notifier and the error propagates verbatim |
 
 Helpers (`GameRecordAnalysisPass`, `runIngest`, etc.) accept the proxy via a narrow type that covers just these two methods (introduced as a new interface or inferred structurally — implementer's choice). The full `IDataAccessLayer` interface keeps its current shape for the one-shot DAL used by account ops.
+
+### Conflict handling — universal modal + hard reload
+
+There is exactly one user-facing recovery path for a 412 conflict, owned at the app root and shared by every write site:
+
+1. `SessionStore.save` catches the 412 response and calls `notifyConflict()` (a tiny module-level pub/sub in `src/data/ConflictNotifier.ts`) *before* throwing `DataAccessError(412)`.
+2. `<ConflictModal>` (mounted at app root in `App.tsx`) registers a listener at mount time. When fired it flips `visible` to `true` and renders a single-button "Reload" modal.
+3. The only action is `window.location.reload()`. Local in-memory state is discarded; the next bootstrap re-fetches the blob via the eager `GET /variants` in the new SessionStore.
+
+Helpers and pages **do not retry on 412**. Each write is a single attempt:
+
+- `runIngest` / `runIngestInternal` — one GET-compose-PUT pass. On 412 the top-level catch swallows the error and reports `didWrite: false`; the next Dashboard visit re-runs ingest from the fresh blob.
+- `flushAnUpdates`, `persistOpponentAnalysis`, `persistReannotateClear`, `persistReannotateRefresh`, `persistDeleteRecordsFromTimestamp` — one GET-mutate-PUT pass. On 412 the error propagates to the caller's existing try/catch; the modal handles user-facing recovery.
+- `ExplorerPage.handleSave` — single PUT. On 412 the local catch swallows the error silently (no duplicate "Save failed" banner); the modal owns the reload prompt.
+
+This eliminates the previous per-helper "refetch fresh blob, re-apply local mutation, re-PUT" retry loops, which silently overwrote concurrent same-field writes from other tabs (e.g., `persistOpponentAnalysis` last-write-wins on the `op` field). The new posture matches the "no silent data loss" principle: any 412 surfaces as a visible modal and a fresh page load.
 
 ### Proxy lifecycle
 
@@ -93,21 +111,22 @@ For call sites that need both a page signal and a per-operation signal (the anal
 - Ingest still running at navigation → `AbortSignal` cancels it before PUT → no concurrent writer → Training's save uses the cache's etag → succeeds. ✓ Ingest's fetched games are dropped; the next Dashboard visit re-fetches them.
 - Ingest's PUT already landed before navigation → cache holds the post-ingest pair → Training reads it → save succeeds. ✓
 
-**Intra-tab concurrent writes** (e.g., analysis pass batch flush + opponent-click handler on /games using the same proxy) behave exactly as today: one helper's `store` may 412, the helper's existing retry loop refetches via `proxy.retrieveRepertoireData()` (which returns the now-current SessionStore cache, including the racing write), re-applies, and retries successfully. No silent loss; no user-visible 412.
+**Intra-tab concurrent writes** (e.g., analysis pass batch flush + opponent-click handler on /games using the same proxy) follow the same universal modal path: a losing `store` 412 fires `notifyConflict()`, the modal appears, the user reloads. The previous behavior — helpers' internal "refetch fresh blob and re-apply local mutation" retry loops — has been removed because the re-apply step was field-scoped last-write-wins (silently overwriting concurrent same-record writes). The new design trades the now-rare retry-recovery for visible, never-silent loss.
 
-When 412 does surface to the page (rare — e.g., a multi-tab race or an abort that didn't beat an in-flight PUT), the calling page handles it the same way it does today.
+When 412 surfaces (rare — multi-tab race, or an abort that didn't beat an in-flight PUT), the modal handles it identically across every page.
 
 ## Out of scope
 
-- **Multi-tab races.** Tab A writes; Tab B's cached etag is stale; Tab B's save throws 412. Calling page handles it the same way it does today. Existing retry loops bound their attempts and stop; the user reloads to recover.
-- **In-store concurrency control beyond proxy-level etag tracking.** No serialized write queue, no `refresh()` method. Recovery for in-tab races comes from helpers' existing retry-on-412 loops, which work because the SessionStore cache reflects every in-tab successful save.
+- **Multi-tab races.** Tab A writes; Tab B's cached etag is stale; Tab B's save throws 412. The app-root `<ConflictModal>` shows; user reloads Tab B.
+- **In-store concurrency control beyond proxy-level etag tracking.** No serialized write queue, no `refresh()` method. Recovery from any in-tab or cross-tab race is a hard page reload owned by `<ConflictModal>`.
 - Cross-tab coordination (BroadcastChannel), visibility/focus auto-revalidation, subscribe API.
 
 ## Migration notes
 
 - **Pages — one-line change.** Replace `useMemo(() => createDataAccessLayer(u, p))` with `useMemo(() => sessionStore.createDataAccessProxyLayer())`. Everything else identical. Pages never see an etag.
-- **Helpers — zero changes.** `GameRecordAnalysisPass.ts` (`flushAnUpdates`, `persistOpponentAnalysis`, `persistReannotateClear`, `persistReannotateRefresh`, `persistDeleteRecordsFromTimestamp`) and `runIngest` keep their existing retry-on-412 loops verbatim. They receive a proxy via the same `IDataAccessLayer` interface.
+- **Helpers — retry loops removed.** `GameRecordAnalysisPass` (`flushAnUpdates`, `persistOpponentAnalysis`, `persistReannotateClear`, `persistReannotateRefresh`, `persistDeleteRecordsFromTimestamp`) and `runIngest` no longer carry per-helper retry-on-412 loops. Each helper is a single GET-mutate-PUT pass; on 412 the underlying `SessionStore.save` fires the universal conflict notifier and rethrows. The previous retry-then-re-apply path was field-scoped last-write-wins (silently overwriting concurrent same-record writes from other tabs); the universal modal-and-reload path replaces it.
 - **`runIngest`, `GameRecordAnalysisPass`, and `OpponentAnalysisService.analyzeOpponent`** all gain an `AbortSignal` parameter and bail between their compose / PUT steps if aborted. Dashboard and Games pass a signal from `useEffect` cleanup. `GameRecordAnalysisPass` already has internal abort plumbing (`passAbortRef`) for in-page concerns — extend it to also honor the page-lifecycle signal.
-- **`SettingsPage` import** uses `SessionStore.importBlob` directly (single call site; doesn't need to go through a proxy). Replaces today's `dal.fetchEtagOnly()` + `dal.storeRepertoireData()` two-call dance.
+- **`SettingsPage` import** uses `SessionStore.importBlob` directly (single call site; doesn't need to go through a proxy). Replaces today's `dal.fetchEtagOnly()` + `dal.storeRepertoireData()` two-call dance. SettingsPage already follows a successful `importBlob` with `window.location.reload()`.
 - **Account ops** (LoginPage signup, SettingsPage delete) keep constructing a one-shot `createDataAccessLayer(u, p)` for `createAccount` / `deleteAccount`.
-- **ExplorerPage `visibilitychange` handler — remove.** The existing `useEffect` at the top of `ExplorerPage` that calls `fetchAll(false)` on tab regain becomes a no-op under the new design (the proxy's `retrieveRepertoireData` returns the SessionStore cache; there is no `refresh()`). Delete the effect outright rather than leaving dead code. The behavioral cost is narrow: a Tab B user who leaves Explorer, edits in Tab A, returns to Tab B, and starts a new edit session will hit Explorer's existing 412 conflict prompt on Save and lose their pending edits — the same outcome they get today if the visibility event didn't fire in time. Multi-tab freshness is explicitly out of scope (see "Out of scope" above).
+- **ExplorerPage in-page conflict modal — removed.** The page's old "Refresh / Keep editing" prompt on a save 412 is gone; the app-root `<ConflictModal>` handles 412 universally. ExplorerPage's `handleSave` 412 catch is now silent (no duplicate "Save failed" banner) because the modal already owns the recovery UI.
+- **ExplorerPage `visibilitychange` handler — remove.** The existing `useEffect` at the top of `ExplorerPage` that calls `fetchAll(false)` on tab regain becomes a no-op under the new design (the proxy's `retrieveRepertoireData` returns the SessionStore cache; there is no `refresh()`). Delete the effect outright rather than leaving dead code. The behavioral cost is narrow: a Tab B user who leaves Explorer, edits in Tab A, returns to Tab B, and starts a new edit session will see the universal conflict modal on Save instead of getting silently up-to-date state on focus. Multi-tab freshness is explicitly out of scope (see "Out of scope" above).

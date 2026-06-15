@@ -9,6 +9,7 @@ import SettingsPage from './pages/SettingsPage';
 import GamesPage from './pages/GamesPage';
 import ExplorerPage from './pages/ExplorerPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import ConflictModal from './components/ConflictModal';
 import { LichessAuthProvider } from './LichessAuthContext';
 import './App.css';
 import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
@@ -86,6 +87,7 @@ const App: React.FC = () => {
             <Route path="/games" element={<ProtectedRoute><GamesPage /></ProtectedRoute>} />
           </Routes>
         </Router>
+        <ConflictModal />
       </div>
     </LichessAuthProvider>
   );

@@ -1,5 +1,4 @@
 import { Chess } from 'chess.js';
-import { DataAccessError } from '../data/DataAccessLayer';
 import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
 import { FSRSService } from './FSRSService';
 import { AuditService } from './AuditService';
@@ -29,7 +28,6 @@ import {
 
 const AGE_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 const MAX_RECENT_IDS = 50;
-const MAX_RETRIES = 3;
 const LICHESS_MAX_PER_REQUEST = 500;
 
 interface IngestGame {
@@ -85,7 +83,8 @@ export type IngestProgressCallback = (progress: IngestProgress) => void;
  *        - In-repertoire move → Good (timestamped at game.createdAt)
  *        - First deviation → Again on every sibling card sharing fenBefore, then stop.
  *   6. Update per-day game counters and per-account state.
- *   7. PUT with If-Match; retry up to MAX_RETRIES on 412.
+ *   7. PUT with If-Match (single attempt; the app-root `<ConflictModal>`
+ *      handles 412 recovery via page reload).
  *
  * Never throws — all errors are logged and swallowed, except `AbortError`
  * which is re-raised so callers can distinguish "I asked it to stop"
@@ -133,57 +132,45 @@ async function runIngestInternal(
 ): Promise<IngestSummary> {
     const summary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-        const data = await dal.retrieveRepertoireData();
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const data = await dal.retrieveRepertoireData();
 
-        // Source the linked-accounts list from the freshest blob — not from the
-        // process-local cache, which can be stale during initial Dashboard mount
-        // and is shared across user sessions in a single SPA process. Falls back
-        // to an empty list if the user has none.
-        const linkedAccountsRaw = data.settings?.linkedAccounts ?? [];
-        const linkedAccounts: LinkedAccount[] = linkedAccountsRaw.map(a => ({
-            platform: a.platform || 'lichess',
-            username: a.username.toLowerCase(),
-        }));
-        if (linkedAccounts.length === 0) return summary;
+    // Source the linked-accounts list from the freshest blob — not from the
+    // process-local cache, which can be stale during initial Dashboard mount
+    // and is shared across user sessions in a single SPA process. Falls back
+    // to an empty list if the user has none.
+    const linkedAccountsRaw = data.settings?.linkedAccounts ?? [];
+    const linkedAccounts: LinkedAccount[] = linkedAccountsRaw.map(a => ({
+        platform: a.platform || 'lichess',
+        username: a.username.toLowerCase(),
+    }));
+    if (linkedAccounts.length === 0) return summary;
 
-        const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress, signal);
-        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress, signal);
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
 
-        const eligible = composeEligibleGames(data.games, fetches, runNowMs);
-        const hasCursorChange = fetches.some(af => providerCursorChanged(data.games?.[af.accountKey], af));
+    const eligible = composeEligibleGames(data.games, fetches, runNowMs);
+    const hasCursorChange = fetches.some(af => providerCursorChanged(data.games?.[af.accountKey], af));
 
-        if (eligible.length === 0 && !hasCursorChange) {
-            // Nothing to persist.
-            return summary;
-        }
-
-        applyIngest(data, eligible, linkedAccounts);
-        updateAccountStates(data, fetches, eligible);
-
-        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-        try {
-            // Project in-memory state into the position-centric blob shape
-            // before persisting — re-syncs the position dict with FSRSService's
-            // in-place card mutations.
-            const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
-            await dal.storeRepertoireData(blobForSave, signal);
-            return { didWrite: true, gamesProcessed: eligible.length };
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // ETag conflict — refetch and retry from scratch.
-                // eslint-disable-next-line no-console
-                console.warn(`GameIngest: 412 conflict on attempt ${attempt}, retrying`);
-                continue;
-            }
-            throw e;
-        }
+    if (eligible.length === 0 && !hasCursorChange) {
+        // Nothing to persist.
+        return summary;
     }
 
-    // eslint-disable-next-line no-console
-    console.warn('GameIngest: max retries exhausted');
-    return summary;
+    applyIngest(data, eligible, linkedAccounts);
+    updateAccountStates(data, fetches, eligible);
+
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    // Project in-memory state into the position-centric blob shape
+    // before persisting — re-syncs the position dict with FSRSService's
+    // in-place card mutations.
+    const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
+    // Single attempt: on 412 the underlying SessionStore.save fires the
+    // global conflict notifier (app-root <ConflictModal> shows a Reload
+    // prompt) and rethrows; the top-level catch in runIngest swallows
+    // the error and the next Dashboard visit re-runs ingest.
+    await dal.storeRepertoireData(blobForSave, signal);
+    return { didWrite: true, gamesProcessed: eligible.length };
 }
 
 async function fetchAllAccounts(
