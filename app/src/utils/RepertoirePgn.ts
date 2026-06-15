@@ -15,17 +15,14 @@ import { normalizeFenResetHalfmoveClock } from './FenUtils';
  * fresh `New` card via the normal `normalize()` pass downstream.
  */
 
-export type RepertoireOrientation = 'white' | 'black';
-
 const HEADER_REPERTOIRE = 'Repertoire';
 const HEADER_REPERTOIRE_WHITE = 'White';
 const HEADER_REPERTOIRE_BLACK = 'Black';
 
-/** Edge collected by the decoder. `from`/`to` are normalized FENs. */
-export interface DecodedEdge {
+/** Edge collected by the decoder. `from` is a normalized FEN. */
+interface DecodedEdge {
     from: string;
     san: string;
-    to: string;
 }
 
 /**
@@ -40,8 +37,8 @@ export interface DecodedEdge {
  * comments, and the absence of a comment all leave existing annotations
  * untouched").
  */
-export interface DecodedRepertoirePgn {
-    orientation: RepertoireOrientation;
+interface DecodedRepertoirePgn {
+    orientation: 'white' | 'black';
     edges: DecodedEdge[];
     annotationsByFen: Map<string, Annotation[]>;
 }
@@ -221,22 +218,6 @@ function resolveChildFen(fen: string, san: string): string {
 // ── Decode ──────────────────────────────────────────────────────────────
 
 /**
- * Optional decode behaviour. `defaultOrientation`, if supplied, is used
- * as the orientation when the PGN omits the `[Repertoire]` header — this
- * makes the paste-box flow (Edit mode) accept a bare movetext snippet
- * scoped to the orientation the user is editing, while file uploads
- * (which always go through `encodeRepertoirePgn` and therefore carry a
- * header) keep the strict-header behaviour.
- *
- * A mismatched header (PGN says "Black" but `defaultOrientation` is
- * `white`) still throws — the explicit header is treated as a safety
- * net and wins over the default.
- */
-export interface DecodeOptions {
-    defaultOrientation?: RepertoireOrientation;
-}
-
-/**
  * Parse a one-game repertoire PGN. Rejects (by throwing
  * `RepertoirePgnError`):
  *   • missing `[Repertoire]` header AND no `options.defaultOrientation`,
@@ -245,13 +226,22 @@ export interface DecodeOptions {
  *   • multiple games in the same payload,
  *   • illegal SAN that does not parse on the current position.
  *
+ * `defaultOrientation`, if supplied, is used as the orientation when the
+ * PGN omits the `[Repertoire]` header — this makes the paste-box flow
+ * (Edit mode) accept a bare movetext snippet scoped to the orientation
+ * the user is editing, while file uploads (which always go through
+ * `encodeRepertoirePgn` and therefore carry a header) keep the
+ * strict-header behaviour. A mismatched header (PGN says "Black" but
+ * `defaultOrientation` is `white`) still throws — the explicit header is
+ * treated as a safety net and wins over the default.
+ *
  * Returns the decoded edge list (in encounter order — BFS-ish; the merge
  * step doesn't require any particular order) and the per-FEN annotation
  * map populated only from structured `[%cal …]` / `[%csl …]` comments.
  */
 export function decodeRepertoirePgn(
     text: string,
-    options: DecodeOptions = {},
+    options: { defaultOrientation?: 'white' | 'black' } = {},
 ): DecodedRepertoirePgn {
     if (typeof text !== 'string' || text.trim().length === 0) {
         throw new RepertoirePgnError('decodeRepertoirePgn: empty input.');
@@ -275,7 +265,7 @@ export function decodeRepertoirePgn(
     }
 
     const repHeader = headers.get(HEADER_REPERTOIRE);
-    let orientation: RepertoireOrientation;
+    let orientation: 'white' | 'black';
     if (repHeader === undefined) {
         if (options.defaultOrientation) {
             orientation = options.defaultOrientation;
@@ -407,7 +397,7 @@ export function decodeRepertoirePgn(
         const key = `${from}::${san}`;
         if (!edgeKeySeen.has(key)) {
             edgeKeySeen.add(key);
-            edges.push({ from, san, to });
+            edges.push({ from, san });
         }
         // Update this frame's source-of-last-move so the NEXT `(` at
         // this level branches from `from` (the position the move that
