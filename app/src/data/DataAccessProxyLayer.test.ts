@@ -52,17 +52,23 @@ describe("DataAccessProxyLayer", () => {
         expect(data).toBe((await store.getSnapshot()).data);
     });
 
-    it("refreshes its own etag from the cache on every retrieve", async () => {
+    it("does NOT refresh its own etag from the cache on retrieve (locked-etag invariant)", async () => {
         const store = makeFakeStore("etag-1");
         const proxy = new DataAccessProxyLayer(store, "etag-stale");
         // Inject newer snapshot (as if a sibling write landed).
         (store as any).__setSnapshot(makeSnapshot("etag-fresh", "v1"));
         await proxy.retrieveRepertoireData();
-        // Now a store call should succeed against the freshened etag.
-        await proxy.storeRepertoireData((await store.getSnapshot()).data);
-        // First save call was made with the fresh etag picked up on retrieve.
-        const [, etag] = (store.save as any).mock.calls[0];
-        expect(etag).toBe("etag-fresh");
+        // The proxy must keep its locked etag — silently pulling
+        // "etag-fresh" forward would bypass the ConflictModal that
+        // the design promises on any cross-writer race. Saving here
+        // should 412 against the cache's current "etag-fresh".
+        const data = (await store.getSnapshot()).data;
+        await expect(proxy.storeRepertoireData(data)).rejects.toMatchObject({
+            name: "DataAccessError",
+            statusCode: 412,
+        });
+        const [, etagUsed] = (store.save as any).mock.calls[0];
+        expect(etagUsed).toBe("etag-stale");
     });
 
     it("storeRepertoireData passes its etag and updates from the response", async () => {
@@ -89,7 +95,7 @@ describe("DataAccessProxyLayer", () => {
         expect(signal).toBe(controller.signal);
     });
 
-    it("throws DataAccessError(412) verbatim from the store and leaves its own etag unchanged", async () => {
+    it("throws DataAccessError(412) verbatim from the store and leaves its own etag stale (no retrieve-refresh)", async () => {
         const store = makeFakeStore("etag-1");
         const proxy = new DataAccessProxyLayer(store, "etag-stale-from-other-tab");
         const data = (await store.getSnapshot()).data;
@@ -97,10 +103,18 @@ describe("DataAccessProxyLayer", () => {
             name: "DataAccessError",
             statusCode: 412,
         });
-        // Retrying after a retrieve should now succeed (etag refreshed
-        // from the cache).
+        // Even after a retrieve, the proxy keeps its stale etag —
+        // recovery is owned by the app-root ConflictModal (hard
+        // reload), which drops this proxy and creates a fresh one.
         await proxy.retrieveRepertoireData();
-        await proxy.storeRepertoireData(data);
+        await expect(proxy.storeRepertoireData(data)).rejects.toMatchObject({
+            name: "DataAccessError",
+            statusCode: 412,
+        });
         expect((store.save as any).mock.calls.length).toBe(2);
+        const [, e1] = (store.save as any).mock.calls[0];
+        const [, e2] = (store.save as any).mock.calls[1];
+        expect(e1).toBe("etag-stale-from-other-tab");
+        expect(e2).toBe("etag-stale-from-other-tab");
     });
 });
