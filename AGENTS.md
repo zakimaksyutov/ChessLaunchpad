@@ -84,7 +84,7 @@ The backend is a REST API (`https://chess-prod-function.azurewebsites.net/api/us
 
 ## Playwright / E2E
 
-Test account credentials are in `.env` at the repo root (git-ignored). Use these to log in during Playwright-based automation.
+Test account credentials are in `.env` at the repo root (git-ignored). Use these to log in during Playwright-based automation. When operating in a git worktree, look for `.env` in the main repository folder (it is not copied into worktrees).
 
 ## Vite Development Notes
 
@@ -95,3 +95,4 @@ The dev server is pinned to **port 5274** (`strictPort: true`) to avoid conflict
 - **Never amend commits.** Always create new commits instead of using `git commit --amend`.
 - Do not auto-commit. Leave changes uncommitted for review unless explicitly told to commit.
 - **Baseline before big changes.** Run `yarn test` and `yarn test:e2e` before starting to confirm they pass, so failures after your changes aren't misattributed.
+- **Comment the "why", not the "what".** If a comment just restates what the code or types already say, delete it; keep comments only for non-obvious intent or rationale.

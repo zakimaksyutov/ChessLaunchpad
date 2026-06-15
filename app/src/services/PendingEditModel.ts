@@ -372,11 +372,18 @@ export class PendingEditModel {
         }
         if (!rep.positions[from]) rep.positions[from] = { moves: {} };
         if (!rep.positions[to]) rep.positions[to] = { moves: {} };
-        if (!rep.positions[from].moves[san]) {
-            // Denormalize `to` so reachability/canonical-path/edge-collection
-            // hot paths can skip chess.js on this edge.
-            rep.positions[from].moves[san] = { to };
+        // Idempotent: if the edge is already present, leave `move.card`
+        // untouched. Re-running the card-assignment branch on an existing
+        // edge is a no-op today but a fragile contract — a future tweak to
+        // the branches below could silently reset FSRS history on re-import
+        // or duplicate-add. Gate both edge creation and card minting on the
+        // edge being brand-new so they stay coupled.
+        if (rep.positions[from].moves[san]) {
+            return to;
         }
+        // Denormalize `to` so reachability/canonical-path/edge-collection
+        // hot paths can skip chess.js on this edge.
+        rep.positions[from].moves[san] = { to };
         if (isUserTurnForOrientation(from, orientation)) {
             const key = FSRSService.makeCardKey(from, san);
             const baseCard = this.baseFsrsCards[key];
@@ -469,11 +476,16 @@ export class PendingEditModel {
      * No-op if `fen` isn't reachable from root in the current working copy.
      * This prevents creating orphan positions that would later block save
      * with a cryptic codec error. `fen === root` is always allowed.
+     *
+     * Returns `true` if the annotations were applied, `false` if the call
+     * was a no-op (unreachable `fen`). Callers tracking counts (e.g.
+     * `applyImportedPgn`'s summary) use the return value to stay honest
+     * without repeating the reachability walk.
      */
-    setAnnotations(fen: string, orientation: Orientation, annotations: Annotation[]): void {
+    setAnnotations(fen: string, orientation: Orientation, annotations: Annotation[]): boolean {
         const rep = this.getCurrentRepertoire(orientation);
         if (fen !== this.root && !reachableFensFromRoot(rep, this.root).has(fen)) {
-            return;
+            return false;
         }
         if (!rep.positions[fen]) rep.positions[fen] = { moves: {} };
         if (annotations.length === 0) {
@@ -481,6 +493,49 @@ export class PendingEditModel {
         } else {
             rep.positions[fen].annotations = annotations.map(a => ({ ...a }));
         }
+        return true;
+    }
+
+    /**
+     * Bulk-apply a parsed PGN import into this model. Used by the Edit-mode
+     * Import PGN flow — the resulting edges & annotations stage into the
+     * pending delta and surface through the existing Review & Save pipeline.
+     *
+     * Edges are applied in the order supplied (the decoder yields them
+     * parent-before-child within each branch, so each `from` is reachable
+     * when the edge is applied — same invariant `addEdge` enforces).
+     *
+     * Annotations REPLACE the existing set at a FEN only when supplied —
+     * positions not present in `annotationsByFen` are untouched, matching
+     * the spec's intentional asymmetry (import can add/replace but not
+     * clear annotations).
+     */
+    applyImportedPgn(
+        orientation: Orientation,
+        edges: { from: string; san: string }[],
+        annotationsByFen: Map<string, Annotation[]>,
+    ): { addedEdges: number; replacedAnnotations: number } {
+        let addedEdges = 0;
+        let replacedAnnotations = 0;
+        for (const e of edges) {
+            // `addEdge` returns null if illegal or unreachable. For PGN
+            // imports the decoder validates legality, so the only realistic
+            // null is "from not reachable" — which shouldn't happen given
+            // BFS-order, but skipping is the safe behaviour.
+            const rep = this.getCurrentRepertoire(orientation);
+            const alreadyPresent = rep.positions[e.from]?.moves[e.san] !== undefined;
+            const result = this.addEdge(e.from, e.san, orientation);
+            if (result !== null && !alreadyPresent) addedEdges++;
+        }
+        for (const [fen, anns] of annotationsByFen) {
+            const rep = this.getCurrentRepertoire(orientation);
+            const before = rep.positions[fen]?.annotations ?? [];
+            if (annotationSetsEqual(before, anns)) continue;
+            if (this.setAnnotations(fen, orientation, anns)) {
+                replacedAnnotations++;
+            }
+        }
+        return { addedEdges, replacedAnnotations };
     }
 
     // ── Delta computation ────────────────────────────────────────────

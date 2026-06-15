@@ -36,6 +36,9 @@ how many sequences arrive at it.
   (and flips the toggle) if the position only lives there.
 - **Click any ply** anywhere on the page to jump there. Position is
   in the URL, so Back, Refresh, and link-sharing all work.
+- **Export PGN** (from a `⋯` menu next to **Edit repertoire**)
+  downloads the current orientation as a standard `.pgn` with a
+  `[Repertoire "White"|"Black"]` header. Disabled while editing.
 
 Unknown shared URLs snap to the start position with a brief toast.
 The page refetches on visibility change so cross-tab edits show up.
@@ -54,6 +57,12 @@ repertoire per session.
   positions survive.
 - **Annotations** (arrows, square highlights) are drawn directly on
   the board with the chessboard's native right-click gestures.
+- **Import PGN** (paste a snippet or pick a `.pgn` file, scoped to
+  the orientation being edited) stages into the pending delta: SAN
+  moves union with the existing tree; per-position annotations
+  replace only when the PGN carries a `[%cal …]`/`[%csl …]` comment
+  tag. FSRS state is not carried — new user-turn edges become fresh
+  `New` cards on Save.
 
 Edits accumulate into an **in-memory, tab-local pending delta**.
 While Edit mode is active every header menu item (title, nav links,
