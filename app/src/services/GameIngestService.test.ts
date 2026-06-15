@@ -54,9 +54,6 @@ class MockDal implements IDataAccessLayer {
         this.retrieveCount += 1;
         return clone(this.data);
     }
-    async fetchEtagOnly(): Promise<void> {
-        this.retrieveCount += 1;
-    }
     async storeRepertoireData(data: RepertoireData): Promise<void> {
         this.storeCount += 1;
         if (this.nextStoreError) {
@@ -426,7 +423,7 @@ describe('GameIngestService', () => {
         expect(state.watermarkMs).toBe(baseMs + 54 * 1000);
     });
 
-    it('retries on 412 conflict and succeeds on retry', async () => {
+    it('on 412 conflict, ingest fails silently without retry (modal-reload owns recovery)', async () => {
         const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
         const data = makeData([variant]);
 
@@ -437,16 +434,33 @@ describe('GameIngestService', () => {
             moves: 'e4 e5 Nf3',
         });
         mockLichessOnce([game]);
-        mockLichessOnce([game]); // for the retry — pipeline refetches games too
 
         setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
         const dal = new MockDal(data);
         dal.nextStoreError = new DataAccessError('precondition failed', 412);
 
-        const result = await runIngest(dal);
-        expect(result.didWrite).toBe(true);
-        expect(dal.retrieveCount).toBeGreaterThanOrEqual(2);
-        expect(dal.storeCount).toBe(2); // first try (412) + retry success
+        // On 412 the app-root <ConflictModal> owns recovery (via SessionStore's
+        // notifyConflict, fired before the error is rethrown). runIngest must
+        // therefore stay silent: no console.error telemetry, and — critically
+        // — no trailing `done` progress emit, since Dashboard's handler would
+        // flip syncStatus to "synced" and flash a green badge under the modal.
+        const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const events: IngestProgress[] = [];
+            const result = await runIngest(dal, (p) => events.push(p));
+            // 412 is swallowed by runIngest's top-level catch; reports a no-op.
+            expect(result.didWrite).toBe(false);
+            expect(result.gamesProcessed).toBe(0);
+            expect(dal.storeCount).toBe(1); // single attempt, no retry
+            // No "GameIngest: failed" telemetry on the 412 path.
+            expect(errSpy).not.toHaveBeenCalled();
+            // The pipeline still emits its `fetching` events (the PUT only
+            // fails at the end), but the trailing `done` is suppressed.
+            expect(events.find(p => p.phase === 'done')).toBeUndefined();
+            expect(events.some(p => p.phase === 'fetching')).toBe(true);
+        } finally {
+            errSpy.mockRestore();
+        }
     });
 
     it('handles black orientation correctly', async () => {
@@ -1003,6 +1017,62 @@ describe('GameIngestService', () => {
             const todayDay = dal.data.activity!.practiceLog.find(e => e.date !== dateStr)!;
             expect(todayDay.games!.records!.length).toBe(1);
             expect(todayDay.games!.records![0].id).toBe('newToday');
+        });
+    });
+
+    describe('AbortSignal', () => {
+        it('throws AbortError when signal is pre-aborted before the first retrieve', async () => {
+            const data = makeData();
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const controller = new AbortController();
+            controller.abort();
+            await expect(runIngest(dal, undefined, controller.signal))
+                .rejects.toMatchObject({ name: 'AbortError' });
+            expect(dal.storeCount).toBe(0);
+        });
+
+        it('does not call PUT after abort fires between fetch and PUT', async () => {
+            const data = makeData();
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const controller = new AbortController();
+            // Mock the lichess GET so it succeeds, then abort right
+            // after the fetch returns but before the PUT fires.
+            const game = lichessGame({
+                id: 'newGame',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            (globalThis.fetch as ReturnType<typeof vi.fn>)
+                .mockImplementationOnce(async () => {
+                    controller.abort();
+                    return {
+                        ok: true,
+                        status: 200,
+                        statusText: 'OK',
+                        headers: new Headers(),
+                        text: async () => buildLichessGameNdjson([game]),
+                        json: async () => ({}),
+                    } as unknown as Response;
+                });
+            await expect(runIngest(dal, undefined, controller.signal))
+                .rejects.toMatchObject({ name: 'AbortError' });
+            expect(dal.storeCount).toBe(0);
+        });
+
+        it('skips emitting the done progress event when aborted', async () => {
+            const data = makeData();
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const controller = new AbortController();
+            controller.abort();
+            const progresses: any[] = [];
+            try {
+                await runIngest(dal, p => progresses.push(p), controller.signal);
+            } catch { /* abort propagation */ }
+            expect(progresses.find(p => p.phase === 'done')).toBeUndefined();
         });
     });
 });

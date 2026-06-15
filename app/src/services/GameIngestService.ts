@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
-import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
+import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
+import { DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
 import { AuditService } from './AuditService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
@@ -28,7 +29,6 @@ import {
 
 const AGE_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 const MAX_RECENT_IDS = 50;
-const MAX_RETRIES = 3;
 const LICHESS_MAX_PER_REQUEST = 500;
 
 interface IngestGame {
@@ -59,10 +59,13 @@ export interface IngestSummary {
  * Progress events emitted by runIngest for UI feedback (e.g. Dashboard banner).
  *
  * - `fetching`: emitted before each per-account fetch. accountIndex is 1-based.
- *   On 412 retries the pipeline restarts and these events are re-emitted from 1.
  * - `done`: emitted exactly once at the end, even on caught failures
  *   (gamesProcessed == 0 in that case). Callers can treat "done with 0" as a
  *   silent no-op since failures and "nothing new" are indistinguishable here.
+ *   Exception: on a 412 conflict the `done` event is suppressed — the
+ *   app-root `<ConflictModal>` owns the recovery UI and is about to hard
+ *   reload the page, so emitting `done` (and letting Dashboard flash a
+ *   "Synced @ HH:MM" badge under the modal) would be misleading.
  *
  * Never emitted at all when the user has no linked accounts.
  */
@@ -84,92 +87,108 @@ export type IngestProgressCallback = (progress: IngestProgress) => void;
  *        - In-repertoire move → Good (timestamped at game.createdAt)
  *        - First deviation → Again on every sibling card sharing fenBefore, then stop.
  *   6. Update per-day game counters and per-account state.
- *   7. PUT with If-Match; retry up to MAX_RETRIES on 412.
+ *   7. PUT with If-Match (single attempt; the app-root `<ConflictModal>`
+ *      handles 412 recovery via page reload).
  *
- * Never throws — all errors are logged and swallowed.
+ * Never throws — all errors are logged and swallowed, except `AbortError`
+ * which is re-raised so callers can distinguish "I asked it to stop"
+ * from "ingest failed". Optional `signal` aborts between phases and is
+ * forwarded to provider HTTP fetches.
  */
 export async function runIngest(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     onProgress?: IngestProgressCallback,
+    signal?: AbortSignal,
 ): Promise<IngestSummary> {
     const failureSummary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
     const runNowMs = Date.now();
     let result: IngestSummary = failureSummary;
     let emittedAny = false;
+    let suppressDone = false;
     const wrappedProgress: IngestProgressCallback | undefined = onProgress
         ? (p) => { emittedAny = true; onProgress(p); }
         : undefined;
     try {
-        result = await runIngestInternal(dal, runNowMs, wrappedProgress);
+        result = await runIngestInternal(dal, runNowMs, wrappedProgress, signal);
     } catch (e) {
-        // Telemetry only — never surface to UI.
-        // eslint-disable-next-line no-console
-        console.error('GameIngest: failed', e);
+        // Abort is an expected control-flow signal — re-raise so callers
+        // can distinguish "I asked it to stop" from "ingest failed".
+        if (signal?.aborted || (e as { name?: string })?.name === 'AbortError') {
+            throw e;
+        }
+        // 412 is owned by the app-root <ConflictModal>: the PUT inside
+        // `runIngestInternal` already fired `notifyConflict` before
+        // throwing, so the modal is up and will hard-reload the page.
+        // Skip the telemetry log (consistent with the silence rule the
+        // other 412 catches follow) and — critically — suppress the
+        // trailing `done` emit below, so Dashboard's progress handler
+        // doesn't flip syncStatus to "Synced @ HH:MM" and flash a
+        // green badge under the modal.
+        if (e instanceof DataAccessError && e.statusCode === 412) {
+            suppressDone = true;
+        } else {
+            // Telemetry only — never surface to UI.
+            // eslint-disable-next-line no-console
+            console.error('GameIngest: failed', e);
+        }
         result = failureSummary;
     }
     // Only emit `done` if we ever emitted `fetching` — preserves the
-    // "no linked accounts → never notify" contract.
-    if (onProgress && emittedAny) {
+    // "no linked accounts → never notify" contract. Also skip on 412
+    // (see catch above): the modal is the only UI we want showing.
+    if (onProgress && emittedAny && !signal?.aborted && !suppressDone) {
         onProgress({ phase: 'done', gamesProcessed: result.gamesProcessed });
     }
     return result;
 }
 
 async function runIngestInternal(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     runNowMs: number,
     onProgress?: IngestProgressCallback,
+    signal?: AbortSignal,
 ): Promise<IngestSummary> {
     const summary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        const data = await dal.retrieveRepertoireData();
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const data = await dal.retrieveRepertoireData();
 
-        // Source the linked-accounts list from the freshest blob — not from the
-        // process-local cache, which can be stale during initial Dashboard mount
-        // and is shared across user sessions in a single SPA process. Falls back
-        // to an empty list if the user has none.
-        const linkedAccountsRaw = data.settings?.linkedAccounts ?? [];
-        const linkedAccounts: LinkedAccount[] = linkedAccountsRaw.map(a => ({
-            platform: a.platform || 'lichess',
-            username: a.username.toLowerCase(),
-        }));
-        if (linkedAccounts.length === 0) return summary;
+    // Source the linked-accounts list from the freshest blob — not from the
+    // process-local cache, which can be stale during initial Dashboard mount
+    // and is shared across user sessions in a single SPA process. Falls back
+    // to an empty list if the user has none.
+    const linkedAccountsRaw = data.settings?.linkedAccounts ?? [];
+    const linkedAccounts: LinkedAccount[] = linkedAccountsRaw.map(a => ({
+        platform: a.platform || 'lichess',
+        username: a.username.toLowerCase(),
+    }));
+    if (linkedAccounts.length === 0) return summary;
 
-        const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress);
+    const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress, signal);
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
 
-        const eligible = composeEligibleGames(data.games, fetches, runNowMs);
-        const hasCursorChange = fetches.some(af => providerCursorChanged(data.games?.[af.accountKey], af));
+    const eligible = composeEligibleGames(data.games, fetches, runNowMs);
+    const hasCursorChange = fetches.some(af => providerCursorChanged(data.games?.[af.accountKey], af));
 
-        if (eligible.length === 0 && !hasCursorChange) {
-            // Nothing to persist.
-            return summary;
-        }
-
-        applyIngest(data, eligible, linkedAccounts);
-        updateAccountStates(data, fetches, eligible);
-
-        try {
-            // Project in-memory state into the position-centric blob shape
-            // before persisting — re-syncs the position dict with FSRSService's
-            // in-place card mutations.
-            const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
-            await dal.storeRepertoireData(blobForSave);
-            return { didWrite: true, gamesProcessed: eligible.length };
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // ETag conflict — refetch and retry from scratch.
-                // eslint-disable-next-line no-console
-                console.warn(`GameIngest: 412 conflict on attempt ${attempt}, retrying`);
-                continue;
-            }
-            throw e;
-        }
+    if (eligible.length === 0 && !hasCursorChange) {
+        // Nothing to persist.
+        return summary;
     }
 
-    // eslint-disable-next-line no-console
-    console.warn('GameIngest: max retries exhausted');
-    return summary;
+    applyIngest(data, eligible, linkedAccounts);
+    updateAccountStates(data, fetches, eligible);
+
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    // Project in-memory state into the position-centric blob shape
+    // before persisting — re-syncs the position dict with FSRSService's
+    // in-place card mutations.
+    const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
+    // Single attempt: on 412 the underlying SessionStore.save fires the
+    // global conflict notifier (app-root <ConflictModal> shows a Reload
+    // prompt) and rethrows; the top-level catch in runIngest swallows
+    // the error and the next Dashboard visit re-runs ingest.
+    await dal.storeRepertoireData(blobForSave, signal);
+    return { didWrite: true, gamesProcessed: eligible.length };
 }
 
 async function fetchAllAccounts(
@@ -177,9 +196,11 @@ async function fetchAllAccounts(
     gamesMap: GamesIngestMap | undefined,
     runNowMs: number,
     onProgress?: IngestProgressCallback,
+    signal?: AbortSignal,
 ): Promise<AccountFetchResult[]> {
     const results: AccountFetchResult[] = [];
     for (let i = 0; i < accounts.length; i++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const acct = accounts[i];
         const accountKey = getAccountKey(acct.platform, acct.username);
         const state = gamesMap?.[accountKey];
@@ -192,13 +213,14 @@ async function fetchAllAccounts(
         });
         try {
             if (acct.platform === 'lichess') {
-                const games = await fetchLichessGames(acct.username, state, runNowMs);
+                const games = await fetchLichessGames(acct.username, state, runNowMs, signal);
                 results.push({ accountKey, games, fetchSucceeded: true });
             } else {
-                const { games, providerCursor } = await fetchChesscomGames(acct.username, state, runNowMs);
+                const { games, providerCursor } = await fetchChesscomGames(acct.username, state, runNowMs, signal);
                 results.push({ accountKey, games, providerCursor, fetchSucceeded: true });
             }
         } catch (e) {
+            if (signal?.aborted) throw e;
             // eslint-disable-next-line no-console
             console.error(`GameIngest: fetch failed for ${accountKey}`, e);
             results.push({ accountKey, games: [], fetchSucceeded: false });
@@ -451,6 +473,7 @@ async function fetchLichessGames(
     username: string,
     state: GameIngestState | undefined,
     runNowMs: number,
+    signal?: AbortSignal,
 ): Promise<IngestGame[]> {
     const watermark = state?.watermarkMs ?? 0;
     // Use the max of (watermark+1, runNow - AGE_WINDOW) so initial runs don't pull years of history.
@@ -477,6 +500,7 @@ async function fetchLichessGames(
 
     const response = await fetch(url, {
         headers: { 'Accept': 'application/x-ndjson' },
+        signal,
     });
     if (!response.ok) {
         throw new Error(`Lichess API error: ${response.status} ${response.statusText}`);
@@ -548,6 +572,7 @@ async function fetchChesscomGames(
     username: string,
     state: GameIngestState | undefined,
     runNowMs: number,
+    signal?: AbortSignal,
 ): Promise<{ games: IngestGame[]; providerCursor?: ChesscomProviderCursor }> {
     const currentLabel = archiveLabelFromMs(runNowMs);
     const accountKey = getAccountKey('chess.com', username);
@@ -563,6 +588,7 @@ async function fetchChesscomGames(
     let newCursor: ChesscomProviderCursor | undefined;
 
     for (const label of labelsToFetch) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const url = archiveUrlForLabel(username, label);
         const headers: Record<string, string> = {};
         const prevCursor = state?.providerCursor;
@@ -571,7 +597,7 @@ async function fetchChesscomGames(
             headers['If-None-Match'] = prevCursor.etag;
         }
 
-        const response = await fetch(url, { headers });
+        const response = await fetch(url, { headers, signal });
         if (response.status === 304) {
             // No changes — preserve cursor.
             if (label === currentLabel && prevCursor) newCursor = prevCursor;

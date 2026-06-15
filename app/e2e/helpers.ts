@@ -111,7 +111,11 @@ export async function setupMockEnvironment(
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        headers: { ETag: `"test-etag-${saves.length + 1}"` },
+        headers: {
+          ETag: `"test-etag-${saves.length + 1}"`,
+          // Expose ETag across origins so SessionStore can read it.
+          'Access-Control-Expose-Headers': 'ETag',
+        },
         body: JSON.stringify(latestBody),
       });
     }
@@ -124,7 +128,11 @@ export async function setupMockEnvironment(
       }
       return route.fulfill({
         status: 200,
-        headers: { ETag: `"test-etag-${saves.length + 1}"` },
+        headers: {
+          ETag: `"test-etag-${saves.length + 1}"`,
+          // Expose ETag across origins so SessionStore can read it.
+          'Access-Control-Expose-Headers': 'ETag',
+        },
       });
     }
     return route.continue();

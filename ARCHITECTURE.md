@@ -102,6 +102,10 @@ Browser ←→ Azure Functions REST API (/api/user/{id}/variants)
 
 The entire repertoire (positions + FSRS cards + annotations + settings + activity) is stored as a single JSON blob with ETag-based optimistic concurrency. Storage is **position-centric**: a top-level `repertoires` field holds two named entries (`White`, `Black`), each with a dict of normalized FENs to position entries that carry inline FSRS cards on user-turn moves. See `docs/REPERTOIRE-STORAGE.md` for the full schema and wire format, and `docs/BACKEND_API_CONTRACT.md` for the REST envelope.
 
+The blob is fetched once per logged-in session and cached in memory, so page navigation does not re-hit the network. Long-running background work (game ingest, game-record analysis, opponent analysis) is cancelled when the page that started it unmounts, which avoids the common Dashboard/Games ↔ Training write race.
+
+Any ETag conflict that does surface — multi-tab edits, or a race that beats the cancellation — is treated as unrecoverable in place: a single app-level conflict modal appears and the only action is **Reload**. No write site retries on `412`, and no write site silently re-applies a local mutation on top of fresh server state.
+
 ### Games Page Data Flow
 
 The Games page downloads games from Lichess and Chess.com public APIs and stores them locally:

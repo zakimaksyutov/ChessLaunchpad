@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TrainingPageControl from '../components/TrainingPageControl';
-import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
+import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireData } from '../models/RepertoireData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
@@ -20,27 +21,13 @@ const TrainingPage: React.FC = () => {
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
 
-    // Safe to use non-null assertions: ProtectedRoute guarantees credentials
-    // exist in localStorage before this component renders.
-    const dal: IDataAccessLayer = useMemo(() => {
-        const username = localStorage.getItem('username');
-        const hashedPassword = localStorage.getItem('hashedPassword');
-        if (!username || !hashedPassword) {
-            setError('No user session found. Please log in first.');
-        }
-        return createDataAccessLayer(username!, hashedPassword!);
-    }, []);
+    const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
     // On mount, retrieve data from the server
     useEffect(() => {
         let cancelled = false;
 
         const fetchData = async () => {
-            if (!dal) {
-                console.error('DataAccessLayer not initialized');
-                return;
-            }
-
             setLoading(true);
             try {
                 const data: RepertoireData = await dal.retrieveRepertoireData();
@@ -78,10 +65,18 @@ const TrainingPage: React.FC = () => {
         elapsedSeconds: number,
     ) => {
         const currentData = repertoireDataRef.current;
-        if (!currentData || !dal) return;
+        if (!currentData) return;
 
         try {
-            // Record activity (recordTraversal calls ensureActivity internally)
+            // Record activity (recordTraversal calls ensureActivity internally).
+            //
+            // IMPORTANT: recordTraversal is NON-IDEMPOTENT (it does `+=` on
+            // entry.reviewed/mistakes/learned/traversals and the lifetime
+            // counters). Do NOT wrap the storeRepertoireData call below in a
+            // "retry on transient network error" loop — replaying it after a
+            // successful-but-perceived-failed save would double-count stats.
+            // On 412 conflicts the app-root ConflictModal hard-reloads, which
+            // discards the in-memory mutation; that's the only safe recovery.
             recordTraversal(currentData, traversalStats, elapsedSeconds);
 
             // FSRSService has already mutated currentData.fsrsCards in-place
@@ -94,6 +89,14 @@ const TrainingPage: React.FC = () => {
 
             console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(currentData)} (+${correctCardsRated})`);
         } catch (e: any) {
+            if (e instanceof DataAccessError && e.statusCode === 412) {
+                // The app-root <ConflictModal> already fired (via
+                // SessionStore.save's notifyConflict) and is showing
+                // the Reload prompt. Don't duplicate the message with
+                // an inline banner — the modal owns the recovery flow
+                // and will hard-reload the page on confirm.
+                return;
+            }
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);
             setError(msg);

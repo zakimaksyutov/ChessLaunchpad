@@ -136,8 +136,7 @@ For each processed game, the pipeline also calls `buildGameRecord` and appends t
 
 Ingest must be idempotent across devices.
 
-- The blob's existing ETag / If-Match flow is the only coordination mechanism. On `412`: re-fetch the blob, recompute the set of still-unprocessed games against the freshest `watermarkMs` + `recentIds`, re-apply ratings to the fresh FSRS state, re-derive activity counter deltas from the recomputed set, and retry the PUT. Never `+=` previously-captured deltas onto a freshly-read entry.
-- **Retry cap:** 3 attempts per run. If all conflict, the run aborts silently and the next Dashboard mount picks up.
+- The blob's ETag / If-Match flow is the only coordination mechanism. A run is a single GET-compose-PUT pass; on `412` the run aborts and the app-level conflict modal handles user-facing recovery (page reload). The next Dashboard or Games mount re-runs ingest from the fresh blob.
 - `watermarkMs` and `recentIds` advance **only on successful PUT**.
 - Games present in `recentIds` are skipped even if `createdAt > watermarkMs`.
 - **Cursor-only writes.** A run that produces zero eligible games but observes a changed Chess.com `providerCursor.etag` (or a missing → present transition) still issues a PUT so the cursor is persisted.

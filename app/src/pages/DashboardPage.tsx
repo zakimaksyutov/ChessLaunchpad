@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { State } from 'ts-fsrs';
-import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
@@ -79,16 +79,23 @@ const DashboardPage: React.FC = () => {
     // Lock against overlapping sync cycles (auto + manual button + double-click).
     const syncInFlightRef = useRef(false);
 
-    const dal: IDataAccessLayer | null = useMemo(() => {
-        const username = localStorage.getItem('username');
-        const hashedPassword = localStorage.getItem('hashedPassword');
-        if (!username || !hashedPassword) return null;
-        return createDataAccessLayer(username, hashedPassword);
-    }, []);
+    // Page-scoped AbortController for `runIngest` so navigation away
+    // from /dashboard cancels its in-flight HTTP fetches and skips
+    // its final PUT — eliminating the sync-vs-training 412 race.
+    //
+    // StrictMode caveat: cleanup defers `.abort()` by a tick so the
+    // synthetic remount can clear the pending timer before it fires.
+    // See docs/DAL-REFACTOR.md "StrictMode caveat".
+    const pageAbortRef = useRef<AbortController | null>(null);
+    const pendingAbortTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
     const runSyncCycle = useCallback(async () => {
-        if (!dal || !mountedRef.current) return;
+        if (!mountedRef.current) return;
         if (syncInFlightRef.current) return;
+        const ctrl = pageAbortRef.current;
+        if (ctrl?.signal.aborted) return;
         syncInFlightRef.current = true;
 
         const handleProgress = (progress: IngestProgress) => {
@@ -108,24 +115,32 @@ const DashboardPage: React.FC = () => {
         };
 
         try {
-            const summary = await runIngest(dal, handleProgress);
+            const summary = await runIngest(dal, handleProgress, ctrl?.signal);
             if (!mountedRef.current || !summary.didWrite) return;
             const refreshed = await dal.retrieveRepertoireData();
             if (!mountedRef.current) return;
             ensureActivity(refreshed);
             setRepertoireData(refreshed);
         } catch {
-            // Ingest errors must never disrupt the UI.
+            // Ingest errors (including aborts) must never disrupt the UI.
         } finally {
             syncInFlightRef.current = false;
         }
     }, [dal]);
 
     useEffect(() => {
-        if (!dal) {
-            setLoading(false);
-            return;
+        // Clear any pending abort from a prior cleanup — we're back
+        // (real or StrictMode-synthetic remount).
+        if (pendingAbortTimerRef.current) {
+            clearTimeout(pendingAbortTimerRef.current);
+            pendingAbortTimerRef.current = null;
         }
+        // Lazy so the controller survives the synthetic mount → unmount
+        // → remount cycle (don't recreate on every effect run).
+        if (!pageAbortRef.current) {
+            pageAbortRef.current = new AbortController();
+        }
+        const controller = pageAbortRef.current;
 
         (async () => {
             try {
@@ -148,6 +163,21 @@ const DashboardPage: React.FC = () => {
                 setLoading(false);
             }
         })();
+
+        return () => {
+            // Defer the abort by a tick — a StrictMode synthetic remount
+            // runs cleanup → next-effect synchronously and the next-effect
+            // clears this timer. Real navigation has no follow-up effect
+            // → timer fires → ingest aborts.
+            pendingAbortTimerRef.current = setTimeout(() => {
+                pendingAbortTimerRef.current = null;
+                controller.abort();
+                // Drop our ref so any future effect run gets a fresh one.
+                if (pageAbortRef.current === controller) {
+                    pageAbortRef.current = null;
+                }
+            }, 0);
+        };
     }, [dal, runSyncCycle]);
 
     if (loading) return <div className="dashboard-loading">Loading dashboard…</div>;

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 import { derivePassword } from '../utils/HashPassword';
 import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from '../data/DataAccessLayer';
+import { createSessionStore, clearSessionStore } from '../data/SessionStore';
 import { trackEvent, setAuthenticatedUserContext } from '../AppInsights';
 
 type LoginPageProps = {
@@ -64,6 +65,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             // Store the derived password in localStorage (instead of the real password)
             localStorage.setItem('username', username);
             localStorage.setItem('hashedPassword', derivedPassword);
+
+            // Construct the SessionStore now so its eager GET /variants
+            // overlaps with React's re-render → navigate cycle and the
+            // destination page's first proxy retrieve hits a warm cache.
+            clearSessionStore();
+            createSessionStore(username, derivedPassword);
 
             // Set authenticated context and track event to App Insights
             setAuthenticatedUserContext(username);

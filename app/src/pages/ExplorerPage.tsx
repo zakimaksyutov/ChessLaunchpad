@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessboardControl from '../components/ChessboardControl';
 import ReviewView from '../components/ReviewView';
-import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from '../data/DataAccessLayer';
+import { DataAccessError } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData } from '../models/RepertoireData';
 import {
     ExplorerService,
@@ -597,7 +598,6 @@ const ExplorerPage: React.FC = () => {
 
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveInFlight, setSaveInFlight] = useState(false);
-    const [conflictPrompt, setConflictPrompt] = useState(false);
     const [discardPrompt, setDiscardPrompt] = useState(false);
 
     // ── PGN export/import ───────────────────────────────────────────
@@ -622,11 +622,7 @@ const ExplorerPage: React.FC = () => {
     const openingsRef = useRef<DatabaseOpening[] | null>(null);
     const dataRef = useRef<RepertoireData | null>(null);
 
-    const dal: IDataAccessLayer = useMemo(() => {
-        const username = localStorage.getItem('username') ?? '';
-        const password = localStorage.getItem('hashedPassword') ?? '';
-        return createDataAccessLayer(username, password);
-    }, []);
+    const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
     const fetchAll = useCallback(async (force = false) => {
         const sinceLast = Date.now() - lastFetchAtRef.current;
@@ -671,25 +667,6 @@ const ExplorerPage: React.FC = () => {
         void fetchAll(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    // Cross-tab freshness: re-fetch when the page regains visibility — but
-    // ONLY when no Edit session is in flight. Refreshing mid-edit would swap
-    // out the DAL's captured ETag (and the page's `data`) under the user's
-    // feet, silently defeating the 412 conflict path that protects
-    // concurrent edits (see `handleSave`'s catch block). The pending model
-    // already holds the snapshot it was started against; surfacing newer
-    // server state is deferred until the user finishes or discards the
-    // session — same trade-off the spec calls out for ungated background
-    // game ingestion ("ETag safety net it would buy").
-    useEffect(() => {
-        const onVis = () => {
-            if (document.visibilityState !== 'visible') return;
-            if (pendingModel) return; // edit session active — don't trample the ETag
-            void fetchAll(false);
-        };
-        document.addEventListener('visibilitychange', onVis);
-        return () => document.removeEventListener('visibilitychange', onVis);
-    }, [fetchAll, pendingModel]);
 
     // In Read mode, the ExplorerService reads the persisted blob. In Edit
     // mode it reads the PendingEditModel's working copy so the user sees the
@@ -1032,7 +1009,6 @@ const ExplorerPage: React.FC = () => {
             // User chose to abandon — clear the model so beforeunload (and
             // the next click) don't re-prompt.
             setDiscardPrompt(false);
-            setConflictPrompt(false);
             setPendingModel(null);
             setMode('read');
             // The synchronous click will proceed and React Router will
@@ -1124,7 +1100,11 @@ const ExplorerPage: React.FC = () => {
             await fetchAll(true);
         } catch (err: unknown) {
             if (err instanceof DataAccessError && err.statusCode === 412) {
-                setConflictPrompt(true);
+                // The app-root <ConflictModal> already fired (via
+                // SessionStore.save's notifyConflict) and is showing the
+                // Reload prompt. Don't duplicate the message with a
+                // page-local "Save failed" — the modal owns the recovery
+                // flow and will hard-reload the page on confirm.
             } else {
                 const msg = err instanceof Error ? err.message : String(err);
                 setSaveError(`Save failed: ${msg}`);
@@ -1133,16 +1113,6 @@ const ExplorerPage: React.FC = () => {
             setSaveInFlight(false);
         }
     }, [pendingModel, data, dal, fetchAll, stripReviewParam]);
-
-    /** Conflict prompt: "Refresh" discards local edits and re-fetches. */
-    const handleConflictRefresh = useCallback(async () => {
-        setConflictPrompt(false);
-        setPendingModel(null);
-        setMode('read');
-        stripReviewParam();
-        dataRef.current = null;
-        await fetchAll(true);
-    }, [fetchAll, stripReviewParam]);
 
     /** Sticky-bar Discard handler (always prompts when delta non-empty). */
     const requestDiscard = useCallback(() => {
@@ -1730,38 +1700,6 @@ const ExplorerPage: React.FC = () => {
                     </div>
                 )}
 
-                {conflictPrompt && (
-                    <div className="explorer-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="conflict-prompt-title">
-                        <div className="explorer-modal">
-                            <h2 id="conflict-prompt-title">Repertoire changed elsewhere</h2>
-                            <p>
-                                Another writer (another tab, a training session, or game
-                                ingestion) updated your repertoire while you were editing.
-                                Saving now would overwrite their changes.
-                            </p>
-                            <p>
-                                <strong>Refresh</strong> discards your local edits and
-                                re-loads the latest state.
-                            </p>
-                            <div className="explorer-modal-actions">
-                                <button
-                                    type="button"
-                                    className="explorer-btn explorer-btn--neutral"
-                                    onClick={() => setConflictPrompt(false)}
-                                >
-                                    Keep editing
-                                </button>
-                                <button
-                                    type="button"
-                                    className="explorer-btn explorer-btn--danger"
-                                    onClick={handleConflictRefresh}
-                                >
-                                    Refresh
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );

@@ -55,7 +55,6 @@ class MockDal implements IDataAccessLayer {
     }
     async createAccount() {}
     async deleteAccount() {}
-    async fetchEtagOnly() { this.retrieveCount += 1; }
     async retrieveRepertoireData(): Promise<RepertoireData> {
         this.retrieveCount += 1;
         return clone(this.data);
@@ -230,7 +229,7 @@ describe('flushAnUpdates', () => {
         expect(stored.an).toEqual({ tv: [] });
     });
 
-    it('retries on 412 conflict and succeeds on retry', async () => {
+    it('throws on 412 conflict without retry (modal-reload owns recovery)', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
         const dal = new MockDal(data);
@@ -239,15 +238,9 @@ describe('flushAnUpdates', () => {
         const updates: AnalyzedGameOutcome[] = [
             { record: rec({ id: 'g1', t: BASE_DATE }), an: { tv: [{ ply: 4, in: true }] }, skipped: false },
         ];
-        // Silence the expected "412 retry" warning.
-        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        try {
-            const { persisted } = await flushAnUpdates(dal, updates);
-            expect(persisted).toBe(1);
-            expect(dal.storeCount).toBe(2); // first attempt 412'd, second succeeded
-        } finally {
-            warn.mockRestore();
-        }
+        await expect(flushAnUpdates(dal, updates))
+            .rejects.toMatchObject({ name: 'DataAccessError', statusCode: 412 });
+        expect(dal.storeCount).toBe(1); // single attempt, no retry
     });
 
     it('handles an empty updates array by returning the fresh blob with persisted=0', async () => {
@@ -393,7 +386,7 @@ describe('persistReannotateRefresh', () => {
         expect(dal.storeCount).toBe(0);
     });
 
-    it('retries on a 412 conflict and ultimately persists the replacement', async () => {
+    it('throws on 412 conflict without retry (modal-reload owns recovery)', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({
             id: 'g1', t: BASE_DATE,
@@ -403,10 +396,62 @@ describe('persistReannotateRefresh', () => {
         const dal = new MockDal(data);
         dal.nextStoreError = new DataAccessError('etag conflict', 412);
         const refreshed = rec({ id: 'g1', t: BASE_DATE, m: 'e4 e5' });
-        const fresh = await persistReannotateRefresh(dal, refreshed);
-        const stored = fresh.activity!.practiceLog[0].games!.records![0];
-        expect(stored.m).toBe('e4 e5');
-        expect(stored.an).toBeUndefined();
-        expect(dal.storeCount).toBe(2);
+        await expect(persistReannotateRefresh(dal, refreshed))
+            .rejects.toMatchObject({ name: 'DataAccessError', statusCode: 412 });
+        expect(dal.storeCount).toBe(1);
+    });
+});
+
+describe('AbortSignal support', () => {
+    it('flushAnUpdates throws AbortError when signal is pre-aborted', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const controller = new AbortController();
+        controller.abort();
+        const updates: AnalyzedGameOutcome[] = [
+            { record: rec({ id: 'g1', t: BASE_DATE }), an: { tv: [{ ply: 4, in: true }] }, skipped: false },
+        ];
+        await expect(flushAnUpdates(dal, updates, controller.signal))
+            .rejects.toMatchObject({ name: 'AbortError' });
+        expect(dal.storeCount).toBe(0);
+    });
+
+    it('persistOpponentAnalysis throws AbortError when signal is pre-aborted', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const controller = new AbortController();
+        controller.abort();
+        const op = {
+            ply: 4, m: 100, nb: 5, na: 1, os: 'Nf3', us: 'a3',
+            rb: [], ra: [], at: Date.now(),
+        };
+        await expect(persistOpponentAnalysis(dal, 'g1', 'l', op, controller.signal))
+            .rejects.toMatchObject({ name: 'AbortError' });
+        expect(dal.storeCount).toBe(0);
+    });
+
+    it('persistReannotateClear throws AbortError when signal is pre-aborted', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE, an: { tv: [] } }));
+        const dal = new MockDal(data);
+        const controller = new AbortController();
+        controller.abort();
+        await expect(persistReannotateClear(dal, 'g1', 'l', controller.signal))
+            .rejects.toMatchObject({ name: 'AbortError' });
+        expect(dal.storeCount).toBe(0);
+    });
+
+    it('persistReannotateRefresh throws AbortError when signal is pre-aborted', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const controller = new AbortController();
+        controller.abort();
+        const refreshed = rec({ id: 'g1', t: BASE_DATE, m: 'updated' });
+        await expect(persistReannotateRefresh(dal, refreshed, controller.signal))
+            .rejects.toMatchObject({ name: 'AbortError' });
+        expect(dal.storeCount).toBe(0);
     });
 });

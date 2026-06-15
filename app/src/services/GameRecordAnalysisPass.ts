@@ -5,7 +5,7 @@ import {
 } from '../models/RepertoireData';
 import { ExplorerEvals } from '../models/ExplorerEvals';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
-import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
+import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { getLinkedAccounts } from './LinkedAccountsService';
 import { findRecord, purgeRecordsFromTimestamp } from './GameRecordStore';
@@ -22,7 +22,6 @@ import {
 import { MastersLookup } from './MastersExplorerService';
 
 const ANALYSIS_FLUSH_BATCH = 5;
-const MAX_FLUSH_RETRIES = 3;
 
 /**
  * One step in the analysis pass — a single game's pre-analysis snapshot.
@@ -218,11 +217,14 @@ export async function analyzeOneGame(
 }
 
 /**
- * Flush a batch of `(p, id) → an` updates back to the blob via the DAL,
- * with field-scoped 412 reconciliation (re-fetch fresh blob → merge in
- * pending updates by record `(p, id)` → drop merges for records that
- * no longer exist → re-PUT). Returns the fresh blob the caller should
- * adopt as its render state, plus the count of writes that landed.
+ * Flush a batch of `(p, id) → an` updates back to the blob via the DAL.
+ *
+ * Single-attempt: GET fresh blob → merge in pending updates by record
+ * `(p, id)` → drop merges for records that no longer exist → PUT once.
+ * No 412 retry loop — recovery for a concurrent-writer race is owned
+ * by the app-root `<ConflictModal>` (the underlying `SessionStore.save`
+ * fires the notifier on 412 before throwing). The throw still
+ * propagates so the caller's catch can stop the pass.
  *
  * Verdicts whose target record is missing from the fresh blob (evicted
  * by a concurrent ingest, purged by an unlink) are silently dropped.
@@ -236,125 +238,106 @@ export async function analyzeOneGame(
  * `persistReannotateClear` (which deletes the `an` field) before this
  * flush runs, so the only way a deferred-update happens is a real
  * concurrent-tab race.
+ *
+ * Optional `signal` short-circuits between the GET/merge and the PUT;
+ * throws `DOMException('AbortError')` if aborted.
  */
 export async function flushAnUpdates(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     updates: AnalyzedGameOutcome[],
+    signal?: AbortSignal,
 ): Promise<{ data: RepertoireData; persisted: number }> {
     if (updates.length === 0) {
         const data = await dal.retrieveRepertoireData();
         return { data, persisted: 0 };
     }
 
-    for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
-        const fresh = await dal.retrieveRepertoireData();
-        const activity = fresh.activity;
-        if (!activity) {
-            // Fresh blob has no activity — nothing to merge into.
-            return { data: fresh, persisted: 0 };
-        }
-        let persisted = 0;
-        for (const upd of updates) {
-            if (upd.skipped || !upd.an) continue;
-            const found = findRecord(activity, upd.record.id, upd.record.p);
-            if (!found) continue; // evicted / purged
-            // Conflict resolution: any present `an` on the fresh record
-            // wins. The fresh value is the authoritative "this game has
-            // been analyzed" stamp (whether or not its `tv` is empty).
-            if (found.record.an !== undefined) continue;
-            found.record.an = upd.an;
-            persisted++;
-        }
-        if (persisted === 0) {
-            return { data: fresh, persisted: 0 };
-        }
-        try {
-            const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
-            return { data: fresh, persisted };
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // eslint-disable-next-line no-console
-                console.warn(`analysisPass: 412 conflict on flush attempt ${attempt}, retrying`);
-                continue;
-            }
-            throw e;
-        }
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) {
+        // Fresh blob has no activity — nothing to merge into.
+        return { data: fresh, persisted: 0 };
     }
-    // eslint-disable-next-line no-console
-    console.warn('analysisPass: max flush retries exhausted — verdicts deferred');
-    const data = await dal.retrieveRepertoireData();
-    return { data, persisted: 0 };
+    let persisted = 0;
+    for (const upd of updates) {
+        if (upd.skipped || !upd.an) continue;
+        const found = findRecord(activity, upd.record.id, upd.record.p);
+        if (!found) continue; // evicted / purged
+        // Conflict resolution: any present `an` on the fresh record
+        // wins. The fresh value is the authoritative "this game has
+        // been analyzed" stamp (whether or not its `tv` is empty).
+        if (found.record.an !== undefined) continue;
+        found.record.an = upd.an;
+        persisted++;
+    }
+    if (persisted === 0) {
+        return { data: fresh, persisted: 0 };
+    }
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return { data: fresh, persisted };
 }
 
 /**
- * Persist a single `op` (opponent-analysis) result back to the blob with
- * the same field-scoped 412 reconciliation as `flushAnUpdates`.
+ * Persist a single `op` (opponent-analysis) result back to the blob.
+ *
+ * Single-attempt: GET fresh blob → write `op` on the target record →
+ * PUT once. No 412 retry — the app-root `<ConflictModal>` handles
+ * recovery (`SessionStore.save` fires the notifier on 412).
  *
  * If the target record is evicted, the op is silently dropped (we don't
  * resurrect a record just to write `op` to it).
+ *
+ * Optional `signal` short-circuits between the GET and the PUT.
  */
 export async function persistOpponentAnalysis(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     recordId: string,
     recordPlatform: 'l' | 'c',
     op: NonNullable<GameRecord['op']>,
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
-    for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
-        const fresh = await dal.retrieveRepertoireData();
-        const activity = fresh.activity;
-        if (!activity) return fresh;
-        const found = findRecord(activity, recordId, recordPlatform);
-        if (!found) return fresh;
-        found.record.op = op;
-        try {
-            const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
-            return fresh;
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // eslint-disable-next-line no-console
-                console.warn(`persistOpponentAnalysis: 412 on attempt ${attempt}`);
-                continue;
-            }
-            throw e;
-        }
-    }
-    return await dal.retrieveRepertoireData();
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) return fresh;
+    const found = findRecord(activity, recordId, recordPlatform);
+    if (!found) return fresh;
+    found.record.op = op;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return fresh;
 }
 
 /**
- * Persist a Re-annotate clear (drop `an` and `op` for one record) back to
- * the blob with the field-scoped 412 reconciliation. Used by the page's
- * Re-annotate action so the queue can pick the record up on the next pass.
+ * Persist a Re-annotate clear (drop `an` and `op` for one record).
+ *
+ * Single-attempt: GET fresh blob → delete `an` and `op` → PUT once.
+ * No 412 retry — the app-root `<ConflictModal>` handles recovery.
+ *
+ * Optional `signal` short-circuits between the GET and the PUT.
  */
 export async function persistReannotateClear(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     recordId: string,
     recordPlatform: 'l' | 'c',
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
-    for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
-        const fresh = await dal.retrieveRepertoireData();
-        const activity = fresh.activity;
-        if (!activity) return fresh;
-        const found = findRecord(activity, recordId, recordPlatform);
-        if (!found) return fresh;
-        delete found.record.an;
-        delete found.record.op;
-        try {
-            const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
-            return fresh;
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // eslint-disable-next-line no-console
-                console.warn(`persistReannotateClear: 412 on attempt ${attempt}`);
-                continue;
-            }
-            throw e;
-        }
-    }
-    return await dal.retrieveRepertoireData();
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) return fresh;
+    const found = findRecord(activity, recordId, recordPlatform);
+    if (!found) return fresh;
+    delete found.record.an;
+    delete found.record.op;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return fresh;
 }
 
 /**
@@ -362,6 +345,9 @@ export async function persistReannotateClear(
  * freshly-built one (typically rebuilt from a re-fetched provider payload
  * so newer `ev` / `o` data lands) and clear its `an` / `op` so the
  * analysis pass picks it up.
+ *
+ * Single-attempt: GET fresh blob → replace the record in place → PUT
+ * once. No 412 retry — the app-root `<ConflictModal>` handles recovery.
  *
  * The replacement is done **in place** at the existing record's slot
  * (same `practiceLog` entry, same array index). This preserves the
@@ -378,45 +364,36 @@ export async function persistReannotateClear(
  * verbatim with `an` / `op` stripped.
  */
 export async function persistReannotateRefresh(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     freshRecord: GameRecord,
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
-    for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
-        const fresh = await dal.retrieveRepertoireData();
-        const activity = fresh.activity;
-        if (!activity) return fresh;
-        let replaced = false;
-        for (const entry of activity.practiceLog) {
-            const records = entry.games?.records;
-            if (!records) continue;
-            const idx = records.findIndex(
-                r => r.id === freshRecord.id && r.p === freshRecord.p,
-            );
-            if (idx < 0) continue;
-            // Strip `an` / `op` defensively — the refresh always wants the
-            // analysis pass to re-derive the verdict from the new `ev`.
-            const stripped: GameRecord = { ...freshRecord };
-            delete stripped.an;
-            delete stripped.op;
-            records[idx] = stripped;
-            replaced = true;
-            break;
-        }
-        if (!replaced) return fresh;
-        try {
-            const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
-            return fresh;
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // eslint-disable-next-line no-console
-                console.warn(`persistReannotateRefresh: 412 on attempt ${attempt}`);
-                continue;
-            }
-            throw e;
-        }
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) return fresh;
+    let replaced = false;
+    for (const entry of activity.practiceLog) {
+        const records = entry.games?.records;
+        if (!records) continue;
+        const idx = records.findIndex(
+            r => r.id === freshRecord.id && r.p === freshRecord.p,
+        );
+        if (idx < 0) continue;
+        // Strip `an` / `op` defensively — the refresh always wants the
+        // analysis pass to re-derive the verdict from the new `ev`.
+        const stripped: GameRecord = { ...freshRecord };
+        delete stripped.an;
+        delete stripped.op;
+        records[idx] = stripped;
+        replaced = true;
+        break;
     }
-    return await dal.retrieveRepertoireData();
+    if (!replaced) return fresh;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return fresh;
 }
 
 // Re-export for caller convenience.
@@ -424,61 +401,52 @@ export { ANALYSIS_FLUSH_BATCH };
 
 /**
  * DEBUG / TEMP — Persist a bulk delete of every record with `t >= fromT`
- * back to the blob with the same 412 reconciliation pattern as the other
- * persist helpers. Also rewinds per-account ingest state (`watermarkMs`,
+ * back to the blob. Single-attempt (the app-root `<ConflictModal>` owns
+ * 412 recovery). Also rewinds per-account ingest state (`watermarkMs`,
  * `recentIds`, chess.com `providerCursor`) so the next sync will re-fetch
  * and re-ingest the deleted games. Used by the /games page's debug
  * "Delete from here" menu. To be removed before the containing branch
  * merges.
  */
 export async function persistDeleteRecordsFromTimestamp(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     fromT: number,
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
-    for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
-        const fresh = await dal.retrieveRepertoireData();
-        const activity = fresh.activity;
-        if (!activity) return fresh;
-        const purged = purgeRecordsFromTimestamp(activity, fromT);
-        // Rewind ingest state so the next sync re-fetches the deleted games:
-        //   - watermarkMs: clamp to `fromT - 1` so deleted games are eligible again
-        //   - recentIds:   drop any entry with ts >= fromT so dedup doesn't skip
-        //   - providerCursor (chess.com): clear so a fresh archive fetch runs
-        //                  (the etag would otherwise short-circuit on 304)
-        let rewound = false;
-        if (fresh.games) {
-            for (const key of Object.keys(fresh.games)) {
-                const state = fresh.games[key];
-                if (state.watermarkMs >= fromT) {
-                    state.watermarkMs = fromT - 1;
-                    rewound = true;
-                }
-                if (state.recentIds?.length) {
-                    const kept = state.recentIds.filter(r => r.ts < fromT);
-                    if (kept.length !== state.recentIds.length) {
-                        state.recentIds = kept;
-                        rewound = true;
-                    }
-                }
-                if (state.providerCursor) {
-                    delete state.providerCursor;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) return fresh;
+    const purged = purgeRecordsFromTimestamp(activity, fromT);
+    // Rewind ingest state so the next sync re-fetches the deleted games:
+    //   - watermarkMs: clamp to `fromT - 1` so deleted games are eligible again
+    //   - recentIds:   drop any entry with ts >= fromT so dedup doesn't skip
+    //   - providerCursor (chess.com): clear so a fresh archive fetch runs
+    //                  (the etag would otherwise short-circuit on 304)
+    let rewound = false;
+    if (fresh.games) {
+        for (const key of Object.keys(fresh.games)) {
+            const state = fresh.games[key];
+            if (state.watermarkMs >= fromT) {
+                state.watermarkMs = fromT - 1;
+                rewound = true;
+            }
+            if (state.recentIds?.length) {
+                const kept = state.recentIds.filter(r => r.ts < fromT);
+                if (kept.length !== state.recentIds.length) {
+                    state.recentIds = kept;
                     rewound = true;
                 }
             }
-        }
-        if (purged === 0 && !rewound) return fresh;
-        try {
-            const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
-            return fresh;
-        } catch (e) {
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                // eslint-disable-next-line no-console
-                console.warn(`persistDeleteRecordsFromTimestamp: 412 on attempt ${attempt}`);
-                continue;
+            if (state.providerCursor) {
+                delete state.providerCursor;
+                rewound = true;
             }
-            throw e;
         }
     }
-    return await dal.retrieveRepertoireData();
+    if (purged === 0 && !rewound) return fresh;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return fresh;
 }
