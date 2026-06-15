@@ -588,13 +588,20 @@ function tokenizeMovetext(movetext: string): Token[] {
             i++;
         }
         if (!word) continue;
-        if (/^\d+\.+$/.test(word)) continue; // move number
         if (word === '...') continue;
         if (word === '1-0' || word === '0-1' || word === '1/2-1/2' || word === '*') {
             out.push({ kind: 'result', text: word });
             continue;
         }
-        out.push({ kind: 'san', text: word });
+        // PGN allows the move-number indication and the SAN to be written
+        // with no whitespace between them ("1.e4", "1...e5"). Without this
+        // strip, the whole token is treated as SAN and chess.js rejects it
+        // — atomically failing the import for a perfectly valid PGN. Strip
+        // a leading "<digits>(...|.+)" prefix; if anything remains, the
+        // remainder is the SAN, otherwise the token was a bare move number.
+        const stripped = word.replace(/^\d+(?:\.{3}|\.+)/, '');
+        if (!stripped) continue; // bare move number ("1.", "1...", "12..")
+        out.push({ kind: 'san', text: stripped });
     }
     return out;
 }

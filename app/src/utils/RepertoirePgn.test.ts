@@ -361,6 +361,48 @@ describe('encodeRepertoirePgn / decodeRepertoirePgn', () => {
         });
     });
 
+    describe('tokenizer — compact move-number forms (no space)', () => {
+        // PGN §8.2.2 — move-number indication and SAN need NOT be
+        // separated by whitespace. Hand-written PGN and some ChessBase /
+        // SCID exports emit "1.e4" / "1...e5"; without explicit handling
+        // the tokenizer treated each as a single SAN token and chess.js
+        // rejected the whole file.
+
+        it('accepts compact white-move form "1.e4 e5 2.Nf3 Nc6"', () => {
+            const text = `[Repertoire "White"]\n\n1.e4 e5 2.Nf3 Nc6 *\n`;
+            const decoded = decodeRepertoirePgn(text);
+            const sans = decoded.edges.map(e => e.san);
+            expect(sans).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
+        });
+
+        it('accepts compact black-move form "1...e5" inside a variation', () => {
+            // Variation branches as an alternative to the LAST move (c5),
+            // so 1...e5 inside the variation is black's alternative reply
+            // to 1. e4 — the natural place to encounter "1...SAN" compact
+            // form in real PGN.
+            const text = `[Repertoire "White"]\n\n1. e4 c5 (1...e5 2.Nf3) 2. Nf3 *\n`;
+            const decoded = decodeRepertoirePgn(text);
+            const sans = decoded.edges.map(e => e.san);
+            expect(sans).toContain('e4');
+            expect(sans).toContain('c5');
+            expect(sans).toContain('e5');
+            expect(sans).toContain('Nf3');
+        });
+
+        it('accepts mixed compact + spaced forms in the same file', () => {
+            const text = `[Repertoire "White"]\n\n1.e4 e5 2. Nf3 Nc6 3.Bb5 *\n`;
+            const decoded = decodeRepertoirePgn(text);
+            const sans = decoded.edges.map(e => e.san);
+            expect(sans).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+        });
+
+        it('still accepts bare move numbers ("1." / "1...") as separators', () => {
+            const text = `[Repertoire "White"]\n\n1. e4 e5 2. Nf3 *\n`;
+            const decoded = decodeRepertoirePgn(text);
+            expect(decoded.edges.map(e => e.san)).toEqual(['e4', 'e5', 'Nf3']);
+        });
+    });
+
     describe('PGN structure', () => {
         it('produces a portable PGN parseable by chess.js (mainline only)', () => {
             const rep = buildRepFromPaths('white', [['e4', 'e5', 'Nf3', 'Nc6']]);
