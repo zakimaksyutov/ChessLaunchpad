@@ -515,12 +515,6 @@ export class PendingEditModel {
             if (result !== null && !alreadyPresent) addedEdges++;
         }
         for (const [fen, anns] of annotationsByFen) {
-            // Defense-in-depth: the spec is explicit that import "can add
-            // or replace annotations but cannot CLEAR them." Skip empty
-            // arrays even though the decoder guarantees only non-empty
-            // entries reach us — this way a future caller that hand-builds
-            // an annotation map cannot accidentally bypass the rule.
-            if (anns.length === 0) continue;
             const rep = this.getCurrentRepertoire(orientation);
             // setAnnotations is a no-op for unreachable FENs; check before
             // counting so the summary stays honest.
