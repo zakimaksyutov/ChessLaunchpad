@@ -483,6 +483,56 @@ export class PendingEditModel {
         }
     }
 
+    /**
+     * Bulk-apply a parsed PGN import into this model. Used by the Edit-mode
+     * Import PGN flow — the resulting edges & annotations stage into the
+     * pending delta and surface through the existing Review & Save pipeline.
+     *
+     * Edges are applied in the order supplied (the decoder yields them
+     * parent-before-child within each branch, so each `from` is reachable
+     * when the edge is applied — same invariant `addEdge` enforces).
+     *
+     * Annotations REPLACE the existing set at a FEN only when supplied —
+     * positions not present in `annotationsByFen` are untouched, matching
+     * the spec's intentional asymmetry (import can add/replace but not
+     * clear annotations).
+     */
+    applyImportedPgn(
+        orientation: Orientation,
+        edges: { from: string; san: string }[],
+        annotationsByFen: Map<string, Annotation[]>,
+    ): { addedEdges: number; replacedAnnotations: number } {
+        let addedEdges = 0;
+        let replacedAnnotations = 0;
+        for (const e of edges) {
+            // `addEdge` returns null if illegal or unreachable. For PGN
+            // imports the decoder validates legality, so the only realistic
+            // null is "from not reachable" — which shouldn't happen given
+            // BFS-order, but skipping is the safe behaviour.
+            const rep = this.getCurrentRepertoire(orientation);
+            const alreadyPresent = rep.positions[e.from]?.moves[e.san] !== undefined;
+            const result = this.addEdge(e.from, e.san, orientation);
+            if (result !== null && !alreadyPresent) addedEdges++;
+        }
+        for (const [fen, anns] of annotationsByFen) {
+            // Defense-in-depth: the spec is explicit that import "can add
+            // or replace annotations but cannot CLEAR them." Skip empty
+            // arrays even though the decoder guarantees only non-empty
+            // entries reach us — this way a future caller that hand-builds
+            // an annotation map cannot accidentally bypass the rule.
+            if (anns.length === 0) continue;
+            const rep = this.getCurrentRepertoire(orientation);
+            // setAnnotations is a no-op for unreachable FENs; check before
+            // counting so the summary stays honest.
+            if (fen !== this.root && !reachableFensFromRoot(rep, this.root).has(fen)) {
+                continue;
+            }
+            this.setAnnotations(fen, orientation, anns);
+            replacedAnnotations++;
+        }
+        return { addedEdges, replacedAnnotations };
+    }
+
     // ── Delta computation ────────────────────────────────────────────
 
     /**

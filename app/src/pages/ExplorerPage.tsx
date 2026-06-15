@@ -28,6 +28,13 @@ import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
 import { isExplorerHash, isExplorerRoute } from '../utils/Routes';
 import { mergePathsAsVariations } from '../utils/MergedPathsRender';
+import {
+    encodeRepertoirePgn,
+    decodeRepertoirePgn,
+    RepertoirePgnError,
+} from '../utils/RepertoirePgn';
+import { mergeImportedPgnReadMode } from '../utils/RepertoirePgnMerge';
+import { findRepertoire } from '../models/Repertoires';
 import './ExplorerPage.css';
 
 // ── Constants ────────────────────────────────────────────────────────
@@ -459,6 +466,92 @@ const MoveRow: React.FC<MoveRowProps> = ({
     );
 };
 
+// ── Overflow menu (Export PGN) ────────────────────────────────────────
+
+interface ExplorerOverflowMenuProps {
+    open: boolean;
+    onToggle: () => void;
+    onExport: () => void;
+    /** When true, Export PGN is rendered disabled (Edit-mode behaviour). */
+    exportDisabled: boolean;
+    exportDisabledReason?: string;
+    /** Disables the menu item while an import is in flight. */
+    busy: boolean;
+    /** "White" / "Black" — labels the menu item so users always know which
+     *  repertoire they're acting on. */
+    colorLabel: 'White' | 'Black';
+    /** Optional ref the parent populates with the trigger button so it can
+     *  restore focus after an Esc-driven close. */
+    triggerRefCallback?: (el: HTMLButtonElement | null) => void;
+}
+
+/**
+ * `⋯` overflow button + popover menu used by both Read and Edit mode
+ * toolbars. Hidden behind a single button so it doesn't crowd the
+ * primary CTAs.
+ *
+ * The item is color-labeled — "Export White PGN" — so the user always
+ * knows which orientation will be acted on. PGN import lives in the
+ * Edit-mode paste section as a "From file" button (see render below);
+ * it is not exposed here.
+ *
+ * Keyboard: parent registers an Esc-to-close handler and restores focus
+ * to the trigger on dismissal (see ExplorerPage `menuOpen` effect). On
+ * open we move focus into the first non-disabled item so screen-reader
+ * users can immediately operate the menu without an extra Tab.
+ */
+const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
+    open, onToggle, onExport, exportDisabled, exportDisabledReason, busy,
+    colorLabel, triggerRefCallback,
+}) => {
+    const menuRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!open) return;
+        const first = menuRef.current?.querySelector<HTMLButtonElement>(
+            '[role="menuitem"]:not(:disabled)',
+        );
+        first?.focus();
+    }, [open]);
+
+    return (
+        <div className="explorer-menu-wrap">
+            <button
+                type="button"
+                ref={el => { if (triggerRefCallback) triggerRefCallback(el); }}
+                className="explorer-menu-trigger explorer-btn explorer-btn--sm explorer-btn--neutral-ghost"
+                onClick={onToggle}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-label="More repertoire actions"
+                title="More repertoire actions"
+            >
+                ⋯
+            </button>
+            {open && (
+                <div className="explorer-menu" role="menu" ref={menuRef}>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        className="explorer-menu-item"
+                        onClick={onExport}
+                        disabled={exportDisabled || busy}
+                        title={exportDisabled ? exportDisabledReason : undefined}
+                    >
+                        <span className="explorer-menu-item-label">
+                            Export <strong>{colorLabel}</strong> PGN
+                        </span>
+                        {exportDisabled && (
+                            <span className="explorer-menu-item-hint">
+                                {exportDisabledReason ?? 'Disabled'}
+                            </span>
+                        )}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ── Main page ─────────────────────────────────────────────────────────
 
 const ExplorerPage: React.FC = () => {
@@ -509,6 +602,27 @@ const ExplorerPage: React.FC = () => {
     const [saveInFlight, setSaveInFlight] = useState(false);
     const [conflictPrompt, setConflictPrompt] = useState(false);
     const [discardPrompt, setDiscardPrompt] = useState(false);
+
+    // ── PGN export/import ───────────────────────────────────────────
+    // `⋯` overflow menu (Export PGN) lives next to the Edit-repertoire
+    // CTA in Read mode and inside the edit save-bar in Edit mode.
+    // Export is disabled in Edit mode (parallel to the disabled header
+    // nav — the user must Save or Discard pending edits first so the
+    // export reflects a committed state).
+    //
+    // PGN import is Edit-mode only and lives in the paste section under
+    // the board: the textarea+"Import PGN" button accepts pasted text
+    // and the "From file" button opens the hidden file picker below.
+    // Both routes funnel through the same staged-import flow so the
+    // user reviews changes via Review & Save before committing.
+    const [menuOpen, setMenuOpen] = useState(false);
+    const importFileInputRef = useRef<HTMLInputElement>(null);
+    // Paste-box state (lichess-like).
+    const [pasteText, setPasteText] = useState('');
+    const [importBusy, setImportBusy] = useState(false);
+    // Single combined feedback channel for the PGN export/import flow.
+    // `kind` drives the colour pill (success vs. error).
+    const [pgnToast, setPgnToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
     // Tick `now` once a minute so the relative due/last labels update.
     const [now, setNow] = useState(() => new Date());
@@ -1063,6 +1177,206 @@ const ExplorerPage: React.FC = () => {
         stripReviewParam();
     }, [stripReviewParam]);
 
+    // ── PGN export ─────────────────────────────────────────────────
+
+    /**
+     * Export the orientation-matching repertoire as a portable `.pgn` file.
+     * In Read mode this exports the persisted state. In Edit mode the
+     * button is disabled (the menu calls this only when not editing).
+     */
+    const handleExportPgn = useCallback(() => {
+        setMenuOpen(false);
+        if (mode === 'edit') return; // belt-and-suspenders: button is disabled
+        if (!data || !data.repertoires) {
+            setPgnToast({ kind: 'error', text: 'Repertoire not loaded yet.' });
+            return;
+        }
+        const rep = findRepertoire(data.repertoires, resolvedOrientation);
+        if (!rep) {
+            setPgnToast({ kind: 'error', text: `No ${resolvedOrientation} repertoire to export.` });
+            return;
+        }
+        try {
+            const pgn = encodeRepertoirePgn(rep);
+            const blob = new Blob([pgn], { type: 'application/x-chess-pgn' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const positionCount = Object.keys(rep.positions).length;
+            const colorLabel = resolvedOrientation === 'white' ? 'White' : 'Black';
+            const username = localStorage.getItem('username') || 'repertoire';
+            const dateStamp = new Date().toISOString().slice(0, 10);
+            a.href = url;
+            a.download = `Repertoire-${colorLabel}-${username}-${dateStamp}-${positionCount} positions.pgn`;
+            a.click();
+            URL.revokeObjectURL(url);
+            setPgnToast({
+                kind: 'success',
+                text: `Exported ${positionCount} ${colorLabel.toLowerCase()} positions as PGN.`,
+            });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setPgnToast({ kind: 'error', text: `Export failed: ${msg}` });
+        }
+    }, [mode, data, resolvedOrientation]);
+
+    // ── PGN import (shared by file picker + paste box) ──────────────
+
+    /**
+     * Apply a parsed PGN to the current state. Routes through the
+     * PendingEditModel in Edit mode (so the user can review before
+     * committing) or builds a fresh blob + PUTs it directly in Read
+     * mode. Returns a user-facing message on success or throws on
+     * error so the caller can surface it.
+     */
+    const applyParsedPgn = useCallback(async (pgnText: string): Promise<string> => {
+        // In Edit mode the paste-box accepts a bare movetext snippet (no
+        // [Repertoire] header) and defaults to the orientation the user
+        // is editing. File-based imports always carry a header (every
+        // export emits one), so this only affects the paste-box path.
+        const decoded = decodeRepertoirePgn(pgnText, {
+            defaultOrientation: mode === 'edit' ? resolvedOrientation : undefined,
+        });
+
+        if (mode === 'edit' && pendingModel) {
+            // Edit mode: stage into the pending delta. Reject if the
+            // file's [Repertoire] header names the OTHER color — the
+            // pending delta is scoped to one orientation per session.
+            if (decoded.orientation !== resolvedOrientation) {
+                throw new RepertoirePgnError(
+                    `This file is a ${decoded.orientation === 'white' ? 'White' : 'Black'} ` +
+                    `repertoire, but you're editing ${resolvedOrientation === 'white' ? 'White' : 'Black'}. ` +
+                    `Save or Discard your pending edits first, then re-import.`,
+                );
+            }
+            const result = pendingModel.applyImportedPgn(
+                decoded.orientation,
+                decoded.edges.map(e => ({ from: e.from, san: e.san })),
+                decoded.annotationsByFen,
+            );
+            bumpPending();
+            const colorLabel = decoded.orientation === 'white' ? 'White' : 'Black';
+            return `Staged into your ${colorLabel} edits: ${result.addedEdges} move${
+                result.addedEdges === 1 ? '' : 's'
+            }${
+                result.replacedAnnotations > 0
+                    ? `, ${result.replacedAnnotations} annotation${result.replacedAnnotations === 1 ? '' : 's'}`
+                    : ''
+            }. Use Review & Save to commit.`;
+        }
+
+        // Read mode: merge into a fresh blob and PUT directly. The
+        // backend stays the source of truth — failure here surfaces a
+        // toast and leaves the page untouched.
+        if (!data || !data.repertoires) {
+            throw new RepertoirePgnError('Repertoire not loaded yet.');
+        }
+        const baseReps = data.repertoires;
+        const baseCards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(baseReps);
+        const merged = mergeImportedPgnReadMode(baseReps, baseCards, decoded);
+        const blobInMemory: RepertoireData = {
+            repertoires: merged.repertoires,
+            fsrsCards: merged.fsrsCards,
+            settings: data.settings,
+            activity: data.activity,
+            games: data.games,
+            audit: data.audit,
+        };
+        const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
+        await dal.storeRepertoireData(wire);
+        // Re-fetch so the UI reflects the new persisted state.
+        dataRef.current = null;
+        await fetchAll(true);
+        const colorLabel = decoded.orientation === 'white' ? 'White' : 'Black';
+        return `Imported ${merged.summary.addedEdges} move${
+            merged.summary.addedEdges === 1 ? '' : 's'
+        }${
+            merged.summary.annotationsReplaced > 0
+                ? `, ${merged.summary.annotationsReplaced} annotation${merged.summary.annotationsReplaced === 1 ? '' : 's'}`
+                : ''
+        } into ${colorLabel}.`;
+    }, [mode, pendingModel, resolvedOrientation, data, dal, fetchAll, bumpPending]);
+
+    const handleImportFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        // Reset input so selecting the same file again re-fires onChange.
+        e.target.value = '';
+        setImportBusy(true);
+        setPgnToast(null);
+        try {
+            const text = await file.text();
+            const msg = await applyParsedPgn(text);
+            setPgnToast({ kind: 'success', text: msg });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setPgnToast({ kind: 'error', text: `Import failed: ${msg}` });
+        } finally {
+            setImportBusy(false);
+        }
+    }, [applyParsedPgn]);
+
+    const handlePasteImport = useCallback(async () => {
+        if (!pasteText.trim()) {
+            setPgnToast({ kind: 'error', text: 'Paste a PGN first.' });
+            return;
+        }
+        setImportBusy(true);
+        setPgnToast(null);
+        try {
+            const msg = await applyParsedPgn(pasteText);
+            setPgnToast({ kind: 'success', text: msg });
+            setPasteText('');
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setPgnToast({ kind: 'error', text: `Import failed: ${msg}` });
+        } finally {
+            setImportBusy(false);
+        }
+    }, [pasteText, applyParsedPgn]);
+
+    // Auto-dismiss the PGN toast after a few seconds (success only —
+    // errors stay until the user dismisses them).
+    useEffect(() => {
+        if (!pgnToast || pgnToast.kind !== 'success') return;
+        const id = window.setTimeout(() => setPgnToast(null), 4500);
+        return () => window.clearTimeout(id);
+    }, [pgnToast]);
+
+    // Close the menu when clicking outside, on Escape, or any keyboard
+    // dismissal — the `role="menu"` we expose requires at least an Esc
+    // handler for keyboard / screen-reader users.
+    const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const lastMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+    useEffect(() => {
+        if (!menuOpen) return;
+        const handleClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (!target) return;
+            if (target.closest('.explorer-menu')) return;
+            if (target.closest('.explorer-menu-trigger')) return;
+            setMenuOpen(false);
+        };
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setMenuOpen(false);
+                // Restore focus to the trigger so the keyboard user lands
+                // back where they invoked the menu — fall back to the last
+                // observed trigger if the React ref hasn't been attached
+                // yet (the menu wrapper isn't always the same DOM node
+                // across Read/Edit toggles).
+                const t = menuTriggerRef.current ?? lastMenuTriggerRef.current;
+                if (t) t.focus();
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
+    }, [menuOpen]);
+
     // ── Render guards ────────────────────────────────────────────────
 
     if (loadError) {
@@ -1121,6 +1435,23 @@ const ExplorerPage: React.FC = () => {
                     </div>
                 )}
 
+                {pgnToast && (
+                    <div
+                        className={`explorer-toast explorer-toast--${pgnToast.kind}`}
+                        role={pgnToast.kind === 'error' ? 'alert' : 'status'}
+                    >
+                        <span>{pgnToast.text}</span>
+                        <button
+                            type="button"
+                            className="explorer-toast-dismiss"
+                            aria-label="Dismiss"
+                            onClick={() => setPgnToast(null)}
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
                 {view === 'main' && (
                 <div className="explorer-body">
                     {/* Toolbar lives in the body's top-left grid cell so it
@@ -1161,14 +1492,28 @@ const ExplorerPage: React.FC = () => {
                             </div>
                         )}
                         {mode === 'read' && (
-                            <button
-                                type="button"
-                                className="explorer-btn explorer-btn--cta explorer-btn--primary"
-                                onClick={enterEditMode}
-                                title="Edit mode — add or remove moves and annotations"
-                            >
-                                Edit repertoire
-                            </button>
+                            <div className="explorer-toolbar-right">
+                                <button
+                                    type="button"
+                                    className="explorer-btn explorer-btn--cta explorer-btn--primary"
+                                    onClick={enterEditMode}
+                                    title="Edit mode — add or remove moves and annotations"
+                                >
+                                    Edit repertoire
+                                </button>
+                                <ExplorerOverflowMenu
+                                    open={menuOpen}
+                                    onToggle={() => setMenuOpen(o => !o)}
+                                    onExport={handleExportPgn}
+                                    exportDisabled={false}
+                                    busy={importBusy}
+                                    colorLabel={resolvedOrientation === 'white' ? 'White' : 'Black'}
+                                    triggerRefCallback={el => {
+                                        menuTriggerRef.current = el;
+                                        if (el) lastMenuTriggerRef.current = el;
+                                    }}
+                                />
+                            </div>
                         )}
                         {mode === 'edit' && (
                             <div className="explorer-save-bar" role="region" aria-label="Pending edits">
@@ -1199,6 +1544,19 @@ const ExplorerPage: React.FC = () => {
                                     >
                                         Discard
                                     </button>
+                                    <ExplorerOverflowMenu
+                                        open={menuOpen}
+                                        onToggle={() => setMenuOpen(o => !o)}
+                                        onExport={handleExportPgn}
+                                        exportDisabled={true}
+                                        exportDisabledReason="Save or Discard your pending edits to export."
+                                        busy={importBusy}
+                                        colorLabel={resolvedOrientation === 'white' ? 'White' : 'Black'}
+                                        triggerRefCallback={el => {
+                                            menuTriggerRef.current = el;
+                                            if (el) lastMenuTriggerRef.current = el;
+                                        }}
+                                    />
                                 </div>
                             </div>
                         )}
@@ -1254,6 +1612,56 @@ const ExplorerPage: React.FC = () => {
                             <div className="explorer-find-error" role="alert">{findError}</div>
                         )}
                     </form>
+
+                    {/* PGN import section — lichess-style paste box plus a
+                        "From file" picker. Edit-mode only: importing in
+                        Read mode would commit directly to the persisted
+                        blob with no review step, so we keep both entry
+                        points behind the Review & Save flow. */}
+                    {mode === 'edit' && (
+                    <section className="explorer-pgn-paste" aria-label="Import PGN">
+                        <label className="explorer-pgn-paste-label" htmlFor="explorer-pgn-paste-input">
+                            Paste <strong>{resolvedOrientation === 'white' ? 'White' : 'Black'}</strong> repertoire PGN
+                        </label>
+                        <textarea
+                            id="explorer-pgn-paste-input"
+                            className="explorer-pgn-paste-textarea"
+                            value={pasteText}
+                            onChange={e => setPasteText(e.target.value)}
+                            placeholder={'1. e4 e5 (1... c5 2. Nf3) 2. Nf3 *'}
+                            rows={4}
+                            disabled={importBusy}
+                            spellCheck={false}
+                        />
+                        <div className="explorer-pgn-paste-actions">
+                            <button
+                                type="button"
+                                className="explorer-btn explorer-btn--sm explorer-btn--primary"
+                                onClick={handlePasteImport}
+                                disabled={importBusy || pasteText.trim().length === 0}
+                            >
+                                {importBusy ? 'Importing…' : 'Import PGN'}
+                            </button>
+                            <button
+                                type="button"
+                                className="explorer-btn explorer-btn--sm explorer-btn--primary explorer-pgn-paste-from-file"
+                                onClick={() => importFileInputRef.current?.click()}
+                                disabled={importBusy}
+                                title="Import a .pgn file from disk"
+                            >
+                                From a PGN file
+                            </button>
+                        </div>
+                        {/* Hidden file input backing the "From file" button. */}
+                        <input
+                            type="file"
+                            ref={importFileInputRef}
+                            style={{ display: 'none' }}
+                            accept=".pgn,application/x-chess-pgn,text/plain"
+                            onChange={handleImportFileSelected}
+                        />
+                    </section>
+                    )}
                     </div>
 
                     <div className="explorer-right-col">

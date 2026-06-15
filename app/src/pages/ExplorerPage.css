@@ -974,3 +974,188 @@
     padding: 0.5rem 0.3rem;
   }
 }
+
+/* ===== Toolbar right cluster (Edit CTA + ⋯ overflow menu) =====
+ * Read-mode group on the right side of the toolbar that holds the
+ * green Edit-repertoire CTA alongside the `⋯` overflow menu. Behaves
+ * like `.explorer-toolbar-left` (flex row, wrapping). */
+.explorer-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ===== Overflow menu (⋯) ===== */
+.explorer-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.explorer-menu-trigger {
+  min-width: 2.2rem;
+  /* The 3 dots benefit from extra letter-spacing so the symbol reads
+     correctly across fonts. */
+  letter-spacing: 0.05em;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.explorer-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #fff;
+  border: 1px solid #d0d6df;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(20, 24, 32, 0.12);
+  min-width: 200px;
+  padding: 0.25rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+}
+
+.explorer-menu-item {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  /* Use the app's body font explicitly — `font: inherit` on a <button>
+     element doesn't reliably propagate the UA's button font reset
+     across browsers, which made the menu items render in the default
+     button font (slightly off from the rest of the toolbar). */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               Helvetica, Arial, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.25;
+  color: #1f2937;
+}
+
+.explorer-menu-item:hover:not(:disabled) {
+  background: #f3f5f8;
+}
+
+.explorer-menu-item:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: -2px;
+}
+
+.explorer-menu-item:disabled {
+  cursor: not-allowed;
+  color: #97a1ad;
+}
+
+.explorer-menu-item-label {
+  font-weight: 500;
+}
+
+.explorer-menu-item-label strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.explorer-menu-item:disabled .explorer-menu-item-label strong {
+  color: inherit;
+}
+
+.explorer-menu-item-hint {
+  font-size: 0.78rem;
+  color: #6b7480;
+  font-weight: 400;
+}
+
+/* ===== PGN paste box =====
+ * Sits under the find form on the left column. Always visible (Read +
+ * Edit). Wraps onto multiple lines on narrow viewports just like the
+ * find form. */
+.explorer-pgn-paste {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e3e7ec;
+  background: #fafbfc;
+  border-radius: 8px;
+}
+
+.explorer-pgn-paste-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #1f2937;
+  display: block;
+}
+
+.explorer-pgn-paste-label strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.explorer-pgn-paste-textarea {
+  width: 100%;
+  min-height: 4.5em;
+  resize: vertical;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #d0d6df;
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  color: #1f2937;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.explorer-pgn-paste-textarea:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: -1px;
+  border-color: rgb(0, 130, 210);
+}
+
+.explorer-pgn-paste-textarea:disabled {
+  background: #f0f2f5;
+  color: #6b7480;
+  cursor: progress;
+}
+
+.explorer-pgn-paste-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.explorer-pgn-paste-from-file {
+  margin-left: auto;
+}
+
+/* ===== Toast variants =====
+ * Color the existing `.explorer-toast` differently for the PGN flow:
+ *   --success → soft green pill
+ *   --error   → soft red pill (overrides the default amber tint)  */
+.explorer-toast--success {
+  background: #e8f6ed;
+  border-color: #aed5b8;
+  color: #1f4a2c;
+}
+
+.explorer-toast--success .explorer-toast-dismiss {
+  color: #1f4a2c;
+}
+
+.explorer-toast--error {
+  background: #fdecea;
+  border-color: #f1b7b1;
+  color: #6a1d18;
+}
+
+.explorer-toast--error .explorer-toast-dismiss {
+  color: #6a1d18;
+}
+

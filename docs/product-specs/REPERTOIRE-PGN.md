@@ -54,26 +54,40 @@ opens unchanged in lichess Studio, ChessBase, SCID.
 ## UI
 
 On the Explorer page (`/explorer`), an overflow menu (`⋯`) sits to the
-right of the **Edit repertoire** button with two items:
+right of the **Edit repertoire** button with one item:
 
 - **Export PGN** — downloads the current orientation's repertoire as
   `.pgn`.
-- **Import PGN** — opens a file picker; on selection, merges into the
-  repertoire identified by the file's `[Repertoire]` header (see Import
-  behavior).
 
-Additionally, the page hosts a **PGN paste box** — a labeled textarea
-plus an **Import PGN** button, modeled on lichess's "Import PGN" widget
-— that runs the same import flow on pasted text. A typical use is
-pasting a new variation in Edit mode.
+PGN **import** lives **in Edit mode only**, in a section below the
+board:
 
-The `⋯` menu and the paste box are available in both **Read** and **Edit**
-modes, with one exception: **Export PGN is disabled in Edit mode** (the
-user must Save or Discard first, parallel to how the header nav is
-disabled). Import, in either form, merges directly in Read mode (target
-color = the file's `[Repertoire]` header) and is staged into the pending
-delta in Edit mode, so the user reviews it via the existing **Review &
-Save** workflow before committing (or discards it).
+- A labeled textarea + **Import PGN** button (lichess-style paste box)
+  imports a PGN snippet from text.
+- A **From a PGN file** button next to it opens a file picker that imports a
+  saved `.pgn`.
+
+Both routes funnel through the same import logic and stage changes into
+the pending delta so the user reviews them via the existing
+**Review & Save** workflow before committing (or discards them).
+
+The whole import section is intentionally Edit-only: importing in Read
+mode would commit straight to the persisted blob with no review step.
+Users who want to import a `.pgn` enter Edit mode first.
+
+The section is scoped to the orientation being edited: a pasted
+movetext snippet without a `[Repertoire]` header is treated as
+belonging to that orientation (typical use: paste a fresh variation
+from lichess or ChessBase while editing). If a pasted or loaded PGN
+carries a `[Repertoire]` header that names the **other** color the
+import is rejected with a clear message (Save or Discard first, then
+re-import).
+
+The `⋯` menu is available in both **Read** and **Edit** modes, but
+**Export PGN is disabled in Edit mode** (the user must Save or Discard
+first, parallel to how the header nav is disabled). The menu item
+names the active orientation explicitly — "Export **White** PGN" — so
+the user always knows which repertoire they're acting on.
 
 In Edit mode the pending delta is scoped to a single orientation: if the
 imported PGN's `[Repertoire]` header names the **other** color, the
