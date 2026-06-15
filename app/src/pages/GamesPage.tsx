@@ -569,7 +569,6 @@ const GamesPage: React.FC = () => {
      * record. Mirrors the pre-refactor `debugGameIdsRef` behavior.
      */
     const debugRecordKeysRef = useRef<Set<string>>(new Set());
-    const analyzeAbortRef = useRef<AbortController | null>(null);
     const passAbortRef = useRef<AbortController | null>(null);
     /**
      * Page-scoped AbortController composed into every long-running
@@ -1173,7 +1172,6 @@ const GamesPage: React.FC = () => {
         const meta = getRecordMetadata(record, row.userLower);
 
         const abort = new AbortController();
-        analyzeAbortRef.current = abort;
         // Compose with the page signal so navigation away from /games
         // aborts the in-flight analyze + the subsequent persist call.
         const signal = composeSignals(abort.signal, pageAbortRef.current?.signal);
@@ -1206,7 +1204,6 @@ const GamesPage: React.FC = () => {
         } finally {
             setAnalyzingRecordKey(null);
             setAnalyzeProgress(null);
-            analyzeAbortRef.current = null;
             // Same listener-leak guard as the analysis-pass finally above.
             abort.abort();
         }
