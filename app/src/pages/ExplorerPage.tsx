@@ -33,7 +33,6 @@ import {
     decodeRepertoirePgn,
     RepertoirePgnError,
 } from '../utils/RepertoirePgn';
-import { mergeImportedPgnReadMode } from '../utils/RepertoirePgnMerge';
 import { findRepertoire } from '../models/Repertoires';
 import './ExplorerPage.css';
 
@@ -475,7 +474,7 @@ interface ExplorerOverflowMenuProps {
     /** When true, Export PGN is rendered disabled (Edit-mode behaviour). */
     exportDisabled: boolean;
     exportDisabledReason?: string;
-    /** Disables the menu item while an import is in flight. */
+    /** Disables the menu item while a PGN import is in flight. */
     busy: boolean;
     /** "White" / "Black" — labels the menu item so users always know which
      *  repertoire they're acting on. */
@@ -486,19 +485,14 @@ interface ExplorerOverflowMenuProps {
 }
 
 /**
- * `⋯` overflow button + popover menu used by both Read and Edit mode
- * toolbars. Hidden behind a single button so it doesn't crowd the
- * primary CTAs.
+ * `⋯` overflow button + popover menu. Currently exposes a single
+ * Export PGN item; PGN import lives in the Edit-mode paste section
+ * (see render below).
  *
- * The item is color-labeled — "Export White PGN" — so the user always
- * knows which orientation will be acted on. PGN import lives in the
- * Edit-mode paste section as a "From file" button (see render below);
- * it is not exposed here.
- *
- * Keyboard: parent registers an Esc-to-close handler and restores focus
- * to the trigger on dismissal (see ExplorerPage `menuOpen` effect). On
- * open we move focus into the first non-disabled item so screen-reader
- * users can immediately operate the menu without an extra Tab.
+ * Keyboard: parent registers Esc-to-close and restores focus to the
+ * trigger on dismissal (see `menuOpen` effect). On open we move focus
+ * into the first non-disabled item so keyboard/screen-reader users can
+ * operate the menu without an extra Tab.
  */
 const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
     open, onToggle, onExport, exportDisabled, exportDisabledReason, busy,
@@ -604,24 +598,13 @@ const ExplorerPage: React.FC = () => {
     const [discardPrompt, setDiscardPrompt] = useState(false);
 
     // ── PGN export/import ───────────────────────────────────────────
-    // `⋯` overflow menu (Export PGN) lives next to the Edit-repertoire
-    // CTA in Read mode and inside the edit save-bar in Edit mode.
-    // Export is disabled in Edit mode (parallel to the disabled header
-    // nav — the user must Save or Discard pending edits first so the
-    // export reflects a committed state).
-    //
-    // PGN import is Edit-mode only and lives in the paste section under
-    // the board: the textarea+"Import PGN" button accepts pasted text
-    // and the "From file" button opens the hidden file picker below.
-    // Both routes funnel through the same staged-import flow so the
-    // user reviews changes via Review & Save before committing.
+    // Export lives in the `⋯` menu (disabled in Edit mode to force
+    // Save/Discard first). Import is Edit-only and lives in the paste
+    // section below the board.
     const [menuOpen, setMenuOpen] = useState(false);
     const importFileInputRef = useRef<HTMLInputElement>(null);
-    // Paste-box state (lichess-like).
     const [pasteText, setPasteText] = useState('');
     const [importBusy, setImportBusy] = useState(false);
-    // Single combined feedback channel for the PGN export/import flow.
-    // `kind` drives the colour pill (success vs. error).
     const [pgnToast, setPgnToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
     // Tick `now` once a minute so the relative due/last labels update.
@@ -1222,79 +1205,42 @@ const ExplorerPage: React.FC = () => {
     // ── PGN import (shared by file picker + paste box) ──────────────
 
     /**
-     * Apply a parsed PGN to the current state. Routes through the
-     * PendingEditModel in Edit mode (so the user can review before
-     * committing) or builds a fresh blob + PUTs it directly in Read
-     * mode. Returns a user-facing message on success or throws on
-     * error so the caller can surface it.
+     * Stage a parsed PGN into the pending edit delta. Only invoked from
+     * the Edit-mode UI; the precondition check is defensive.
      */
-    const applyParsedPgn = useCallback(async (pgnText: string): Promise<string> => {
-        // In Edit mode the paste-box accepts a bare movetext snippet (no
-        // [Repertoire] header) and defaults to the orientation the user
-        // is editing. File-based imports always carry a header (every
-        // export emits one), so this only affects the paste-box path.
+    const applyParsedPgn = useCallback((pgnText: string): string => {
+        // Paste-box snippets may omit the `[Repertoire]` header; default
+        // to the orientation being edited.
         const decoded = decodeRepertoirePgn(pgnText, {
-            defaultOrientation: mode === 'edit' ? resolvedOrientation : undefined,
+            defaultOrientation: resolvedOrientation,
         });
 
-        if (mode === 'edit' && pendingModel) {
-            // Edit mode: stage into the pending delta. Reject if the
-            // file's [Repertoire] header names the OTHER color — the
-            // pending delta is scoped to one orientation per session.
-            if (decoded.orientation !== resolvedOrientation) {
-                throw new RepertoirePgnError(
-                    `This file is a ${decoded.orientation === 'white' ? 'White' : 'Black'} ` +
-                    `repertoire, but you're editing ${resolvedOrientation === 'white' ? 'White' : 'Black'}. ` +
-                    `Save or Discard your pending edits first, then re-import.`,
-                );
-            }
-            const result = pendingModel.applyImportedPgn(
-                decoded.orientation,
-                decoded.edges.map(e => ({ from: e.from, san: e.san })),
-                decoded.annotationsByFen,
-            );
-            bumpPending();
-            const colorLabel = decoded.orientation === 'white' ? 'White' : 'Black';
-            return `Staged into your ${colorLabel} edits: ${result.addedEdges} move${
-                result.addedEdges === 1 ? '' : 's'
-            }${
-                result.replacedAnnotations > 0
-                    ? `, ${result.replacedAnnotations} annotation${result.replacedAnnotations === 1 ? '' : 's'}`
-                    : ''
-            }. Use Review & Save to commit.`;
+        if (mode !== 'edit' || !pendingModel) {
+            throw new RepertoirePgnError('Enter Edit mode to import a PGN.');
         }
 
-        // Read mode: merge into a fresh blob and PUT directly. The
-        // backend stays the source of truth — failure here surfaces a
-        // toast and leaves the page untouched.
-        if (!data || !data.repertoires) {
-            throw new RepertoirePgnError('Repertoire not loaded yet.');
+        if (decoded.orientation !== resolvedOrientation) {
+            throw new RepertoirePgnError(
+                `This file is a ${decoded.orientation === 'white' ? 'White' : 'Black'} ` +
+                `repertoire, but you're editing ${resolvedOrientation === 'white' ? 'White' : 'Black'}. ` +
+                `Save or Discard your pending edits first, then re-import.`,
+            );
         }
-        const baseReps = data.repertoires;
-        const baseCards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(baseReps);
-        const merged = mergeImportedPgnReadMode(baseReps, baseCards, decoded);
-        const blobInMemory: RepertoireData = {
-            repertoires: merged.repertoires,
-            fsrsCards: merged.fsrsCards,
-            settings: data.settings,
-            activity: data.activity,
-            games: data.games,
-            audit: data.audit,
-        };
-        const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
-        await dal.storeRepertoireData(wire);
-        // Re-fetch so the UI reflects the new persisted state.
-        dataRef.current = null;
-        await fetchAll(true);
+        const result = pendingModel.applyImportedPgn(
+            decoded.orientation,
+            decoded.edges.map(e => ({ from: e.from, san: e.san })),
+            decoded.annotationsByFen,
+        );
+        bumpPending();
         const colorLabel = decoded.orientation === 'white' ? 'White' : 'Black';
-        return `Imported ${merged.summary.addedEdges} move${
-            merged.summary.addedEdges === 1 ? '' : 's'
+        return `Staged into your ${colorLabel} edits: ${result.addedEdges} move${
+            result.addedEdges === 1 ? '' : 's'
         }${
-            merged.summary.annotationsReplaced > 0
-                ? `, ${merged.summary.annotationsReplaced} annotation${merged.summary.annotationsReplaced === 1 ? '' : 's'}`
+            result.replacedAnnotations > 0
+                ? `, ${result.replacedAnnotations} annotation${result.replacedAnnotations === 1 ? '' : 's'}`
                 : ''
-        } into ${colorLabel}.`;
-    }, [mode, pendingModel, resolvedOrientation, data, dal, fetchAll, bumpPending]);
+        }. Use Review & Save to commit.`;
+    }, [mode, pendingModel, resolvedOrientation, bumpPending]);
 
     const handleImportFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -1306,7 +1252,7 @@ const ExplorerPage: React.FC = () => {
         setPgnToast(null);
         try {
             const text = await file.text();
-            const msg = await applyParsedPgn(text);
+            const msg = applyParsedPgn(text);
             setPgnToast({ kind: 'success', text: msg });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -1316,7 +1262,7 @@ const ExplorerPage: React.FC = () => {
         }
     }, [applyParsedPgn]);
 
-    const handlePasteImport = useCallback(async () => {
+    const handlePasteImport = useCallback(() => {
         if (!pasteText.trim()) {
             setPgnToast({ kind: 'error', text: 'Paste a PGN first.' });
             return;
@@ -1324,7 +1270,7 @@ const ExplorerPage: React.FC = () => {
         setImportBusy(true);
         setPgnToast(null);
         try {
-            const msg = await applyParsedPgn(pasteText);
+            const msg = applyParsedPgn(pasteText);
             setPgnToast({ kind: 'success', text: msg });
             setPasteText('');
         } catch (err: unknown) {
@@ -1613,11 +1559,6 @@ const ExplorerPage: React.FC = () => {
                         )}
                     </form>
 
-                    {/* PGN import section — lichess-style paste box plus a
-                        "From file" picker. Edit-mode only: importing in
-                        Read mode would commit directly to the persisted
-                        blob with no review step, so we keep both entry
-                        points behind the Review & Save flow. */}
                     {mode === 'edit' && (
                     <section className="explorer-pgn-paste" aria-label="Import PGN">
                         <label className="explorer-pgn-paste-label" htmlFor="explorer-pgn-paste-input">
@@ -1652,7 +1593,6 @@ const ExplorerPage: React.FC = () => {
                                 From a PGN file
                             </button>
                         </div>
-                        {/* Hidden file input backing the "From file" button. */}
                         <input
                             type="file"
                             ref={importFileInputRef}
