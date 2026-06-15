@@ -447,3 +447,219 @@ test.describe('Explorer page — Edit mode', () => {
         expect(page.url()).toContain('/explorer');
     });
 });
+
+// ── Import PGN ───────────────────────────────────────────────────────
+
+test.describe('Explorer page — Import PGN', () => {
+    // Helper: enter Edit mode from the default Read view.
+    async function enterEditMode(page: Page) {
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
+        await expect(page.locator('.explorer-save-bar')).toBeVisible();
+    }
+
+    async function pasteAndImport(page: Page, pgn: string) {
+        const textarea = page.locator('#explorer-pgn-paste-input');
+        await textarea.fill(pgn);
+        await page.getByRole('button', { name: 'Import PGN', exact: true }).click();
+    }
+
+    test('paste a PGN snippet → staged into pending edits and Save persists the new edges', async ({ page }) => {
+        // Empty repertoire so every imported edge is genuinely new.
+        const fixture = buildRepertoireData([]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await enterEditMode(page);
+
+        // Paste a 3-edge line (e4 + e5 + Nf3). No [Repertoire] header — the
+        // paste-box path defaults to the orientation being edited (white).
+        await pasteAndImport(page, '1. e4 e5 2. Nf3 *');
+
+        // Success toast names the orientation and the staged count.
+        const toast = page.locator('.explorer-toast.explorer-toast--success');
+        await expect(toast).toBeVisible({ timeout: 3_000 });
+        await expect(toast).toContainText('Staged into your White edits');
+        await expect(toast).toContainText('3 moves');
+
+        // Save bar reflects the same delta count.
+        const saveBar = page.locator('.explorer-save-bar');
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('3 added');
+
+        // Textarea is cleared after a successful paste-import.
+        await expect(page.locator('#explorer-pgn-paste-input')).toHaveValue('');
+
+        // Review & Save commits the staged delta through the same path as
+        // any other Edit-mode change.
+        await saveBar.getByRole('button', { name: 'Review & Save' }).click();
+        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+
+        await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+        const body = saves[0].body as Record<string, unknown>;
+        const repertoires = body.repertoires as Array<{
+            orientation: string;
+            positions: Record<string, { moves: Record<string, unknown> }>;
+        }>;
+        const white = repertoires.find(r => r.orientation === 'white')!;
+        const totalMoves = Object.values(white.positions).reduce(
+            (sum, p) => sum + Object.keys(p.moves).length, 0);
+        expect(totalMoves).toBe(3);
+        // Every SAN that came in via the PGN shows up somewhere in the dict.
+        const sans = Object.values(white.positions).flatMap(p => Object.keys(p.moves));
+        expect(sans.sort()).toEqual(['Nf3', 'e4', 'e5']);
+    });
+
+    test('upload a .pgn file → file picker drives the same import path', async ({ page }) => {
+        const fixture = buildRepertoireData([]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await enterEditMode(page);
+
+        // Drive the hidden <input type="file"> directly with an in-memory
+        // buffer — no disk I/O needed.
+        const pgn = `[Repertoire "White"]\n\n1. e4 e5 *\n`;
+        const fileInput = page.locator('input[type="file"][accept*=".pgn"]');
+        await fileInput.setInputFiles({
+            name: 'white-repertoire.pgn',
+            mimeType: 'application/x-chess-pgn',
+            buffer: Buffer.from(pgn, 'utf-8'),
+        });
+
+        const toast = page.locator('.explorer-toast.explorer-toast--success');
+        await expect(toast).toBeVisible({ timeout: 3_000 });
+        await expect(toast).toContainText('Staged into your White edits');
+        await expect(toast).toContainText('2 moves');
+
+        const saveBar = page.locator('.explorer-save-bar');
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('2 added');
+
+        await saveBar.getByRole('button', { name: 'Review & Save' }).click();
+        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+    });
+
+    test('color mismatch is rejected atomically — no edges staged, no save', async ({ page }) => {
+        const fixture = buildRepertoireData([]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer?o=white');
+        await enterEditMode(page);
+
+        // Try to import a Black repertoire while editing White.
+        await pasteAndImport(page, `[Repertoire "Black"]\n\n1. e4 e5 *\n`);
+
+        const errorToast = page.locator('.explorer-toast.explorer-toast--error');
+        await expect(errorToast).toBeVisible({ timeout: 3_000 });
+        await expect(errorToast).toContainText(/Black repertoire/);
+        await expect(errorToast).toContainText(/editing White/);
+
+        // Nothing staged — save bar still reports a clean delta.
+        await expect(page.locator('.explorer-save-bar-counts')).toHaveText('No pending changes');
+        expect(saves).toHaveLength(0);
+    });
+
+    test('invalid PGN is rejected — no edges staged', async ({ page }) => {
+        const fixture = buildRepertoireData([]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await enterEditMode(page);
+
+        // `e9` is not a legal SAN — the decoder throws RepertoirePgnError
+        // and the import is rejected atomically.
+        await pasteAndImport(page, '1. e4 e9 *');
+
+        const errorToast = page.locator('.explorer-toast.explorer-toast--error');
+        await expect(errorToast).toBeVisible({ timeout: 3_000 });
+        await expect(errorToast).toContainText(/Import failed/);
+
+        await expect(page.locator('.explorer-save-bar-counts')).toHaveText('No pending changes');
+        expect(saves).toHaveLength(0);
+    });
+
+    test('PGN annotations round-trip through Save', async ({ page }) => {
+        const fixture = buildRepertoireData([]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await enterEditMode(page);
+
+        // Structured `[%cal ...]` tag on the post-e4 position.
+        await pasteAndImport(page, '1. e4 {[%cal Gd1f3]} e5 *');
+
+        const toast = page.locator('.explorer-toast.explorer-toast--success');
+        await expect(toast).toBeVisible({ timeout: 3_000 });
+        await expect(toast).toContainText(/annotation/);
+
+        const saveBar = page.locator('.explorer-save-bar');
+        await saveBar.getByRole('button', { name: 'Review & Save' }).click();
+        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+        const body = saves[0].body as Record<string, unknown>;
+        const repertoires = body.repertoires as Array<{
+            orientation: string;
+            positions: Record<string, { moves: Record<string, unknown>; annotations?: unknown[] }>;
+        }>;
+        const white = repertoires.find(r => r.orientation === 'white')!;
+        // Some position carries the imported annotation (the after-e4 FEN).
+        const annotated = Object.values(white.positions)
+            .find(p => Array.isArray(p.annotations) && p.annotations!.length > 0);
+        expect(annotated).toBeDefined();
+    });
+
+    test('merges into an existing repertoire — only the new edges are staged', async ({ page }) => {
+        // Seed with `1. e4 e5 2. Nf3` (white) so e4 already exists.
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4 e5 2. Nf3', orientation: 'white' },
+        ]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer?o=white');
+        await enterEditMode(page);
+
+        // Import an overlapping line: `1. e4 e6 2. d4`. e4 is already in the
+        // repertoire, so only `e6` and `d4` are genuinely new.
+        await pasteAndImport(page, '1. e4 e6 2. d4 *');
+
+        const toast = page.locator('.explorer-toast.explorer-toast--success');
+        await expect(toast).toBeVisible({ timeout: 3_000 });
+        await expect(toast).toContainText('Staged into your White edits');
+        await expect(toast).toContainText('2 moves');
+
+        const saveBar = page.locator('.explorer-save-bar');
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('2 added');
+
+        await saveBar.getByRole('button', { name: 'Review & Save' }).click();
+        await expect(page.locator('.explorer-review').getByRole('heading', { name: /Added \(2\)/ })).toBeVisible();
+        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
+
+        const body = saves[0].body as Record<string, unknown>;
+        const repertoires = body.repertoires as Array<{
+            orientation: string;
+            positions: Record<string, { moves: Record<string, unknown> }>;
+        }>;
+        const white = repertoires.find(r => r.orientation === 'white')!;
+
+        // 5 total edges across the merged tree: e4, e5, Nf3 (existing) + e6, d4 (new).
+        const totalMoves = Object.values(white.positions).reduce(
+            (sum, p) => sum + Object.keys(p.moves).length, 0);
+        expect(totalMoves).toBe(5);
+
+        // The after-e4 FEN is the branch point: both e5 and e6 leave it.
+        const branchPoint = Object.values(white.positions)
+            .find(p => 'e5' in p.moves && 'e6' in p.moves);
+        expect(branchPoint).toBeDefined();
+
+        // The existing Nf3 continuation survives the merge.
+        const afterE5 = Object.values(white.positions).find(p => 'Nf3' in p.moves);
+        expect(afterE5).toBeDefined();
+        // The new d4 continuation lives on the after-e6 FEN.
+        const afterE6 = Object.values(white.positions).find(p => 'd4' in p.moves);
+        expect(afterE6).toBeDefined();
+    });
+});
