@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { getSessionStore } from '../data/SessionStore';
+import { DataAccessError } from '../data/DataAccessLayer';
 import {
     getLinkedAccounts,
     LinkedAccount,
@@ -984,6 +985,14 @@ const GamesPage: React.FC = () => {
                     setAnalysisProgress({ phase: 'idle' });
                     return;
                 }
+                // 412 = the app-root <ConflictModal> already fired (via
+                // SessionStore.save's notifyConflict) and is showing the
+                // Reload prompt. Don't surface an inline analysis-error
+                // banner under the modal — the modal owns recovery.
+                if (e instanceof DataAccessError && e.statusCode === 412) {
+                    setAnalysisProgress({ phase: 'idle' });
+                    return;
+                }
                 const msg = e instanceof Error ? e.message : String(e);
                 console.warn('GamesPage: analysis pass failed', e);
                 setAnalysisError(msg);
@@ -1136,7 +1145,14 @@ const GamesPage: React.FC = () => {
                 || pageAbortRef.current?.signal.aborted) {
                 return;
             }
-            console.warn('Re-annotate failed:', e);
+            // 412 = the app-root <ConflictModal> already fired and owns
+            // recovery. Skip the warn to keep log noise consistent with
+            // the other 412 catches; still restore local UI state below
+            // (harmless on the imminent reload).
+            const isConflict = e instanceof DataAccessError && e.statusCode === 412;
+            if (!isConflict) {
+                console.warn('Re-annotate failed:', e);
+            }
             // Restore prior verdict on hard failure.
             priorAnByKeyRef.current.delete(key);
             setReannotatingKeys(prev => {
@@ -1237,6 +1253,12 @@ const GamesPage: React.FC = () => {
             // Abort = navigation away. Not a real failure.
             if ((e as { name?: string })?.name === 'AbortError'
                 || pageAbortRef.current?.signal.aborted) {
+                return;
+            }
+            // 412 = the app-root <ConflictModal> already fired and
+            // owns recovery. Skip the warn for log-noise consistency
+            // with the other 412 catches.
+            if (e instanceof DataAccessError && e.statusCode === 412) {
                 return;
             }
             console.warn('[DEBUG] Delete-from-here failed:', e);

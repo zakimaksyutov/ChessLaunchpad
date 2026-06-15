@@ -71,9 +71,21 @@ There is exactly one user-facing recovery path for a 412 conflict, owned at the 
 
 Helpers and pages **do not retry on 412**. Each write is a single attempt:
 
-- `runIngest` / `runIngestInternal` — one GET-compose-PUT pass. On 412 the top-level catch swallows the error and reports `didWrite: false`; the next Dashboard visit re-runs ingest from the fresh blob.
+- `runIngest` / `runIngestInternal` — one GET-compose-PUT pass. On 412 the top-level catch swallows the error and reports `didWrite: false`; the trailing `done` progress emit is also suppressed so Dashboard doesn't flash a "Synced @ HH:MM" badge under the conflict modal. The next Dashboard visit (after the user reloads) re-runs ingest from the fresh blob.
 - `flushAnUpdates`, `persistOpponentAnalysis`, `persistReannotateClear`, `persistReannotateRefresh`, `persistDeleteRecordsFromTimestamp` — one GET-mutate-PUT pass. On 412 the error propagates to the caller's existing try/catch; the modal handles user-facing recovery.
 - `ExplorerPage.handleSave` — single PUT. On 412 the local catch swallows the error silently (no duplicate "Save failed" banner); the modal owns the reload prompt.
+
+**Silent-catch rule for every 412 caller.** The modal owns the user-facing recovery flow, so any page-level catch that wraps a `SessionStore.save` / `DataAccessProxyLayer.storeRepertoireData` / `SessionStore.importBlob` call must treat `DataAccessError` with `statusCode === 412` as a no-op: no inline error banner, no `alert()`, no console warn. (The local UI-state cleanup that some callers do on hard failure — e.g. clearing a "re-annotate in flight" set — may still run; it's harmless on the imminent reload.) The current call sites that follow this rule are:
+
+- `ExplorerPage.handleSave` — no `setSaveError` on 412.
+- `TrainingPage.handleTraversalComplete` — no `setError` on 412.
+- `SettingsPage.handleSave` — no `setErrorMessage` on 412.
+- `SettingsPage` Import (`handleImportFileSelected`) — no `alert()` on 412 (a blocking native dialog under the modal would be especially bad UX).
+- `GamesPage.runAnalysisPass` — no `setAnalysisError` on 412.
+- `GamesPage.handleReannotate` / `handleDeleteFromHere` — no `console.warn` on 412.
+- `GameIngestService.runIngest` (Dashboard's caller) — no `console.error` on 412; also suppresses the trailing `done` progress emit so Dashboard doesn't flash a "Synced @ HH:MM" badge under the modal.
+
+Don't surface 412 anywhere except through `<ConflictModal>`.
 
 This eliminates the previous per-helper "refetch fresh blob, re-apply local mutation, re-PUT" retry loops, which silently overwrote concurrent same-field writes from other tabs (e.g., `persistOpponentAnalysis` last-write-wins on the `op` field). The new posture matches the "no silent data loss" principle: any 412 surfaces as a visible modal and a fresh page load.
 

@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
+import { DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
 import { AuditService } from './AuditService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
@@ -58,10 +59,13 @@ export interface IngestSummary {
  * Progress events emitted by runIngest for UI feedback (e.g. Dashboard banner).
  *
  * - `fetching`: emitted before each per-account fetch. accountIndex is 1-based.
- *   On 412 retries the pipeline restarts and these events are re-emitted from 1.
  * - `done`: emitted exactly once at the end, even on caught failures
  *   (gamesProcessed == 0 in that case). Callers can treat "done with 0" as a
  *   silent no-op since failures and "nothing new" are indistinguishable here.
+ *   Exception: on a 412 conflict the `done` event is suppressed — the
+ *   app-root `<ConflictModal>` owns the recovery UI and is about to hard
+ *   reload the page, so emitting `done` (and letting Dashboard flash a
+ *   "Synced @ HH:MM" badge under the modal) would be misleading.
  *
  * Never emitted at all when the user has no linked accounts.
  */
@@ -100,6 +104,7 @@ export async function runIngest(
     const runNowMs = Date.now();
     let result: IngestSummary = failureSummary;
     let emittedAny = false;
+    let suppressDone = false;
     const wrappedProgress: IngestProgressCallback | undefined = onProgress
         ? (p) => { emittedAny = true; onProgress(p); }
         : undefined;
@@ -111,14 +116,27 @@ export async function runIngest(
         if (signal?.aborted || (e as { name?: string })?.name === 'AbortError') {
             throw e;
         }
-        // Telemetry only — never surface to UI.
-        // eslint-disable-next-line no-console
-        console.error('GameIngest: failed', e);
+        // 412 is owned by the app-root <ConflictModal>: the PUT inside
+        // `runIngestInternal` already fired `notifyConflict` before
+        // throwing, so the modal is up and will hard-reload the page.
+        // Skip the telemetry log (consistent with the silence rule the
+        // other 412 catches follow) and — critically — suppress the
+        // trailing `done` emit below, so Dashboard's progress handler
+        // doesn't flip syncStatus to "Synced @ HH:MM" and flash a
+        // green badge under the modal.
+        if (e instanceof DataAccessError && e.statusCode === 412) {
+            suppressDone = true;
+        } else {
+            // Telemetry only — never surface to UI.
+            // eslint-disable-next-line no-console
+            console.error('GameIngest: failed', e);
+        }
         result = failureSummary;
     }
     // Only emit `done` if we ever emitted `fetching` — preserves the
-    // "no linked accounts → never notify" contract.
-    if (onProgress && emittedAny && !signal?.aborted) {
+    // "no linked accounts → never notify" contract. Also skip on 412
+    // (see catch above): the modal is the only UI we want showing.
+    if (onProgress && emittedAny && !signal?.aborted && !suppressDone) {
         onProgress({ phase: 'done', gamesProcessed: result.gamesProcessed });
     }
     return result;

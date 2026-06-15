@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom';
 import TrainingPageControl from '../components/TrainingPageControl';
 import { getSessionStore } from '../data/SessionStore';
+import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireData } from '../models/RepertoireData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
@@ -80,6 +81,14 @@ const TrainingPage: React.FC = () => {
 
             console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(currentData)} (+${correctCardsRated})`);
         } catch (e: any) {
+            if (e instanceof DataAccessError && e.statusCode === 412) {
+                // The app-root <ConflictModal> already fired (via
+                // SessionStore.save's notifyConflict) and is showing
+                // the Reload prompt. Don't duplicate the message with
+                // an inline banner — the modal owns the recovery flow
+                // and will hard-reload the page on confirm.
+                return;
+            }
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);
             setError(msg);

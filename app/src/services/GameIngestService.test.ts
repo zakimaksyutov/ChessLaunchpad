@@ -439,14 +439,25 @@ describe('GameIngestService', () => {
         const dal = new MockDal(data);
         dal.nextStoreError = new DataAccessError('precondition failed', 412);
 
-        // Silence the expected "GameIngest: failed" error log.
+        // On 412 the app-root <ConflictModal> owns recovery (via SessionStore's
+        // notifyConflict, fired before the error is rethrown). runIngest must
+        // therefore stay silent: no console.error telemetry, and — critically
+        // — no trailing `done` progress emit, since Dashboard's handler would
+        // flip syncStatus to "synced" and flash a green badge under the modal.
         const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         try {
-            const result = await runIngest(dal);
+            const events: IngestProgress[] = [];
+            const result = await runIngest(dal, (p) => events.push(p));
             // 412 is swallowed by runIngest's top-level catch; reports a no-op.
             expect(result.didWrite).toBe(false);
             expect(result.gamesProcessed).toBe(0);
             expect(dal.storeCount).toBe(1); // single attempt, no retry
+            // No "GameIngest: failed" telemetry on the 412 path.
+            expect(errSpy).not.toHaveBeenCalled();
+            // The pipeline still emits its `fetching` events (the PUT only
+            // fails at the end), but the trailing `done` is suppressed.
+            expect(events.find(p => p.phase === 'done')).toBeUndefined();
+            expect(events.some(p => p.phase === 'fetching')).toBe(true);
         } finally {
             errSpy.mockRestore();
         }

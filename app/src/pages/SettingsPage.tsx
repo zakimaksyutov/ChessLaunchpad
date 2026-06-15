@@ -18,6 +18,7 @@ import {
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireData } from '../models/RepertoireData';
 import { getSessionStore } from '../data/SessionStore';
+import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
@@ -183,8 +184,14 @@ const SettingsPage: React.FC = () => {
             setIsDirty(false);
             setSaveMessage({ type: 'success', text: 'Settings saved.' });
         } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            setErrorMessage(`Failed to save settings: ${msg}`);
+            if (err instanceof DataAccessError && err.statusCode === 412) {
+                // The app-root <ConflictModal> already fired and owns
+                // the recovery flow. Skip the inline error banner so
+                // we don't surface a duplicate message under the modal.
+            } else {
+                const msg = err instanceof Error ? err.message : String(err);
+                setErrorMessage(`Failed to save settings: ${msg}`);
+            }
         } finally {
             setSaving(false);
         }
@@ -343,8 +350,15 @@ const SettingsPage: React.FC = () => {
             // Full reload so all pages re-fetch the new repertoire.
             window.location.reload();
         } catch (ex: unknown) {
-            const msg = ex instanceof Error ? ex.message : String(ex);
-            alert(`Failed to import: ${msg}`);
+            if (ex instanceof DataAccessError && ex.statusCode === 412) {
+                // The app-root <ConflictModal> already fired and owns
+                // the Reload prompt. A native alert() here would be
+                // worse than the modal — it would block until the user
+                // dismisses it, intercepting focus from the modal.
+            } else {
+                const msg = ex instanceof Error ? ex.message : String(ex);
+                alert(`Failed to import: ${msg}`);
+            }
         } finally {
             setImporting(false);
         }
