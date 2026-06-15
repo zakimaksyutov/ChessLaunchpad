@@ -670,6 +670,42 @@ describe('PendingEditModel.applyImportedPgn', () => {
         expect(result.replacedAnnotations).toBe(1);
     });
 
+    it('re-importing identical annotations is not counted as a replacement', () => {
+        // Set-equality semantics, mirroring computeDelta: importing the same
+        // arrows/squares already on a position is a true no-op and must not
+        // inflate the toast count. Order- and duplicate-insensitive.
+        const reps = createEmptyRepertoires();
+        const whiteRep = findRepertoire(reps, 'white')!;
+        const afterE4 = fenAfter(['e4']);
+        const existing: Annotation[] = [
+            { brush: 'G', orig: 'g1', dest: 'f3' },
+            { brush: 'R', orig: 'd2', dest: 'd4' },
+        ];
+        whiteRep.positions[startFen] = { moves: { e4: { to: afterE4 } } };
+        whiteRep.positions[afterE4] = { moves: {}, annotations: existing };
+
+        const m = new PendingEditModel(reps, {});
+        // Capture the stored reference (the constructor deep-clones).
+        const storedBefore = m.getCurrentRepertoire('white').positions[afterE4].annotations;
+
+        // Same set, reversed order + a duplicate — equal under annotationSetsEqual.
+        const reimported: Annotation[] = [
+            { brush: 'R', orig: 'd2', dest: 'd4' },
+            { brush: 'G', orig: 'g1', dest: 'f3' },
+            { brush: 'G', orig: 'g1', dest: 'f3' },
+        ];
+        const result = m.applyImportedPgn(
+            'white',
+            [],
+            new Map([[afterE4, reimported]]),
+        );
+
+        expect(result.replacedAnnotations).toBe(0);
+        // Stored annotations untouched — same reference, no needless re-clone.
+        expect(m.getCurrentRepertoire('white').positions[afterE4].annotations).toBe(storedBefore);
+        expect(m.isEmpty()).toBe(true);
+    });
+
     it('only mutates the supplied orientation', () => {
         // Both orientations have 1.e4 in base. Import only into 'white' —
         // the 'black' repertoire (and any FSRS cards minted on its behalf)

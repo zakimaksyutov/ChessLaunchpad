@@ -528,6 +528,9 @@ export class PendingEditModel {
             if (result !== null && !alreadyPresent) addedEdges++;
         }
         for (const [fen, anns] of annotationsByFen) {
+            const rep = this.getCurrentRepertoire(orientation);
+            const before = rep.positions[fen]?.annotations ?? [];
+            if (annotationSetsEqual(before, anns)) continue;
             if (this.setAnnotations(fen, orientation, anns)) {
                 replacedAnnotations++;
             }
