@@ -4,7 +4,7 @@ import { RepertoireEntry } from '../models/Repertoires';
 import { normalizeFenResetHalfmoveClock } from './FenUtils';
 
 /**
- * Per-repertoire PGN export/import. See `docs/product-specs/REPERTOIRE-PGN.md`.
+ * Per-repertoire PGN export/import. See `docs/product-specs/EXPLORER.md`.
  *
  * One repertoire (one orientation) per file. Round-trips:
  *   • the DAG of positions (rendered as a spanning tree on disk),
@@ -643,7 +643,7 @@ function parseAnnotationsFromComment(comment: string): Annotation[] | null {
 
     // Gate the "we have an annotation set to replace with" signal on the
     // presence of at least one VALID annotation. The spec is explicit
-    // (REPERTOIRE-PGN.md): import can add or replace annotations but
+    // (see EXPLORER.md): import can add or replace annotations but
     // cannot CLEAR them. An empty `[%cal ]` token, a malformed
     // `[%cal Xe2e4]`, or any structured marker that parses to zero
     // valid annotations therefore returns null — the merge layer
