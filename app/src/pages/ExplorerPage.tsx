@@ -473,15 +473,18 @@ interface ExplorerOverflowMenuProps {
     onExport: () => void;
     /** When true, Export PGN is rendered disabled (Edit-mode behaviour). */
     exportDisabled: boolean;
+    /** Required when `exportDisabled` is true — surfaced as the menu item's
+     *  hint text and `title`. Read-mode call sites pass `exportDisabled=false`
+     *  and may omit this. */
     exportDisabledReason?: string;
     /** Disables the menu item while a PGN import is in flight. */
     busy: boolean;
     /** "White" / "Black" — labels the menu item so users always know which
      *  repertoire they're acting on. */
     colorLabel: 'White' | 'Black';
-    /** Optional ref the parent populates with the trigger button so it can
-     *  restore focus after an Esc-driven close. */
-    triggerRefCallback?: (el: HTMLButtonElement | null) => void;
+    /** Ref the parent populates with the trigger button so it can restore
+     *  focus after an Esc-driven close. */
+    triggerRefCallback: (el: HTMLButtonElement | null) => void;
 }
 
 /**
@@ -511,7 +514,7 @@ const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
         <div className="explorer-menu-wrap">
             <button
                 type="button"
-                ref={el => { if (triggerRefCallback) triggerRefCallback(el); }}
+                ref={triggerRefCallback}
                 className="explorer-menu-trigger explorer-btn explorer-btn--sm explorer-btn--neutral-ghost"
                 onClick={onToggle}
                 aria-haspopup="menu"
@@ -534,9 +537,9 @@ const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
                         <span className="explorer-menu-item-label">
                             Export <strong>{colorLabel}</strong> PGN
                         </span>
-                        {exportDisabled && (
+                        {exportDisabled && exportDisabledReason && (
                             <span className="explorer-menu-item-hint">
-                                {exportDisabledReason ?? 'Disabled'}
+                                {exportDisabledReason}
                             </span>
                         )}
                     </button>
@@ -1164,12 +1167,11 @@ const ExplorerPage: React.FC = () => {
 
     /**
      * Export the orientation-matching repertoire as a portable `.pgn` file.
-     * In Read mode this exports the persisted state. In Edit mode the
-     * button is disabled (the menu calls this only when not editing).
+     * Only invoked from Read mode — the overflow menu disables this item in
+     * Edit mode so pending edits can't accidentally ship as "the repertoire".
      */
     const handleExportPgn = useCallback(() => {
         setMenuOpen(false);
-        if (mode === 'edit') return; // belt-and-suspenders: button is disabled
         if (!data || !data.repertoires) {
             setPgnToast({ kind: 'error', text: 'Repertoire not loaded yet.' });
             return;
@@ -1200,13 +1202,14 @@ const ExplorerPage: React.FC = () => {
             const msg = err instanceof Error ? err.message : String(err);
             setPgnToast({ kind: 'error', text: `Export failed: ${msg}` });
         }
-    }, [mode, data, resolvedOrientation]);
+    }, [data, resolvedOrientation]);
 
     // ── PGN import (shared by file picker + paste box) ──────────────
 
     /**
-     * Stage a parsed PGN into the pending edit delta. Only invoked from
-     * the Edit-mode UI; the precondition check is defensive.
+     * Stage a parsed PGN into the pending edit delta. Only invoked from the
+     * Edit-mode UI, which only renders when `pendingModel` is non-null —
+     * hence the `!` assertion below rather than a user-visible guard.
      */
     const applyParsedPgn = useCallback((pgnText: string): string => {
         // Paste-box snippets may omit the `[Repertoire]` header; default
@@ -1215,10 +1218,6 @@ const ExplorerPage: React.FC = () => {
             defaultOrientation: resolvedOrientation,
         });
 
-        if (mode !== 'edit' || !pendingModel) {
-            throw new RepertoirePgnError('Enter Edit mode to import a PGN.');
-        }
-
         if (decoded.orientation !== resolvedOrientation) {
             throw new RepertoirePgnError(
                 `This file is a ${decoded.orientation === 'white' ? 'White' : 'Black'} ` +
@@ -1226,9 +1225,9 @@ const ExplorerPage: React.FC = () => {
                 `Save or Discard your pending edits first, then re-import.`,
             );
         }
-        const result = pendingModel.applyImportedPgn(
+        const result = pendingModel!.applyImportedPgn(
             decoded.orientation,
-            decoded.edges.map(e => ({ from: e.from, san: e.san })),
+            decoded.edges,
             decoded.annotationsByFen,
         );
         bumpPending();
@@ -1240,7 +1239,7 @@ const ExplorerPage: React.FC = () => {
                 ? `, ${result.replacedAnnotations} annotation${result.replacedAnnotations === 1 ? '' : 's'}`
                 : ''
         }. Use Review & Save to commit.`;
-    }, [mode, pendingModel, resolvedOrientation, bumpPending]);
+    }, [pendingModel, resolvedOrientation, bumpPending]);
 
     const handleImportFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -1293,7 +1292,6 @@ const ExplorerPage: React.FC = () => {
     // dismissal — the `role="menu"` we expose requires at least an Esc
     // handler for keyboard / screen-reader users.
     const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
-    const lastMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
     useEffect(() => {
         if (!menuOpen) return;
         const handleClick = (e: MouseEvent) => {
@@ -1307,12 +1305,8 @@ const ExplorerPage: React.FC = () => {
             if (e.key === 'Escape') {
                 setMenuOpen(false);
                 // Restore focus to the trigger so the keyboard user lands
-                // back where they invoked the menu — fall back to the last
-                // observed trigger if the React ref hasn't been attached
-                // yet (the menu wrapper isn't always the same DOM node
-                // across Read/Edit toggles).
-                const t = menuTriggerRef.current ?? lastMenuTriggerRef.current;
-                if (t) t.focus();
+                // back where they invoked the menu.
+                menuTriggerRef.current?.focus();
             }
         };
         document.addEventListener('mousedown', handleClick);
@@ -1454,10 +1448,7 @@ const ExplorerPage: React.FC = () => {
                                     exportDisabled={false}
                                     busy={importBusy}
                                     colorLabel={resolvedOrientation === 'white' ? 'White' : 'Black'}
-                                    triggerRefCallback={el => {
-                                        menuTriggerRef.current = el;
-                                        if (el) lastMenuTriggerRef.current = el;
-                                    }}
+                                    triggerRefCallback={el => { menuTriggerRef.current = el; }}
                                 />
                             </div>
                         )}
@@ -1498,10 +1489,7 @@ const ExplorerPage: React.FC = () => {
                                         exportDisabledReason="Save or Discard your pending edits to export."
                                         busy={importBusy}
                                         colorLabel={resolvedOrientation === 'white' ? 'White' : 'Black'}
-                                        triggerRefCallback={el => {
-                                            menuTriggerRef.current = el;
-                                            if (el) lastMenuTriggerRef.current = el;
-                                        }}
+                                        triggerRefCallback={el => { menuTriggerRef.current = el; }}
                                     />
                                 </div>
                             </div>
