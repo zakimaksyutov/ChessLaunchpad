@@ -172,6 +172,13 @@ export function getTodayPlayCount(data: RepertoireData): number {
 /**
  * Record a completed traversal into activity data.
  * Updates both today's entry and lifetime totals.
+ *
+ * NON-IDEMPOTENT: stats are accumulated with `+=`. Callers MUST NOT invoke
+ * this more than once per traversal, and MUST NOT wrap the surrounding
+ * save path in a "retry on transient error" loop — doing so would
+ * double-count reviewed/mistakes/learned/traversals on success-after-retry.
+ * On a failed save, discard the in-memory mutation (e.g. by reloading
+ * from the server) rather than retrying with the same mutated snapshot.
  */
 export function recordTraversal(
     data: RepertoireData,

@@ -68,7 +68,15 @@ const TrainingPage: React.FC = () => {
         if (!currentData) return;
 
         try {
-            // Record activity (recordTraversal calls ensureActivity internally)
+            // Record activity (recordTraversal calls ensureActivity internally).
+            //
+            // IMPORTANT: recordTraversal is NON-IDEMPOTENT (it does `+=` on
+            // entry.reviewed/mistakes/learned/traversals and the lifetime
+            // counters). Do NOT wrap the storeRepertoireData call below in a
+            // "retry on transient network error" loop — replaying it after a
+            // successful-but-perceived-failed save would double-count stats.
+            // On 412 conflicts the app-root ConflictModal hard-reloads, which
+            // discards the in-memory mutation; that's the only safe recovery.
             recordTraversal(currentData, traversalStats, elapsedSeconds);
 
             // FSRSService has already mutated currentData.fsrsCards in-place
