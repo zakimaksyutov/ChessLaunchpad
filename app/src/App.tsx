@@ -79,12 +79,12 @@ const App: React.FC = () => {
         <Router>
           <Header username={username} onLogout={handleLogout} />
           <Routes>
-            <Route path="/" element={username ? <ProtectedRoute><DashboardPage /></ProtectedRoute> : <LandingPage />} />
+            <Route path="/" element={username ? <ProtectedRoute isLoggedIn={!!username}><DashboardPage /></ProtectedRoute> : <LandingPage />} />
             <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
-            <Route path="/training" element={<ProtectedRoute><TrainingPage /></ProtectedRoute>} />
-            <Route path="/explorer" element={<ProtectedRoute><ExplorerPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/games" element={<ProtectedRoute><GamesPage /></ProtectedRoute>} />
+            <Route path="/training" element={<ProtectedRoute isLoggedIn={!!username}><TrainingPage /></ProtectedRoute>} />
+            <Route path="/explorer" element={<ProtectedRoute isLoggedIn={!!username}><ExplorerPage /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute isLoggedIn={!!username}><SettingsPage /></ProtectedRoute>} />
+            <Route path="/games" element={<ProtectedRoute isLoggedIn={!!username}><GamesPage /></ProtectedRoute>} />
           </Routes>
         </Router>
         <ConflictModal />

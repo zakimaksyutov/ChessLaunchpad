@@ -4,6 +4,7 @@ import { getSessionStore } from '../data/SessionStore';
 import './ProtectedRoute.css';
 
 interface ProtectedRouteProps {
+    isLoggedIn: boolean;
     children: React.ReactNode;
 }
 
@@ -14,9 +15,17 @@ interface ProtectedRouteProps {
  * (2) is the precondition for `SessionStore.createDataAccessProxyLayer()`
  * — concentrating the wait here lets pages call that factory
  * synchronously inside `useMemo` with no null-etag handling.
+ *
+ * `isLoggedIn` is passed in from `App` rather than read from
+ * `localStorage` so the gate is fully reactive to App's `username`
+ * state. Reading localStorage during render would create an
+ * ordering coupling with `Header.handleLogout` (and any future
+ * logout path): if state flipped before localStorage was cleared,
+ * this component would still see `isLoggedIn=true` for one render
+ * and lazy-bootstrap a SessionStore from stale credentials via
+ * `getSessionStore()`.
  */
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-    const isLoggedIn = !!localStorage.getItem('username');
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ isLoggedIn, children }) => {
     const [ready, setReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
     // Bumped by Retry to re-run the ready() effect.
