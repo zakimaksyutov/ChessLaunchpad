@@ -558,6 +558,145 @@ describe('PendingEditModel removed chain tail hints', () => {
 
 // ── Snapshot immutability ─────────────────────────────────────────────
 
+describe('PendingEditModel.applyImportedPgn', () => {
+    it('re-importing an edge already in base preserves its FSRS card (no history reset)', () => {
+        // The live PGN re-import scenario: a user re-uploads a file that
+        // overlaps with their saved repertoire. Every overlapping edge
+        // hits this code path and must NOT mint a fresh New-state card
+        // (which would wipe stability/reps/state). Pin down the contract
+        // the gating comment in `addEdge` warns about.
+        const reps = createEmptyRepertoires();
+        const whiteRep = findRepertoire(reps, 'white')!;
+        const afterE4 = fenAfter(['e4']);
+        const trackedBase = {
+            ...FSRSService.serialize(createEmptyCard()),
+            stability: 42,
+            reps: 7,
+            state: State.Review,
+        };
+        whiteRep.positions[startFen] = { moves: { e4: { to: afterE4, card: trackedBase } } };
+        whiteRep.positions[afterE4] = { moves: {} };
+        const fsrsCards = { [FSRSService.makeCardKey(startFen, 'e4')]: trackedBase };
+
+        const m = new PendingEditModel(reps, fsrsCards);
+        const cardBefore = m.getCurrentRepertoire('white').positions[startFen].moves['e4'].card;
+
+        const result = m.applyImportedPgn(
+            'white',
+            [{ from: startFen, san: 'e4' }],
+            new Map(),
+        );
+
+        const cardAfter = m.getCurrentRepertoire('white').positions[startFen].moves['e4'].card;
+        // Same reference — not a re-clone, not a fresh New-state card.
+        expect(cardAfter).toBe(cardBefore);
+        expect(cardAfter).toEqual(trackedBase);
+        // Re-importing an existing edge is a true no-op.
+        expect(result.addedEdges).toBe(0);
+        expect(m.isEmpty()).toBe(true);
+        expect(Object.keys(m.newCardsByKey)).toHaveLength(0);
+    });
+
+    it('addedEdges counts only brand-new edges; replacedAnnotations excludes unreachable no-ops', () => {
+        // Base has 1.e4. Import {e4 (overlap), e4 e5 (new opponent), e4 e5 Nf3 (new user)}
+        // plus an annotation on a reachable FEN and one on an unreachable FEN.
+        // The counts must reflect actual mutations, not call counts — the
+        // sticky bar and toast both read these numbers verbatim.
+        const { repertoires, fsrsCards } = buildRepertoires([
+            { pgn: '1. e4', orientation: 'white' },
+        ]);
+        const m = new PendingEditModel(repertoires, fsrsCards);
+
+        const afterE4 = fenAfter(['e4']);
+        const afterE4e5 = fenAfter(['e4', 'e5']);
+        const unreachable = fenAfter(['d4']); // never added to the rep
+        const annReachable: Annotation[] = [{ brush: 'G', orig: 'e2', dest: 'e4' }];
+        const annUnreachable: Annotation[] = [{ brush: 'R', orig: 'd2', dest: 'd4' }];
+
+        const result = m.applyImportedPgn(
+            'white',
+            [
+                { from: startFen, san: 'e4' }, // already present → not counted
+                { from: afterE4, san: 'e5' }, // new opponent edge → counted
+                { from: afterE4e5, san: 'Nf3' }, // new user edge → counted
+            ],
+            new Map([
+                [startFen, annReachable],
+                [unreachable, annUnreachable],
+            ]),
+        );
+
+        expect(result.addedEdges).toBe(2);
+        expect(result.replacedAnnotations).toBe(1);
+
+        // The unreachable annotation must not have created an orphan position.
+        const rep = m.getCurrentRepertoire('white');
+        expect(rep.positions[unreachable]).toBeUndefined();
+        // The reachable annotation landed.
+        expect(rep.positions[startFen].annotations).toEqual(annReachable);
+    });
+
+    it('replaces annotations on imported FENs but leaves un-mentioned FENs untouched (never clears)', () => {
+        // Spec asymmetry: import can add/replace annotations but never CLEAR them.
+        // A FEN absent from `annotationsByFen` must keep its existing annotations
+        // verbatim — even if the user re-imports an overlapping subtree.
+        const reps = createEmptyRepertoires();
+        const whiteRep = findRepertoire(reps, 'white')!;
+        const afterE4 = fenAfter(['e4']);
+        const afterE4e5 = fenAfter(['e4', 'e5']);
+        const existingOnE4: Annotation[] = [{ brush: 'G', orig: 'g1', dest: 'f3' }];
+        const existingOnE4e5: Annotation[] = [{ brush: 'R', orig: 'd2', dest: 'd4' }];
+        whiteRep.positions[startFen] = { moves: { e4: { to: afterE4 } } };
+        whiteRep.positions[afterE4] = {
+            moves: { e5: { to: afterE4e5 } },
+            annotations: existingOnE4,
+        };
+        whiteRep.positions[afterE4e5] = { moves: {}, annotations: existingOnE4e5 };
+
+        const m = new PendingEditModel(reps, {});
+
+        const replacement: Annotation[] = [{ brush: 'B', orig: 'a1', dest: 'h8' }];
+        const result = m.applyImportedPgn(
+            'white',
+            [], // no edge changes — only annotation replay
+            new Map([[afterE4, replacement]]), // afterE4e5 absent from import
+        );
+
+        const rep = m.getCurrentRepertoire('white');
+        // afterE4 was in the import → REPLACED with the new set.
+        expect(rep.positions[afterE4].annotations).toEqual(replacement);
+        // afterE4e5 was NOT in the import → untouched (never cleared).
+        expect(rep.positions[afterE4e5].annotations).toEqual(existingOnE4e5);
+        expect(result.replacedAnnotations).toBe(1);
+    });
+
+    it('only mutates the supplied orientation', () => {
+        // Both orientations have 1.e4 in base. Import only into 'white' —
+        // the 'black' repertoire (and any FSRS cards minted on its behalf)
+        // must remain byte-identical to the base snapshot.
+        const { repertoires, fsrsCards } = buildRepertoires([
+            { pgn: '1. e4', orientation: 'white' },
+            { pgn: '1. e4', orientation: 'black' },
+        ]);
+        const m = new PendingEditModel(repertoires, fsrsCards);
+        const blackBefore = JSON.stringify(findRepertoire(m.baseRepertoires, 'black')!);
+
+        const afterE4 = fenAfter(['e4']);
+        m.applyImportedPgn(
+            'white',
+            [{ from: afterE4, san: 'e5' }], // new opponent edge in white only
+            new Map([[startFen, [{ brush: 'G', orig: 'e2', dest: 'e4' }]]]),
+        );
+
+        // Black working copy is unchanged vs. base.
+        const blackAfter = JSON.stringify(m.getCurrentRepertoire('black'));
+        expect(blackAfter).toBe(blackBefore);
+        // White did change.
+        expect(m.getCurrentRepertoire('white').positions[afterE4].moves['e5']).toBeDefined();
+        expect(m.getCurrentRepertoire('white').positions[startFen].annotations).toHaveLength(1);
+    });
+});
+
 describe('PendingEditModel snapshot immutability', () => {
     it('mutations on the working copy do not leak into the base snapshot', () => {
         const { repertoires, fsrsCards } = buildRepertoires([
