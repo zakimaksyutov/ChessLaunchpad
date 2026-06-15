@@ -1,0 +1,14 @@
+.protected-route-status {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #555;
+    font-size: 1rem;
+}
+
+.protected-route-status--error {
+    color: #b00020;
+}
+
+.protected-route-status--error button {
+    margin-top: 0.75rem;
+}

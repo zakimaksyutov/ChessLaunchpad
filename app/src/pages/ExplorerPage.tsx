@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessboardControl from '../components/ChessboardControl';
 import ReviewView from '../components/ReviewView';
-import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from '../data/DataAccessLayer';
+import { DataAccessError } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData } from '../models/RepertoireData';
 import {
     ExplorerService,
@@ -522,11 +523,7 @@ const ExplorerPage: React.FC = () => {
     const openingsRef = useRef<DatabaseOpening[] | null>(null);
     const dataRef = useRef<RepertoireData | null>(null);
 
-    const dal: IDataAccessLayer = useMemo(() => {
-        const username = localStorage.getItem('username') ?? '';
-        const password = localStorage.getItem('hashedPassword') ?? '';
-        return createDataAccessLayer(username, password);
-    }, []);
+    const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
     const fetchAll = useCallback(async (force = false) => {
         const sinceLast = Date.now() - lastFetchAtRef.current;
@@ -571,25 +568,6 @@ const ExplorerPage: React.FC = () => {
         void fetchAll(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    // Cross-tab freshness: re-fetch when the page regains visibility — but
-    // ONLY when no Edit session is in flight. Refreshing mid-edit would swap
-    // out the DAL's captured ETag (and the page's `data`) under the user's
-    // feet, silently defeating the 412 conflict path that protects
-    // concurrent edits (see `handleSave`'s catch block). The pending model
-    // already holds the snapshot it was started against; surfacing newer
-    // server state is deferred until the user finishes or discards the
-    // session — same trade-off the spec calls out for ungated background
-    // game ingestion ("ETag safety net it would buy").
-    useEffect(() => {
-        const onVis = () => {
-            if (document.visibilityState !== 'visible') return;
-            if (pendingModel) return; // edit session active — don't trample the ETag
-            void fetchAll(false);
-        };
-        document.addEventListener('visibilitychange', onVis);
-        return () => document.removeEventListener('visibilitychange', onVis);
-    }, [fetchAll, pendingModel]);
 
     // In Read mode, the ExplorerService reads the persisted blob. In Edit
     // mode it reads the PendingEditModel's working copy so the user sees the
@@ -1034,13 +1012,25 @@ const ExplorerPage: React.FC = () => {
         }
     }, [pendingModel, data, dal, fetchAll, stripReviewParam]);
 
-    /** Conflict prompt: "Refresh" discards local edits and re-fetches. */
+    /** Conflict prompt: "Refresh" discards local edits and re-fetches.
+     *  The explicit `SessionStore.refresh()` is required because
+     *  `fetchAll` reads from the cache, which is stale after a 412
+     *  (our PUT was the one that failed — nothing updated the cache).
+     *  Without forcing a server-side refresh first, "Refresh" would
+     *  loop on the same stale snapshot. */
     const handleConflictRefresh = useCallback(async () => {
         setConflictPrompt(false);
         setPendingModel(null);
         setMode('read');
         stripReviewParam();
         dataRef.current = null;
+        try {
+            await getSessionStore().refresh();
+        } catch (e) {
+            console.warn('ExplorerPage: refresh failed', e);
+            // Fall through — fetchAll will surface the underlying
+            // error via loadError if the cache is still empty.
+        }
         await fetchAll(true);
     }, [fetchAll, stripReviewParam]);
 

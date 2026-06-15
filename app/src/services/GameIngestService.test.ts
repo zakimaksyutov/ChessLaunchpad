@@ -54,9 +54,6 @@ class MockDal implements IDataAccessLayer {
         this.retrieveCount += 1;
         return clone(this.data);
     }
-    async fetchEtagOnly(): Promise<void> {
-        this.retrieveCount += 1;
-    }
     async storeRepertoireData(data: RepertoireData): Promise<void> {
         this.storeCount += 1;
         if (this.nextStoreError) {
@@ -1003,6 +1000,62 @@ describe('GameIngestService', () => {
             const todayDay = dal.data.activity!.practiceLog.find(e => e.date !== dateStr)!;
             expect(todayDay.games!.records!.length).toBe(1);
             expect(todayDay.games!.records![0].id).toBe('newToday');
+        });
+    });
+
+    describe('AbortSignal', () => {
+        it('throws AbortError when signal is pre-aborted before the first retrieve', async () => {
+            const data = makeData();
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const controller = new AbortController();
+            controller.abort();
+            await expect(runIngest(dal, undefined, controller.signal))
+                .rejects.toMatchObject({ name: 'AbortError' });
+            expect(dal.storeCount).toBe(0);
+        });
+
+        it('does not call PUT after abort fires between fetch and PUT', async () => {
+            const data = makeData();
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const controller = new AbortController();
+            // Mock the lichess GET so it succeeds, then abort right
+            // after the fetch returns but before the PUT fires.
+            const game = lichessGame({
+                id: 'newGame',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            (globalThis.fetch as ReturnType<typeof vi.fn>)
+                .mockImplementationOnce(async () => {
+                    controller.abort();
+                    return {
+                        ok: true,
+                        status: 200,
+                        statusText: 'OK',
+                        headers: new Headers(),
+                        text: async () => buildLichessGameNdjson([game]),
+                        json: async () => ({}),
+                    } as unknown as Response;
+                });
+            await expect(runIngest(dal, undefined, controller.signal))
+                .rejects.toMatchObject({ name: 'AbortError' });
+            expect(dal.storeCount).toBe(0);
+        });
+
+        it('skips emitting the done progress event when aborted', async () => {
+            const data = makeData();
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const controller = new AbortController();
+            controller.abort();
+            const progresses: any[] = [];
+            try {
+                await runIngest(dal, p => progresses.push(p), controller.signal);
+            } catch { /* abort propagation */ }
+            expect(progresses.find(p => p.phase === 'done')).toBeUndefined();
         });
     });
 });

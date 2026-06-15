@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
-import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
+import { DataAccessError } from '../data/DataAccessLayer';
+import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
 import { FSRSService } from './FSRSService';
 import { AuditService } from './AuditService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
@@ -86,11 +87,15 @@ export type IngestProgressCallback = (progress: IngestProgress) => void;
  *   6. Update per-day game counters and per-account state.
  *   7. PUT with If-Match; retry up to MAX_RETRIES on 412.
  *
- * Never throws — all errors are logged and swallowed.
+ * Never throws — all errors are logged and swallowed, except `AbortError`
+ * which is re-raised so callers can distinguish "I asked it to stop"
+ * from "ingest failed". Optional `signal` aborts between phases and is
+ * forwarded to provider HTTP fetches.
  */
 export async function runIngest(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     onProgress?: IngestProgressCallback,
+    signal?: AbortSignal,
 ): Promise<IngestSummary> {
     const failureSummary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
     const runNowMs = Date.now();
@@ -100,8 +105,13 @@ export async function runIngest(
         ? (p) => { emittedAny = true; onProgress(p); }
         : undefined;
     try {
-        result = await runIngestInternal(dal, runNowMs, wrappedProgress);
+        result = await runIngestInternal(dal, runNowMs, wrappedProgress, signal);
     } catch (e) {
+        // Abort is an expected control-flow signal — re-raise so callers
+        // can distinguish "I asked it to stop" from "ingest failed".
+        if (signal?.aborted || (e as { name?: string })?.name === 'AbortError') {
+            throw e;
+        }
         // Telemetry only — never surface to UI.
         // eslint-disable-next-line no-console
         console.error('GameIngest: failed', e);
@@ -109,20 +119,22 @@ export async function runIngest(
     }
     // Only emit `done` if we ever emitted `fetching` — preserves the
     // "no linked accounts → never notify" contract.
-    if (onProgress && emittedAny) {
+    if (onProgress && emittedAny && !signal?.aborted) {
         onProgress({ phase: 'done', gamesProcessed: result.gamesProcessed });
     }
     return result;
 }
 
 async function runIngestInternal(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     runNowMs: number,
     onProgress?: IngestProgressCallback,
+    signal?: AbortSignal,
 ): Promise<IngestSummary> {
     const summary: IngestSummary = { didWrite: false, gamesProcessed: 0 };
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const data = await dal.retrieveRepertoireData();
 
         // Source the linked-accounts list from the freshest blob — not from the
@@ -136,7 +148,8 @@ async function runIngestInternal(
         }));
         if (linkedAccounts.length === 0) return summary;
 
-        const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress);
+        const fetches = await fetchAllAccounts(linkedAccounts, data.games, runNowMs, onProgress, signal);
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
 
         const eligible = composeEligibleGames(data.games, fetches, runNowMs);
         const hasCursorChange = fetches.some(af => providerCursorChanged(data.games?.[af.accountKey], af));
@@ -149,12 +162,13 @@ async function runIngestInternal(
         applyIngest(data, eligible, linkedAccounts);
         updateAccountStates(data, fetches, eligible);
 
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         try {
             // Project in-memory state into the position-centric blob shape
             // before persisting — re-syncs the position dict with FSRSService's
             // in-place card mutations.
             const blobForSave = RepertoireDataUtils.prepareDataForSave(data);
-            await dal.storeRepertoireData(blobForSave);
+            await dal.storeRepertoireData(blobForSave, signal);
             return { didWrite: true, gamesProcessed: eligible.length };
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
@@ -177,9 +191,11 @@ async function fetchAllAccounts(
     gamesMap: GamesIngestMap | undefined,
     runNowMs: number,
     onProgress?: IngestProgressCallback,
+    signal?: AbortSignal,
 ): Promise<AccountFetchResult[]> {
     const results: AccountFetchResult[] = [];
     for (let i = 0; i < accounts.length; i++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const acct = accounts[i];
         const accountKey = getAccountKey(acct.platform, acct.username);
         const state = gamesMap?.[accountKey];
@@ -192,13 +208,14 @@ async function fetchAllAccounts(
         });
         try {
             if (acct.platform === 'lichess') {
-                const games = await fetchLichessGames(acct.username, state, runNowMs);
+                const games = await fetchLichessGames(acct.username, state, runNowMs, signal);
                 results.push({ accountKey, games, fetchSucceeded: true });
             } else {
-                const { games, providerCursor } = await fetchChesscomGames(acct.username, state, runNowMs);
+                const { games, providerCursor } = await fetchChesscomGames(acct.username, state, runNowMs, signal);
                 results.push({ accountKey, games, providerCursor, fetchSucceeded: true });
             }
         } catch (e) {
+            if (signal?.aborted) throw e;
             // eslint-disable-next-line no-console
             console.error(`GameIngest: fetch failed for ${accountKey}`, e);
             results.push({ accountKey, games: [], fetchSucceeded: false });
@@ -451,6 +468,7 @@ async function fetchLichessGames(
     username: string,
     state: GameIngestState | undefined,
     runNowMs: number,
+    signal?: AbortSignal,
 ): Promise<IngestGame[]> {
     const watermark = state?.watermarkMs ?? 0;
     // Use the max of (watermark+1, runNow - AGE_WINDOW) so initial runs don't pull years of history.
@@ -477,6 +495,7 @@ async function fetchLichessGames(
 
     const response = await fetch(url, {
         headers: { 'Accept': 'application/x-ndjson' },
+        signal,
     });
     if (!response.ok) {
         throw new Error(`Lichess API error: ${response.status} ${response.statusText}`);
@@ -548,6 +567,7 @@ async function fetchChesscomGames(
     username: string,
     state: GameIngestState | undefined,
     runNowMs: number,
+    signal?: AbortSignal,
 ): Promise<{ games: IngestGame[]; providerCursor?: ChesscomProviderCursor }> {
     const currentLabel = archiveLabelFromMs(runNowMs);
     const accountKey = getAccountKey('chess.com', username);
@@ -563,6 +583,7 @@ async function fetchChesscomGames(
     let newCursor: ChesscomProviderCursor | undefined;
 
     for (const label of labelsToFetch) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const url = archiveUrlForLabel(username, label);
         const headers: Record<string, string> = {};
         const prevCursor = state?.providerCursor;
@@ -571,7 +592,7 @@ async function fetchChesscomGames(
             headers['If-None-Match'] = prevCursor.etag;
         }
 
-        const response = await fetch(url, { headers });
+        const response = await fetch(url, { headers, signal });
         if (response.status === 304) {
             // No changes — preserve cursor.
             if (label === currentLabel && prevCursor) newCursor = prevCursor;

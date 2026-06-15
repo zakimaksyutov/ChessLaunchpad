@@ -5,7 +5,8 @@ import {
 } from '../models/RepertoireData';
 import { ExplorerEvals } from '../models/ExplorerEvals';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
-import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
+import { DataAccessError } from '../data/DataAccessLayer';
+import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { getLinkedAccounts } from './LinkedAccountsService';
 import { findRecord, purgeRecordsFromTimestamp } from './GameRecordStore';
@@ -236,10 +237,14 @@ export async function analyzeOneGame(
  * `persistReannotateClear` (which deletes the `an` field) before this
  * flush runs, so the only way a deferred-update happens is a real
  * concurrent-tab race.
+ *
+ * Optional `signal` short-circuits between the GET/merge and the PUT;
+ * throws `DOMException('AbortError')` if aborted.
  */
 export async function flushAnUpdates(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     updates: AnalyzedGameOutcome[],
+    signal?: AbortSignal,
 ): Promise<{ data: RepertoireData; persisted: number }> {
     if (updates.length === 0) {
         const data = await dal.retrieveRepertoireData();
@@ -247,6 +252,7 @@ export async function flushAnUpdates(
     }
 
     for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const fresh = await dal.retrieveRepertoireData();
         const activity = fresh.activity;
         if (!activity) {
@@ -268,9 +274,10 @@ export async function flushAnUpdates(
         if (persisted === 0) {
             return { data: fresh, persisted: 0 };
         }
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         try {
             const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
+            await dal.storeRepertoireData(blob, signal);
             return { data: fresh, persisted };
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
@@ -293,23 +300,28 @@ export async function flushAnUpdates(
  *
  * If the target record is evicted, the op is silently dropped (we don't
  * resurrect a record just to write `op` to it).
+ *
+ * Optional `signal` short-circuits between the GET and the PUT.
  */
 export async function persistOpponentAnalysis(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     recordId: string,
     recordPlatform: 'l' | 'c',
     op: NonNullable<GameRecord['op']>,
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
     for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const fresh = await dal.retrieveRepertoireData();
         const activity = fresh.activity;
         if (!activity) return fresh;
         const found = findRecord(activity, recordId, recordPlatform);
         if (!found) return fresh;
         found.record.op = op;
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         try {
             const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
+            await dal.storeRepertoireData(blob, signal);
             return fresh;
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
@@ -327,13 +339,17 @@ export async function persistOpponentAnalysis(
  * Persist a Re-annotate clear (drop `an` and `op` for one record) back to
  * the blob with the field-scoped 412 reconciliation. Used by the page's
  * Re-annotate action so the queue can pick the record up on the next pass.
+ *
+ * Optional `signal` short-circuits between the GET and the PUT.
  */
 export async function persistReannotateClear(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     recordId: string,
     recordPlatform: 'l' | 'c',
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
     for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const fresh = await dal.retrieveRepertoireData();
         const activity = fresh.activity;
         if (!activity) return fresh;
@@ -341,9 +357,10 @@ export async function persistReannotateClear(
         if (!found) return fresh;
         delete found.record.an;
         delete found.record.op;
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         try {
             const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
+            await dal.storeRepertoireData(blob, signal);
             return fresh;
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
@@ -378,10 +395,12 @@ export async function persistReannotateClear(
  * verbatim with `an` / `op` stripped.
  */
 export async function persistReannotateRefresh(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     freshRecord: GameRecord,
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
     for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const fresh = await dal.retrieveRepertoireData();
         const activity = fresh.activity;
         if (!activity) return fresh;
@@ -403,9 +422,10 @@ export async function persistReannotateRefresh(
             break;
         }
         if (!replaced) return fresh;
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         try {
             const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
+            await dal.storeRepertoireData(blob, signal);
             return fresh;
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
@@ -432,10 +452,12 @@ export { ANALYSIS_FLUSH_BATCH };
  * merges.
  */
 export async function persistDeleteRecordsFromTimestamp(
-    dal: IDataAccessLayer,
+    dal: IRepertoireDataStore,
     fromT: number,
+    signal?: AbortSignal,
 ): Promise<RepertoireData> {
     for (let attempt = 1; attempt <= MAX_FLUSH_RETRIES; attempt++) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         const fresh = await dal.retrieveRepertoireData();
         const activity = fresh.activity;
         if (!activity) return fresh;
@@ -467,9 +489,10 @@ export async function persistDeleteRecordsFromTimestamp(
             }
         }
         if (purged === 0 && !rewound) return fresh;
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
         try {
             const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-            await dal.storeRepertoireData(blob);
+            await dal.storeRepertoireData(blob, signal);
             return fresh;
         } catch (e) {
             if (e instanceof DataAccessError && e.statusCode === 412) {

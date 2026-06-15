@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
-import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
 import {
     getLinkedAccounts,
     LinkedAccount,
@@ -61,6 +61,7 @@ import { runIngest } from '../services/GameIngestService';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
 import { selectRenderableRows } from '../services/GameRowSelection';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
+import { composeSignals } from '../utils/composeSignals';
 import './GamesPage.css';
 
 function formatSyncTime(d: Date): string {
@@ -570,6 +571,16 @@ const GamesPage: React.FC = () => {
     const debugRecordKeysRef = useRef<Set<string>>(new Set());
     const analyzeAbortRef = useRef<AbortController | null>(null);
     const passAbortRef = useRef<AbortController | null>(null);
+    /**
+     * Page-scoped AbortController composed into every long-running
+     * background write on this page so navigation away cancels them
+     * before their next PUT — eliminates the sync-vs-training 412 race.
+     *
+     * StrictMode caveat: cleanup defers `.abort()` by a tick so the
+     * synthetic remount's effect run can clear the timer before it fires.
+     */
+    const pageAbortRef = useRef<AbortController | null>(null);
+    const pendingPageAbortTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     /** Single-flight guard so a StrictMode re-mount or rapid trigger doesn't double-start a pass. */
     const passStartedRef = useRef(false);
     /** Promise resolved when the current pass's `finally` completes — used by Re-annotate to chain. */
@@ -594,12 +605,7 @@ const GamesPage: React.FC = () => {
     const { ready: lichessAuthReady, connected: lichessConnected, token: lichessToken } = useLichessAuth();
     const [linkedAccounts, setLinkedAccountsState] = useState<LinkedAccount[]>(() => getLinkedAccounts());
 
-    const dal: IDataAccessLayer | null = useMemo(() => {
-        const username = localStorage.getItem('username');
-        const hashedPassword = localStorage.getItem('hashedPassword');
-        if (!username || !hashedPassword) return null;
-        return createDataAccessLayer(username, hashedPassword);
-    }, []);
+    const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
     // Refresh linked accounts when page gains focus.
     useEffect(() => {
@@ -610,10 +616,6 @@ const GamesPage: React.FC = () => {
 
     // Initial load: repertoire data + fen sets + explorer evals.
     useEffect(() => {
-        if (!dal) {
-            setLoading(false);
-            return;
-        }
         let cancelled = false;
         (async () => {
             try {
@@ -644,13 +646,27 @@ const GamesPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Cleanup the opponent-analysis abort controller on unmount.
-    // The pass-abort controller is co-located with the trigger effect below
-    // so StrictMode's mount → unmount → remount cycle doesn't strand the
-    // pass in an in-flight state that the remount can't recover from.
+    // Page-scoped abort lifecycle — see `pageAbortRef` declaration
+    // above for the full rationale. Cleanup defers `.abort()` by a
+    // tick so React's StrictMode synthetic remount can clear the
+    // timer before it fires.
     useEffect(() => {
+        if (pendingPageAbortTimerRef.current) {
+            clearTimeout(pendingPageAbortTimerRef.current);
+            pendingPageAbortTimerRef.current = null;
+        }
+        if (!pageAbortRef.current) {
+            pageAbortRef.current = new AbortController();
+        }
+        const controller = pageAbortRef.current;
         return () => {
-            analyzeAbortRef.current?.abort();
+            pendingPageAbortTimerRef.current = setTimeout(() => {
+                pendingPageAbortTimerRef.current = null;
+                controller.abort();
+                if (pageAbortRef.current === controller) {
+                    pageAbortRef.current = null;
+                }
+            }, 0);
         };
     }, []);
 
@@ -818,7 +834,6 @@ const GamesPage: React.FC = () => {
      * chain new passes / cancellation safely without busy-waiting.
      */
     const runAnalysisPass = useCallback((): Promise<void> => {
-        if (!dal) return Promise.resolve();
         // Single-flight guard.
         if (passStartedRef.current) {
             return passDonePromiseRef.current ?? Promise.resolve();
@@ -827,6 +842,11 @@ const GamesPage: React.FC = () => {
 
         const abort = new AbortController();
         passAbortRef.current = abort;
+        // Combine the page-scoped abort signal with the local pass
+        // controller so navigation away from /games (page abort) and
+        // explicit pass cancellation (handleReannotate, delete-from-here)
+        // both unwind the same pass.
+        const signal = composeSignals(abort.signal, pageAbortRef.current?.signal);
 
         // Use a slot so the IIFE's `finally` can compare against the
         // already-published promise without referring to itself.
@@ -834,15 +854,18 @@ const GamesPage: React.FC = () => {
 
         slot.promise = (async () => {
             try {
+                // Clear any prior pass's error so a successful re-run
+                // doesn't leave a stale banner from an earlier failure.
+                setAnalysisError('');
                 // Step 1 + 2: ingest (writes records + evicts). The ingest pipeline
                 // is the shared write path for record append + eviction.
                 setSyncStatus(prev => (prev?.phase === 'syncing' ? prev : { phase: 'syncing' }));
                 setAnalysisProgress({ phase: 'planning' });
-                await runIngest(dal);
+                await runIngest(dal, undefined, signal);
 
                 // Re-fetch the blob to pick up newly ingested records.
                 const fresh = await dal.retrieveRepertoireData();
-                if (abort.signal.aborted) return;
+                if (signal.aborted) return;
                 setData(fresh);
                 const sets = buildRepertoireFenSets(fresh.repertoires ?? []);
                 setFenSets(sets);
@@ -872,7 +895,7 @@ const GamesPage: React.FC = () => {
                 let networkRetryCount = 0;
 
                 for (let i = 0; i < runnable.length; i++) {
-                    if (abort.signal.aborted) break;
+                    if (signal.aborted) break;
                     const job = runnable[i];
                     setAnalysisProgress({
                         phase: 'analyzing',
@@ -883,7 +906,7 @@ const GamesPage: React.FC = () => {
                         job,
                         lichessToken,
                         memo,
-                        abort.signal,
+                        signal,
                     );
                     if (outcome.skipped) {
                         networkRetryCount += 1;
@@ -934,8 +957,8 @@ const GamesPage: React.FC = () => {
 
                     if (pendingFlush.length >= ANALYSIS_FLUSH_BATCH) {
                         setAnalysisProgress(prev => prev.phase === 'analyzing' ? { ...prev, phase: 'flushing' } : prev);
-                        const { data: fresh2 } = await flushAnUpdates(dal, pendingFlush.splice(0));
-                        if (abort.signal.aborted) break;
+                        const { data: fresh2 } = await flushAnUpdates(dal, pendingFlush.splice(0), signal);
+                        if (signal.aborted) break;
                         // Re-apply our optimistic in-memory `an` mutations onto
                         // the freshly-decoded tree so subsequent reveal-as-ready
                         // patches keep landing in the rendered subtree.
@@ -943,19 +966,25 @@ const GamesPage: React.FC = () => {
                     }
                 }
 
-                if (pendingFlush.length > 0 && !abort.signal.aborted) {
+                if (pendingFlush.length > 0 && !signal.aborted) {
                     setAnalysisProgress(prev =>
                         prev.phase === 'analyzing'
                             ? { phase: 'flushing', gameIndex: prev.gameIndex, gameTotal: prev.gameTotal }
                             : { phase: 'flushing' }
                     );
-                    const { data: fresh3 } = await flushAnUpdates(dal, pendingFlush);
-                    if (!abort.signal.aborted) setData(fresh3);
+                    const { data: fresh3 } = await flushAnUpdates(dal, pendingFlush, signal);
+                    if (!signal.aborted) setData(fresh3);
                 }
 
                 setPendingNetworkRetry(networkRetryCount);
                 setAnalysisProgress({ phase: 'idle' });
             } catch (e: unknown) {
+                // Abort = user clicked Re-annotate / Delete-from-here
+                // or navigated away. Clean unwind, not a failure.
+                if (signal.aborted || (e as { name?: string })?.name === 'AbortError') {
+                    setAnalysisProgress({ phase: 'idle' });
+                    return;
+                }
                 const msg = e instanceof Error ? e.message : String(e);
                 console.warn('GamesPage: analysis pass failed', e);
                 setAnalysisError(msg);
@@ -976,6 +1005,11 @@ const GamesPage: React.FC = () => {
                 if (passDonePromiseRef.current === slot.promise) {
                     passDonePromiseRef.current = null;
                 }
+                // Abort the per-pass controller so composeSignals' cleanup
+                // removes the listener it attached to the long-lived
+                // pageAbortRef signal — otherwise dead listeners would
+                // accumulate across successful passes.
+                abort.abort();
             }
         })();
         passDonePromiseRef.current = slot.promise;
@@ -1013,7 +1047,6 @@ const GamesPage: React.FC = () => {
     // ─────────────────────────────────────────────────────────────────────
 
     const handleReannotate = useCallback(async (record: GameRecord, userLower: string) => {
-        if (!dal) return;
         const key = `${record.p}:${record.id}`;
         const priorAn = record.an;
         if (priorAn === undefined) return; // already being re-annotated
@@ -1038,6 +1071,10 @@ const GamesPage: React.FC = () => {
         }
 
         try {
+            // Page-scoped signal so navigating away while a Re-annotate
+            // is in flight stops the underlying persist call before its
+            // PUT (and unwinds the analysis pass we re-trigger below).
+            const pageSignal = pageAbortRef.current?.signal;
             // For Lichess records, re-fetch the game from the provider so
             // any server-side analysis Lichess computed *after* ingest
             // (per-ply evals, opening name refinement) is reflected in
@@ -1054,14 +1091,14 @@ const GamesPage: React.FC = () => {
                 if (gd) {
                     const fresh = buildGameRecord(gd, userLower, 'lichess');
                     if (fresh && fresh.id === record.id) {
-                        await persistReannotateRefresh(dal, fresh);
+                        await persistReannotateRefresh(dal, fresh, pageSignal);
                         refreshed = true;
                     }
                 }
             }
             const fresh = refreshed
                 ? await dal.retrieveRepertoireData()
-                : await persistReannotateClear(dal, record.id, record.p);
+                : await persistReannotateClear(dal, record.id, record.p, pageSignal);
             setData(fresh);
             // Re-trigger and AWAIT the pass so we can detect failure (a
             // transient masters error would mark the record `skipped`,
@@ -1092,6 +1129,14 @@ const GamesPage: React.FC = () => {
                 });
             }
         } catch (e) {
+            // Abort = navigation away or new Re-annotate / Delete-from-here
+            // request. Not a "real" failure — don't log, don't reset the
+            // re-annotate UI state (the component is unmounting or the
+            // newer action will manage its own cleanup).
+            if ((e as { name?: string })?.name === 'AbortError'
+                || pageAbortRef.current?.signal.aborted) {
+                return;
+            }
             console.warn('Re-annotate failed:', e);
             // Restore prior verdict on hard failure.
             priorAnByKeyRef.current.delete(key);
@@ -1113,7 +1158,6 @@ const GamesPage: React.FC = () => {
     // ─────────────────────────────────────────────────────────────────────
 
     const handleAnalyzeOpponent = useCallback(async (record: GameRecord) => {
-        if (!dal) return;
         if (analyzingRecordKey) return;
         const key = `${record.p}:${record.id}`;
         const row = orderedRows.find(r => `${r.record.p}:${r.record.id}` === key);
@@ -1130,6 +1174,9 @@ const GamesPage: React.FC = () => {
 
         const abort = new AbortController();
         analyzeAbortRef.current = abort;
+        // Compose with the page signal so navigation away from /games
+        // aborts the in-flight analyze + the subsequent persist call.
+        const signal = composeSignals(abort.signal, pageAbortRef.current?.signal);
         setAnalyzingRecordKey(key);
         setAnalyzeProgress({ gamesDownloaded: 0, phase: 'downloading' });
 
@@ -1146,11 +1193,11 @@ const GamesPage: React.FC = () => {
                     excludeGameUrl: meta.gameUrl.replace(/\/(white|black)$/, ''),
                 },
                 (progress) => setAnalyzeProgress(progress),
-                abort.signal,
+                signal,
             );
             // Persist back to the blob.
             const op: OpponentAnalysisRecord = toPersistedOp(result);
-            const fresh = await persistOpponentAnalysis(dal, record.id, record.p, op);
+            const fresh = await persistOpponentAnalysis(dal, record.id, record.p, op, signal);
             setData(fresh);
         } catch (err) {
             if ((err as Error).name !== 'AbortError') {
@@ -1160,6 +1207,8 @@ const GamesPage: React.FC = () => {
             setAnalyzingRecordKey(null);
             setAnalyzeProgress(null);
             analyzeAbortRef.current = null;
+            // Same listener-leak guard as the analysis-pass finally above.
+            abort.abort();
         }
     }, [dal, analyzingRecordKey, orderedRows, annotationByKey]);
 
@@ -1168,7 +1217,6 @@ const GamesPage: React.FC = () => {
     // ─────────────────────────────────────────────────────────────────────
 
     const handleDeleteFromHere = useCallback(async (record: GameRecord) => {
-        if (!dal) return;
         const confirmed = window.confirm(
             `[DEBUG] Delete this game and every newer one?\n\nThis removes every record with t >= ${record.t} from the saved blob. There is no undo.`,
         );
@@ -1183,12 +1231,17 @@ const GamesPage: React.FC = () => {
         }
 
         try {
-            const fresh = await persistDeleteRecordsFromTimestamp(dal, record.t);
+            const fresh = await persistDeleteRecordsFromTimestamp(dal, record.t, pageAbortRef.current?.signal);
             setData(fresh);
             // Re-run the pass so anything left without `an` (shouldn't be
             // many — eviction kept the older records intact) gets picked up.
             await runAnalysisPass();
         } catch (e) {
+            // Abort = navigation away. Not a real failure.
+            if ((e as { name?: string })?.name === 'AbortError'
+                || pageAbortRef.current?.signal.aborted) {
+                return;
+            }
             console.warn('[DEBUG] Delete-from-here failed:', e);
         }
     }, [dal, runAnalysisPass]);

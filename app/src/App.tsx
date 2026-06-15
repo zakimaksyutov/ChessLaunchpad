@@ -12,6 +12,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { LichessAuthProvider } from './LichessAuthContext';
 import './App.css';
 import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
+import { createSessionStore, clearSessionStore, tryGetSessionStore } from './data/SessionStore';
 
 const App: React.FC = () => {
   // Track logged-in user in state
@@ -37,14 +38,25 @@ const App: React.FC = () => {
     trackEvent("AppLoad");
   }, []);
 
+  // Keep the SessionStore singleton in lockstep with `username`. The
+  // eager `GET /variants` on construction primes the cache for the
+  // first page after login; `clearSessionStore` on logout drops the
+  // cached `(data, etag)` so it can't leak across user sessions.
+  useEffect(() => {
+    if (!username) {
+      clearSessionStore();
+      return;
+    }
+    const hashedPassword = localStorage.getItem('hashedPassword');
+    if (!hashedPassword) return;
+    if (tryGetSessionStore()) return;
+    createSessionStore(username, hashedPassword);
+  }, [username]);
+
   const handleLogout = () => {
-    // Track logout event
     trackEvent("UserLogout");
-    
-    // Clear authenticated user context
     clearAuthenticatedUserContext();
-    
-    // Clear username state
+    clearSessionStore();
     setUsername(null);
   };
 

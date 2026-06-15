@@ -17,7 +17,7 @@ import {
 } from '../services/FSRSService';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireData } from '../models/RepertoireData';
-import { createDataAccessLayer } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
@@ -64,11 +64,7 @@ const SettingsPage: React.FC = () => {
         let cancelled = false;
         const hydrate = async () => {
             try {
-                const username = localStorage.getItem('username');
-                const hashedPassword = localStorage.getItem('hashedPassword');
-                if (!username || !hashedPassword) return;
-
-                const dal = createDataAccessLayer(username, hashedPassword);
+                const dal = getSessionStore().createDataAccessProxyLayer();
                 const repertoire = await dal.retrieveRepertoireData(); // normalize() hydrates module vars
 
                 if (cancelled) return;
@@ -131,14 +127,7 @@ const SettingsPage: React.FC = () => {
         setErrorMessage('');
 
         try {
-            const username = localStorage.getItem('username');
-            const hashedPassword = localStorage.getItem('hashedPassword');
-            if (!username || !hashedPassword) {
-                setErrorMessage('Not logged in. Please log in first.');
-                return;
-            }
-
-            const dal = createDataAccessLayer(username, hashedPassword);
+            const dal = getSessionStore().createDataAccessProxyLayer();
             const current = await dal.retrieveRepertoireData();
 
             // Resolve preset → (retention, maxInterval) for both backend persistence and runtime.
@@ -267,12 +256,11 @@ const SettingsPage: React.FC = () => {
     const handleExport = async () => {
         try {
             const username = localStorage.getItem('username') || '';
-            const hashedPassword = localStorage.getItem('hashedPassword') || '';
-            if (!username || !hashedPassword) {
+            if (!username) {
                 setErrorMessage('Not logged in. Please log in first.');
                 return;
             }
-            const dal = createDataAccessLayer(username, hashedPassword);
+            const dal = getSessionStore().createDataAccessProxyLayer();
             const current = await dal.retrieveRepertoireData();
             const blob = RepertoireDataUtils.prepareDataForSave(current);
             const persisted = encodePersistedBlob(blob);
@@ -343,27 +331,15 @@ const SettingsPage: React.FC = () => {
 
         setImporting(true);
         try {
-            const username = localStorage.getItem('username') || '';
-            const hashedPassword = localStorage.getItem('hashedPassword') || '';
-            const dal = createDataAccessLayer(username, hashedPassword);
-            // The DAL holds an internal ETag that is populated by the most
-            // recent GET on this instance, and `storeRepertoireData` sends
-            // it as `If-Match`. A fresh DAL instance has no ETag, so any
-            // PUT without a prior GET fails with 412. Capture the ETag
-            // without decoding the body — import is the rescue path for
-            // users stranded on an unreadable wire format (e.g., the
-            // skipped v2 blob), so we must not let a stale/corrupt
-            // backend blob block the PUT that's about to overwrite it.
-            await dal.fetchEtagOnly();
-            // Now run the full normalization — snaps retention to the
-            // closest preset, hydrates the flat fsrsCards map from the dict,
-            // and synthesizes New-state cards for graph edges without one.
-            // This is the same path the live read flow runs after a GET.
+            const store = getSessionStore();
+            // Run normalization (snaps retention to preset, hydrates the
+            // flat fsrsCards map, synthesizes New cards for graph edges
+            // missing one) so the import lands in the same shape a live
+            // GET would produce. prepareDataForSave then projects back
+            // into the position-centric wire form.
             RepertoireDataUtils.normalize(parsed);
-            // prepareDataForSave projects the (now-fully-populated) flat
-            // fsrsCards map BACK into `repertoires.positions[*].moves[*].card`.
             const blobForSave = RepertoireDataUtils.prepareDataForSave(parsed);
-            await dal.storeRepertoireData(blobForSave);
+            await store.importBlob(blobForSave);
             // Full reload so all pages re-fetch the new repertoire.
             window.location.reload();
         } catch (ex: unknown) {

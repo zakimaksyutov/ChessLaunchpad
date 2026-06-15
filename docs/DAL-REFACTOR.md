@@ -26,14 +26,15 @@ The "sync vs training" race is avoided by making long-running background writes 
 
 ## Surface area
 
-### `SessionStore` — 4 methods
+### `SessionStore` — 5 methods
 
 | Method | Used in | Parameters | Returns |
 | --- | --- | --- | --- |
+| `ready` | `ProtectedRoute` (gate before rendering protected page bodies) | — | `Promise<void>` (resolves once the cache is populated; throws `DataAccessError` on fetch failure) |
 | `getSnapshot` | First page after login; internally by every proxy on construction and on retrieve | — | `{ data: RepertoireData, etag: string }` (cached) |
 | `save` | Internally by every proxy on store | `data: RepertoireData`, `etag: string` | new `etag: string`; throws `DataAccessError` (412) on conflict |
 | `importBlob` | SettingsPage Import (file replace; ETag bypass) | `data: RepertoireData` | `void` (cache + etag updated as a side effect) |
-| `createDataAccessProxyLayer` | Every page on mount | — | a new `DataAccessProxyLayer` pre-populated with the current cached `(data, etag)` |
+| `createDataAccessProxyLayer` | Every page on mount (synchronous; requires `ready()` to have resolved) | — | a new `DataAccessProxyLayer` pre-populated with the current cached `(data, etag)`; throws if the cache is not yet populated |
 
 Account lifecycle (`createAccount`, `deleteAccount`) stays on the existing `IDataAccessLayer`; LoginPage and SettingsPage continue to construct a one-shot DAL for those calls.
 
@@ -67,6 +68,12 @@ The `SessionStore` singleton lives for the whole logged-in session. Proxies are 
 3. **Page re-mount** (user navigates back) → a **new** proxy is constructed, again pre-populated from the SessionStore's current cache — which may have moved on (e.g., due to a Training commit on the page they visited in between). The fresh proxy starts with the up-to-date etag automatically.
 
 The SessionStore's cache is the warm state that persists across these mount/unmount cycles. Proxies carry an etag snapshot for their page's lifetime; nothing more.
+
+### Readiness gate (non-null etag invariant)
+
+`SessionStore.createDataAccessProxyLayer()` is **synchronous** and requires `cachedEtag !== null`; calling it on an unready store throws `DataAccessError`. The proxy's `etag` field is therefore `string` (not `string | null`) for the proxy's entire lifetime — there is no in-proxy "rehydrate from cache" fallback, which historically masked subtle "save used the wrong etag" bugs.
+
+The gate is enforced by `ProtectedRoute`: before rendering any protected page body, it awaits `SessionStore.ready()` (a `Promise<void>` that resolves once the eager `GET /variants` populates the cache). While the fetch is in flight the route shows a small loading placeholder; on fetch failure it shows an error with a Retry button that triggers a fresh `ready()` await. Pages can then safely call `createDataAccessProxyLayer()` inside `useMemo` without any preflight check.
 
 ### Abort signal plumbing
 

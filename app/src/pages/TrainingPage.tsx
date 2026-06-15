@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import TrainingPageControl from '../components/TrainingPageControl';
-import { IDataAccessLayer, createDataAccessLayer } from '../data/DataAccessLayer';
+import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData } from '../models/RepertoireData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
@@ -20,27 +20,13 @@ const TrainingPage: React.FC = () => {
 
     const repertoireDataRef = useRef<RepertoireData | null>(null);
 
-    // Safe to use non-null assertions: ProtectedRoute guarantees credentials
-    // exist in localStorage before this component renders.
-    const dal: IDataAccessLayer = useMemo(() => {
-        const username = localStorage.getItem('username');
-        const hashedPassword = localStorage.getItem('hashedPassword');
-        if (!username || !hashedPassword) {
-            setError('No user session found. Please log in first.');
-        }
-        return createDataAccessLayer(username!, hashedPassword!);
-    }, []);
+    const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
     // On mount, retrieve data from the server
     useEffect(() => {
         let cancelled = false;
 
         const fetchData = async () => {
-            if (!dal) {
-                console.error('DataAccessLayer not initialized');
-                return;
-            }
-
             setLoading(true);
             try {
                 const data: RepertoireData = await dal.retrieveRepertoireData();
@@ -78,7 +64,7 @@ const TrainingPage: React.FC = () => {
         elapsedSeconds: number,
     ) => {
         const currentData = repertoireDataRef.current;
-        if (!currentData || !dal) return;
+        if (!currentData) return;
 
         try {
             // Record activity (recordTraversal calls ensureActivity internally)
