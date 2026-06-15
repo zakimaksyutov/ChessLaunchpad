@@ -372,11 +372,18 @@ export class PendingEditModel {
         }
         if (!rep.positions[from]) rep.positions[from] = { moves: {} };
         if (!rep.positions[to]) rep.positions[to] = { moves: {} };
-        if (!rep.positions[from].moves[san]) {
-            // Denormalize `to` so reachability/canonical-path/edge-collection
-            // hot paths can skip chess.js on this edge.
-            rep.positions[from].moves[san] = { to };
+        // Idempotent: if the edge is already present, leave `move.card`
+        // untouched. Re-running the card-assignment branch on an existing
+        // edge is a no-op today but a fragile contract — a future tweak to
+        // the branches below could silently reset FSRS history on re-import
+        // or duplicate-add. Gate both edge creation and card minting on the
+        // edge being brand-new so they stay coupled.
+        if (rep.positions[from].moves[san]) {
+            return to;
         }
+        // Denormalize `to` so reachability/canonical-path/edge-collection
+        // hot paths can skip chess.js on this edge.
+        rep.positions[from].moves[san] = { to };
         if (isUserTurnForOrientation(from, orientation)) {
             const key = FSRSService.makeCardKey(from, san);
             const baseCard = this.baseFsrsCards[key];

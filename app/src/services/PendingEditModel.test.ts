@@ -13,7 +13,7 @@ import { pgnToRepertoires } from '../test-utils/repertoireBuilders';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { FSRSService } from './FSRSService';
 import { Annotation } from '../models/Annotation';
-import { State } from 'ts-fsrs';
+import { State, createEmptyCard } from 'ts-fsrs';
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -129,9 +129,46 @@ describe('PendingEditModel.addEdge', () => {
     it('is idempotent if called twice for the same edge', () => {
         const m = emptyModel();
         m.addEdge(startFen, 'e4', 'white');
+        const repAfterFirst = m.getCurrentRepertoire('white');
+        const cardRefAfterFirst = repAfterFirst.positions[startFen].moves['e4'].card;
         m.addEdge(startFen, 'e4', 'white');
         const delta = m.computeDelta();
         expect(delta.counts.added).toBe(1);
+        // Card reference must be the same — a second addEdge call on an
+        // existing edge must not re-mint or re-assign the FSRS card.
+        const cardRefAfterSecond = repAfterFirst.positions[startFen].moves['e4'].card;
+        expect(cardRefAfterSecond).toBe(cardRefAfterFirst);
+    });
+
+    it('re-adding an edge that exists in base preserves the base FSRS card', () => {
+        // Simulates the PGN re-import scenario: a move with real review
+        // history is re-applied via addEdge. The card on the working copy
+        // must remain the base card, never get overwritten with a fresh
+        // New-state card.
+        const reps = createEmptyRepertoires();
+        const whiteRep = findRepertoire(reps, 'white')!;
+        const afterE4 = fenAfter(['e4']);
+        const trackedBase = {
+            ...FSRSService.serialize(createEmptyCard()),
+            stability: 42,
+            reps: 7,
+            state: State.Review,
+        };
+        whiteRep.positions[startFen] = { moves: { e4: { to: afterE4, card: trackedBase } } };
+        whiteRep.positions[afterE4] = { moves: {} };
+        const fsrsCards = { [FSRSService.makeCardKey(startFen, 'e4')]: trackedBase };
+
+        const m = new PendingEditModel(reps, fsrsCards);
+        const rep = m.getCurrentRepertoire('white');
+        // Snapshot the working-copy card reference BEFORE re-adding — addEdge
+        // must leave this exact reference in place (no re-clone, no mint).
+        const workingCardBefore = rep.positions[startFen].moves['e4'].card;
+        m.addEdge(startFen, 'e4', 'white');
+        expect(rep.positions[startFen].moves['e4'].card).toBe(workingCardBefore);
+        // Content must still match the base — i.e., not a fresh New-state card.
+        expect(rep.positions[startFen].moves['e4'].card).toEqual(trackedBase);
+        // No pending churn — re-adding a base edge must stay a true no-op.
+        expect(m.isEmpty()).toBe(true);
     });
 
     it('refuses to add from a FEN not reachable from root (no orphan)', () => {
