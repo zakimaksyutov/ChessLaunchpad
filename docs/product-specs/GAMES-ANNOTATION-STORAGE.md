@@ -212,7 +212,7 @@ connection; old Lichess records with ambiguous plies backfill once connected
 
 Over a visit or two, the whole blob self-converts. A user who only opens the
 Dashboard keeps un-analyzed records (no `fan`) until they visit `/games`; per the
-render rule, those games simply show without highlights until then.
+render rule, those games are not shown until analyzed.
 
 ## Implementation notes
 
@@ -246,8 +246,13 @@ Render reads **only** `fan`. Remove the render-time recomputation: the view no
 longer calls `annotateGame`, and no longer needs the repertoire FEN sets or
 `ExplorerEvals` to display a game. The per-move highlighting, mini-board anchor,
 deviation arrows/summary, EOT summary, row border, and the Mistakes filter are
-all derived from `fan` (`hl` + `alt`) plus replaying `m`. A record without `fan`
-renders plain (no highlights) and offers Re-annotate.
+all derived from `fan` (`hl` + `alt`) plus replaying `m`.
+
+A record without `fan` is **not rendered as a content row** (unchanged from
+today). It shows only transiently as a skeleton while the active pass analyzes
+it, then hydrates when `fan` lands. Records held out of the pass (e.g. ambiguous
+Lichess games while disconnected) stay hidden behind the "awaiting" banner.
+Re-annotate is offered only on analyzed rows.
 
 ### No backend change
 
