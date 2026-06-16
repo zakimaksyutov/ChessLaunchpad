@@ -20,11 +20,13 @@ This fixes two problems:
 ## Principle
 
 - **Render = pure read.** The view paints from the stored annotation only.
-- **Analysis runs only on the analyze / Re-analyze paths.** Re-analyze
-  re-fetches the game, re-queries masters, reads the *current* repertoire and
-  evals, recomputes the annotation, and overwrites the stored value. It is the
-  user's deliberate "apply my current repertoire to this game" action.
-- No automatic recomputation happens between those points.
+- **Analysis runs only on the analysis paths** — the automatic analysis pass
+  (which analyzes any record lacking `fan`) and the manual per-game **Re-annotate**
+  action. Re-annotate re-fetches the game, re-queries masters, reads the *current*
+  repertoire and evals, recomputes the annotation, and overwrites the stored
+  value. It is the user's deliberate "apply my current repertoire to this game"
+  action.
+- No recomputation happens at render time or anywhere outside those paths.
 
 ## What we store
 
@@ -137,7 +139,7 @@ present). Render is a pure read of `fan`:
   "res": "win", "rt": 1,
   "tc": "5+0", "sp": "blitz",
   "o": "French Defense: Horwitz Attack, Papa-Ticulat Gambit",
-  // "ev" is dropped — see "Per-ply evals (`ev`)" below
+  "ev": [18, 22, -19, -21, -17, /* … per-ply evals (lichess only) */],  // retained — see below
   "fan": {                     // ← frozen annotation (replaces "an")
     "hl": [0, 2, 2, 2, 2, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7]   // one code per user move, in order
     // no "alt" here — this game has no deviation (no code 1)
@@ -147,14 +149,21 @@ present). Render is a pure read of `fan`:
 
 ### Per-ply evals (`ev`)
 
-`ev` (lichess per-ply centipawn evals) is **no longer persisted**. It is an
-analysis-time input only: it feeds the eval-drop classification whose result is
-already baked into the `hl` codes (`3`/`4`/`5`). The view never reads `ev` —
-nothing displays a raw eval number; only the category drives rendering.
+`ev` (lichess per-ply centipawn evals) is **retained**, not dropped. The *view*
+never reads it — render is a pure read of `fan`, and nothing displays a raw eval
+number — but `ev` is the input the analysis step needs to compute the `hl` codes,
+and analysis does not happen when the game is persisted.
 
-(Re-)analysis re-fetches the game from the provider, which re-supplies the
-evals, so the stored record does not need to carry them. Dropping `ev` removes
-the largest per-game field after the move list.
+Ingest runs from both the Dashboard and the Games page and writes the record with
+`ev` but **no `fan`**; the annotation is produced later, only when the user opens
+`/games`. The two can be far apart — a Dashboard-only user may ingest games and
+not open `/games` for days. The deferred analysis reads the **stored `ev`**, so
+it must persist across that gap; otherwise the initial analysis would have to
+re-fetch every game.
+
+(Per-game **Re-annotate** is a separate path: for Lichess it re-fetches the game
+anyway, so it does not depend on the stored `ev`; for Chess.com there is no `ev`.
+The reason to keep `ev` is the deferred *initial* analysis above.)
 
 When a game *does* have a deviation (code `1`), `fan` also carries the
 alternatives for the green arrows / deviation summary:
@@ -167,10 +176,40 @@ alternatives for the green arrows / deviation summary:
 ```
 
 `tv` is dropped: the masters decision is baked into the frozen codes at analysis
-time, and Re-analyze re-queries masters fresh, so there is nothing left to cache.
+time, and Re-annotate re-queries masters fresh, so there is nothing left to cache.
 
 ## Clean game
 
 A game is **clean** (hidden by the Mistakes filter, no row border) when it
 contains no code `1` and no code `3`–`5`. This is read directly from the stored
-codes — no re-analysis.
+codes — no recomputation.
+
+## Migration
+
+No dedicated migration pass, version bump, or user action is needed — the
+existing automatic analysis pass converts old records natively.
+
+The pass uses the annotation field as its "done" gate: a record with the field
+present is treated as analyzed and skipped; a record without it is queued for
+analysis. Renaming that gate (and the field the pass writes) from `an` to `fan`
+is the whole migration:
+
+- **Old records** carry legacy `an` but no `fan`, so they fail the `fan` gate and
+  are automatically queued the next time the user opens `/games`. The pass
+  recomputes and writes `fan`.
+- **New games** are ingested without `fan` and analyzed the same way.
+
+Because `ev` is retained, the backfill of old Lichess records does not re-fetch
+the game for evals. Chess.com records backfill via `ExplorerEvals` as today.
+
+The migration **drops the legacy `an` field entirely** — the pass does not read
+its `tv`. Ambiguous opponent plies are re-queried against the masters API as a
+normal part of analysis (the cached `tv` is not reused). This keeps the code
+path identical to analyzing a fresh game, at the cost of those masters lookups
+during backfill. As with any analysis, re-querying masters needs the Lichess
+connection; old Lichess records with ambiguous plies backfill once connected
+(the same gate that already applies to un-analyzed games).
+
+Over a visit or two, the whole blob self-converts. A user who only opens the
+Dashboard keeps un-analyzed records (no `fan`) until they visit `/games`; per the
+render rule, those games simply show without highlights until then.
