@@ -36,10 +36,13 @@ Per game, the frozen annotation holds:
   carry a code — opponent moves always render neutral, so nothing is stored for
   them. At render the move list is replayed and the user's side is known, so the
   codes map back to the right plies. Codes are listed in move order.
-- **The deviation alternatives** — the repertoire move(s) that were available at
-  the deviation point — needed for the green arrows and the deviation summary,
-  since they are not derivable from the move list alone. Present only when the
-  game has a deviation (code `1`).
+- **The deviation alternatives** (`alt`) — the repertoire move(s) that were
+  available at the deviation point — needed for the green arrows and the deviation
+  summary, since they are not derivable from the move list alone. Present only
+  when the game has a deviation (code `1`). Stored as **SAN**: render converts
+  each to `{from, to}` by parsing it at the deviation position (which `mb`
+  already locates), so no squares are stored. The red "played" arrow is `m`'s
+  move at the deviation ply.
 - **The mini-board anchor** (`mb`) — the half-move depth of the position shown on
   the row's mini board: render replays the first `mb` plies of `m` and displays
   the result. Stored as a single index because the anchor choice (position before
