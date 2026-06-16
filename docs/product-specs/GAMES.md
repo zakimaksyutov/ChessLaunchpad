@@ -106,6 +106,10 @@ When neither source has eval data for a ply, the engine falls back to its optimi
 
 Each row's left border is color-coded for at-a-glance status: purple for user-deviation rows, gold/red/purple for EOT inaccuracy/mistake/blunder, no border otherwise.
 
+### Mistakes filter
+
+By default the list hides **clean** games (no deviation, no eval-drop mistake), showing only games worth reviewing. A banner reports how many are hidden with a toggle to show all (and to hide them again). The preference is remembered on the device, per user.
+
 ## Opponent Analysis (`op`)
 
 When the EOT summary fires (opponent deviated, user's response was an eval drop), the row's overflow menu shows **"Analyze opponent"**. This downloads up to **1,000** of the opponent's most recent public games from the same platform and counts how many reached the critical positions:
