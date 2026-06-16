@@ -213,3 +213,50 @@ connection; old Lichess records with ambiguous plies backfill once connected
 Over a visit or two, the whole blob self-converts. A user who only opens the
 Dashboard keeps un-analyzed records (no `fan`) until they visit `/games`; per the
 render rule, those games simply show without highlights until then.
+
+## Implementation notes
+
+### Remove the dropped fields from the data contract
+
+The fields being removed — `an` and its types (`MastersTheoryVerdict`,
+`MastersTheoryPlyVerdict`, the `tv` shape) — must be deleted from the model and
+never read again. The guiding rule: **even if an old blob still contains `an`,
+no code path reads it.** The only signal that a record needs analysis is the
+*absence* of `fan`; `an` carries no meaning anymore.
+
+Concretely:
+
+- **Model (`models/RepertoireData.ts`).** Remove `GameRecord.an` and the
+  `MastersTheoryVerdict` / `MastersTheoryPlyVerdict` types. Add `GameRecord.fan`
+  (the frozen annotation: `hl` codes + optional `alt`). `ev` and `op` are
+  unchanged.
+- **Analysis gate (`GameRecordAnalysisPass.ts`).** The "done" check switches from
+  `record.an` to `record.fan`; the pass writes `fan` (not `an`). When it writes
+  `fan`, it also deletes any legacy `an` so the field doesn't linger.
+- **Masters seeding (`GameRecordAnalysisPlanner.ts`).** Remove the
+  `record.an?.tv` hydration entirely — masters are always re-queried during
+  analysis. Drop the `MastersLookupLike`-from-`tv` path.
+- **Row selection / re-annotate state (`GameRowSelection.ts`, `GamesPage.tsx`).**
+  Every `record.an` reference (the analyzed gate, the annotation memo key, the
+  reveal-as-ready patch, the Re-annotate `priorAn` overlay) moves to `fan`.
+
+### Render path
+
+Render reads **only** `fan`. Remove the render-time recomputation: the view no
+longer calls `annotateGame`, and no longer needs the repertoire FEN sets or
+`ExplorerEvals` to display a game. The per-move highlighting, mini-board anchor,
+deviation arrows/summary, EOT summary, row border, and the Mistakes filter are
+all derived from `fan` (`hl` + `alt`) plus replaying `m`. A record without `fan`
+renders plain (no highlights) and offers Re-annotate.
+
+### No backend change
+
+The backend stores `games` as a free-form object and full schema validation is
+disabled, so it accepts both old blobs (with `an`) and new ones (with `fan`) with
+no contract change. `docs/BACKEND_API_CONTRACT.md` is a copy from the backend
+repo and is not edited here.
+
+### Tests and storage docs
+
+Update tests and any wire-format references that mention `an` / `tv` (e.g.
+`docs/REPERTOIRE-STORAGE.md`) to the `fan` shape.
