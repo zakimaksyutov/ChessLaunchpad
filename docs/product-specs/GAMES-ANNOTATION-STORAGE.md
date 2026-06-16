@@ -40,6 +40,13 @@ Per game, the frozen annotation holds:
   the deviation point — needed for the green arrows and the deviation summary,
   since they are not derivable from the move list alone. Present only when the
   game has a deviation (code `1`).
+- **The mini-board anchor** (`mb`) — the half-move depth of the position shown on
+  the row's mini board: render replays the first `mb` plies of `m` and displays
+  the result. Stored as a single index because the anchor choice (position before
+  the deviation, after the first eval drop, after the last in-rep move, …) is an
+  analysis decision; storing the resulting depth keeps render from re-deriving the
+  rule. (For a deviation this is the position *before* the code-`1` ply — the same
+  position the `alt` arrows are drawn on.)
 
 Everything else the view shows (board position, SANs, move numbers, side to
 move, orientation) is deterministically replayed from the stored move list and
@@ -151,7 +158,8 @@ present). Render is a pure read of `fan`:
   "o": "French Defense: Horwitz Attack, Papa-Ticulat Gambit",
   "ev": [18, 22, -19, -21, -17, /* … per-ply evals (lichess only) */],  // retained — see below
   "fan": {                     // ← frozen annotation (replaces "an")
-    "hl": [0, 2, 2, 2, 2, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7]   // one code per user move, in order
+    "hl": [0, 2, 2, 2, 2, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7],  // one code per user move, in order
+    "mb": 4                    // mini-board anchor: replay 4 plies of `m` → shown position
     // no "alt" here — this game has no deviation (no code 1)
   }
 }
@@ -181,7 +189,8 @@ alternatives for the green arrows / deviation summary:
 ```jsonc
 "fan": {
   "hl": [0, 0, 1, 7, 7, /* … */],
-  "alt": ["Be7", "Nbd7"]       // repertoire moves available at the deviation
+  "alt": ["Be7", "Nbd7"],      // repertoire moves available at the deviation
+  "mb": 4                      // anchor = position before the deviation ply (user White → ply 4)
 }
 ```
 
@@ -255,9 +264,10 @@ Concretely:
 Render reads **only** `fan`. Remove the render-time recomputation: the view no
 longer calls `annotateGame`, and no longer needs the repertoire FEN sets or
 `ExplorerEvals` to display a game. The per-move highlighting, **display window**
-(`hl.length` — see *Display window* above), mini-board anchor, deviation
-arrows/summary, EOT summary, row border, and the Mistakes filter are all derived
-from `fan` (`hl` + `alt`) plus replaying `m`.
+(`hl.length` — see *Display window* above), mini-board anchor (replay `m` to the
+stored `mb` depth), deviation arrows/summary, EOT summary, row border, and the
+Mistakes filter are all derived from `fan` (`hl` + `alt` + `mb`) plus replaying
+`m`.
 
 A record without `fan` is **not rendered as a content row** (unchanged from
 today). It shows only transiently as a skeleton while the active pass analyzes
