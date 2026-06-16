@@ -79,6 +79,19 @@ type SyncState =
  *  up for every 1-2 game refresh. */
 const SYNC_PROGRESS_BAR_THRESHOLD = 3;
 
+type GameFilter = 'with-issues' | 'all';
+
+/** True when a game annotation contains a repertoire deviation or an EOT eval-drop issue. */
+function gameRowHasIssue(ann: GameAnnotation): boolean {
+    if (ann.deviation != null) return true;
+    for (const m of ann.moves) {
+        if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
+            return true;
+        }
+    }
+    return false;
+}
+
 const SyncStatusIndicator: React.FC<{
     status: SyncState;
     analysisProgress: AnalysisProgress;
@@ -599,6 +612,23 @@ const GamesPage: React.FC = () => {
      */
     const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(new Set());
 
+    // Filter: hide clean games by default. Persisted per-user in localStorage.
+    const filterKey = useMemo(
+        () => `games:filter:${localStorage.getItem('username') ?? ''}`,
+        [],
+    );
+    const [gameFilter, setGameFilter] = useState<GameFilter>(() => {
+        const stored = localStorage.getItem(filterKey);
+        return stored === 'all' ? 'all' : 'with-issues';
+    });
+    const toggleGameFilter = useCallback(() => {
+        setGameFilter(prev => {
+            const next: GameFilter = prev === 'all' ? 'with-issues' : 'all';
+            localStorage.setItem(filterKey, next);
+            return next;
+        });
+    }, [filterKey]);
+
     const measurePerf = useMemo(() => getMeasurePerf(), []);
     const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
 
@@ -817,6 +847,45 @@ const GamesPage: React.FC = () => {
         }
         return map;
     }, [orderedRows, annotationByKey]);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Filter: separate rows with issues from clean rows
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Don't apply filtering until annotations are actually computed.
+    // Without explorerEvals, annotationByKey is empty and every row would
+    // be misclassified as "clean".
+    const filterReady = fenSets != null && explorerEvals != null;
+
+    /** Count of non-pending rows that have no deviation or EOT issue. */
+    const cleanGameCount = useMemo(() => {
+        if (!filterReady) return 0;
+        let count = 0;
+        for (const row of orderedRows) {
+            if (row.pending) continue;
+            const key = `${row.record.p}:${row.record.id}`;
+            const ann = annotationByKey.get(key);
+            if (!ann) continue; // unannotated ≠ clean
+            if (!gameRowHasIssue(ann)) count++;
+        }
+        return count;
+    }, [orderedRows, annotationByKey, filterReady]);
+
+    const visibleRows = useMemo(() => {
+        if (!filterReady || gameFilter === 'all' || cleanGameCount === 0) return orderedRows;
+        const visible: typeof orderedRows = [];
+        for (const row of orderedRows) {
+            if (row.pending) {
+                visible.push(row);
+                continue;
+            }
+            const key = `${row.record.p}:${row.record.id}`;
+            const ann = annotationByKey.get(key);
+            // Show rows whose annotation hasn't been computed yet (unannotated ≠ clean)
+            if (!ann || gameRowHasIssue(ann)) visible.push(row);
+        }
+        return visible;
+    }, [orderedRows, annotationByKey, gameFilter, cleanGameCount, filterReady]);
 
     // ─────────────────────────────────────────────────────────────────────
     // Analysis pass
@@ -1363,7 +1432,40 @@ const GamesPage: React.FC = () => {
                 </div>
             ) : (
                 <div className="games-list">
-                    {orderedRows.map(({ record, userLower, pending }) => {
+                    {gameFilter === 'with-issues' && cleanGameCount > 0 && (
+                        <div className="games-filter-banner">
+                            <span className="games-filter-banner-text">
+                                {cleanGameCount} game{cleanGameCount === 1 ? '' : 's'} without mistakes hidden
+                            </span>
+                            <button
+                                type="button"
+                                className="games-filter-banner-action"
+                                onClick={toggleGameFilter}
+                            >
+                                Show all
+                            </button>
+                        </div>
+                    )}
+                    {gameFilter === 'all' && cleanGameCount > 0 && (
+                        <div className="games-filter-banner">
+                            <span className="games-filter-banner-text">
+                                Showing all games
+                            </span>
+                            <button
+                                type="button"
+                                className="games-filter-banner-action"
+                                onClick={toggleGameFilter}
+                            >
+                                Hide {cleanGameCount} clean game{cleanGameCount === 1 ? '' : 's'}
+                            </button>
+                        </div>
+                    )}
+                    {gameFilter === 'with-issues' && cleanGameCount > 0 && visibleRows.length === 0 && (
+                        <div className="games-empty">
+                            <p>All {cleanGameCount} game{cleanGameCount === 1 ? '' : 's'} followed your repertoire — nothing to review. 🎉</p>
+                        </div>
+                    )}
+                    {visibleRows.map(({ record, userLower, pending }) => {
                         const key = `${record.p}:${record.id}`;
                         const annotation = annotationByKey.get(key) ?? null;
                         const op = opByKey.get(key);
