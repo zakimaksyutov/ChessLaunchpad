@@ -43,6 +43,9 @@ Everything else the view shows (board position, SANs, move numbers, side to
 move, orientation) is deterministically replayed from the stored move list and
 is not part of the annotation.
 
+These live in a new **`fan`** field (frozen annotation) on the game record,
+which replaces today's `an` field (see Schema below).
+
 ### Examples
 
 `ecEK6zTr` (user is Black; in-rep for three moves, then a blunder, then
@@ -92,13 +95,13 @@ Notes:
 
 ## Schema
 
-The change is contained to the `an` field on a game record; every other field
-is unchanged. Field names below are illustrative — the exact encoding is left to
-the implementation.
+The change replaces the `an` field on a game record with a new **`fan`**
+(frozen annotation) field; every other field is unchanged. Field names below are
+illustrative — the exact encoding is left to the implementation.
 
-**Current** — a full game record. `an` caches only the sparse masters-theory
-verdicts; the highlights are recomputed at render time from the current
-repertoire + evals:
+**Current** — a full game record. The `an` field caches only the sparse
+masters-theory verdicts; the highlights are recomputed at render time from the
+current repertoire + evals:
 
 ```jsonc
 {
@@ -119,9 +122,9 @@ repertoire + evals:
 }
 ```
 
-**Proposed** — identical record, except `an` becomes the frozen annotation:
-per-user-move codes (and deviation alternatives when present). Render is a pure
-read of `an`:
+**Proposed** — identical record, except the `an` field is replaced by `fan`,
+the frozen annotation: per-user-move codes (and deviation alternatives when
+present). Render is a pure read of `fan`:
 
 ```jsonc
 {
@@ -135,7 +138,7 @@ read of `an`:
   "tc": "5+0", "sp": "blitz",
   "o": "French Defense: Horwitz Attack, Papa-Ticulat Gambit",
   // "ev" is dropped — see "Per-ply evals (`ev`)" below
-  "an": {                      // ← frozen annotation
+  "fan": {                     // ← frozen annotation (replaces "an")
     "hl": [0, 2, 2, 2, 2, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7]   // one code per user move, in order
     // no "alt" here — this game has no deviation (no code 1)
   }
@@ -153,11 +156,11 @@ nothing displays a raw eval number; only the category drives rendering.
 evals, so the stored record does not need to carry them. Dropping `ev` removes
 the largest per-game field after the move list.
 
-When a game *does* have a deviation (code `1`), `an` also carries the
+When a game *does* have a deviation (code `1`), `fan` also carries the
 alternatives for the green arrows / deviation summary:
 
 ```jsonc
-"an": {
+"fan": {
   "hl": [0, 0, 1, 7, 7, /* … */],
   "alt": ["Be7", "Nbd7"]       // repertoire moves available at the deviation
 }
