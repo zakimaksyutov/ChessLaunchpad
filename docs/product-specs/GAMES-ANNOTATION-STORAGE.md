@@ -134,13 +134,24 @@ read of `an`:
   "res": "win", "rt": 1,
   "tc": "5+0", "sp": "blitz",
   "o": "French Defense: Horwitz Attack, Papa-Ticulat Gambit",
-  "ev": [18, 22, -19, -21, -17, /* … */],
+  // "ev" is dropped — see "Per-ply evals (`ev`)" below
   "an": {                      // ← frozen annotation
     "hl": [0, 2, 2, 2, 2, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7]   // one code per user move, in order
     // no "alt" here — this game has no deviation (no code 1)
   }
 }
 ```
+
+### Per-ply evals (`ev`)
+
+`ev` (lichess per-ply centipawn evals) is **no longer persisted**. It is an
+analysis-time input only: it feeds the eval-drop classification whose result is
+already baked into the `hl` codes (`3`/`4`/`5`). The view never reads `ev` —
+nothing displays a raw eval number; only the category drives rendering.
+
+(Re-)analysis re-fetches the game from the provider, which re-supplies the
+evals, so the stored record does not need to carry them. Dropping `ev` removes
+the largest per-game field after the move list.
 
 When a game *does* have a deviation (code `1`), `an` also carries the
 alternatives for the green arrows / deviation summary:
