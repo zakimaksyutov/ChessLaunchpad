@@ -48,6 +48,16 @@ is not part of the annotation.
 These live in a new **`fan`** field (frozen annotation) on the game record,
 which replaces today's `an` field (see Schema below).
 
+### Display window
+
+Analysis covers only a **window** of the game, not all of `m` — today
+`max(30, theoryEndPly + 4)` plies, where `theoryEndPly` is an analysis result,
+not a constant. `hl` holds one code per user move across that window, so
+**`hl.length` is the frozen window**: render replays `m` and shows moves through
+the last user move in `hl`, then stops — it never recomputes the window or
+displays the rest of the game. This is what keeps render a pure read; the window
+can't be derived at render time because it depends on an analysis output.
+
 ### Examples
 
 `ecEK6zTr` (user is Black; in-rep for three moves, then a blunder, then
@@ -244,9 +254,10 @@ Concretely:
 
 Render reads **only** `fan`. Remove the render-time recomputation: the view no
 longer calls `annotateGame`, and no longer needs the repertoire FEN sets or
-`ExplorerEvals` to display a game. The per-move highlighting, mini-board anchor,
-deviation arrows/summary, EOT summary, row border, and the Mistakes filter are
-all derived from `fan` (`hl` + `alt`) plus replaying `m`.
+`ExplorerEvals` to display a game. The per-move highlighting, **display window**
+(`hl.length` — see *Display window* above), mini-board anchor, deviation
+arrows/summary, EOT summary, row border, and the Mistakes filter are all derived
+from `fan` (`hl` + `alt`) plus replaying `m`.
 
 A record without `fan` is **not rendered as a content row** (unchanged from
 today). It shows only transiently as a skeleton while the active pass analyzes
