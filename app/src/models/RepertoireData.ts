@@ -78,33 +78,52 @@ export interface GameRecord {
      * render-side `extractEmbeddedEvals` which treats `null` as missing.
      */
     ev?: (number | null)[];
-    /** Masters-theory verdict; present once analyzed. */
-    an?: MastersTheoryVerdict;
-    /** Saved opponent-analysis result; on-demand, independent of `an`. */
+    /**
+     * Frozen annotation — everything the /games view needs to render this
+     * game, computed once at analysis time. Present once analyzed; its
+     * absence is the sole "needs analysis" signal. Replaces the legacy
+     * masters-theory verdict (`an`). See `FrozenAnnotation` and the
+     * "Frozen Annotation (`fan`)" section of `docs/product-specs/GAMES.md`.
+     */
+    fan?: FrozenAnnotation;
+    /** Saved opponent-analysis result; on-demand, independent of `fan`. */
     op?: OpponentAnalysisRecord;
 }
 
 /**
- * Persisted "masters-theory" verdict for a game. Sparse — only ambiguous
- * (15–44 cp) opponent plies that masters DID return data for are stored.
- * Absence of a ply means "no data" → render uses the optimistic in-theory
- * default. Empty `tv` (or `tv` absent) is a valid done-state (the game had
- * no ambiguous positions or all were no-data).
+ * Frozen, render-ready annotation for a game. Computed once on the analysis
+ * path (initial pass or Re-annotate) and stored on the record so render is a
+ * pure read — no repertoire lookups, no eval lookups, no masters queries at
+ * view time. See the "Frozen Annotation (`fan`)" section of
+ * `docs/product-specs/GAMES.md`.
  */
-export interface MastersTheoryVerdict {
-    tv?: MastersTheoryPlyVerdict[];
-}
-
-export interface MastersTheoryPlyVerdict {
-    /** Ply index (0-based) within the game's `m` plies. */
-    ply: number;
-    /** `true` = confirmed in theory, `false` = confirmed out of theory. */
-    in: boolean;
+export interface FrozenAnnotation {
+    /**
+     * One highlight code per **user** move, in move order, across the frozen
+     * display window (`hl.length` is the window — render shows moves through
+     * the last user move in `hl`). Opponent moves carry no code. Codes:
+     *   0 in-repertoire | 1 deviation | 2 post-theory ok | 3 inaccuracy
+     *   4 mistake | 5 blunder | 7 out-of-theory.
+     */
+    hl: number[];
+    /**
+     * Repertoire move alternatives at the deviation, as SAN — the green
+     * arrows / deviation summary. Present only when `hl` contains a code `1`
+     * (deviation) and at least one alternative exists. Render parses each at
+     * the deviation position (depth `mb`) to recover `{from, to}`.
+     */
+    alt?: string[];
+    /**
+     * Mini-board anchor: the half-move depth of the position shown on the
+     * row's mini board. Render replays the first `mb` plies of `m`. For a
+     * deviation this is the position *before* the code-`1` ply.
+     */
+    mb: number;
 }
 
 /**
  * Saved opponent-analysis result, persisted as part of the game record.
- * Independent of `an`; computed on-demand from the /games "Analyze
+ * Independent of `fan`; computed on-demand from the /games "Analyze
  * opponent" action.
  *
  * Keyed by the deviation `ply` so the analysis can be re-attached even

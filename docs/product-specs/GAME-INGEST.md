@@ -39,7 +39,7 @@ Two pieces of state are written to the blob:
 
 ### 1.2 Per-game display records
 
-Per eligible game, a compact `GameRecord` is appended to the day-it-was-played entry under `activity.practiceLog[].games.records[]`. These records are the read source for the Games page (verdicts `an` / `op` are added there) and are not used by ingest itself.
+Per eligible game, a compact `GameRecord` is appended to the day-it-was-played entry under `activity.practiceLog[].games.records[]`. These records are the read source for the Games page (the frozen annotation `fan` / opponent analysis `op` are added there) and are not used by ingest itself.
 
 ```jsonc
 "games": {
@@ -57,7 +57,7 @@ Per eligible game, a compact `GameRecord` is appended to the day-it-was-played e
       "rt": 1, "o": "Italian Game",
       "u": "https://www.chess.com/…", // present on chess.com (URL not derivable from id)
       "ev": [20, 15, -150, null]      // present on lichess when server analysis exists
-      // an, op are added later by the /games page analysis pass
+      // fan, op are added later by the /games page analysis pass
     }
   ]
 }

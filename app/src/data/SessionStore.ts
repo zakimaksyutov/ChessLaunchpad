@@ -101,7 +101,7 @@ export class SessionStore {
      * if the cache is still empty.
      *
      * `data` is a **deep clone** so callers can mutate the returned blob
-     * without poisoning the cache (helpers like `flushAnUpdates` mutate
+     * without poisoning the cache (helpers like `flushFanUpdates` mutate
      * the snapshot in place before saving).
      *
      * We use `JSON.parse(JSON.stringify(...))` rather than
@@ -193,9 +193,9 @@ export class SessionStore {
             // `clearSessionStore`. Don't poison the next user's session.
             throw new DataAccessError("SessionStore has been disposed.");
         }
-        // Deep-clone before caching — helpers like `flushAnUpdates`
+        // Deep-clone before caching — helpers like `flushFanUpdates`
         // continue to mutate the saved `data` after the PUT returns
-        // (optimistic in-memory `an` updates), and we don't want those
+        // (optimistic in-memory `fan` updates), and we don't want those
         // post-save mutations leaking into the cache.
         const cached = cloneRepertoireData(data);
         if (cached.fsrsCards === undefined) {

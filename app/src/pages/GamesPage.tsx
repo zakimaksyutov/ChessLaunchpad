@@ -24,13 +24,12 @@ import {
     GameAnnotation,
 } from '../services/GameAnnotationService';
 import {
-    annotateRecord,
+    annotateRecordFromFrozen,
     getRecordMetadata,
     getRecordOpponentName,
     deriveRecordEotPositions,
 } from '../services/RecordAnnotation';
 import {
-    buildLookupFromAn,
     MastersMemoEntry,
 } from '../services/GameRecordAnalysisPlanner';
 import {
@@ -40,7 +39,7 @@ import {
     buildAnalysisPlan,
     filterRunnableJobs,
     analyzeOneGame,
-    flushAnUpdates,
+    flushFanUpdates,
     persistOpponentAnalysis,
     persistReannotateClear,
     persistReannotateRefresh,
@@ -568,19 +567,19 @@ const GamesPage: React.FC = () => {
     const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
     /**
      * Records currently being re-annotated. We keep them visible in the
-     * list during the re-run by holding their prior `an` in
-     * `priorAnByKey` and patching it into the rendered record so the row
-     * never drops out of `renderableRows`. On success the new `an` lands;
-     * on failure we restore the prior `an` and unset the badge.
+     * list during the re-run by holding their prior `fan` in
+     * `priorFanByKey` and patching it into the rendered record so the row
+     * never drops out of `renderableRows`. On success the new `fan` lands;
+     * on failure we restore the prior `fan` and unset the badge.
      */
     const [reannotatingKeys, setReannotatingKeys] = useState<Set<string>>(new Set());
-    const priorAnByKeyRef = useRef<Map<string, NonNullable<GameRecord['an']>>>(new Map());
+    const priorFanByKeyRef = useRef<Map<string, NonNullable<GameRecord['fan']>>>(new Map());
     /**
-     * Records flagged for a one-shot debug annotation log. Populated by
-     * `handleReannotate`; consumed (and cleared) on the first render where
-     * the row is no longer in `reannotatingKeys` — i.e. when the fresh
-     * verdict (or the restored prior `an`) is back on the canonical
-     * record. Mirrors the pre-refactor `debugGameIdsRef` behavior.
+     * Records flagged for a one-shot debug annotation trace. Populated by
+     * `handleReannotate`; threaded into the analysis pass (`buildAnalysisPlan`)
+     * so the engine emits its ply-by-ply trace while re-annotating, then
+     * cleared when the pass completes. (Render no longer runs the engine, so
+     * the trace lives on the analysis path now.)
      */
     const debugRecordKeysRef = useRef<Set<string>>(new Set());
     const passAbortRef = useRef<AbortController | null>(null);
@@ -603,12 +602,12 @@ const GamesPage: React.FC = () => {
     /**
      * Records that the current analysis pass has planned but not yet
      * analyzed. Rendered as skeleton placeholders so the row's slot is
-     * reserved *before* the verdict lands — eliminates the "rows pop in
+     * reserved *before* the annotation lands — eliminates the "rows pop in
      * newest-first, push everything down" jumping effect that used to
-     * happen as each game's `an` arrived.
+     * happen as each game's `fan` arrived.
      *
      * Populated right after `filterRunnableJobs` returns; trimmed as
-     * each game's `an` lands; cleared in the pass's `finally`.
+     * each game's `fan` lands; cleared in the pass's `finally`.
      */
     const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(new Set());
 
@@ -733,22 +732,22 @@ const GamesPage: React.FC = () => {
     }, [data, accountUserByKey]);
 
     /**
-     * Renderable rows: those with `an` present, PLUS records currently
-     * being re-annotated (whose `an` has been cleared in the blob but for
-     * which we hold a `priorAn` to keep the row visible until the new
-     * verdict lands or the re-run fails), PLUS records queued for the
+     * Renderable rows: those with `fan` present, PLUS records currently
+     * being re-annotated (whose `fan` has been cleared in the blob but for
+     * which we hold a `priorFan` to keep the row visible until the new
+     * annotation lands or the re-run fails), PLUS records queued for the
      * current analysis pass (rendered as skeletons so the row's slot is
      * reserved before content arrives).
      *
      * Re-annotation overlay takes precedence over the skeleton state so
-     * a re-annotating row keeps showing its prior `an` instead of
+     * a re-annotating row keeps showing its prior `fan` instead of
      * collapsing into a placeholder. See `selectRenderableRows`.
      */
     const renderableRows = useMemo(() => {
         return selectRenderableRows(
             allRecords,
             reannotatingKeys,
-            priorAnByKeyRef.current,
+            priorFanByKeyRef.current,
             pendingAnalysisKeys,
         );
     }, [allRecords, reannotatingKeys, pendingAnalysisKeys]);
@@ -756,7 +755,7 @@ const GamesPage: React.FC = () => {
     /**
      * Sticky session ordering: rows already shown keep their slot; new
      * rows are placed by timestamp relative to the current bounds.
-     * Re-annotating rows stay in `renderableRows` via the prior-`an`
+     * Re-annotating rows stay in `renderableRows` via the prior-`fan`
      * overlay above, so they're treated as `known`. See
      * `orderRowsSticky` for the ordering protocol.
      */
@@ -773,22 +772,23 @@ const GamesPage: React.FC = () => {
 
     // Annotation cache: per-record WeakMap memo so the reveal-as-ready
     // loop (which fires `setData(d => ({...d}))` per analyzed game) only
-    // re-annotates rows whose `record.an` actually changed — avoiding
-    // quadratic chess.js work on large row counts. Reuse a cached entry
-    // only when `an` / `fens` / `explorerEvals` references all still
-    // match (`record.an` is replaced wholesale by the reveal patch, so
-    // identity is a precise invalidation signal). Pending rows skip
-    // annotation; the Re-annotate debug path bypasses the cache so its
-    // one-shot console log still fires.
+    // reconstructs rows whose `record.fan` actually changed — avoiding
+    // repeated chess.js replay on large row counts. Reuse a cached entry
+    // only when `fan` identity still matches (`record.fan` is replaced
+    // wholesale by the reveal patch, so identity is a precise invalidation
+    // signal). Pending rows skip reconstruction.
+    //
+    // Render is a pure read of `fan` (+ replaying `m`): no repertoire FEN
+    // sets, no ExplorerEvals, no masters lookups. This fixes the retroactive
+    // false-mistake (editing the repertoire later can't change a frozen
+    // verdict) and the eval-resource load-order flash (rows paint correctly
+    // on first render).
     const annotationCacheRef = useRef<WeakMap<GameRecord, {
-        an: GameRecord['an'];
-        fens: Set<string>;
-        explorerEvals: ExplorerEvals;
+        fan: GameRecord['fan'];
         annotation: GameAnnotation | null;
     }>>(new WeakMap());
     const annotationByKey = useMemo(() => {
         const map = new Map<string, GameAnnotation | null>();
-        if (!fenSets || !explorerEvals) return map;
         const cache = annotationCacheRef.current;
         for (const { record, userLower, pending } of orderedRows) {
             const key = `${record.p}:${record.id}`;
@@ -796,34 +796,17 @@ const GamesPage: React.FC = () => {
                 map.set(key, null);
                 continue;
             }
-            const color = getRecordUserColor(record, userLower);
-            const fens = color === 'white' ? fenSets.whiteFens : color === 'black' ? fenSets.blackFens : new Set<string>();
-            // Fire the Re-annotate one-shot debug log on the first render
-            // where the row is no longer showing the prior-`an` overlay —
-            // i.e. when the fresh verdict (or the restored prior `an`) is
-            // back on the canonical record.
-            const wantDebug =
-                debugRecordKeysRef.current.has(key) && !reannotatingKeys.has(key);
-            if (!wantDebug) {
-                const cached = cache.get(record);
-                if (
-                    cached &&
-                    cached.an === record.an &&
-                    cached.fens === fens &&
-                    cached.explorerEvals === explorerEvals
-                ) {
-                    map.set(key, cached.annotation);
-                    continue;
-                }
+            const cached = cache.get(record);
+            if (cached && cached.fan === record.fan) {
+                map.set(key, cached.annotation);
+                continue;
             }
-            const lookup = buildLookupFromAn(record);
-            const ann = annotateRecord(record, userLower, fens, explorerEvals, lookup, wantDebug);
-            if (wantDebug) debugRecordKeysRef.current.delete(key);
-            cache.set(record, { an: record.an, fens, explorerEvals, annotation: ann });
+            const ann = annotateRecordFromFrozen(record, userLower);
+            cache.set(record, { fan: record.fan, annotation: ann });
             map.set(key, ann);
         }
         return map;
-    }, [orderedRows, fenSets, explorerEvals, reannotatingKeys]);
+    }, [orderedRows]);
 
     // Opponent-analysis live state per record: derived from record.op + a
     // per-row "stale?" check. A row's op is stale iff its anchored ply is
@@ -852,10 +835,11 @@ const GamesPage: React.FC = () => {
     // Filter: separate rows with issues from clean rows
     // ─────────────────────────────────────────────────────────────────────
 
-    // Don't apply filtering until annotations are actually computed.
-    // Without explorerEvals, annotationByKey is empty and every row would
-    // be misclassified as "clean".
-    const filterReady = fenSets != null && explorerEvals != null;
+    // Annotations are reconstructed synchronously from each record's frozen
+    // `fan`, so classification is available as soon as the row is renderable
+    // (a record either has `fan` and is annotated, or has none and isn't a
+    // content row). No external resource (ExplorerEvals) gates the filter.
+    const filterReady = data != null;
 
     /** Count of non-pending rows that have no deviation or EOT issue. */
     const cleanGameCount = useMemo(() => {
@@ -939,8 +923,10 @@ const GamesPage: React.FC = () => {
                 const sets = buildRepertoireFenSets(fresh.repertoires ?? []);
                 setFenSets(sets);
 
-                // Step 3: build the plan.
-                const allJobs = buildAnalysisPlan(fresh, explorerEvals);
+                // Step 3: build the plan. Debug keys (set by Re-annotate)
+                // make the engine emit its one-shot ply-by-ply trace for the
+                // targeted record while it's analyzed.
+                const allJobs = buildAnalysisPlan(fresh, explorerEvals, debugRecordKeysRef.current);
                 const { runnable, blockedByLichess } = filterRunnableJobs(allJobs, lichessConnected);
                 setBlockedByLichessCount(blockedByLichess.length);
 
@@ -952,7 +938,7 @@ const GamesPage: React.FC = () => {
                 // Reserve a skeleton slot for every runnable job *before* the
                 // analyze loop starts. Each row appears immediately as a
                 // pending placeholder in its final newest-first slot, then
-                // hydrates in place when its `an` lands — eliminating the
+                // hydrates in place when its `fan` lands — eliminating the
                 // newest-first jump-and-push effect that used to happen as
                 // games completed one at a time.
                 const runnableKeys = runnable.map(j => `${j.record.p}:${j.record.id}`);
@@ -975,6 +961,7 @@ const GamesPage: React.FC = () => {
                         job,
                         lichessToken,
                         memo,
+                        explorerEvals,
                         signal,
                     );
                     if (outcome.skipped) {
@@ -990,22 +977,25 @@ const GamesPage: React.FC = () => {
                     // updater guarantees we always mutate the latest rendered
                     // tree.
                     {
-                        const pendingAn = outcome.an;
+                        const pendingFan = outcome.fan;
                         setData(d => {
                             if (!d?.activity) return d;
                             const target = findRecord(d.activity, outcome.record.id, outcome.record.p);
                             if (!target) return d;
-                            target.record.an = pendingAn;
+                            target.record.fan = pendingFan;
+                            // Drop any legacy masters-verdict field still on an
+                            // old in-memory record so it doesn't linger.
+                            delete (target.record as { an?: unknown }).an;
                             // Shallow clone to force re-render — the in-place
                             // mutation above is on a shared subtree that needs
                             // a new top-level reference for `useMemo` to invalidate.
                             return { ...d };
                         });
                         // If this record was being re-annotated, swap in the new
-                        // verdict and clear the badge.
+                        // annotation and clear the badge.
                         const recKey = `${outcome.record.p}:${outcome.record.id}`;
-                        if (priorAnByKeyRef.current.has(recKey)) {
-                            priorAnByKeyRef.current.delete(recKey);
+                        if (priorFanByKeyRef.current.has(recKey)) {
+                            priorFanByKeyRef.current.delete(recKey);
                             setReannotatingKeys(prev => {
                                 if (!prev.has(recKey)) return prev;
                                 const next = new Set(prev);
@@ -1013,7 +1003,7 @@ const GamesPage: React.FC = () => {
                                 return next;
                             });
                         }
-                        // Drop the skeleton slot — the row now has `an` and
+                        // Drop the skeleton slot — the row now has `fan` and
                         // can render normally. The next render hydrates the
                         // existing placeholder in place (no reorder).
                         setPendingAnalysisKeys(prev => {
@@ -1026,9 +1016,9 @@ const GamesPage: React.FC = () => {
 
                     if (pendingFlush.length >= ANALYSIS_FLUSH_BATCH) {
                         setAnalysisProgress(prev => prev.phase === 'analyzing' ? { ...prev, phase: 'flushing' } : prev);
-                        const { data: fresh2 } = await flushAnUpdates(dal, pendingFlush.splice(0), signal);
+                        const { data: fresh2 } = await flushFanUpdates(dal, pendingFlush.splice(0), signal);
                         if (signal.aborted) break;
-                        // Re-apply our optimistic in-memory `an` mutations onto
+                        // Re-apply our optimistic in-memory `fan` mutations onto
                         // the freshly-decoded tree so subsequent reveal-as-ready
                         // patches keep landing in the rendered subtree.
                         setData(fresh2);
@@ -1041,7 +1031,7 @@ const GamesPage: React.FC = () => {
                             ? { phase: 'flushing', gameIndex: prev.gameIndex, gameTotal: prev.gameTotal }
                             : { phase: 'flushing' }
                     );
-                    const { data: fresh3 } = await flushAnUpdates(dal, pendingFlush, signal);
+                    const { data: fresh3 } = await flushFanUpdates(dal, pendingFlush, signal);
                     if (!signal.aborted) setData(fresh3);
                 }
 
@@ -1075,6 +1065,11 @@ const GamesPage: React.FC = () => {
                 // covers abort / error / network-skip leftovers so we don't
                 // leak permanent skeleton rows after the pass ends.
                 setPendingAnalysisKeys(prev => (prev.size === 0 ? prev : new Set()));
+                // One-shot debug traces have fired (or the pass aborted) —
+                // clear the flags so they don't re-trigger on a later pass.
+                if (debugRecordKeysRef.current.size > 0) {
+                    debugRecordKeysRef.current.clear();
+                }
                 passStartedRef.current = false;
                 if (passAbortRef.current === abort) {
                     passAbortRef.current = null;
@@ -1125,15 +1120,15 @@ const GamesPage: React.FC = () => {
 
     const handleReannotate = useCallback(async (record: GameRecord, userLower: string) => {
         const key = `${record.p}:${record.id}`;
-        const priorAn = record.an;
-        if (priorAn === undefined) return; // already being re-annotated
+        const priorFan = record.fan;
+        if (priorFan === undefined) return; // already being re-annotated
 
-        // Capture the prior `an` so `renderableRows` keeps the row visible
+        // Capture the prior `fan` so `renderableRows` keeps the row visible
         // through the clear → re-fetch → re-pass window. Set the badge.
-        priorAnByKeyRef.current.set(key, priorAn);
+        priorFanByKeyRef.current.set(key, priorFan);
         setReannotatingKeys(prev => new Set(prev).add(key));
-        // Flag for a one-shot debug log on the next annotation that runs
-        // against the post-pass record (consumed in `annotationByKey`).
+        // Flag for a one-shot debug trace from the analysis pass that runs
+        // against the cleared record (consumed in `runAnalysisPass`).
         debugRecordKeysRef.current.add(key);
 
         // Abort any in-flight pass and wait for it to actually finish
@@ -1179,21 +1174,21 @@ const GamesPage: React.FC = () => {
             setData(fresh);
             // Re-trigger and AWAIT the pass so we can detect failure (a
             // transient masters error would mark the record `skipped`,
-            // leaving its `an` cleared — we must then restore the prior
-            // verdict so the row doesn't disappear permanently).
+            // leaving its `fan` cleared — we must then restore the prior
+            // annotation so the row doesn't disappear permanently).
             await runAnalysisPass();
-            // If the priorAn is still in the map, the pass failed to
-            // produce a new verdict (skipped). Restore it so the row
+            // If the priorFan is still in the map, the pass failed to
+            // produce a new annotation (skipped). Restore it so the row
             // doesn't fall out of `renderableRows`.
-            if (priorAnByKeyRef.current.has(key)) {
-                priorAnByKeyRef.current.delete(key);
+            if (priorFanByKeyRef.current.has(key)) {
+                priorFanByKeyRef.current.delete(key);
                 setData(d => {
                     if (!d?.activity) return d;
                     const target = findRecord(d.activity, record.id, record.p);
                     if (!target) return d;
                     // Only restore if the pass really didn't produce one.
-                    if (target.record.an === undefined) {
-                        target.record.an = priorAn;
+                    if (target.record.fan === undefined) {
+                        target.record.fan = priorFan;
                         return { ...d };
                     }
                     return d;
@@ -1222,8 +1217,8 @@ const GamesPage: React.FC = () => {
             if (!isConflict) {
                 console.warn('Re-annotate failed:', e);
             }
-            // Restore prior verdict on hard failure.
-            priorAnByKeyRef.current.delete(key);
+            // Restore prior annotation on hard failure.
+            priorFanByKeyRef.current.delete(key);
             setReannotatingKeys(prev => {
                 if (!prev.has(key)) return prev;
                 const next = new Set(prev);
@@ -1305,7 +1300,7 @@ const GamesPage: React.FC = () => {
         if (!confirmed) return;
 
         // Abort any in-flight analysis pass and wait for it to unwind so
-        // it can't race-write `an` against a record we're about to delete.
+        // it can't race-write `fan` against a record we're about to delete.
         passAbortRef.current?.abort();
         const inflight = passDonePromiseRef.current;
         if (inflight) {
@@ -1315,7 +1310,7 @@ const GamesPage: React.FC = () => {
         try {
             const fresh = await persistDeleteRecordsFromTimestamp(dal, record.t, pageAbortRef.current?.signal);
             setData(fresh);
-            // Re-run the pass so anything left without `an` (shouldn't be
+            // Re-run the pass so anything left without `fan` (shouldn't be
             // many — eviction kept the older records intact) gets picked up.
             await runAnalysisPass();
         } catch (e) {

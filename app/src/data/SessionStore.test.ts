@@ -345,7 +345,7 @@ describe("SessionStore", () => {
         const store = new SessionStore("alice", "pw");
         const snap1 = await store.getSnapshot();
         // Mutate the returned data — simulates what runIngest /
-        // flushAnUpdates do before saving.
+        // flushFanUpdates do before saving.
         (snap1.data.settings as any).contextDepth = 42;
         const snap2 = await store.getSnapshot();
         // Second snapshot is unaffected by the first caller's mutation.

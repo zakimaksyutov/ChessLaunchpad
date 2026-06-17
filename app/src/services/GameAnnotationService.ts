@@ -1,12 +1,13 @@
 import { Chess } from 'chess.js';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { ExplorerEvals } from '../models/ExplorerEvals';
+import { FrozenAnnotation } from '../models/RepertoireData';
 import { categorizeEvalDrop, computeConservativeDrop, EvalDrop, EvalDropCategory } from './EvalDropService';
 import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomTimeControl';
 import type { MoveStats } from './MastersExplorerService';
 
-/** Duck-typed interface for masters data lookup (satisfied by `MastersLookup` and the `AnVerdictLookup` built from persisted `an.tv`). */
+/** Duck-typed interface for masters data lookup (satisfied by `MastersLookup`). */
 export interface MastersLookupLike {
     getMoveStats(fen: string, moveSan: string): MoveStats | null;
     isOutOfTheory(fen: string, moveSan: string): boolean | null;
@@ -153,6 +154,12 @@ export interface GameAnnotation {
     moves: AnnotatedMove[];
     /** FEN for the mini board display */
     miniBoardFen: string;
+    /**
+     * Half-move depth of `miniBoardFen` — the number of plies replayed from
+     * the game start to reach the displayed position. Frozen into `fan.mb`
+     * so render can replay the board without re-deriving the anchor rule.
+     */
+    miniBoardPly: number;
     /** Orientation for the mini board */
     miniBoardOrientation: 'white' | 'black';
     /** Deviation details for arrow display on the mini board */
@@ -363,6 +370,12 @@ export function annotateGame(
     let firstEvalDropFen: string | null = null;
     let lastInRepertoireFen: string | null = null;
     let deviation: DeviationInfo | undefined;
+    // Ply depths matching each mini-board candidate FEN above, so the frozen
+    // annotation can store an anchor index (`fan.mb`) instead of a FEN.
+    let firstPostTheoryPly = 0;
+    let firstEvalDropPly = 0;
+    let lastInRepertoirePly = 0;
+    let deviationPly = 0;
 
     for (let i = 0; i < allMoves.length; i++) {
         const isWhiteMove = i % 2 === 0;
@@ -394,6 +407,7 @@ export function annotateGame(
             // Position after move is in repertoire → green (handles transpositions back)
             highlight = 'in-repertoire';
             lastInRepertoireFen = fenAfter;
+            lastInRepertoirePly = i + 1;
             theoryEndPly = i + 1;
             postTheoryAnalysis = false;
             reason = 'after-FEN in repertoire';
@@ -419,10 +433,12 @@ export function annotateGame(
                     userMove: { from: allMoves[i].from, to: allMoves[i].to, san: allMoves[i].san },
                     repertoireMoves,
                 };
+                deviationPly = i;
             }
 
             if (!firstPostTheoryFen) {
                 firstPostTheoryFen = fenAfter;
+                firstPostTheoryPly = i + 1;
             }
 
             // Compute eval drop for the deviation
@@ -436,6 +452,7 @@ export function annotateGame(
 
                 if (!firstEvalDropFen && category !== 'ok') {
                     firstEvalDropFen = fenAfter;
+                    firstEvalDropPly = i + 1;
                 }
             } else {
                 reason += ', no eval data for drop calc';
@@ -494,6 +511,7 @@ export function annotateGame(
 
             if (!firstPostTheoryFen) {
                 firstPostTheoryFen = fenAfter;
+                firstPostTheoryPly = i + 1;
             }
 
             const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
@@ -506,6 +524,7 @@ export function annotateGame(
 
                 if (!firstEvalDropFen && category !== 'ok') {
                     firstEvalDropFen = fenAfter;
+                    firstEvalDropPly = i + 1;
                 }
 
                 // Stop after first notable eval drop — only the first inaccuracy/mistake/blunder matters
@@ -581,21 +600,28 @@ export function annotateGame(
     // Determine mini board position (spec §3.3)
     // For user deviations, show the position BEFORE the deviation (with arrows)
     let miniBoardFen: string;
+    let miniBoardPly: number;
     if (deviation) {
         miniBoardFen = deviation.fen;
+        miniBoardPly = deviationPly;
     } else if (firstPostTheoryFen) {
         miniBoardFen = firstPostTheoryFen;
+        miniBoardPly = firstPostTheoryPly;
     } else if (firstEvalDropFen) {
         miniBoardFen = firstEvalDropFen;
+        miniBoardPly = firstEvalDropPly;
     } else if (lastInRepertoireFen) {
         miniBoardFen = lastInRepertoireFen;
+        miniBoardPly = lastInRepertoirePly;
     } else {
         miniBoardFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        miniBoardPly = 0;
     }
 
     return {
         moves,
         miniBoardFen,
+        miniBoardPly,
         miniBoardOrientation: userColor,
         deviation,
         ambiguousTheoryPositions: ambiguousTheoryPositions.length > 0 ? ambiguousTheoryPositions : undefined,
@@ -889,5 +915,205 @@ export function deriveEotPositions(
         userMoveCategory: annotation.moves[eotIndex].evalDrop!.category,
         moveIndex: eotIndex,
         targetPly: eotIndex,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Frozen annotation (`fan`) — freeze/thaw between a live GameAnnotation and
+// the stored per-game record. See the "Frozen Annotation (`fan`)" section of
+// docs/product-specs/GAMES.md
+// ---------------------------------------------------------------------------
+
+/**
+ * Highlight code for a user move, as stored in `fan.hl`. Opponent moves carry
+ * no code. Codes intentionally match the GAMES.md highlight-codes table:
+ *   0 in-repertoire | 1 deviation | 2 post-theory ok | 3 inaccuracy
+ *   4 mistake | 5 blunder | 7 out-of-theory.
+ * (Code `6`, out-of-repertoire, only applies to opponent moves and is never
+ * stored.)
+ */
+function userMoveToCode(move: AnnotatedMove): number {
+    switch (move.highlight) {
+        case 'in-repertoire':
+            return 0;
+        case 'deviation':
+            return 1;
+        case 'out-of-repertoire-response':
+            switch (move.evalDrop?.category) {
+                case 'inaccuracy': return 3;
+                case 'mistake': return 4;
+                case 'blunder': return 5;
+                default: return 2; // 'ok' or no eval data
+            }
+        case 'out-of-theory':
+        case 'out-of-repertoire':
+            return 7;
+    }
+}
+
+/** Reconstruct a user move's `{highlight, evalDrop}` from a stored `hl` code. */
+function codeToHighlight(code: number): { highlight: MoveHighlight; evalDrop?: EvalDrop } {
+    switch (code) {
+        case 0: return { highlight: 'in-repertoire' };
+        case 1: return { highlight: 'deviation' };
+        case 2: return { highlight: 'out-of-repertoire-response', evalDrop: { evalDrop: 0, category: 'ok' } };
+        case 3: return { highlight: 'out-of-repertoire-response', evalDrop: { evalDrop: 0, category: 'inaccuracy' } };
+        case 4: return { highlight: 'out-of-repertoire-response', evalDrop: { evalDrop: 0, category: 'mistake' } };
+        case 5: return { highlight: 'out-of-repertoire-response', evalDrop: { evalDrop: 0, category: 'blunder' } };
+        case 7:
+        default:
+            return { highlight: 'out-of-theory' };
+    }
+}
+
+/**
+ * Freeze a live `GameAnnotation` into the storable `fan` shape: per-user-move
+ * highlight codes, the deviation alternatives (SAN, when present), and the
+ * mini-board anchor ply. This is the analysis-time write path; render never
+ * calls it.
+ */
+export function annotationToFrozen(annotation: GameAnnotation): FrozenAnnotation {
+    const hl: number[] = [];
+    for (const move of annotation.moves) {
+        if (!move.isUserMove) continue;
+        hl.push(userMoveToCode(move));
+    }
+    const fan: FrozenAnnotation = { hl, mb: annotation.miniBoardPly };
+    const alt = annotation.deviation?.repertoireMoves.map(rm => rm.san);
+    if (alt && alt.length > 0) fan.alt = alt;
+    return fan;
+}
+
+/**
+ * Thaw a stored `fan` back into a `GameAnnotation` for rendering — a pure
+ * function of `fan`, the SAN move list `m`, and the user's color. No
+ * repertoire, evals, or masters lookups. The display window is `fan.hl`:
+ * replay `m`, assigning codes to user moves in order, and stop after the last
+ * user move that `hl` covers.
+ *
+ * On an unparseable SAN the replay stops early and returns the moves built so
+ * far (defensive — `m` is validated at ingest).
+ */
+export function buildAnnotationFromFrozen(
+    fan: FrozenAnnotation,
+    sans: string[],
+    userColor: 'white' | 'black',
+): GameAnnotation {
+    const moves: AnnotatedMove[] = [];
+    const replay = new Chess();
+    let userMoveIdx = 0;
+    let moveNumber = 1;
+    let deviationPly = -1;
+
+    for (let i = 0; i < sans.length; i++) {
+        const isWhiteMove = i % 2 === 0;
+        const isUserMove =
+            (userColor === 'white' && isWhiteMove) ||
+            (userColor === 'black' && !isWhiteMove);
+
+        const currentMoveNumber = isWhiteMove ? moveNumber : undefined;
+        if (!isWhiteMove) moveNumber++;
+
+        let highlight: MoveHighlight;
+        let evalDrop: EvalDrop | undefined;
+        if (isUserMove) {
+            // Window ends at the last user move covered by `hl`.
+            if (userMoveIdx >= fan.hl.length) break;
+            const code = fan.hl[userMoveIdx];
+            userMoveIdx++;
+            const mapped = codeToHighlight(code);
+            highlight = mapped.highlight;
+            evalDrop = mapped.evalDrop;
+            if (code === 1 && deviationPly < 0) deviationPly = i;
+        } else {
+            // Opponent moves always render neutral — the value is unused.
+            highlight = 'out-of-theory';
+        }
+
+        let moved;
+        try {
+            moved = replay.move(sans[i]);
+        } catch {
+            break;
+        }
+        if (!moved) break;
+
+        moves.push({
+            san: moved.san,
+            moveNumber: currentMoveNumber,
+            isWhiteMove,
+            isUserMove,
+            highlight,
+            evalDrop,
+        });
+
+        if (isUserMove && userMoveIdx >= fan.hl.length) break;
+    }
+
+    return finishFrozen(moves, fan, sans, userColor, deviationPly);
+}
+
+/** Assemble the mini-board FEN + deviation arrows for a thawed annotation. */
+function finishFrozen(
+    moves: AnnotatedMove[],
+    fan: FrozenAnnotation,
+    sans: string[],
+    userColor: 'white' | 'black',
+    deviationPly: number,
+): GameAnnotation {
+    // Mini-board position: replay `mb` plies of `m`.
+    const mbReplay = new Chess();
+    const mb = Math.max(0, Math.min(fan.mb, sans.length));
+    for (let k = 0; k < mb; k++) {
+        try {
+            if (!mbReplay.move(sans[k])) break;
+        } catch {
+            break;
+        }
+    }
+    const miniBoardFen = mbReplay.fen();
+
+    let deviation: DeviationInfo | undefined;
+    if (deviationPly >= 0) {
+        // Replay to the position before the deviation ply to recover squares.
+        const devReplay = new Chess();
+        let ok = true;
+        for (let k = 0; k < deviationPly; k++) {
+            try {
+                if (!devReplay.move(sans[k])) { ok = false; break; }
+            } catch {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) {
+            const fenBefore = devReplay.fen();
+            const repertoireMoves: { from: string; to: string; san: string }[] = [];
+            for (const altSan of fan.alt ?? []) {
+                const probe = new Chess(fenBefore);
+                try {
+                    const m = probe.move(altSan);
+                    if (m) repertoireMoves.push({ from: m.from, to: m.to, san: m.san });
+                } catch {
+                    /* skip an alt that no longer parses */
+                }
+            }
+            let userMove = { from: '', to: '', san: sans[deviationPly] ?? '' };
+            try {
+                const played = devReplay.move(sans[deviationPly]);
+                if (played) userMove = { from: played.from, to: played.to, san: played.san };
+            } catch {
+                /* keep SAN-only fallback */
+            }
+            deviation = { fen: fenBefore, userMove, repertoireMoves };
+        }
+    }
+
+    return {
+        moves,
+        miniBoardFen,
+        miniBoardPly: mb,
+        miniBoardOrientation: userColor,
+        deviation,
     };
 }
