@@ -82,8 +82,8 @@ export interface GameRecord {
      * Frozen annotation — everything the /games view needs to render this
      * game, computed once at analysis time. Present once analyzed; its
      * absence is the sole "needs analysis" signal. Replaces the legacy
-     * masters-theory verdict (`an`). See `FrozenAnnotation` and
-     * `docs/product-specs/GAMES-ANNOTATION-STORAGE.md`.
+     * masters-theory verdict (`an`). See `FrozenAnnotation` and the
+     * "Frozen Annotation (`fan`)" section of `docs/product-specs/GAMES.md`.
      */
     fan?: FrozenAnnotation;
     /** Saved opponent-analysis result; on-demand, independent of `fan`. */
@@ -94,7 +94,8 @@ export interface GameRecord {
  * Frozen, render-ready annotation for a game. Computed once on the analysis
  * path (initial pass or Re-annotate) and stored on the record so render is a
  * pure read — no repertoire lookups, no eval lookups, no masters queries at
- * view time. See `docs/product-specs/GAMES-ANNOTATION-STORAGE.md`.
+ * view time. See the "Frozen Annotation (`fan`)" section of
+ * `docs/product-specs/GAMES.md`.
  */
 export interface FrozenAnnotation {
     /**

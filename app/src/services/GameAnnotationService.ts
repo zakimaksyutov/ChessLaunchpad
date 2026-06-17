@@ -920,12 +920,13 @@ export function deriveEotPositions(
 
 // ---------------------------------------------------------------------------
 // Frozen annotation (`fan`) — freeze/thaw between a live GameAnnotation and
-// the stored per-game record. See docs/product-specs/GAMES-ANNOTATION-STORAGE.md
+// the stored per-game record. See the "Frozen Annotation (`fan`)" section of
+// docs/product-specs/GAMES.md
 // ---------------------------------------------------------------------------
 
 /**
  * Highlight code for a user move, as stored in `fan.hl`. Opponent moves carry
- * no code. Codes intentionally match the spec's table:
+ * no code. Codes intentionally match the GAMES.md highlight-codes table:
  *   0 in-repertoire | 1 deviation | 2 post-theory ok | 3 inaccuracy
  *   4 mistake | 5 blunder | 7 out-of-theory.
  * (Code `6`, out-of-repertoire, only applies to opponent moves and is never

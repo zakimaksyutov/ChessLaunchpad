@@ -19,7 +19,7 @@ Unlinking an account:
 
 ## Data Source
 
-The Games page reads from `activity.practiceLog[].games.records[]` on the synced repertoire blob (see [`GAME-INGEST.md`](./GAME-INGEST.md) §1 for the record shape). Records are written by ingest; the **frozen annotation** (`fan`) and opponent analysis (`op`) are written by the Games page's analysis pass and persist back to the same record. Once written, a `fan` syncs across devices — a game is analyzed once, then instant everywhere. Render is a **pure read** of `fan` (see [`GAMES-ANNOTATION-STORAGE.md`](./GAMES-ANNOTATION-STORAGE.md)).
+The Games page reads from `activity.practiceLog[].games.records[]` on the synced repertoire blob (see [`GAME-INGEST.md`](./GAME-INGEST.md) §1 for the record shape). Records are written by ingest; the **frozen annotation** (`fan`) and opponent analysis (`op`) are written by the Games page's analysis pass and persist back to the same record. Once written, a `fan` syncs across devices — a game is analyzed once, then instant everywhere. Render is a **pure read** of `fan` (see [Frozen Annotation](#frozen-annotation-fan) below).
 
 ## Landing Flow
 
@@ -40,7 +40,7 @@ A status pill next to the Games header shows the current state — syncing (spin
 
 ## Frozen Annotation (`fan`)
 
-`fan` is the page's "done" marker on a record and the **only** input render reads. It freezes everything the row needs at analysis time, so render is a pure read — no repertoire lookups, no eval lookups, no masters queries (see [`GAMES-ANNOTATION-STORAGE.md`](./GAMES-ANNOTATION-STORAGE.md)). This means editing your repertoire later can never retroactively turn an old, previously-fine game into a "mistake," and a row paints correctly on first render (no eval-resource load-order flash).
+`fan` is the page's "done" marker on a record and the **only** input render reads. It freezes everything the row needs at analysis time, so render is a pure read — no repertoire lookups, no eval lookups, no masters queries. This means editing your repertoire later can never retroactively turn an old, previously-fine game into a "mistake," and a row paints correctly on first render (no eval-resource load-order flash).
 
 ```jsonc
 "fan": {
