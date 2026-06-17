@@ -10,7 +10,6 @@ import {
 } from '../services/LinkedAccountsService';
 import {
     GameRecord,
-    FrozenAnnotation,
     OpponentAnalysisRecord,
     RepertoireData,
 } from '../models/RepertoireData';
