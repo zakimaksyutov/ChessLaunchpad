@@ -308,7 +308,7 @@ function applyIngest(
 
         // Persist a compact `GameRecord` alongside the counters so the
         // /games page can render this game across devices. The record
-        // captures display facts only — analysis verdicts (`an`/`op`) are
+        // captures display facts only — the frozen annotation (`fan`/`op`) is
         // written later by the /games analysis pass. Build failures (e.g.
         // unparseable provider payload) are silent — the game still counts
         // for ingest, we just have no record to render.

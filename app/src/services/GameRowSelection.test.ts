@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { selectRenderableRows } from './GameRowSelection';
-import { GameRecord, MastersTheoryVerdict } from '../models/RepertoireData';
+import { GameRecord, FrozenAnnotation } from '../models/RepertoireData';
 
 function makeRecord(
     id: string,
@@ -18,10 +18,12 @@ function makeRecord(
         rt: 1,
         sp: 'blitz',
         tc: '5+3',
-        res: 'w',
+        res: 'win',
         ...overrides,
     } as GameRecord;
 }
+
+const FAN: FrozenAnnotation = { hl: [0], mb: 0 };
 
 function keyOf(r: GameRecord): string {
     return `${r.p}:${r.id}`;
@@ -29,8 +31,8 @@ function keyOf(r: GameRecord): string {
 
 describe('selectRenderableRows', () => {
     it('returns annotated records as non-pending', () => {
-        const a = makeRecord('a', { an: {} });
-        const b = makeRecord('b', { an: {} });
+        const a = makeRecord('a', { fan: FAN });
+        const b = makeRecord('b', { fan: FAN });
         const rows = selectRenderableRows(
             [
                 { record: a, userLower: 'alice' },
@@ -46,7 +48,7 @@ describe('selectRenderableRows', () => {
         ]);
     });
 
-    it('filters out records without `an` that are neither re-annotating nor pending', () => {
+    it('filters out records without `fan` that are neither re-annotating nor pending', () => {
         const a = makeRecord('a');
         const rows = selectRenderableRows(
             [{ record: a, userLower: 'alice' }],
@@ -70,9 +72,9 @@ describe('selectRenderableRows', () => {
         ]);
     });
 
-    it('shows re-annotating records via prior `an` overlay (cloned record)', () => {
-        const a = makeRecord('a'); // an undefined
-        const prior: MastersTheoryVerdict = {};
+    it('shows re-annotating records via prior `fan` overlay (cloned record)', () => {
+        const a = makeRecord('a'); // fan undefined
+        const prior: FrozenAnnotation = FAN;
         const rows = selectRenderableRows(
             [{ record: a, userLower: 'alice' }],
             new Set([keyOf(a)]),
@@ -82,13 +84,13 @@ describe('selectRenderableRows', () => {
         expect(rows.length).toBe(1);
         expect(rows[0].pending).toBe(false);
         expect(rows[0].userLower).toBe('alice');
-        expect(rows[0].record.an).toBe(prior);
+        expect(rows[0].record.fan).toBe(prior);
         // Must be a clone — must not mutate input record.
         expect(rows[0].record).not.toBe(a);
-        expect(a.an).toBeUndefined();
+        expect(a.fan).toBeUndefined();
     });
 
-    it('omits re-annotating record when priorAn is missing (defensive)', () => {
+    it('omits re-annotating record when priorFan is missing (defensive)', () => {
         const a = makeRecord('a');
         const rows = selectRenderableRows(
             [{ record: a, userLower: 'alice' }],
@@ -101,7 +103,7 @@ describe('selectRenderableRows', () => {
 
     it('prefers re-annotation overlay over skeleton when a record is in both sets', () => {
         const a = makeRecord('a');
-        const prior: MastersTheoryVerdict = {};
+        const prior: FrozenAnnotation = FAN;
         const rows = selectRenderableRows(
             [{ record: a, userLower: 'alice' }],
             new Set([keyOf(a)]),
@@ -110,15 +112,15 @@ describe('selectRenderableRows', () => {
         );
         expect(rows.length).toBe(1);
         expect(rows[0].pending).toBe(false);
-        expect(rows[0].record.an).toBe(prior);
+        expect(rows[0].record.fan).toBe(prior);
     });
 
     it('mixed input: annotated + pending + filtered + re-annotated', () => {
-        const a = makeRecord('a', { an: {} });
+        const a = makeRecord('a', { fan: FAN });
         const b = makeRecord('b'); // pending
         const c = makeRecord('c'); // not pending → filtered
         const d = makeRecord('d'); // re-annotating
-        const priorD: MastersTheoryVerdict = {};
+        const priorD: FrozenAnnotation = FAN;
         const rows = selectRenderableRows(
             [
                 { record: a, userLower: 'alice' },
@@ -136,6 +138,6 @@ describe('selectRenderableRows', () => {
         expect(rows[1].pending).toBe(true);
         expect(rows[2].record.id).toBe('d');
         expect(rows[2].pending).toBe(false);
-        expect(rows[2].record.an).toBe(priorD);
+        expect(rows[2].record.fan).toBe(priorD);
     });
 });

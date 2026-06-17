@@ -3,6 +3,7 @@ import { ExplorerEvals } from '../models/ExplorerEvals';
 import {
     annotateGame,
     deriveEotPositions as deriveEotPositionsImport,
+    buildAnnotationFromFrozen,
     GameAnnotation,
     MastersLookupLike,
     getGameMetadata,
@@ -114,6 +115,27 @@ export function annotateRecord(
         mastersLookup,
         debug,
     );
+}
+
+/**
+ * Render-path annotation: reconstruct a `GameAnnotation` from the record's
+ * frozen `fan` field plus its SAN move list — a pure read, with no repertoire,
+ * evals, or masters lookups. Returns `null` when the record has no `fan` yet
+ * (not analyzed) or the user color can't be resolved.
+ *
+ * This replaces the live `annotateRecord` call at render time so extending the
+ * repertoire later can't retroactively change an old game's verdict and so the
+ * row renders correctly on first paint (no eval-resource load-order flash).
+ */
+export function annotateRecordFromFrozen(
+    record: GameRecord,
+    accountUsernameLower: string,
+): GameAnnotation | null {
+    if (!record.fan) return null;
+    const userColor = getRecordUserColor(record, accountUsernameLower);
+    if (!userColor) return null;
+    const sans = record.m.split(/\s+/).filter(Boolean);
+    return buildAnnotationFromFrozen(record.fan, sans, userColor);
 }
 
 /**

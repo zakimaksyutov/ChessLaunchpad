@@ -2,10 +2,12 @@
 // MastersExplorerService — Lichess Masters opening explorer client.
 //
 // No IndexedDB. The Games page (`docs/product-specs/GAMES.md`)
-// drops the persistent masters cache: ambiguous-zone verdicts are now stored
-// per-game on the synced repertoire blob (`an.tv`) so a game is analyzed once
-// and the result syncs across devices. Within a single analysis pass positions
-// rarely recur across games, so an in-memory memo is not warranted either.
+// drops the persistent masters cache: the ambiguous-zone verdict is baked
+// into each game's frozen annotation (`fan.hl`) on the synced repertoire blob
+// at analysis time, so a game is analyzed once and the result syncs across
+// devices. Within a single analysis pass the same opening-sideline positions
+// recur across games, but that dedup lives in the pass's `fetchMastersWithMemo`
+// (see GameRecordAnalysisPlanner), so this client stays a thin stateless fetcher.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -109,13 +111,14 @@ function parseApiResponse(data: Record<string, unknown>, fen: string): MastersPo
  *                                `getMoveStats(...) === null` or zero counts.
  *   - `{ kind: 'error' }`      — Transient: network failure, rate-limit (429),
  *                                non-2xx response. **Do not** treat as no-data
- *                                — analysis pass refuses to write `an.tv` for
- *                                erroring plies so the game re-queues next pass.
+ *                                — the analysis pass refuses to write `fan` for
+ *                                a game with an erroring ply so it re-queues
+ *                                next pass.
  *
- * The distinction matters because the spec's sparse `tv` map (`docs/product-specs/GAMES.md`)
- * defines `omitted ply == no-data → optimistic in-theory default`. Conflating
- * "we couldn't reach the server" with "200 + zero games" would lock a
- * potentially-wrong optimistic verdict in forever.
+ * The distinction matters because the engine's optimistic fallback (`docs/product-specs/GAMES.md`)
+ * treats a no-data ambiguous ply as in-theory. Conflating "we couldn't reach
+ * the server" with "200 + zero games" would freeze a potentially-wrong
+ * optimistic verdict into `fan` forever.
  */
 export type MastersFetchOutcome =
     | { kind: 'ok'; result: MastersPositionResult }
@@ -128,7 +131,7 @@ export type MastersFetchOutcome =
  *
  * Caller is responsible for caching — within one `/games` analysis pass the
  * page does that via a single `MastersLookup` instance accumulated for the
- * batch; across passes verdicts persist on the per-game `an.tv` map.
+ * batch; across passes the verdict is frozen into each game's `fan`.
  */
 export async function fetchMastersOutcome(
     fen: string,

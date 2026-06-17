@@ -1,6 +1,6 @@
 import {
     GameRecord,
-    MastersTheoryVerdict,
+    FrozenAnnotation,
     RepertoireData,
 } from '../models/RepertoireData';
 import { ExplorerEvals } from '../models/ExplorerEvals';
@@ -11,11 +11,12 @@ import { getLinkedAccounts } from './LinkedAccountsService';
 import { findRecord, purgeRecordsFromTimestamp } from './GameRecordStore';
 import {
     AmbiguousTheoryPosition,
+    annotationToFrozen,
 } from './GameAnnotationService';
 import { getRecordUserColor } from './GameRecordBuilder';
+import { annotateRecord } from './RecordAnnotation';
 import {
     planAmbiguousPositions,
-    buildVerdictFromPlan,
     fetchMastersWithMemo,
     MastersMemoEntry,
 } from './GameRecordAnalysisPlanner';
@@ -26,12 +27,18 @@ const ANALYSIS_FLUSH_BATCH = 5;
 /**
  * One step in the analysis pass — a single game's pre-analysis snapshot.
  *
- *   - `record` : the game being analyzed.
- *   - `plan`   : ambiguous positions discovered before any lookup.
+ *   - `record`         : the game being analyzed.
+ *   - `userLower`      : the linked-account name (lowercase) that owns it.
+ *   - `repertoireFens` : the user-color FEN set this game is scored against.
+ *   - `plan`           : ambiguous positions discovered before any lookup.
+ *   - `debug`          : emit a one-shot ply-by-ply trace (Re-annotate only).
  */
 export interface AnalysisJob {
     record: GameRecord;
+    userLower: string;
+    repertoireFens: Set<string>;
     plan: AmbiguousTheoryPosition[];
+    debug?: boolean;
 }
 
 export type AnalysisProgress =
@@ -41,14 +48,14 @@ export type AnalysisProgress =
     | { phase: 'idle' };
 
 /**
- * Result of the analysis pass — written verdicts paired with their record
+ * Result of the analysis pass — frozen annotations paired with their record
  * targets. The caller (page) consumes these to: (a) update in-memory
  * rendering, (b) include in the next flush.
  */
 export interface AnalyzedGameOutcome {
     record: GameRecord;
-    /** New `an` value to write (omitted when the run errored — no write). */
-    an?: MastersTheoryVerdict;
+    /** New `fan` value to write (omitted when the run errored — no write). */
+    fan?: FrozenAnnotation;
     /**
      * `true` when the game was skipped (transient masters-lookup error).
      * The page should keep the row visible in its prior state — Re-annotate
@@ -59,17 +66,21 @@ export interface AnalyzedGameOutcome {
 
 /**
  * Build the analysis pass plan: enumerate every record across the activity
- * log that lacks `an`, attach each to its linked-account user, and discover
+ * log that lacks `fan`, attach each to its linked-account user, and discover
  * its ambiguous positions (no network).
  *
  * Records whose linked account is no longer in `settings.linkedAccounts`
  * are skipped — they're orphaned (the account was unlinked after the
  * record was created, before purgeRecordsForAccounts swept) and analysis
  * for them is meaningless.
+ *
+ * `debugKeys` flags records (`${p}:${id}`) whose final annotation should emit
+ * a one-shot ply-by-ply console trace — used by Re-annotate.
  */
 export function buildAnalysisPlan(
     data: RepertoireData,
     explorerEvals: ExplorerEvals | null,
+    debugKeys?: ReadonlySet<string>,
 ): AnalysisJob[] {
     const activity = data.activity;
     if (!activity) return [];
@@ -91,7 +102,7 @@ export function buildAnalysisPlan(
         if (!records || records.length === 0) continue;
         const sortedRecords = [...records].sort((a, b) => a.t - b.t);
         for (const record of sortedRecords) {
-            if (record.an !== undefined) continue;
+            if (record.fan !== undefined) continue;
 
             // Find the linked account that owns this record. Match `wa`/`ba`
             // case-insensitively against any linked username; pick whichever
@@ -114,7 +125,13 @@ export function buildAnalysisPlan(
 
             const repertoireFens = color === 'white' ? fenSets.whiteFens : fenSets.blackFens;
             const plan = planAmbiguousPositions(record, userLower, repertoireFens, explorerEvals);
-            jobs.push({ record, plan });
+            jobs.push({
+                record,
+                userLower,
+                repertoireFens,
+                plan,
+                debug: debugKeys?.has(`${record.p}:${record.id}`) ?? false,
+            });
         }
     }
     return jobs;
@@ -123,8 +140,8 @@ export function buildAnalysisPlan(
 /**
  * Pre-analysis filter: which jobs are gated by Lichess OAuth.
  *
- * - Chess.com records: always runnable (no masters required — they always
- *   produce `an: {}`).
+ * - Chess.com records: always runnable (no masters required — they
+ *   annotate with the optimistic in-theory default).
  * - Lichess records with K=0: always runnable (no masters required).
  * - Lichess records with K>0: require Lichess connection. When disconnected,
  *   they're held out of the pass and surface in the "Connect Lichess" prompt.
@@ -147,77 +164,83 @@ export function filterRunnableJobs(jobs: AnalysisJob[], lichessConnected: boolea
 
 /**
  * Execute a single game's analysis: run each ambiguous lookup through the
- * shared per-pass memo, classify outcomes, and assemble the `an` payload.
+ * shared per-pass memo, then run the full annotation engine (with the
+ * resolved masters lookup) and freeze the result into a `fan` payload.
  *
  * Chess.com records: the masters check is only meaningful for Lichess
  * (per the spec, lichess-only theory source). Chess.com records bypass
- * the masters loop entirely and write `an: {}` immediately — even if the
- * planner found ambiguous positions (which can happen when ExplorerEvals
- * provides the fenBefore eval but not the fenAfter, producing a 15–44 cp
- * drop the engine flags as ambiguous). Without this short-circuit, a
- * disconnected Lichess account would leave Chess.com plan>0 games stuck
- * in `skipped` forever despite `filterRunnableJobs` calling them runnable.
+ * the masters loop entirely — even if the planner found ambiguous
+ * positions (which can happen when ExplorerEvals provides the fenBefore
+ * eval but not the fenAfter, producing a 15–44 cp drop the engine flags
+ * as ambiguous). They annotate with the optimistic in-theory default,
+ * matching today's render behavior, and never get stuck behind a
+ * disconnected Lichess account.
  *
  * Returns `skipped: true` only when:
  *   - the signal aborts mid-pass, or
  *   - a Lichess record has K>0 and the token is somehow missing
  *     (filter should have removed this; defensive only), or
- *   - any masters lookup errored — caller must NOT persist any `an` for
+ *   - any masters lookup errored — caller must NOT persist any `fan` for
  *     this game (the spec requires we re-queue on transient errors rather
- *     than bake an optimistic-in-theory verdict).
+ *     than freeze an optimistic-in-theory verdict).
  */
 export async function analyzeOneGame(
     job: AnalysisJob,
     token: string | null,
     memo: Map<string, MastersMemoEntry>,
+    explorerEvals: ExplorerEvals | null,
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch,
 ): Promise<AnalyzedGameOutcome> {
-    const { record, plan } = job;
+    const { record, userLower, repertoireFens, plan, debug } = job;
 
-    // Chess.com records: always render with empty `an` (no masters), no
-    // matter what the planner produced. See doc comment above.
-    if (record.p === 'c') {
-        return { record, an: {}, skipped: false };
-    }
+    let mastersLookup: MastersLookup | undefined;
 
-    // Sync-only Lichess game (K=0): nothing to query, immediate `an: {}`.
-    if (plan.length === 0) {
-        return { record, an: {}, skipped: false };
-    }
+    // Lichess records with ambiguous positions need masters verdicts.
+    // Chess.com (no masters theory source) and K=0 Lichess games skip
+    // the masters loop and annotate with the optimistic default.
+    if (record.p === 'l' && plan.length > 0) {
+        // K>0 but no token (Lichess game, Lichess disconnected). Filter should
+        // have removed this — guard just in case.
+        if (!token) return { record, skipped: true };
 
-    // K>0 but no token (Lichess game, Lichess disconnected). Filter should
-    // have removed this — guard just in case.
-    if (!token) return { record, skipped: true };
-
-    const lookup = new MastersLookup();
-    let anyError = false;
-    for (let i = 0; i < plan.length; i++) {
-        if (signal?.aborted) return { record, skipped: true };
-        const pos = plan[i];
-        const entry = await fetchMastersWithMemo(pos.fenBefore, token, memo, signal, fetchFn);
-        if (entry.kind === 'error') {
-            anyError = true;
-            // Continue the loop — we still want to memoize results for the
-            // non-errored positions in case other games share them. We just
-            // refuse to write `an` for THIS game.
-            continue;
+        mastersLookup = new MastersLookup();
+        let anyError = false;
+        for (let i = 0; i < plan.length; i++) {
+            if (signal?.aborted) return { record, skipped: true };
+            const pos = plan[i];
+            const entry = await fetchMastersWithMemo(pos.fenBefore, token, memo, signal, fetchFn);
+            if (entry.kind === 'error') {
+                anyError = true;
+                // Continue the loop — we still want to memoize results for the
+                // non-errored positions in case other games share them. We just
+                // refuse to write `fan` for THIS game.
+                continue;
+            }
+            mastersLookup.add(pos.fenBefore, entry.result);
         }
-        // Add to the per-game lookup so buildVerdictFromPlan can resolve.
-        // The verdict builder applies the sparse-`tv` no-data rule itself
-        // (omit when `moveGames === 0` or `totalGames === 0`); we don't
-        // need to pre-classify here.
-        lookup.add(pos.fenBefore, entry.result);
+        if (anyError) {
+            return { record, skipped: true };
+        }
     }
-    if (anyError) {
-        return { record, skipped: true };
-    }
-    const an = buildVerdictFromPlan(plan, lookup);
-    return { record, an, skipped: false };
+
+    // Run the canonical engine — for ambiguous-zone opponent moves it now
+    // consults the resolved `mastersLookup`; everything else is FEN-set
+    // membership + eval drops. Freeze the result into the stored shape.
+    const annotation = annotateRecord(
+        record,
+        userLower,
+        repertoireFens,
+        explorerEvals,
+        mastersLookup,
+        debug,
+    );
+    if (!annotation) return { record, skipped: true };
+    return { record, fan: annotationToFrozen(annotation), skipped: false };
 }
 
 /**
- * Flush a batch of `(p, id) → an` updates back to the blob via the DAL.
+ * Flush a batch of `(p, id) → fan` updates back to the blob via the DAL.
  *
  * Single-attempt: GET fresh blob → merge in pending updates by record
  * `(p, id)` → drop merges for records that no longer exist → PUT once.
@@ -229,20 +252,21 @@ export async function analyzeOneGame(
  * Verdicts whose target record is missing from the fresh blob (evicted
  * by a concurrent ingest, purged by an unlink) are silently dropped.
  *
- * Conflict resolution: if the fresh record already has **any** `an`
- * (including an empty `{}` / `{tv: []}` sync-only done-state), defer to
+ * Conflict resolution: if the fresh record already has a `fan`, defer to
  * the fresh value. A stale tab that started analyzing before a freshly
- * landed `an: {}` shouldn't overwrite it with `{ tv: [...] }` — even
- * empty `an` is a legitimate "this game has been analyzed" stamp.
- * Re-annotate handles the "I want to redo this" case explicitly via
- * `persistReannotateClear` (which deletes the `an` field) before this
- * flush runs, so the only way a deferred-update happens is a real
- * concurrent-tab race.
+ * landed `fan` shouldn't overwrite it. Re-annotate handles the "I want to
+ * redo this" case explicitly via `persistReannotateClear` (which deletes
+ * the `fan` field) before this flush runs, so the only way a deferred
+ * update happens is a real concurrent-tab race.
+ *
+ * Writing `fan` also drops any legacy `an` field still lingering on an old
+ * blob — the migration gate is the presence of `fan`, and `an` carries no
+ * meaning anymore.
  *
  * Optional `signal` short-circuits between the GET/merge and the PUT;
  * throws `DOMException('AbortError')` if aborted.
  */
-export async function flushAnUpdates(
+export async function flushFanUpdates(
     dal: IRepertoireDataStore,
     updates: AnalyzedGameOutcome[],
     signal?: AbortSignal,
@@ -261,14 +285,14 @@ export async function flushAnUpdates(
     }
     let persisted = 0;
     for (const upd of updates) {
-        if (upd.skipped || !upd.an) continue;
+        if (upd.skipped || !upd.fan) continue;
         const found = findRecord(activity, upd.record.id, upd.record.p);
         if (!found) continue; // evicted / purged
-        // Conflict resolution: any present `an` on the fresh record
-        // wins. The fresh value is the authoritative "this game has
-        // been analyzed" stamp (whether or not its `tv` is empty).
-        if (found.record.an !== undefined) continue;
-        found.record.an = upd.an;
+        // Conflict resolution: any present `fan` on the fresh record wins.
+        if (found.record.fan !== undefined) continue;
+        found.record.fan = upd.fan;
+        // Drop the legacy masters-verdict field if an old blob still carries it.
+        delete (found.record as { an?: unknown }).an;
         persisted++;
     }
     if (persisted === 0) {
@@ -313,10 +337,12 @@ export async function persistOpponentAnalysis(
 }
 
 /**
- * Persist a Re-annotate clear (drop `an` and `op` for one record).
+ * Persist a Re-annotate clear (drop `fan` and `op` for one record).
  *
- * Single-attempt: GET fresh blob → delete `an` and `op` → PUT once.
- * No 412 retry — the app-root `<ConflictModal>` handles recovery.
+ * Single-attempt: GET fresh blob → delete `fan`, `op`, and any legacy `an`
+ * → PUT once. No 412 retry — the app-root `<ConflictModal>` handles
+ * recovery. Clearing `fan` re-opens the record for the analysis pass (the
+ * `fan`-absent gate).
  *
  * Optional `signal` short-circuits between the GET and the PUT.
  */
@@ -332,8 +358,9 @@ export async function persistReannotateClear(
     if (!activity) return fresh;
     const found = findRecord(activity, recordId, recordPlatform);
     if (!found) return fresh;
-    delete found.record.an;
+    delete found.record.fan;
     delete found.record.op;
+    delete (found.record as { an?: unknown }).an;
     if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
     const blob = RepertoireDataUtils.prepareDataForSave(fresh);
     await dal.storeRepertoireData(blob, signal);
@@ -343,7 +370,7 @@ export async function persistReannotateClear(
 /**
  * Persist a Re-annotate **refresh** — replace one record in place with a
  * freshly-built one (typically rebuilt from a re-fetched provider payload
- * so newer `ev` / `o` data lands) and clear its `an` / `op` so the
+ * so newer `ev` / `o` data lands) and clear its `fan` / `op` so the
  * analysis pass picks it up.
  *
  * Single-attempt: GET fresh blob → replace the record in place → PUT
@@ -380,11 +407,12 @@ export async function persistReannotateRefresh(
             r => r.id === freshRecord.id && r.p === freshRecord.p,
         );
         if (idx < 0) continue;
-        // Strip `an` / `op` defensively — the refresh always wants the
-        // analysis pass to re-derive the verdict from the new `ev`.
+        // Strip `fan` / `op` defensively — the refresh always wants the
+        // analysis pass to re-derive the annotation from the new `ev`.
         const stripped: GameRecord = { ...freshRecord };
-        delete stripped.an;
+        delete stripped.fan;
         delete stripped.op;
+        delete (stripped as { an?: unknown }).an;
         records[idx] = stripped;
         replaced = true;
         break;

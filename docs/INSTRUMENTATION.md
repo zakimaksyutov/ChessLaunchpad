@@ -14,7 +14,7 @@ http://localhost:4274/ChessLaunchpad/#/games?measurePerf=true
 | `mastersCache-ready` | `pages/GamesPage.tsx` | `totalMs`, `positions` | Load masters positions from IndexedDB |
 | `fenSets-ready` | `pages/GamesPage.tsx` | `totalMs`, `whiteFens`, `blackFens` | Load repertoire data from backend API and build FEN sets |
 | `explorerEvals-ready` | `pages/GamesPage.tsx` | `totalMs` | Load explorer eval data from static JSON |
-| `annotations-ready` | `pages/GamesPage.tsx` | `totalMs`, `computeMs`, `fromCache`, `computed`, `total` | Produce annotation map (from IndexedDB cache or `annotateGame()`) |
+| `annotations-ready` | `pages/GamesPage.tsx` | `totalMs`, `computeMs`, `fromCache`, `computed`, `total` | Reconstruct the render annotation map (pure read of each record's frozen `fan`) |
 
 ## Measuring Against a Production Build
 
@@ -100,7 +100,7 @@ For ambiguous moves, the masters API checks if the move is played by masters:
 - If < 5 absolute master games OR < 5% of position's total games → `out-of-theory`
 - Otherwise → `out-of-repertoire` (in theory, continue analysis)
 
-Masters data is fetched asynchronously (rate-limited to 1 req/sec) and accumulated in an in-memory `MastersLookup` for the current analysis batch; across passes, per-ply verdicts persist on each game's `an.tv` map on the synced repertoire blob. The first annotation pass marks ambiguous positions optimistically as `out-of-repertoire`; once masters data arrives, affected games are re-annotated.
+Masters data is fetched asynchronously (rate-limited to 1 req/sec) and accumulated in an in-memory `MastersLookup` for the current analysis batch. The masters decision is **baked into the frozen `fan.hl` codes** at analysis time — nothing about it is cached separately on the record, and render never re-queries. Re-annotate re-queries masters fresh.
 
 ## Fields
 
@@ -124,6 +124,6 @@ For deviation and out-of-repertoire-response moves, the reason includes eval-dro
 
 `app/src/services/GameAnnotationService.ts` — the `annotateGame` function accepts an optional `debug` parameter. When `true`, it emits a ply-by-ply console trace.
 
-`app/src/pages/GamesPage.tsx` — the `handleReannotate` callback adds the game ID to `debugGameIdsRef`; the annotation `useMemo` passes `debug: true` for those games.
+`app/src/pages/GamesPage.tsx` — the `handleReannotate` callback adds the record key to `debugRecordKeysRef`; the key is threaded into `buildAnalysisPlan` so the analysis pass passes `debug: true` for those records. The trace therefore fires while the game is re-annotated by the pass, not at render (render is a pure read of `fan`).
 
 `app/src/services/MastersExplorerService.ts` — Lichess Masters Explorer API client with IndexedDB caching, rate limiting, and the `MastersLookup` class used by the annotation service.

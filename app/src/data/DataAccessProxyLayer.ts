@@ -2,7 +2,7 @@ import { RepertoireData } from "../models/RepertoireData";
 import { SessionStore } from "./SessionStore";
 
 /**
- * Narrow store interface used by helpers (`runIngest`, `flushAnUpdates`,
+ * Narrow store interface used by helpers (`runIngest`, `flushFanUpdates`,
  * etc.) so they can accept either a real `DataAccessProxyLayer` or a
  * test `MockDal` without depending on the full `IDataAccessLayer`.
  *
@@ -24,7 +24,7 @@ export interface IRepertoireDataStore {
  *
  * `retrieveRepertoireData` returns a clone of the SessionStore's
  * cached data — load-bearing because helpers mutate the returned blob
- * in place (`applyIngest`, `flushAnUpdates`) and we don't want those
+ * in place (`applyIngest`, `flushFanUpdates`) and we don't want those
  * mutations leaking back into the cache. It deliberately does NOT
  * advance `this.etag`: the proxy's etag is locked at construction
  * and only moves forward on a successful save (see below).
