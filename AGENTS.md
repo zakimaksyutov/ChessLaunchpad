@@ -95,4 +95,4 @@ The dev server is pinned to **port 5274** (`strictPort: true`) to avoid conflict
 - **Never amend commits.** Always create new commits instead of using `git commit --amend`.
 - Do not auto-commit. Leave changes uncommitted for review unless explicitly told to commit.
 - **Baseline before big changes.** Run `yarn test` and `yarn test:e2e` before starting to confirm they pass, so failures after your changes aren't misattributed.
-- **Comment the "why", not the "what".** If a comment just restates what the code or types already say, delete it; keep comments only for non-obvious intent or rationale.
+- **Comment the "why", not the "what".** If a comment just restates what the code or types already say, delete it; keep comments only for non-obvious intent or rationale. Keep comments concise where possible.
