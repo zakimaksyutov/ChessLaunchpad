@@ -926,7 +926,7 @@ const GamesPage: React.FC = () => {
                 // Step 3: build the plan. Debug keys (set by Re-annotate)
                 // make the engine emit its one-shot ply-by-ply trace for the
                 // targeted record while it's analyzed.
-                const allJobs = buildAnalysisPlan(fresh, explorerEvals, debugRecordKeysRef.current);
+                const allJobs = await buildAnalysisPlan(fresh, explorerEvals, debugRecordKeysRef.current);
                 const { runnable, blockedByLichess } = filterRunnableJobs(allJobs, lichessConnected);
                 setBlockedByLichessCount(blockedByLichess.length);
 
@@ -944,8 +944,11 @@ const GamesPage: React.FC = () => {
                 const runnableKeys = runnable.map(j => `${j.record.p}:${j.record.id}`);
                 setPendingAnalysisKeys(new Set(runnableKeys));
 
-                // Step 4: run sequentially with per-pass memo.
+                // Step 4: run sequentially with per-pass memos. The engine
+                // resolves cloud evals and masters verdicts on demand as it
+                // walks each game; both memos dedup those lookups across games.
                 const memo = new Map<string, MastersMemoEntry>();
+                const cloudMemo = new Map<string, number | null>();
                 const pendingFlush: AnalyzedGameOutcome[] = [];
                 let networkRetryCount = 0;
 
@@ -961,6 +964,7 @@ const GamesPage: React.FC = () => {
                         job,
                         lichessToken,
                         memo,
+                        cloudMemo,
                         explorerEvals,
                         signal,
                     );

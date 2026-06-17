@@ -27,7 +27,7 @@ On opening `/games` (logged-in, with linked accounts):
 
 1. **Render immediately** from records that already have `fan`, newest first.
 2. **Background ingest** — run the same ingest pipeline the Dashboard runs. New games land as new records; the 100-record retention cap is enforced inside the ingest write path (see below). The two entry points (Dashboard auto, Games page) share the same pipeline, so neither can leave the blob over-cap.
-3. **Plan** — enumerate records lacking `fan`, oldest-first; for each, discover the ambiguous-zone opponent moves that need a masters lookup.
+3. **Plan** — enumerate records lacking `fan`, oldest-first; the network-free plan flags each game's ambiguous-zone opponent moves (used only to gate Lichess games behind OAuth). Analysis itself resolves evals and masters verdicts **on demand** in a single engine walk per game — see "Move highlighting" below.
 4. **Reserve placeholders** — every queued record gets a **skeleton row** in its final sorted slot before the analyze loop begins. This prevents the "rows pop in newest-first, push everything down" jumping effect as each game's `fan` lands.
 5. **Analyze sequentially, oldest-first**. Each game's frozen annotation is computed (full engine run, then frozen), written back optimistically to the in-memory tree, and the row hydrates from skeleton to content in place. Annotations flush to the backend in batches.
 6. A manual **Sync** button (next to the header) re-runs the same pipeline; the auto-trigger and the button share a single-flight lock.
@@ -94,12 +94,13 @@ Each row shows:
 | `out-of-repertoire-response` (eval-drop colored) | A user move after the **opponent** left repertoire, colored by its eval drop (inaccuracy = gold, mistake = red, blunder = purple). |
 | `out-of-repertoire` / `out-of-theory` (dimmed) | Opponent moves outside repertoire, or any move once theory has truly ended. |
 
-Eval drops use the same thresholds as the Repertoire page (inaccuracy ≥ 30 cp, mistake ≥ 50 cp, blunder ≥ 70 cp). They are computed **at analysis time** (frozen into `fan.hl`), trying eval sources in priority order:
+Eval drops use the same thresholds as the Repertoire page (inaccuracy ≥ 30 cp, mistake ≥ 50 cp, blunder ≥ 70 cp). They are computed **at analysis time** (frozen into `fan.hl`), resolving each position's eval in priority order:
 
 1. **`ExplorerEvals`** — pre-computed static evals for repertoire positions (no network).
 2. **Embedded Lichess per-ply evals** (`record.ev`). Absent for Chess.com.
+3. **Lichess cloud-eval API** (`lichess.org/api/cloud-eval`, public — no OAuth, so it covers Chess.com too) — consulted only for the **gaps** the first two sources miss. The engine resolves these **on demand** as it walks the game: it `await`s a cloud lookup at the exact ply that needs one, in walk order, and the engine's own stop conditions (opponent ≥45 → out of theory; user's first notable drop) end the walk — so the settled tail of a game is never queried. A decisive eval at the repertoire boundary means one call; an offbeat-but-reasonable opponent move with no static coverage can walk further (up to ~ply 30). Throttled 1 req/sec, deduped per-pass (misses included). Because evals resolve before the ambiguous-zone check, a decisive cloud eval can settle an opponent move without a masters lookup; sources may mix per move (e.g. an explorer "before" with a cloud "after"). Not cached across passes — the verdict is frozen into `fan`, so a game is analyzed once.
 
-When neither source has eval data for a ply, the engine falls back to its optimistic in-theory default. Render itself reads none of this — it replays `m` and paints the frozen `hl` codes.
+When no source has eval data for a position (a cloud miss is common for off-book lines), the engine falls back to its optimistic in-theory default — the same as before cloud existed. Render itself reads none of this — it replays `m` and paints the frozen `hl` codes.
 
 Each row's left border is color-coded for at-a-glance status: purple for user-deviation rows, gold/red/purple for EOT inaccuracy/mistake/blunder, no border otherwise.
 

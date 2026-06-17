@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     fetchMastersWithMemo,
+    fetchCloudWithMemo,
     MastersMemoEntry,
     planAmbiguousPositions,
 } from './GameRecordAnalysisPlanner';
@@ -58,13 +59,63 @@ describe('fetchMastersWithMemo', () => {
     });
 });
 
+describe('fetchCloudWithMemo', () => {
+    // Fake timers so the cloud-eval throttle resolves instantly.
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+    async function run<T>(p: Promise<T>): Promise<T> {
+        await vi.runAllTimersAsync();
+        return p;
+    }
+
+    function okCp(cp: number) {
+        return vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ pvs: [{ moves: 'e2e4', cp, mate: null }], depth: 30, knodes: 1 }),
+        })) as unknown as typeof fetch;
+    }
+
+    it('memoizes a successful cp across calls (one network hit per pass)', async () => {
+        const memo = new Map<string, number | null>();
+        const fetchFn = okCp(42);
+        const first = await run(fetchCloudWithMemo(fen, memo, undefined, fetchFn));
+        const second = await run(fetchCloudWithMemo(fen, memo, undefined, fetchFn));
+        expect(first).toBe(42);
+        expect(second).toBe(42);
+        expect(fetchFn).toHaveBeenCalledOnce();
+    });
+
+    it('memoizes a miss (null) so it is not re-fetched within the pass', async () => {
+        const memo = new Map<string, number | null>();
+        const fetchFn = vi.fn(async () => ({ ok: false, status: 404 })) as unknown as typeof fetch;
+        const a = await run(fetchCloudWithMemo(fen, memo, undefined, fetchFn));
+        const b = await run(fetchCloudWithMemo(fen, memo, undefined, fetchFn));
+        expect(a).toBeNull();
+        expect(b).toBeNull();
+        expect(fetchFn).toHaveBeenCalledOnce();
+    });
+
+    it('returns null and does not fetch when the signal is pre-aborted', async () => {
+        const memo = new Map<string, number | null>();
+        const ctrl = new AbortController();
+        ctrl.abort();
+        const fetchFn = vi.fn() as unknown as typeof fetch;
+        const out = await run(fetchCloudWithMemo(fen, memo, ctrl.signal, fetchFn));
+        expect(out).toBeNull();
+        expect(fetchFn).not.toHaveBeenCalled();
+    });
+});
+
 describe('planAmbiguousPositions', () => {
-    it('returns an empty plan for a fully in-repertoire game', () => {
+    it('returns an empty plan for a fully in-repertoire game', async () => {
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
         const rec = makeRecord({ m: 'e4 e5 Nf3' });
         // Note: planAmbiguousPositions runs against the user's color implied by record.wa.
-        const plan = planAmbiguousPositions(rec, 'me', fens.whiteFens, null);
+        const plan = await planAmbiguousPositions(rec, 'me', fens.whiteFens, null);
         expect(plan).toEqual([]);
     });
 

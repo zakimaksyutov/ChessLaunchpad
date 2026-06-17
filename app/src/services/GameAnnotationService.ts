@@ -7,11 +7,27 @@ import type { Platform } from './LinkedAccountsService';
 import { parseChesscomTimeControl } from './ChesscomTimeControl';
 import type { MoveStats } from './MastersExplorerService';
 
-/** Duck-typed interface for masters data lookup (satisfied by `MastersLookup`). */
+/**
+ * Duck-typed interface for masters data lookup. `isOutOfTheory` may be async so
+ * the analysis pass can fetch a verdict **on demand** (the engine awaits it):
+ * the in-memory `MastersLookup` resolves synchronously, while the pass's
+ * on-demand lookup hits the network only at the ambiguous plies the walk
+ * actually reaches. `getMoveStats` is consulted right after a non-null verdict,
+ * so it reads from whatever `isOutOfTheory` already resolved — always sync.
+ */
 export interface MastersLookupLike {
     getMoveStats(fen: string, moveSan: string): MoveStats | null;
-    isOutOfTheory(fen: string, moveSan: string): boolean | null;
+    isOutOfTheory(fen: string, moveSan: string): boolean | null | Promise<boolean | null>;
 }
+
+/**
+ * On-demand cloud-eval resolver. Returns White-POV centipawn value(s) for a
+ * FEN, or `null` when no eval is available (a miss). May be async — the engine
+ * awaits it only at plies that explorer and embedded analysis both miss, and
+ * only until its stop conditions end the walk, so the settled tail of a game is
+ * never queried.
+ */
+export type CloudEvalProvider = (fen: string) => number[] | null | Promise<number[] | null>;
 
 /**
  * When the opponent plays a move out of the user's repertoire, we check the
@@ -71,20 +87,68 @@ interface EvalLookupResult {
 }
 
 /**
- * Look up eval values for a before/after position pair, trying sources in priority order:
- * 1. ExplorerEvals (static repertoire data)
- * 2. Embedded game analysis (Lichess per-ply evals)
+ * Resolve eval values for a single position, trying sources in priority order:
+ * ExplorerEvals (static) → embedded per-ply analysis → cloud.
  *
- * Cloud evals (source 3) are handled asynchronously in a separate pass.
+ * `embeddedPly` is the ply index whose Lichess `analysis[ply]` entry holds
+ * this position's eval (the position *after* that ply is played). Explorer and
+ * cloud key by FEN, so `embeddedPly` is ignored by them. `cloudEval` is the
+ * only async source and is consulted last, so a fully-static position never
+ * awaits. Returns `null` when no source has the position.
  */
-function lookupEvals(
+async function resolveFenVals(
+    fen: string,
+    embeddedPly: number,
+    evals: ExplorerEvals | null,
+    embeddedEvals: ((plyIndex: number) => number | null) | null,
+    cloudEval?: CloudEvalProvider
+): Promise<{ vals: number[]; source: EvalSource } | null> {
+    if (evals) {
+        const vals = evals.lookupAll(fen);
+        if (vals && vals.length > 0) return { vals, source: 'explorer' };
+    }
+    if (embeddedEvals) {
+        const cp = embeddedEvals(embeddedPly);
+        if (cp !== null) return { vals: [cp], source: 'embedded' };
+    }
+    if (cloudEval) {
+        const vals = await cloudEval(fen);
+        if (vals && vals.length > 0) return { vals, source: 'cloud' };
+    }
+    return null;
+}
+
+/** Source precedence for labeling a (possibly mixed-source) before/after pair. */
+function pickEvalSource(before: EvalSource, after: EvalSource): EvalSource {
+    if (before === 'cloud' || after === 'cloud') return 'cloud';
+    if (before === 'embedded' || after === 'embedded') return 'embedded';
+    return 'explorer';
+}
+
+/**
+ * Look up eval values for a before/after position pair.
+ *
+ * Same-source pairs are tried first (ExplorerEvals for both, then embedded for
+ * both) so fully-covered positions keep their exact prior behavior and source
+ * label — and never touch the (async) cloud. When neither same-source pair is
+ * complete, each side is resolved independently across explorer → embedded →
+ * cloud, so sources may mix — e.g. an explorer "before" with a cloud "after"
+ * for a deviation into an off-book position. `computeConservativeDrop`
+ * tolerates differing value counts.
+ *
+ * `cloudEval` (when supplied) is awaited only here, only for the side(s) the
+ * static sources miss — the engine's own stop conditions then close the walk,
+ * so the cloud API is never hit for the settled tail of a game.
+ */
+async function lookupEvals(
     fenBefore: string,
     fenAfter: string,
     plyIndex: number,
     evals: ExplorerEvals | null,
-    embeddedEvals: ((plyIndex: number) => number | null) | null
-): EvalLookupResult | null {
-    // Source 1: ExplorerEvals
+    embeddedEvals: ((plyIndex: number) => number | null) | null,
+    cloudEval?: CloudEvalProvider
+): Promise<EvalLookupResult | null> {
+    // Source 1: ExplorerEvals for both sides.
     if (evals) {
         const beforeVals = evals.lookupAll(fenBefore);
         const afterVals = evals.lookupAll(fenAfter);
@@ -93,12 +157,10 @@ function lookupEvals(
         }
     }
 
-    // Source 2: Embedded game analysis
+    // Source 2: Embedded game analysis for both sides.
+    // Lichess analysis[i] = eval of position AFTER ply i is played. So for a
+    // move at plyIndex: before = analysis[plyIndex - 1], after = analysis[plyIndex].
     if (embeddedEvals) {
-        // Lichess analysis[i] = eval of position AFTER ply i is played.
-        // For a move at plyIndex:
-        //   before = position after ply (plyIndex - 1) = analysis[plyIndex - 1]
-        //   after  = position after ply plyIndex       = analysis[plyIndex]
         const beforeCp = embeddedEvals(plyIndex - 1);
         const afterCp = embeddedEvals(plyIndex);
         if (beforeCp !== null && afterCp !== null) {
@@ -106,6 +168,18 @@ function lookupEvals(
         }
     }
 
+    // Source 3: per-side resolution (sources may mix), with cloud as the final
+    // fallback. Reached only when neither same-source pair was complete — this
+    // is where on-demand cloud fetches happen.
+    const before = await resolveFenVals(fenBefore, plyIndex - 1, evals, embeddedEvals, cloudEval);
+    const after = await resolveFenVals(fenAfter, plyIndex, evals, embeddedEvals, cloudEval);
+    if (before && after) {
+        return {
+            beforeVals: before.vals,
+            afterVals: after.vals,
+            source: pickEvalSource(before.source, after.source),
+        };
+    }
     return null;
 }
 
@@ -319,7 +393,7 @@ function getOpponentName(
  * @param evals ExplorerEvals instance for eval-drop computation
  * @param maxPlies Maximum plies to display (spec says ~20 or until theory ends, whichever is longer)
  */
-export function annotateGame(
+export async function annotateGame(
     gameData: Record<string, unknown>,
     username: string,
     repertoireFens: Set<string>,
@@ -327,8 +401,9 @@ export function annotateGame(
     maxPlies: number = 30,
     platform: Platform,
     mastersLookup?: MastersLookupLike,
-    debug?: boolean
-): GameAnnotation | null {
+    debug?: boolean,
+    cloudEval?: CloudEvalProvider
+): Promise<GameAnnotation | null> {
     const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username, platform);
     if (!userColor) {
@@ -442,7 +517,7 @@ export function annotateGame(
             }
 
             // Compute eval drop for the deviation
-            const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
             if (evalResult) {
                 const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 const category = categorizeEvalDrop(drop);
@@ -466,7 +541,7 @@ export function annotateGame(
             theoryEndPly = i;
             reason = 'opponent left repertoire';
 
-            const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
@@ -479,7 +554,7 @@ export function annotateGame(
                     reason += `, opponent drop=${oppDrop.toFixed(2)} < ${AMBIGUOUS_THEORY_THRESHOLD} → clearly in theory, analyse user moves [source: ${evalResult.source}]`;
                 } else {
                     // Ambiguous zone: 15 ≤ drop < 45 — check masters DB
-                    const mastersVerdict = mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
+                    const mastersVerdict = await mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
                     if (mastersVerdict === true) {
                         highlight = 'out-of-theory';
                         postTheoryAnalysis = false;
@@ -514,7 +589,7 @@ export function annotateGame(
                 firstPostTheoryPly = i + 1;
             }
 
-            const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
             if (evalResult) {
                 const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 const category = categorizeEvalDrop(drop);
@@ -539,7 +614,7 @@ export function annotateGame(
             // Subsequent opponent move — three-zone check
             reason = 'opponent move (still in theory)';
 
-            const evalResult = lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
@@ -551,7 +626,7 @@ export function annotateGame(
                     reason += `, opponent drop=${oppDrop.toFixed(2)} < ${AMBIGUOUS_THEORY_THRESHOLD} → clearly in theory [source: ${evalResult.source}]`;
                 } else {
                     // Ambiguous zone: check masters DB
-                    const mastersVerdict = mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
+                    const mastersVerdict = await mastersLookup?.isOutOfTheory(fenBefore, allMoves[i].san);
                     if (mastersVerdict === true) {
                         highlight = 'out-of-theory';
                         postTheoryAnalysis = false;

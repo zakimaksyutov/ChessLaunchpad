@@ -1,10 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     uciToSan,
     uciLineToSan,
     formatEval,
     formatMoveWithNumber,
     fetchCloudEval,
+    fetchCloudCp,
 } from './LichessCloudEvalService';
 
 describe('uciToSan', () => {
@@ -179,5 +180,64 @@ describe('fetchCloudEval', () => {
         expect(mockFetch).toHaveBeenCalledWith(
             expect.stringContaining(encodeURIComponent(startFen))
         );
+    });
+});
+
+describe('fetchCloudCp', () => {
+    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+    // Fake timers so the 1 req/sec throttle resolves instantly and
+    // deterministically (no real wall-clock waits between tests).
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    /** Drive a fetchCloudCp call to completion, flushing the throttle timer. */
+    async function run(mockFetch: unknown, fen = startFen): Promise<number | null> {
+        const p = fetchCloudCp(fen, mockFetch as typeof fetch);
+        await vi.runAllTimersAsync();
+        return p;
+    }
+
+    function okWith(pv: Record<string, unknown> | null) {
+        return vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ pvs: pv ? [pv] : [], depth: 30, knodes: 1 }),
+        });
+    }
+
+    it('requests multiPv=1 (only the top-line eval is needed)', async () => {
+        const mockFetch = okWith({ moves: 'e2e4', cp: 20, mate: null });
+        await run(mockFetch);
+        expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('multiPv=1'));
+    });
+
+    it('returns the top PV centipawn value (White POV)', async () => {
+        expect(await run(okWith({ moves: 'e2e4', cp: 33, mate: null }))).toBe(33);
+        expect(await run(okWith({ moves: 'e2e4', cp: -150, mate: null }))).toBe(-150);
+    });
+
+    it('coalesces a forced mate to ±MATE_CP', async () => {
+        expect(await run(okWith({ moves: 'e2e4', cp: null, mate: 3 }))).toBe(10000);
+        expect(await run(okWith({ moves: 'e2e4', cp: null, mate: -5 }))).toBe(-10000);
+    });
+
+    it('returns null when Lichess has no eval (404) or no PV', async () => {
+        const notFound = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+        expect(await run(notFound)).toBeNull();
+        expect(await run(okWith(null))).toBeNull();
+    });
+
+    it('throttles successive requests by ~1 second', async () => {
+        const mockFetch = okWith({ moves: 'e2e4', cp: 10, mate: null });
+        // First call: fetched immediately.
+        await run(mockFetch);
+        const callsAfterFirst = mockFetch.mock.calls.length;
+        // Second call: must wait for the throttle before hitting the network.
+        const p2 = fetchCloudCp(startFen, mockFetch as unknown as typeof fetch);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(mockFetch.mock.calls.length).toBe(callsAfterFirst); // still throttled
+        await vi.advanceTimersByTimeAsync(600);
+        await p2;
+        expect(mockFetch.mock.calls.length).toBe(callsAfterFirst + 1);
     });
 });

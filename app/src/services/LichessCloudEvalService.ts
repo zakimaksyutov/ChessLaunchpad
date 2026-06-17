@@ -222,3 +222,51 @@ export async function fetchCloudEval(
         return null;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Rate-limited single-cp fetch for the /games analysis pass
+// ---------------------------------------------------------------------------
+
+/** Large cp magnitude representing a forced mate (matches the annotation engine). */
+const MATE_CP = 10_000;
+
+/** Delay between cloud-eval API requests in milliseconds (Lichess rate limit). */
+const CLOUD_EVAL_RATE_LIMIT_MS = 1000;
+
+let lastCloudRequestTime = 0;
+
+async function cloudRateLimitedDelay(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - lastCloudRequestTime;
+    if (elapsed < CLOUD_EVAL_RATE_LIMIT_MS) {
+        await new Promise(resolve => setTimeout(resolve, CLOUD_EVAL_RATE_LIMIT_MS - elapsed));
+    }
+    lastCloudRequestTime = Date.now();
+}
+
+/**
+ * Fetch a single White-POV centipawn eval for a position — used by the /games
+ * analysis pass to back-fill eval gaps (positions ExplorerEvals and embedded
+ * analysis both miss). Uses `multiPv=1` (only the position's top-line eval is
+ * needed) and is **not** cached: the analysis pass dedups within a run via its
+ * own per-pass memo and freezes the verdict into each game's `fan`, so a
+ * persistent cache buys nothing (see docs/product-specs/GAMES.md).
+ *
+ * Mate scores are coalesced to ±MATE_CP, matching how embedded evals handle
+ * mates, so a forced mate registers as a decisive swing. Returns `null` when
+ * Lichess has no cloud eval for the position (common for off-book lines) or on
+ * any network/parse error.
+ *
+ * Honors the 1 req/sec Lichess rate limit via a shared module-level throttle.
+ */
+export async function fetchCloudCp(
+    fen: string,
+    fetchFn: typeof fetch = fetch
+): Promise<number | null> {
+    await cloudRateLimitedDelay();
+    const result = await fetchCloudEval(fen, 1, fetchFn);
+    const pv = result?.pvs[0];
+    if (!pv) return null;
+    if (pv.mate !== null) return pv.mate > 0 ? MATE_CP : -MATE_CP;
+    return pv.cp;
+}

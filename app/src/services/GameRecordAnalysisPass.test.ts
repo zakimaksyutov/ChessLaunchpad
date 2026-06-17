@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Chess } from 'chess.js';
+import { ExplorerEvals } from '../models/ExplorerEvals';
 import {
     AnalysisJob,
     AnalyzedGameOutcome,
+    analyzeOneGame,
     buildAnalysisPlan,
     filterRunnableJobs,
     flushFanUpdates,
@@ -88,68 +91,68 @@ function clone<T>(v: T): T {
 const BASE_DATE = new Date('2026-05-25T12:00:00Z').getTime();
 
 describe('buildAnalysisPlan', () => {
-    it('returns an empty plan when there are no records', () => {
+    it('returns an empty plan when there are no records', async () => {
         const data = makeData();
-        const plan = buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data, null);
         expect(plan).toEqual([]);
     });
 
-    it('skips records that already have fan', () => {
+    it('skips records that already have fan', async () => {
         const data = makeData();
         const r = rec({ id: 'done', t: BASE_DATE, fan: fanOf([0, 0]) });
         appendGameRecord(data.activity!, r);
-        const plan = buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data, null);
         expect(plan).toEqual([]);
     });
 
-    it('includes records lacking fan, sorted oldest-first, with owner + fens attached', () => {
+    it('includes records lacking fan, sorted oldest-first, with owner + fens attached', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'old', t: BASE_DATE - 1000 * 60 * 60 * 24 }));
         appendGameRecord(data.activity!, rec({ id: 'new', t: BASE_DATE }));
-        const plan = buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data, null);
         expect(plan.map(j => j.record.id)).toEqual(['old', 'new']);
         expect(plan[0].userLower).toBe('me');
         expect(plan[0].repertoireFens).toBeInstanceOf(Set);
     });
 
-    it('flags debug records when their key is in debugKeys', () => {
+    it('flags debug records when their key is in debugKeys', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'dbg', t: BASE_DATE }));
-        const plan = buildAnalysisPlan(data, null, new Set(['l:dbg']));
+        const plan = await buildAnalysisPlan(data, null, new Set(['l:dbg']));
         expect(plan[0].debug).toBe(true);
     });
 
-    it('orphans records whose linked account was unlinked', () => {
+    it('orphans records whose linked account was unlinked', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'orphan', t: BASE_DATE, wa: 'stranger', ba: 'opp' }));
-        const plan = buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data, null);
         expect(plan).toEqual([]);
     });
 });
 
 describe('filterRunnableJobs', () => {
-    it('runs Chess.com games regardless of Lichess connection', () => {
+    it('runs Chess.com games regardless of Lichess connection', async () => {
         const j = job(rec({ id: 'cc', t: BASE_DATE, p: 'c' as const }), [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }]);
         const { runnable, blockedByLichess } = filterRunnableJobs([j], false);
         expect(runnable).toEqual([j]);
         expect(blockedByLichess).toEqual([]);
     });
 
-    it('runs Lichess sync-only games (K=0) regardless of connection', () => {
+    it('runs Lichess sync-only games (K=0) regardless of connection', async () => {
         const j = job(rec({ id: 'l1', t: BASE_DATE }), []);
         const { runnable, blockedByLichess } = filterRunnableJobs([j], false);
         expect(runnable).toEqual([j]);
         expect(blockedByLichess).toEqual([]);
     });
 
-    it('blocks Lichess K>0 games when disconnected', () => {
+    it('blocks Lichess K>0 games when disconnected', async () => {
         const j = job(rec({ id: 'l1', t: BASE_DATE }), [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }]);
         const { runnable, blockedByLichess } = filterRunnableJobs([j], false);
         expect(runnable).toEqual([]);
         expect(blockedByLichess).toEqual([j]);
     });
 
-    it('runs Lichess K>0 games when connected', () => {
+    it('runs Lichess K>0 games when connected', async () => {
         const j = job(rec({ id: 'l1', t: BASE_DATE }), [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }]);
         const { runnable, blockedByLichess } = filterRunnableJobs([j], true);
         expect(runnable).toEqual([j]);
@@ -271,7 +274,7 @@ describe('analyzeOneGame', () => {
         };
         const memo = new Map();
         const noFetch = (() => Promise.reject(new Error('fetch should not be called for chess.com records'))) as unknown as typeof fetch;
-        const outcome = await analyzeOneGame(j, null /* no lichess token */, memo, null, undefined, noFetch);
+        const outcome = await analyzeOneGame(j, null /* no lichess token */, memo, new Map(), null, undefined, noFetch);
         expect(outcome.skipped).toBe(false);
         expect(outcome.fan).toBeDefined();
         expect(Array.isArray(outcome.fan!.hl)).toBe(true);
@@ -286,26 +289,30 @@ describe('analyzeOneGame', () => {
             repertoireFens: fens.whiteFens,
             plan: [],
         };
-        const outcome = await analyzeOneGame(j, null, new Map(), null);
+        const outcome = await analyzeOneGame(j, null, new Map(), new Map(), null);
         expect(outcome.skipped).toBe(false);
         // User is white: two user moves (e4, Nf3), both in-repertoire -> code 0.
         expect(outcome.fan!.hl).toEqual([0, 0]);
     });
 
-    it('still skips Lichess K>0 games without a token (filter is defense-in-depth)', async () => {
+    it('annotates a token-less Lichess game with the optimistic default rather than skipping', async () => {
+        // analyzeOneGame no longer double-guards on the token — the OAuth gate
+        // (filterRunnableJobs) is what holds back games the network-free plan
+        // flags as needing masters. A game that reaches analysis without a token
+        // (no repertoire boundaries here, so no masters needed) is frozen, not
+        // skipped. No network calls: no eval gaps, no ambiguous positions.
         const { analyzeOneGame } = await import('./GameRecordAnalysisPass');
         const j: AnalysisJob = {
             record: rec({ id: 'l1', t: BASE_DATE }),
             userLower: 'me',
             repertoireFens: new Set<string>(),
-            plan: [
-                { moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' },
-            ],
+            plan: [],
         };
         const memo = new Map();
-        const noFetch = (() => Promise.reject(new Error('should not fetch without token'))) as unknown as typeof fetch;
-        const outcome = await analyzeOneGame(j, null, memo, null, undefined, noFetch);
-        expect(outcome.skipped).toBe(true);
+        const noFetch = (() => Promise.reject(new Error('should not fetch'))) as unknown as typeof fetch;
+        const outcome = await analyzeOneGame(j, null, memo, new Map(), null, undefined, noFetch);
+        expect(outcome.skipped).toBe(false);
+        expect(outcome.fan).toBeDefined();
     });
 });
 
@@ -479,5 +486,158 @@ describe('AbortSignal support', () => {
         await expect(persistReannotateRefresh(dal, refreshed, controller.signal))
             .rejects.toMatchObject({ name: 'AbortError' });
         expect(dal.storeCount).toBe(0);
+    });
+});
+
+describe('analyzeOneGame — cloud-eval gap fill', () => {
+    // Fake timers so the cloud-eval throttle resolves instantly. Drive the
+    // analysis to completion with `runAnalysis`, which flushes pending timers.
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    /** Replay SAN moves, returning the full FEN after each move (index 0 = start). */
+    function replayFens(sans: string[]): string[] {
+        const c = new Chess();
+        const fens = [c.fen()];
+        for (const san of sans) {
+            c.move(san);
+            fens.push(c.fen());
+        }
+        return fens;
+    }
+
+    function compact(fen: string): string {
+        return fen.split(' ').slice(0, 3).join(' ');
+    }
+
+    function whiteFensFor(pgn: string): Set<string> {
+        return buildRepertoireFenSets(pgnToRepertoires([{ pgn, orientation: 'white' }])).whiteFens;
+    }
+
+    /**
+     * A fetch mock that dispatches by URL: cloud-eval queries resolve to the cp
+     * mapped for the queried full FEN (a `null`/absent entry → 404 miss), and
+     * masters queries return an empty position. Tracks per-endpoint call counts.
+     */
+    function makeFetch(cloudByFen: Map<string, number | null>) {
+        const calls = { cloud: 0, masters: 0 };
+        const fn = vi.fn(async (url: string) => {
+            if (url.includes('cloud-eval')) {
+                calls.cloud++;
+                const fen = decodeURIComponent(url.split('fen=')[1].split('&')[0]);
+                const cp = cloudByFen.get(fen);
+                if (cp === undefined || cp === null) return { ok: false, status: 404 };
+                return { ok: true, json: async () => ({ pvs: [{ moves: 'e2e4', cp, mate: null }], depth: 30, knodes: 1 }) };
+            }
+            if (url.includes('masters')) {
+                calls.masters++;
+                return { ok: true, json: async () => ({ moves: [] }) };
+            }
+            throw new Error(`unexpected url: ${url}`);
+        });
+        return { fn: fn as unknown as typeof fetch, calls };
+    }
+
+    async function runAnalysis(job: AnalysisJob, evals: ExplorerEvals, fetchFn: typeof fetch, token: string | null = 'tok') {
+        const p = analyzeOneGame(job, token, new Map(), new Map(), evals, undefined, fetchFn);
+        await vi.runAllTimersAsync();
+        return p;
+    }
+
+    it('fills the one missing position from cloud and colors the user move a blunder', async () => {
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[3])]: [50],
+            [compact(fens[4])]: [50],
+            [compact(fens[5])]: [45],
+            [compact(fens[6])]: [40],
+            // fens[7] (after the blunder Nc3) absent → the lone cloud gap
+        });
+        const { fn, calls } = makeFetch(new Map([[fens[7], -30]]));
+        const job: AnalysisJob = {
+            record: rec({ id: 'cg1', t: BASE_DATE, m: 'e4 e5 Nf3 d6 d4 Nf6 Nc3' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+            plan: [],
+        };
+        const outcome = await runAnalysis(job, evals, fn);
+        expect(outcome.skipped).toBe(false);
+        expect(calls.cloud).toBe(1);   // exactly one cloud call — the single gap
+        expect(calls.masters).toBe(0); // no ambiguous opponent moves
+        // e4, Nf3 in-rep (0); d4 ok response (2); Nc3 blunder (5).
+        expect(outcome.fan!.hl).toEqual([0, 0, 2, 5]);
+    });
+
+    it('a decisive cloud eval (>= 45cp) classifies the opponent out of theory without a masters call', async () => {
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'g5']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[5])]: [30], // after Bb5 (before the opponent's g5)
+            // fens[6] (after g5) absent → cloud gap
+        });
+        const { fn, calls } = makeFetch(new Map([[fens[6], 120]])); // black drop = 120-30 = 90 → out of theory
+        const job: AnalysisJob = {
+            record: rec({ id: 'cg2', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 g5' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+            plan: [],
+        };
+        const outcome = await runAnalysis(job, evals, fn);
+        expect(outcome.skipped).toBe(false);
+        expect(calls.cloud).toBe(1);
+        expect(calls.masters).toBe(0); // cloud was decisive → masters skipped
+        // Only the three in-repertoire user moves before theory ended.
+        expect(outcome.fan!.hl).toEqual([0, 0, 0]);
+    });
+
+    it('a cloud miss leaves the move uncolored and still freezes the game (not skipped)', async () => {
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[3])]: [50],
+            [compact(fens[4])]: [50],
+            [compact(fens[5])]: [45],
+            [compact(fens[6])]: [40],
+        });
+        // Lichess has no eval for the gap (404).
+        const { fn, calls } = makeFetch(new Map([[fens[7], null]]));
+        const job: AnalysisJob = {
+            record: rec({ id: 'cg3', t: BASE_DATE, m: 'e4 e5 Nf3 d6 d4 Nf6 Nc3' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+            plan: [],
+        };
+        const outcome = await runAnalysis(job, evals, fn);
+        expect(outcome.skipped).toBe(false);
+        expect(calls.cloud).toBe(1);
+        // Nc3 stays code 2 (out-of-repertoire-response, no eval) — today's behavior.
+        expect(outcome.fan!.hl).toEqual([0, 0, 2, 2]);
+    });
+
+    it('stops fetching once a decisive boundary eval closes the window (lazy fill)', async () => {
+        // Opponent leaves the repertoire at ply 5 with a blunder, then the game
+        // runs on for several more off-book plies. An eager "collect all gaps,
+        // then fetch" would query every position in the window; lazy fill fetches
+        // only the boundary, sees it's decisive (out of theory), and stops.
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'Qh4', 'Nxh4', 'd6', 'd4', 'Nf6']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[5])]: [30], // after Bb5 (before the blunder Qh4)
+            // fens[6..10] (the whole post-blunder tail) absent
+        });
+        // Only the boundary position is mapped; the tail would 404 if fetched.
+        const { fn, calls } = makeFetch(new Map([[fens[6], 900]])); // black drop = 870 → out of theory
+        const job: AnalysisJob = {
+            record: rec({ id: 'cg4', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 Qh4 Nxh4 d6 d4 Nf6' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+            plan: [],
+        };
+        const outcome = await runAnalysis(job, evals, fn);
+        expect(outcome.skipped).toBe(false);
+        expect(calls.cloud).toBe(1); // boundary only — the settled tail is never fetched
+        // e4, Nf3, Bb5 in-rep (0); Nxh4, d4 after theory ended → out-of-theory (7).
+        expect(outcome.fan!.hl).toEqual([0, 0, 0, 7, 7]);
     });
 });

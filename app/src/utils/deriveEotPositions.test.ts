@@ -48,20 +48,20 @@ function makeAnalysis(evalValues: number[]): Array<Record<string, unknown>> {
 }
 
 describe('deriveEotPositions', () => {
-    it('returns null when there is no out-of-repertoire-response with eval drop', () => {
+    it('returns null when there is no out-of-repertoire-response with eval drop', async () => {
         // Game: e4 e5 Nf3 Nc6 — fully in repertoire
         const moves = 'e4 e5 Nf3 Nc6';
         const gameData = makeGameData(moves, 'me', 'opp');
         const repertoire = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
 
-        const annotation = annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
+        const annotation = await annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
         expect(annotation).not.toBeNull();
 
         const result = deriveEotPositions(gameData, annotation!, 'lichess');
         expect(result).toBeNull();
     });
 
-    it('returns correct FENs and SANs for a known blunder position', () => {
+    it('returns correct FENs and SANs for a known blunder position', async () => {
         // Repertoire: e4 e5 Nf3 Nc6. Opponent plays d6 instead of Nc6 (out of repertoire).
         // We need embedded evals to detect the eval drop on user's response.
         //
@@ -80,7 +80,7 @@ describe('deriveEotPositions', () => {
         const analysis = makeAnalysis([30, 30, 35, 35, -40, -40, 50]);
         const gameData = makeGameData(moves, 'me', 'opp', analysis);
 
-        const annotation = annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
+        const annotation = await annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
         expect(annotation).not.toBeNull();
 
         // d4 at ply 4 should be out-of-repertoire-response with a blunder eval drop
@@ -111,7 +111,7 @@ describe('deriveEotPositions', () => {
         expect(result!.fenAfter).toBe(expectedFenAfter);
     });
 
-    it('returns correct result when playing as Black', () => {
+    it('returns correct result when playing as Black', async () => {
         // User is Black. Repertoire: e4 c5 Nf3.
         // Opponent (White) plays d4 instead of Nf3 at ply 2.
         // User's response at ply 3: d5 with a large eval drop.
@@ -123,7 +123,7 @@ describe('deriveEotPositions', () => {
         const analysis = makeAnalysis([30, 30, 30, 90]);
         const gameData = makeGameData(moves, 'opp', 'me', analysis);
 
-        const annotation = annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
+        const annotation = await annotateGame(gameData, 'me', repertoire, null, 30, 'lichess');
         expect(annotation).not.toBeNull();
 
         const result = deriveEotPositions(gameData, annotation!, 'lichess');
