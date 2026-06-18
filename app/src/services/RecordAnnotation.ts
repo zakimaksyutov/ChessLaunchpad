@@ -6,6 +6,7 @@ import {
     buildAnnotationFromFrozen,
     GameAnnotation,
     MastersLookupLike,
+    CloudEvalProvider,
     getGameMetadata,
     GameMetadata,
 } from './GameAnnotationService';
@@ -92,14 +93,16 @@ function parseTcToClock(tc: string | undefined): Record<string, unknown> | undef
  * underlying annotation engine — used by the /games page's Re-annotate
  * action to surface a one-shot log for the targeted record.
  */
-export function annotateRecord(
+export async function annotateRecord(
     record: GameRecord,
     accountUsernameLower: string,
     repertoireFens: Set<string>,
     explorerEvals: ExplorerEvals | null,
     mastersLookup?: MastersLookupLike,
     debug?: boolean,
-): GameAnnotation | null {
+    cloudEval?: CloudEvalProvider,
+    cloudEvalSink?: Map<number, number>,
+): Promise<GameAnnotation | null> {
     const userColor = getRecordUserColor(record, accountUsernameLower);
     if (!userColor) return null;
     const gameData = recordToLichessGameData(record);
@@ -114,6 +117,8 @@ export function annotateRecord(
         'lichess',
         mastersLookup,
         debug,
+        cloudEval,
+        cloudEvalSink,
     );
 }
 

@@ -31,12 +31,12 @@ function rec(opts: Partial<GameRecord> & { m: string }): GameRecord {
  * fields match the live annotation up to its last user move (the frozen
  * display window ends there).
  */
-function expectRoundTrip(
+async function expectRoundTrip(
     record: GameRecord,
     userLower: string,
     fens: Set<string>,
-): { fan: FrozenAnnotation; thawed: GameAnnotation } {
-    const live = annotateRecord(record, userLower, fens, null);
+): Promise<{ fan: FrozenAnnotation; thawed: GameAnnotation }> {
+    const live = await annotateRecord(record, userLower, fens, null);
     expect(live).not.toBeNull();
     const fan = annotationToFrozen(live!);
     const recWithFan: GameRecord = { ...record, fan };
@@ -78,20 +78,20 @@ function expectRoundTrip(
 }
 
 describe('frozen-annotation round trip (annotateRecord -> freeze -> thaw)', () => {
-    it('round-trips a fully in-repertoire white game (all code 0)', () => {
+    it('round-trips a fully in-repertoire white game (all code 0)', async () => {
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
-        const { fan } = expectRoundTrip(rec({ m: 'e4 e5 Nf3' }), 'me', fens.whiteFens);
+        const { fan } = await expectRoundTrip(rec({ m: 'e4 e5 Nf3' }), 'me', fens.whiteFens);
         expect(fan.hl).toEqual([0, 0]);
         expect(fan.alt).toBeUndefined();
         // Mini-board anchors after the last in-rep move (e4 e5 Nf3 = 3 plies).
         expect(fan.mb).toBe(3);
     });
 
-    it('round-trips a deviation (code 1) white game and carries alt SANs + anchor', () => {
+    it('round-trips a deviation (code 1) white game and carries alt SANs + anchor', async () => {
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
-        const { fan, thawed } = expectRoundTrip(rec({ m: 'e4 e5 d3' }), 'me', fens.whiteFens);
+        const { fan, thawed } = await expectRoundTrip(rec({ m: 'e4 e5 d3' }), 'me', fens.whiteFens);
         expect(fan.hl).toEqual([0, 1]);
         expect(fan.alt).toContain('Nf3');
         // Anchor = position BEFORE the deviation ply (after e4 e5 = 2 plies).
@@ -104,20 +104,20 @@ describe('frozen-annotation round trip (annotateRecord -> freeze -> thaw)', () =
         expect(thawed.deviation!.userMove).toMatchObject({ from: 'd2', to: 'd3', san: 'd3' });
     });
 
-    it('round-trips a black-user in-repertoire game', () => {
+    it('round-trips a black-user in-repertoire game', async () => {
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3 Nc6', orientation: 'black' }]);
         const fens = buildRepertoireFenSets(reps);
         const record = rec({ m: 'e4 e5 Nf3 Nc6', wa: 'Opp', ba: 'Me' });
-        const { fan } = expectRoundTrip(record, 'me', fens.blackFens);
+        const { fan } = await expectRoundTrip(record, 'me', fens.blackFens);
         expect(fan.hl).toEqual([0, 0]); // user (black) moves e5, Nc6
     });
 
-    it('trims the display window to the last user move covered by hl', () => {
+    it('trims the display window to the last user move covered by hl', async () => {
         // Black user; the white move after the last black user move is dropped.
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3 Nc6', orientation: 'black' }]);
         const fens = buildRepertoireFenSets(reps);
         const record = rec({ m: 'e4 e5 Nf3 Nc6 Bb5', wa: 'Opp', ba: 'Me' });
-        const live = annotateRecord(record, 'me', fens.blackFens, null);
+        const live = await annotateRecord(record, 'me', fens.blackFens, null);
         const fan = annotationToFrozen(live!);
         const thawed = annotateRecordFromFrozen({ ...record, fan }, 'me')!;
         // hl has 2 user (black) codes -> window ends at Nc6 (ply 3), dropping Bb5.
@@ -125,26 +125,26 @@ describe('frozen-annotation round trip (annotateRecord -> freeze -> thaw)', () =
         expect(thawed.moves.map(m => m.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
     });
 
-    it('trims a trailing opponent move for a white-user game ending on a black ply', () => {
+    it('trims a trailing opponent move for a white-user game ending on a black ply', async () => {
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
         // White user; the game ends on Black's Nc6 (an opponent ply) after the
         // last white user move Nf3 — the live window keeps it, the thaw drops it.
         const record = rec({ m: 'e4 e5 Nf3 Nc6' });
-        const live = annotateRecord(record, 'me', fens.whiteFens, null);
+        const live = await annotateRecord(record, 'me', fens.whiteFens, null);
         expect(live!.moves.length).toBe(4);
-        const { thawed } = expectRoundTrip(record, 'me', fens.whiteFens);
+        const { thawed } = await expectRoundTrip(record, 'me', fens.whiteFens);
         expect(thawed.moves.map(m => m.san)).toEqual(['e4', 'e5', 'Nf3']);
     });
 
-    it('round-trips an EOT eval-drop (code 3) white game from embedded evals', () => {
+    it('round-trips an EOT eval-drop (code 3) white game from embedded evals', async () => {
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
         // After 2.Nf3 the opponent leaves book with a quiet move (a6, small
         // drop => stays "in theory"), then the user's reply Bc4 drops 35 cp
         // (inaccuracy => code 3). Evals are White's-POV centipawns per ply.
         const record = rec({ m: 'e4 e5 Nf3 a6 Bc4', ev: [20, 18, 20, 25, -10] });
-        const { fan, thawed } = expectRoundTrip(record, 'me', fens.whiteFens);
+        const { fan, thawed } = await expectRoundTrip(record, 'me', fens.whiteFens);
         expect(fan.hl).toEqual([0, 0, 3]);
         expect(fan.alt).toBeUndefined();
         const bc4 = thawed.moves.find(m => m.san === 'Bc4')!;
@@ -154,13 +154,13 @@ describe('frozen-annotation round trip (annotateRecord -> freeze -> thaw)', () =
         expect(fan.mb).toBe(5);
     });
 
-    it('round-trips a deviation that has no repertoire alternatives (alt omitted, still an issue)', () => {
+    it('round-trips a deviation that has no repertoire alternatives (alt omitted, still an issue)', async () => {
         // Repertoire ends after 1...e5 (a leaf — no authored 2nd white move),
         // so the user's 2.Nf3 is a deviation but there is no book alternative.
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
         const record = rec({ m: 'e4 e5 Nf3' });
-        const { fan, thawed } = expectRoundTrip(record, 'me', fens.whiteFens);
+        const { fan, thawed } = await expectRoundTrip(record, 'me', fens.whiteFens);
         expect(fan.hl).toEqual([0, 1]);
         expect(fan.alt).toBeUndefined();
         expect(thawed.deviation).toBeDefined();
@@ -178,7 +178,7 @@ describe('annotationToFrozen — highlight -> code mapping', () => {
     }
     const opp: AnnotatedMove = { san: 'y', isWhiteMove: false, isUserMove: false, highlight: 'out-of-theory' };
 
-    it('maps each user highlight to its code and skips opponent moves', () => {
+    it('maps each user highlight to its code and skips opponent moves', async () => {
         const ann: GameAnnotation = {
             moves: [
                 userMove('in-repertoire'),
@@ -205,7 +205,7 @@ describe('annotationToFrozen — highlight -> code mapping', () => {
         expect(fan.mb).toBe(4);
     });
 
-    it('omits alt when there is no deviation', () => {
+    it('omits alt when there is no deviation', async () => {
         const ann: GameAnnotation = {
             moves: [userMove('in-repertoire')],
             miniBoardFen: 'startpos',
@@ -218,7 +218,7 @@ describe('annotationToFrozen — highlight -> code mapping', () => {
 });
 
 describe('buildAnnotationFromFrozen — code -> highlight reconstruction', () => {
-    it('reconstructs EOT categories from codes 2/3/4/5', () => {
+    it('reconstructs EOT categories from codes 2/3/4/5', async () => {
         // White user moves at plies 0,2,4,6.
         const sans = ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'b5'];
         const fan: FrozenAnnotation = { hl: [2, 3, 4, 5], mb: 0 };
@@ -228,7 +228,7 @@ describe('buildAnnotationFromFrozen — code -> highlight reconstruction', () =>
         expect(userMoves.map(m => m.evalDrop?.category)).toEqual(['ok', 'inaccuracy', 'mistake', 'blunder']);
     });
 
-    it('reconstructs deviation arrows from alt SAN at the mb position', () => {
+    it('reconstructs deviation arrows from alt SAN at the mb position', async () => {
         const sans = ['e4', 'e5', 'd3', 'Nc6'];
         const fan: FrozenAnnotation = { hl: [0, 1], mb: 2, alt: ['Nf3'] };
         const ann = buildAnnotationFromFrozen(fan, sans, 'white');
@@ -243,11 +243,11 @@ describe('buildAnnotationFromFrozen — code -> highlight reconstruction', () =>
 });
 
 describe('annotateRecordFromFrozen', () => {
-    it('returns null when the record has no fan', () => {
+    it('returns null when the record has no fan', async () => {
         expect(annotateRecordFromFrozen(rec({ m: 'e4 e5' }), 'me')).toBeNull();
     });
 
-    it('returns null when the user color cannot be resolved', () => {
+    it('returns null when the user color cannot be resolved', async () => {
         const record: GameRecord = { ...rec({ m: 'e4 e5' }), fan: { hl: [0], mb: 0 } };
         expect(annotateRecordFromFrozen(record, 'stranger')).toBeNull();
     });

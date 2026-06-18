@@ -9,18 +9,17 @@ import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { getLinkedAccounts } from './LinkedAccountsService';
 import { findRecord, purgeRecordsFromTimestamp } from './GameRecordStore';
-import {
-    AmbiguousTheoryPosition,
-    annotationToFrozen,
-} from './GameAnnotationService';
+import { annotationToFrozen } from './GameAnnotationService';
 import { getRecordUserColor } from './GameRecordBuilder';
 import { annotateRecord } from './RecordAnnotation';
 import {
-    planAmbiguousPositions,
-    fetchMastersWithMemo,
+    makeCloudEvalProvider,
+    OnDemandMastersLookup,
+    AwaitingMastersLookup,
+    AnalysisSkipError,
+    AwaitingMastersError,
     MastersMemoEntry,
 } from './GameRecordAnalysisPlanner';
-import { MastersLookup } from './MastersExplorerService';
 
 const ANALYSIS_FLUSH_BATCH = 5;
 
@@ -30,14 +29,12 @@ const ANALYSIS_FLUSH_BATCH = 5;
  *   - `record`         : the game being analyzed.
  *   - `userLower`      : the linked-account name (lowercase) that owns it.
  *   - `repertoireFens` : the user-color FEN set this game is scored against.
- *   - `plan`           : ambiguous positions discovered before any lookup.
  *   - `debug`          : emit a one-shot ply-by-ply trace (Re-annotate only).
  */
 export interface AnalysisJob {
     record: GameRecord;
     userLower: string;
     repertoireFens: Set<string>;
-    plan: AmbiguousTheoryPosition[];
     debug?: boolean;
 }
 
@@ -57,17 +54,32 @@ export interface AnalyzedGameOutcome {
     /** New `fan` value to write (omitted when the run errored — no write). */
     fan?: FrozenAnnotation;
     /**
-     * `true` when the game was skipped (transient masters-lookup error).
-     * The page should keep the row visible in its prior state — Re-annotate
-     * can re-queue, or the next pass will pick it up.
+     * `true` when the game was not frozen this pass — a transient masters-lookup
+     * error, an aborted signal, or `awaitingMasters` (see below). The page keeps
+     * the row in its prior state; the next pass (or a Lichess connect) re-queues.
      */
     skipped: boolean;
+    /**
+     * `true` when the game reached an ambiguous position but no Lichess token
+     * was connected to resolve it. The game is deferred (not frozen) and counts
+     * toward the "connect Lichess" banner. `evUpdate` carries the cloud evals
+     * gathered so far so the re-run after connecting needn't re-fetch them.
+     */
+    awaitingMasters?: boolean;
+    /**
+     * Cloud-eval back-fill gathered during the walk, keyed by ply index (aligns
+     * 1:1 with `record.ev`). Persisted additively so a deferred game's re-run
+     * resolves those plies from `ev` instead of re-hitting the rate-limited
+     * cloud API. Only set on the `awaitingMasters` path.
+     */
+    evUpdate?: Map<number, number>;
 }
 
 /**
  * Build the analysis pass plan: enumerate every record across the activity
- * log that lacks `fan`, attach each to its linked-account user, and discover
- * its ambiguous positions (no network).
+ * log that lacks `fan`, oldest-first, and attach each to its linked-account
+ * user. No network — the per-game walk resolves evals and masters verdicts on
+ * demand (and defers games that need masters when no token is connected).
  *
  * Records whose linked account is no longer in `settings.linkedAccounts`
  * are skipped — they're orphaned (the account was unlinked after the
@@ -79,7 +91,6 @@ export interface AnalyzedGameOutcome {
  */
 export function buildAnalysisPlan(
     data: RepertoireData,
-    explorerEvals: ExplorerEvals | null,
     debugKeys?: ReadonlySet<string>,
 ): AnalysisJob[] {
     const activity = data.activity;
@@ -124,12 +135,10 @@ export function buildAnalysisPlan(
             if (!color) continue;
 
             const repertoireFens = color === 'white' ? fenSets.whiteFens : fenSets.blackFens;
-            const plan = planAmbiguousPositions(record, userLower, repertoireFens, explorerEvals);
             jobs.push({
                 record,
                 userLower,
                 repertoireFens,
-                plan,
                 debug: debugKeys?.has(`${record.p}:${record.id}`) ?? false,
             });
         }
@@ -138,109 +147,99 @@ export function buildAnalysisPlan(
 }
 
 /**
- * Pre-analysis filter: which jobs are gated by Lichess OAuth.
+ * Execute a single game's analysis in **one** annotation-engine walk, then
+ * freeze the result into a `fan` payload.
  *
- * - Chess.com records: always runnable (no masters required — they
- *   annotate with the optimistic in-theory default).
- * - Lichess records with K=0: always runnable (no masters required).
- * - Lichess records with K>0: require Lichess connection. When disconnected,
- *   they're held out of the pass and surface in the "Connect Lichess" prompt.
- */
-export function filterRunnableJobs(jobs: AnalysisJob[], lichessConnected: boolean): {
-    runnable: AnalysisJob[];
-    blockedByLichess: AnalysisJob[];
-} {
-    const runnable: AnalysisJob[] = [];
-    const blockedByLichess: AnalysisJob[] = [];
-    for (const job of jobs) {
-        if (job.record.p === 'l' && job.plan.length > 0 && !lichessConnected) {
-            blockedByLichess.push(job);
-        } else {
-            runnable.push(job);
-        }
-    }
-    return { runnable, blockedByLichess };
-}
-
-/**
- * Execute a single game's analysis: run each ambiguous lookup through the
- * shared per-pass memo, then run the full annotation engine (with the
- * resolved masters lookup) and freeze the result into a `fan` payload.
+ * The engine resolves evals and masters verdicts **on demand** as it walks the
+ * game ply-by-ply, via two providers wired to this pass's shared memos:
  *
- * Chess.com records: the masters check is only meaningful for Lichess
- * (per the spec, lichess-only theory source). Chess.com records bypass
- * the masters loop entirely — even if the planner found ambiguous
- * positions (which can happen when ExplorerEvals provides the fenBefore
- * eval but not the fenAfter, producing a 15–44 cp drop the engine flags
- * as ambiguous). They annotate with the optimistic in-theory default,
- * matching today's render behavior, and never get stuck behind a
- * disconnected Lichess account.
+ *   - Cloud-eval provider (both platforms). Resolves an eval-drop's missing
+ *     side — a position ExplorerEvals and embedded analysis both miss — from the
+ *     Lichess cloud-eval API (public; no OAuth, so this covers Chess.com too).
+ *     Because the engine's own stop conditions (opponent ≥45 → out of theory;
+ *     user's first notable drop) end the walk, cloud is hit lazily, in walk
+ *     order, and never for a game's already-settled tail. Each cloud hit is
+ *     recorded (by ply) into `cloudEvalSink` so a deferred game can persist it.
  *
- * Returns `skipped: true` only when:
- *   - the signal aborts mid-pass, or
- *   - a Lichess record has K>0 and the token is somehow missing
- *     (filter should have removed this; defensive only), or
- *   - any masters lookup errored — caller must NOT persist any `fan` for
- *     this game (the spec requires we re-queue on transient errors rather
- *     than freeze an optimistic-in-theory verdict).
+ *   - Masters provider (both platforms). When a token is connected, an
+ *     `OnDemandMastersLookup` resolves ambiguous-zone (15–44 cp) opponent moves
+ *     the walk actually reaches. With no token, an `AwaitingMastersLookup`
+ *     throws `AwaitingMastersError` the moment the walk reaches such a move —
+ *     deferring the game (banner: "connect Lichess") rather than freezing an
+ *     optimistic in-theory verdict, which would mis-color out-of-theory
+ *     positions (notably for Chess.com games). Games that never reach the
+ *     ambiguous band freeze normally regardless of token.
+ *
+ * Throttling + per-pass dedup (hits and misses) live in the memos, so the same
+ * boundary FEN is fetched at most once per pass.
+ *
+ * Returns `skipped: true` when a provider abandons the game:
+ *   - `AnalysisSkipError` — the signal aborted mid-walk, or a masters lookup
+ *     errored (transient). Caller must NOT persist any `fan`.
+ *   - `AwaitingMastersError` — additionally sets `awaitingMasters` and
+ *     `evUpdate` so the page can count the game toward the banner and persist
+ *     the cloud evals gathered so far.
+ *
+ * A cloud-eval *miss* is not an error — it leaves the position with no eval,
+ * exactly as today, and the game is still frozen.
  */
 export async function analyzeOneGame(
     job: AnalysisJob,
     token: string | null,
     memo: Map<string, MastersMemoEntry>,
+    cloudMemo: Map<string, number | null>,
     explorerEvals: ExplorerEvals | null,
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch,
 ): Promise<AnalyzedGameOutcome> {
-    const { record, userLower, repertoireFens, plan, debug } = job;
+    const { record, userLower, repertoireFens, debug } = job;
+    if (signal?.aborted) return { record, skipped: true };
 
-    let mastersLookup: MastersLookup | undefined;
+    // Cloud evals back-fill missing eval-drop sides on demand (both platforms).
+    const cloudEval = makeCloudEvalProvider(cloudMemo, signal, fetchFn);
+    // Cloud hits collected by ply so a deferred game can persist them into `ev`.
+    const cloudEvalSink = new Map<number, number>();
+    // Masters verdicts for ambiguous-zone opponent moves. With a token, resolve
+    // on demand; without one, defer the game the moment the walk needs masters.
+    const mastersLookup = token
+        ? new OnDemandMastersLookup(token, memo, signal, fetchFn)
+        : new AwaitingMastersLookup();
 
-    // Lichess records with ambiguous positions need masters verdicts.
-    // Chess.com (no masters theory source) and K=0 Lichess games skip
-    // the masters loop and annotate with the optimistic default.
-    if (record.p === 'l' && plan.length > 0) {
-        // K>0 but no token (Lichess game, Lichess disconnected). Filter should
-        // have removed this — guard just in case.
-        if (!token) return { record, skipped: true };
-
-        mastersLookup = new MastersLookup();
-        let anyError = false;
-        for (let i = 0; i < plan.length; i++) {
-            if (signal?.aborted) return { record, skipped: true };
-            const pos = plan[i];
-            const entry = await fetchMastersWithMemo(pos.fenBefore, token, memo, signal, fetchFn);
-            if (entry.kind === 'error') {
-                anyError = true;
-                // Continue the loop — we still want to memoize results for the
-                // non-errored positions in case other games share them. We just
-                // refuse to write `fan` for THIS game.
-                continue;
-            }
-            mastersLookup.add(pos.fenBefore, entry.result);
+    try {
+        // One engine walk — ambiguous-zone opponent moves consult `mastersLookup`;
+        // eval drops resolve through ExplorerEvals → embedded → `cloudEval`. The
+        // walk's stop conditions bound how far either provider is consulted.
+        const annotation = await annotateRecord(
+            record,
+            userLower,
+            repertoireFens,
+            explorerEvals,
+            mastersLookup,
+            debug,
+            cloudEval,
+            cloudEvalSink,
+        );
+        if (!annotation) return { record, skipped: true };
+        return { record, fan: annotationToFrozen(annotation), skipped: false };
+    } catch (e) {
+        // No token, but the walk reached an ambiguous position: defer the game
+        // and hand back the cloud evals gathered so far so the re-run (after a
+        // Lichess connect) resolves those plies from `ev` without re-fetching.
+        if (e instanceof AwaitingMastersError) {
+            return { record, skipped: true, awaitingMasters: true, evUpdate: cloudEvalSink };
         }
-        if (anyError) {
-            return { record, skipped: true };
-        }
+        // A provider abandoned the game (masters error or aborted signal): don't
+        // freeze a partial/optimistic verdict — re-queue on the next pass.
+        if (e instanceof AnalysisSkipError) return { record, skipped: true };
+        throw e;
     }
-
-    // Run the canonical engine — for ambiguous-zone opponent moves it now
-    // consults the resolved `mastersLookup`; everything else is FEN-set
-    // membership + eval drops. Freeze the result into the stored shape.
-    const annotation = annotateRecord(
-        record,
-        userLower,
-        repertoireFens,
-        explorerEvals,
-        mastersLookup,
-        debug,
-    );
-    if (!annotation) return { record, skipped: true };
-    return { record, fan: annotationToFrozen(annotation), skipped: false };
 }
 
 /**
- * Flush a batch of `(p, id) → fan` updates back to the blob via the DAL.
+ * Flush a batch of analysis outcomes back to the blob via the DAL. Each outcome
+ * writes either a frozen `fan` (a fully-analyzed game) or, for a deferred
+ * `awaitingMasters` game, an additive `ev` cloud back-fill so its re-run after a
+ * Lichess connect resolves those plies offline.
  *
  * Single-attempt: GET fresh blob → merge in pending updates by record
  * `(p, id)` → drop merges for records that no longer exist → PUT once.
@@ -285,15 +284,42 @@ export async function flushFanUpdates(
     }
     let persisted = 0;
     for (const upd of updates) {
-        if (upd.skipped || !upd.fan) continue;
         const found = findRecord(activity, upd.record.id, upd.record.p);
         if (!found) continue; // evicted / purged
-        // Conflict resolution: any present `fan` on the fresh record wins.
+        // Conflict resolution: any present `fan` on the fresh record wins —
+        // the game is already analyzed, so neither a stale `fan` nor a deferred
+        // `ev` back-fill should touch it.
         if (found.record.fan !== undefined) continue;
-        found.record.fan = upd.fan;
-        // Drop the legacy masters-verdict field if an old blob still carries it.
-        delete (found.record as { an?: unknown }).an;
-        persisted++;
+
+        if (!upd.skipped && upd.fan) {
+            found.record.fan = upd.fan;
+            // Drop the legacy masters-verdict field if an old blob still carries it.
+            delete (found.record as { an?: unknown }).an;
+            persisted++;
+            continue;
+        }
+
+        // Deferred (awaiting-masters) game: additively back-fill the cloud evals
+        // it gathered into `ev` so its re-run resolves those plies offline. Never
+        // overwrites an existing eval — only fills `null`/absent slots. Only
+        // persists when a slot actually changes, so a re-pass over an
+        // already-cached deferred game doesn't trigger a redundant PUT.
+        if (upd.evUpdate && upd.evUpdate.size > 0) {
+            const ev = found.record.ev ? found.record.ev.slice() : [];
+            let changed = false;
+            for (const [ply, cp] of upd.evUpdate) {
+                if (ply < 0) continue;
+                while (ev.length <= ply) ev.push(null);
+                if (ev[ply] === null || ev[ply] === undefined) {
+                    ev[ply] = cp;
+                    changed = true;
+                }
+            }
+            if (changed) {
+                found.record.ev = ev;
+                persisted++;
+            }
+        }
     }
     if (persisted === 0) {
         return { data: fresh, persisted: 0 };

@@ -37,7 +37,6 @@ import {
     AnalyzedGameOutcome,
     ANALYSIS_FLUSH_BATCH,
     buildAnalysisPlan,
-    filterRunnableJobs,
     analyzeOneGame,
     flushFanUpdates,
     persistOpponentAnalysis,
@@ -561,7 +560,7 @@ const GamesPage: React.FC = () => {
     const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({ phase: 'idle' });
     const [analysisError, setAnalysisError] = useState<string>('');
     const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
-    const [blockedByLichessCount, setBlockedByLichessCount] = useState(0);
+    const [awaitingMastersCount, setAwaitingMastersCount] = useState(0);
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
     const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
@@ -606,7 +605,7 @@ const GamesPage: React.FC = () => {
      * newest-first, push everything down" jumping effect that used to
      * happen as each game's `fan` arrived.
      *
-     * Populated right after `filterRunnableJobs` returns; trimmed as
+     * Populated right after `buildAnalysisPlan` returns; trimmed as
      * each game's `fan` lands; cleared in the pass's `finally`.
      */
     const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(new Set());
@@ -925,10 +924,12 @@ const GamesPage: React.FC = () => {
 
                 // Step 3: build the plan. Debug keys (set by Re-annotate)
                 // make the engine emit its one-shot ply-by-ply trace for the
-                // targeted record while it's analyzed.
-                const allJobs = buildAnalysisPlan(fresh, explorerEvals, debugRecordKeysRef.current);
-                const { runnable, blockedByLichess } = filterRunnableJobs(allJobs, lichessConnected);
-                setBlockedByLichessCount(blockedByLichess.length);
+                // targeted record while it's analyzed. Every queued game runs;
+                // the walk itself defers any that need masters with no token.
+                const runnable = buildAnalysisPlan(fresh, debugRecordKeysRef.current);
+                // Reset the "awaiting Lichess" banner; it re-accumulates below as
+                // games defer on reaching an ambiguous position with no token.
+                setAwaitingMastersCount(0);
 
                 if (runnable.length === 0) {
                     setAnalysisProgress({ phase: 'idle' });
@@ -944,8 +945,11 @@ const GamesPage: React.FC = () => {
                 const runnableKeys = runnable.map(j => `${j.record.p}:${j.record.id}`);
                 setPendingAnalysisKeys(new Set(runnableKeys));
 
-                // Step 4: run sequentially with per-pass memo.
+                // Step 4: run sequentially with per-pass memos. The engine
+                // resolves cloud evals and masters verdicts on demand as it
+                // walks each game; both memos dedup those lookups across games.
                 const memo = new Map<string, MastersMemoEntry>();
+                const cloudMemo = new Map<string, number | null>();
                 const pendingFlush: AnalyzedGameOutcome[] = [];
                 let networkRetryCount = 0;
 
@@ -961,11 +965,22 @@ const GamesPage: React.FC = () => {
                         job,
                         lichessToken,
                         memo,
+                        cloudMemo,
                         explorerEvals,
                         signal,
                     );
                     if (outcome.skipped) {
-                        networkRetryCount += 1;
+                        if (outcome.awaitingMasters) {
+                            // Deferred for lack of a Lichess token. Count it for
+                            // the banner and queue its cloud-eval back-fill so a
+                            // later connect re-runs without re-fetching.
+                            setAwaitingMastersCount(c => c + 1);
+                            if (outcome.evUpdate && outcome.evUpdate.size > 0) {
+                                pendingFlush.push(outcome);
+                            }
+                        } else {
+                            networkRetryCount += 1;
+                        }
                         continue;
                     }
                     pendingFlush.push(outcome);
@@ -1379,13 +1394,13 @@ const GamesPage: React.FC = () => {
                 </div>
             </div>
 
-            {blockedByLichessCount > 0 && !lichessConnected && (
+            {awaitingMastersCount > 0 && !lichessConnected && (
                 <div className="lichess-warning">
-                    {blockedByLichessCount} game{blockedByLichessCount === 1 ? '' : 's'} (not shown){' '}
-                    {blockedByLichessCount === 1 ? 'requires' : 'require'} additional analysis using masters opening explorer.{' '}
+                    {awaitingMastersCount} game{awaitingMastersCount === 1 ? '' : 's'} (not shown){' '}
+                    {awaitingMastersCount === 1 ? 'requires' : 'require'} additional analysis using masters opening explorer.{' '}
                     <Link to="/settings">Connect to Lichess</Link> to finish analysis of{' '}
-                    {blockedByLichessCount === 1 ? 'this game' : 'these games'} and to see{' '}
-                    {blockedByLichessCount === 1 ? 'it' : 'them'}.
+                    {awaitingMastersCount === 1 ? 'this game' : 'these games'} and to see{' '}
+                    {awaitingMastersCount === 1 ? 'it' : 'them'}.
                 </div>
             )}
 
