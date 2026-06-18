@@ -38,6 +38,54 @@ A **sticky session ordering** keeps already-rendered rows in their slot for the 
 
 A status pill next to the Games header shows the current state — syncing (spinner), analyzing N of M games (progress bar) when the pass has more than a few games to process, or last-sync timestamp once complete. The timestamp is stamped on every completion path (success, error, empty) since failures are silent in the UI.
 
+## Analysis Pipeline
+
+A pass analyzes each queued game in **one async engine walk** that resolves evals and masters verdicts **on demand** as it steps ply-by-ply. There is no separate pre-fetch phase — the walk's own stop conditions bound how far the (rate-limited) cloud-eval and masters APIs are consulted, so neither is ever hit for a game's already-settled tail.
+
+```
+sync / open /games
+   │
+   ▼
+ingest games  ──▶  plan: list records lacking `fan`, oldest-first   (no network)
+   │
+   ▼
+for each game, sequentially (cloud-eval + masters caches shared across the pass):
+   │
+   single async walk ──▶ freeze into `fan`
+   │      │
+   │      ├─ completed              → write `fan`, hydrate the row, flush in batches
+   │      ├─ reached masters-needing → defer: count toward "connect Lichess" banner;
+   │      │   position, no token        persist cloud evals gathered so far into `ev`
+   │      └─ transient failure /     → skip without freezing; re-queues next pass
+   │          abort
+   ▼
+final flush of remaining `fan` writes back to the blob
+```
+
+The per-game walk steps moves oldest→newest, tracking whether the game is "still in theory":
+
+```
+walk move i:
+   │
+   ├─ user move stays in repertoire     → in-repertoire
+   ├─ user leaves repertoire            → deviation            (+ eval drop)
+   ├─ opponent leaves repertoire        → classify by opponent's eval drop:
+   │        ≥ 45 cp   → out of theory → STOP analysing
+   │        < 15 cp   → in theory     → keep analysing user moves
+   │        15–44 cp  → ambiguous     → masters verdict (fetched on demand):
+   │                                       out of theory → STOP
+   │                                       in theory     → keep analysing
+   │                                       no token      → DEFER the game
+   ├─ user response (post-theory)       → eval drop; first notable drop → STOP
+   └─ stop after ~30 plies, or theory-end + a short buffer
+   │
+   ▼
+eval for any position is resolved in priority order, on demand:
+   ExplorerEvals (static) → record.ev (embedded) → Lichess cloud-eval (gaps only)
+```
+
+The walk produces a live annotation that is immediately **frozen** into `fan` (below); render never re-runs this walk — it is a pure read of `fan`.
+
 ## Frozen Annotation (`fan`)
 
 `fan` is the page's "done" marker on a record and the **only** input render reads. It freezes everything the row needs at analysis time, so render is a pure read — no repertoire lookups, no eval lookups, no masters queries. This means editing your repertoire later can never retroactively turn an old, previously-fine game into a "mistake," and a row paints correctly on first render (no eval-resource load-order flash).
