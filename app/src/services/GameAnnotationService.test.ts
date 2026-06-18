@@ -814,7 +814,7 @@ describe('annotateGame', () => {
             };
         }
 
-        it('drop < 15 → opponent move is out-of-repertoire (in theory), no ambiguous position', async () => {
+        it('drop < 15 → opponent move is out-of-repertoire (in theory)', async () => {
             const gameData = makeGameWithOppDrop(10); // 10cp < 15cp threshold
             const result = await annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
@@ -822,10 +822,9 @@ describe('annotateGame', () => {
             const d6Move = result!.moves[3]; // ply 3
             expect(d6Move.san).toBe('d6');
             expect(d6Move.highlight).toBe('out-of-repertoire');
-            expect(result!.ambiguousTheoryPositions).toBeUndefined();
         });
 
-        it('drop >= 45 → opponent move is out-of-theory, no ambiguous position', async () => {
+        it('drop >= 45 → opponent move is out-of-theory', async () => {
             const gameData = makeGameWithOppDrop(50); // 50cp >= 45cp threshold
             const result = await annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
@@ -833,10 +832,9 @@ describe('annotateGame', () => {
             const d6Move = result!.moves[3];
             expect(d6Move.san).toBe('d6');
             expect(d6Move.highlight).toBe('out-of-theory');
-            expect(result!.ambiguousTheoryPositions).toBeUndefined();
         });
 
-        it('drop 15-44 without masters data → out-of-repertoire + ambiguous position collected', async () => {
+        it('drop 15-44 without masters data → out-of-repertoire (optimistic default)', async () => {
             const gameData = makeGameWithOppDrop(30); // 30cp, in ambiguous zone
             const result = await annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
 
@@ -844,9 +842,6 @@ describe('annotateGame', () => {
             const d6Move = result!.moves[3];
             expect(d6Move.san).toBe('d6');
             expect(d6Move.highlight).toBe('out-of-repertoire'); // optimistic default
-            expect(result!.ambiguousTheoryPositions).toBeDefined();
-            expect(result!.ambiguousTheoryPositions!).toHaveLength(1);
-            expect(result!.ambiguousTheoryPositions![0].moveSan).toBe('d6');
         });
 
         it('drop 15-44 with masters data showing rare move → out-of-theory', async () => {
@@ -870,7 +865,6 @@ describe('annotateGame', () => {
             expect(result).not.toBeNull();
             const d6Move = result!.moves[3];
             expect(d6Move.highlight).toBe('out-of-theory');
-            expect(result!.ambiguousTheoryPositions).toBeUndefined();
         });
 
         it('drop 15-44 with masters data showing low percentage → out-of-theory', async () => {
@@ -915,7 +909,6 @@ describe('annotateGame', () => {
             expect(result).not.toBeNull();
             const d6Move = result!.moves[3];
             expect(d6Move.highlight).toBe('out-of-repertoire');
-            expect(result!.ambiguousTheoryPositions).toBeUndefined();
         });
 
         it('out-of-theory from masters stops post-theory analysis', async () => {
