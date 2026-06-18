@@ -6,7 +6,6 @@ import {
     AnalyzedGameOutcome,
     analyzeOneGame,
     buildAnalysisPlan,
-    filterRunnableJobs,
     flushFanUpdates,
     persistOpponentAnalysis,
     persistReannotateClear,
@@ -53,9 +52,9 @@ function fanOf(hl: number[], mb = 0, alt?: string[]): FrozenAnnotation {
     return alt ? { hl, mb, alt } : { hl, mb };
 }
 
-/** A bare AnalysisJob carrier for the filter/analyze tests. */
-function job(record: GameRecord, plan: AnalysisJob['plan']): AnalysisJob {
-    return { record, userLower: 'me', repertoireFens: new Set<string>(), plan };
+/** A bare AnalysisJob carrier for the analyze tests. */
+function job(record: GameRecord): AnalysisJob {
+    return { record, userLower: 'me', repertoireFens: new Set<string>() };
 }
 
 class MockDal implements IDataAccessLayer {
@@ -93,7 +92,7 @@ const BASE_DATE = new Date('2026-05-25T12:00:00Z').getTime();
 describe('buildAnalysisPlan', () => {
     it('returns an empty plan when there are no records', async () => {
         const data = makeData();
-        const plan = await buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data);
         expect(plan).toEqual([]);
     });
 
@@ -101,7 +100,7 @@ describe('buildAnalysisPlan', () => {
         const data = makeData();
         const r = rec({ id: 'done', t: BASE_DATE, fan: fanOf([0, 0]) });
         appendGameRecord(data.activity!, r);
-        const plan = await buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data);
         expect(plan).toEqual([]);
     });
 
@@ -109,7 +108,7 @@ describe('buildAnalysisPlan', () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'old', t: BASE_DATE - 1000 * 60 * 60 * 24 }));
         appendGameRecord(data.activity!, rec({ id: 'new', t: BASE_DATE }));
-        const plan = await buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data);
         expect(plan.map(j => j.record.id)).toEqual(['old', 'new']);
         expect(plan[0].userLower).toBe('me');
         expect(plan[0].repertoireFens).toBeInstanceOf(Set);
@@ -118,45 +117,15 @@ describe('buildAnalysisPlan', () => {
     it('flags debug records when their key is in debugKeys', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'dbg', t: BASE_DATE }));
-        const plan = await buildAnalysisPlan(data, null, new Set(['l:dbg']));
+        const plan = await buildAnalysisPlan(data, new Set(['l:dbg']));
         expect(plan[0].debug).toBe(true);
     });
 
     it('orphans records whose linked account was unlinked', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'orphan', t: BASE_DATE, wa: 'stranger', ba: 'opp' }));
-        const plan = await buildAnalysisPlan(data, null);
+        const plan = await buildAnalysisPlan(data);
         expect(plan).toEqual([]);
-    });
-});
-
-describe('filterRunnableJobs', () => {
-    it('runs Chess.com games regardless of Lichess connection', async () => {
-        const j = job(rec({ id: 'cc', t: BASE_DATE, p: 'c' as const }), [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }]);
-        const { runnable, blockedByLichess } = filterRunnableJobs([j], false);
-        expect(runnable).toEqual([j]);
-        expect(blockedByLichess).toEqual([]);
-    });
-
-    it('runs Lichess sync-only games (K=0) regardless of connection', async () => {
-        const j = job(rec({ id: 'l1', t: BASE_DATE }), []);
-        const { runnable, blockedByLichess } = filterRunnableJobs([j], false);
-        expect(runnable).toEqual([j]);
-        expect(blockedByLichess).toEqual([]);
-    });
-
-    it('blocks Lichess K>0 games when disconnected', async () => {
-        const j = job(rec({ id: 'l1', t: BASE_DATE }), [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }]);
-        const { runnable, blockedByLichess } = filterRunnableJobs([j], false);
-        expect(runnable).toEqual([]);
-        expect(blockedByLichess).toEqual([j]);
-    });
-
-    it('runs Lichess K>0 games when connected', async () => {
-        const j = job(rec({ id: 'l1', t: BASE_DATE }), [{ moveIndex: 0, plyIndex: 4, fenBefore: 'x', moveSan: 'a3' }]);
-        const { runnable, blockedByLichess } = filterRunnableJobs([j], true);
-        expect(runnable).toEqual([j]);
-        expect(blockedByLichess).toEqual([]);
     });
 });
 
@@ -257,25 +226,77 @@ describe('flushFanUpdates', () => {
         expect(persisted).toBe(0);
         expect(dal.storeCount).toBe(0);
     });
+
+    it('back-fills ev additively for a deferred (awaiting-masters) game without overwriting existing evals', async () => {
+        const data = makeData();
+        const r = rec({ id: 'cc', t: BASE_DATE, p: 'c' });
+        r.ev = [10, null]; // existing partial evals
+        appendGameRecord(data.activity!, r);
+        const dal = new MockDal(data);
+
+        const updates: AnalyzedGameOutcome[] = [
+            {
+                record: rec({ id: 'cc', t: BASE_DATE, p: 'c' }),
+                skipped: true,
+                awaitingMasters: true,
+                evUpdate: new Map([[0, 88], [1, 99], [3, 55]]),
+            },
+        ];
+        const { persisted } = await flushFanUpdates(dal, updates);
+        expect(persisted).toBe(1);
+        const stored = dal.data.activity!.practiceLog[0].games!.records![0];
+        // index 0 keeps its existing 10 (no overwrite); index 1 fills the null;
+        // index 3 extends, padding the gap at index 2 with null.
+        expect(stored.ev).toEqual([10, 99, null, 55]);
+        expect(stored.fan).toBeUndefined();
+    });
+
+    it('does not re-write ev (no PUT) when the back-fill changes nothing', async () => {
+        const data = makeData();
+        const r = rec({ id: 'cc', t: BASE_DATE, p: 'c' });
+        r.ev = [null, null, 60]; // already carries the cloud eval from a prior pass
+        appendGameRecord(data.activity!, r);
+        const dal = new MockDal(data);
+
+        const updates: AnalyzedGameOutcome[] = [
+            { record: rec({ id: 'cc', t: BASE_DATE, p: 'c' }), skipped: true, awaitingMasters: true, evUpdate: new Map([[2, 60]]) },
+        ];
+        const { persisted } = await flushFanUpdates(dal, updates);
+        expect(persisted).toBe(0);
+        expect(dal.storeCount).toBe(0);
+    });
+
+    it('does not back-fill ev when the fresh record already has a fan', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE, fan: fanOf([0]) }));
+        const dal = new MockDal(data);
+        const updates: AnalyzedGameOutcome[] = [
+            { record: rec({ id: 'g1', t: BASE_DATE }), skipped: true, awaitingMasters: true, evUpdate: new Map([[2, 33]]) },
+        ];
+        const { persisted } = await flushFanUpdates(dal, updates);
+        expect(persisted).toBe(0);
+        expect(dal.storeCount).toBe(0);
+        const stored = dal.data.activity!.practiceLog[0].games!.records![0];
+        expect(stored.ev).toBeUndefined();
+    });
 });
 
 describe('analyzeOneGame', () => {
-    it('produces a frozen annotation for Chess.com records without touching masters (even with ambiguous plan + no token)', async () => {
+    it('freezes a game that never reaches an ambiguous position without any network call (no token)', async () => {
+        // Empty repertoire FEN set: every move falls straight to "out of theory",
+        // so the masters lookup is never consulted. A token-less game like this
+        // freezes normally — no defer, no fetch — regardless of platform.
         const { analyzeOneGame } = await import('./GameRecordAnalysisPass');
         const j: AnalysisJob = {
             record: rec({ id: 'cc1', t: BASE_DATE, p: 'c' }),
             userLower: 'me',
             repertoireFens: new Set<string>(),
-            // Chess.com can land in the ambiguous zone via ExplorerEvals; the
-            // masters loop must be bypassed entirely for p='c'.
-            plan: [
-                { moveIndex: 0, plyIndex: 4, fenBefore: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moveSan: 'a3' },
-            ],
         };
         const memo = new Map();
-        const noFetch = (() => Promise.reject(new Error('fetch should not be called for chess.com records'))) as unknown as typeof fetch;
+        const noFetch = (() => Promise.reject(new Error('fetch should not be called'))) as unknown as typeof fetch;
         const outcome = await analyzeOneGame(j, null /* no lichess token */, memo, new Map(), null, undefined, noFetch);
         expect(outcome.skipped).toBe(false);
+        expect(outcome.awaitingMasters).toBeUndefined();
         expect(outcome.fan).toBeDefined();
         expect(Array.isArray(outcome.fan!.hl)).toBe(true);
     });
@@ -287,32 +308,11 @@ describe('analyzeOneGame', () => {
             record: rec({ id: 'l-in', t: BASE_DATE, m: 'e4 e5 Nf3' }),
             userLower: 'me',
             repertoireFens: fens.whiteFens,
-            plan: [],
         };
         const outcome = await analyzeOneGame(j, null, new Map(), new Map(), null);
         expect(outcome.skipped).toBe(false);
         // User is white: two user moves (e4, Nf3), both in-repertoire -> code 0.
         expect(outcome.fan!.hl).toEqual([0, 0]);
-    });
-
-    it('annotates a token-less Lichess game with the optimistic default rather than skipping', async () => {
-        // analyzeOneGame no longer double-guards on the token — the OAuth gate
-        // (filterRunnableJobs) is what holds back games the network-free plan
-        // flags as needing masters. A game that reaches analysis without a token
-        // (no repertoire boundaries here, so no masters needed) is frozen, not
-        // skipped. No network calls: no eval gaps, no ambiguous positions.
-        const { analyzeOneGame } = await import('./GameRecordAnalysisPass');
-        const j: AnalysisJob = {
-            record: rec({ id: 'l1', t: BASE_DATE }),
-            userLower: 'me',
-            repertoireFens: new Set<string>(),
-            plan: [],
-        };
-        const memo = new Map();
-        const noFetch = (() => Promise.reject(new Error('should not fetch'))) as unknown as typeof fetch;
-        const outcome = await analyzeOneGame(j, null, memo, new Map(), null, undefined, noFetch);
-        expect(outcome.skipped).toBe(false);
-        expect(outcome.fan).toBeDefined();
     });
 });
 
@@ -559,7 +559,6 @@ describe('analyzeOneGame — cloud-eval gap fill', () => {
             record: rec({ id: 'cg1', t: BASE_DATE, m: 'e4 e5 Nf3 d6 d4 Nf6 Nc3' }),
             userLower: 'me',
             repertoireFens: whiteFens,
-            plan: [],
         };
         const outcome = await runAnalysis(job, evals, fn);
         expect(outcome.skipped).toBe(false);
@@ -581,7 +580,6 @@ describe('analyzeOneGame — cloud-eval gap fill', () => {
             record: rec({ id: 'cg2', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 g5' }),
             userLower: 'me',
             repertoireFens: whiteFens,
-            plan: [],
         };
         const outcome = await runAnalysis(job, evals, fn);
         expect(outcome.skipped).toBe(false);
@@ -606,7 +604,6 @@ describe('analyzeOneGame — cloud-eval gap fill', () => {
             record: rec({ id: 'cg3', t: BASE_DATE, m: 'e4 e5 Nf3 d6 d4 Nf6 Nc3' }),
             userLower: 'me',
             repertoireFens: whiteFens,
-            plan: [],
         };
         const outcome = await runAnalysis(job, evals, fn);
         expect(outcome.skipped).toBe(false);
@@ -632,12 +629,38 @@ describe('analyzeOneGame — cloud-eval gap fill', () => {
             record: rec({ id: 'cg4', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 Qh4 Nxh4 d6 d4 Nf6' }),
             userLower: 'me',
             repertoireFens: whiteFens,
-            plan: [],
         };
         const outcome = await runAnalysis(job, evals, fn);
         expect(outcome.skipped).toBe(false);
         expect(calls.cloud).toBe(1); // boundary only — the settled tail is never fetched
         // e4, Nf3, Bb5 in-rep (0); Nxh4, d4 after theory ended → out-of-theory (7).
         expect(outcome.fan!.hl).toEqual([0, 0, 0, 7, 7]);
+    });
+
+    it('defers a game that reaches an ambiguous opponent move with no token, persisting the cloud evals it gathered', async () => {
+        // Opponent leaves the repertoire at ply 5 with a drop in the 15–44 band,
+        // so the walk needs a masters verdict. With no token connected, the game
+        // is deferred (not frozen) and the cloud eval it back-filled is handed
+        // back keyed by ply so the re-run after a Lichess connect needn't refetch.
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[5])]: [30], // after Bb5 (before the opponent's a6)
+            // fens[6] (after a6) absent → cloud gap; cloud says 60 → drop = 30 (ambiguous)
+        });
+        const { fn, calls } = makeFetch(new Map([[fens[6], 60]]));
+        const job: AnalysisJob = {
+            record: rec({ id: 'cg5', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 a6' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+        };
+        const outcome = await runAnalysis(job, evals, fn, null /* no token */);
+        expect(outcome.skipped).toBe(true);
+        expect(outcome.awaitingMasters).toBe(true);
+        expect(outcome.fan).toBeUndefined();
+        expect(calls.cloud).toBe(1);
+        expect(calls.masters).toBe(0); // AwaitingMastersLookup throws before any fetch
+        // The cloud hit for the opponent's after-position (ply 5) was recorded.
+        expect(outcome.evUpdate?.get(5)).toBe(60);
     });
 });

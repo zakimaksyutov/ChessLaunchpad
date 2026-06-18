@@ -101,7 +101,8 @@ async function resolveFenVals(
     embeddedPly: number,
     evals: ExplorerEvals | null,
     embeddedEvals: ((plyIndex: number) => number | null) | null,
-    cloudEval?: CloudEvalProvider
+    cloudEval?: CloudEvalProvider,
+    cloudEvalSink?: Map<number, number>
 ): Promise<{ vals: number[]; source: EvalSource } | null> {
     if (evals) {
         const vals = evals.lookupAll(fen);
@@ -113,7 +114,13 @@ async function resolveFenVals(
     }
     if (cloudEval) {
         const vals = await cloudEval(fen);
-        if (vals && vals.length > 0) return { vals, source: 'cloud' };
+        if (vals && vals.length > 0) {
+            // Record the cloud hit keyed by its ply so the pass can persist it
+            // into `record.ev` (indices align 1:1 with `ev`). `embeddedPly < 0`
+            // is the pre-game "before" of ply 0 — it has no `ev` slot, so skip.
+            if (embeddedPly >= 0) cloudEvalSink?.set(embeddedPly, vals[0]);
+            return { vals, source: 'cloud' };
+        }
     }
     return null;
 }
@@ -146,7 +153,8 @@ async function lookupEvals(
     plyIndex: number,
     evals: ExplorerEvals | null,
     embeddedEvals: ((plyIndex: number) => number | null) | null,
-    cloudEval?: CloudEvalProvider
+    cloudEval?: CloudEvalProvider,
+    cloudEvalSink?: Map<number, number>
 ): Promise<EvalLookupResult | null> {
     // Source 1: ExplorerEvals for both sides.
     if (evals) {
@@ -171,8 +179,8 @@ async function lookupEvals(
     // Source 3: per-side resolution (sources may mix), with cloud as the final
     // fallback. Reached only when neither same-source pair was complete — this
     // is where on-demand cloud fetches happen.
-    const before = await resolveFenVals(fenBefore, plyIndex - 1, evals, embeddedEvals, cloudEval);
-    const after = await resolveFenVals(fenAfter, plyIndex, evals, embeddedEvals, cloudEval);
+    const before = await resolveFenVals(fenBefore, plyIndex - 1, evals, embeddedEvals, cloudEval, cloudEvalSink);
+    const after = await resolveFenVals(fenAfter, plyIndex, evals, embeddedEvals, cloudEval, cloudEvalSink);
     if (before && after) {
         return {
             beforeVals: before.vals,
@@ -402,7 +410,8 @@ export async function annotateGame(
     platform: Platform,
     mastersLookup?: MastersLookupLike,
     debug?: boolean,
-    cloudEval?: CloudEvalProvider
+    cloudEval?: CloudEvalProvider,
+    cloudEvalSink?: Map<number, number>
 ): Promise<GameAnnotation | null> {
     const gameId = gameData.id as string | undefined;
     const userColor = getUserColor(gameData, username, platform);
@@ -517,7 +526,7 @@ export async function annotateGame(
             }
 
             // Compute eval drop for the deviation
-            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
             if (evalResult) {
                 const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 const category = categorizeEvalDrop(drop);
@@ -541,7 +550,7 @@ export async function annotateGame(
             theoryEndPly = i;
             reason = 'opponent left repertoire';
 
-            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {
@@ -589,7 +598,7 @@ export async function annotateGame(
                 firstPostTheoryPly = i + 1;
             }
 
-            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
             if (evalResult) {
                 const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 const category = categorizeEvalDrop(drop);
@@ -614,7 +623,7 @@ export async function annotateGame(
             // Subsequent opponent move — three-zone check
             reason = 'opponent move (still in theory)';
 
-            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval);
+            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
             if (evalResult) {
                 const oppDrop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
                 if (oppDrop >= OUT_OF_THEORY_THRESHOLD) {

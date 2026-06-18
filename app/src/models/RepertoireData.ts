@@ -71,11 +71,14 @@ export interface GameRecord {
      */
     u?: string;
     /**
-     * Optional per-ply centipawn evals (lichess only — chess.com archives
-     * carry no evals). Indices align with `m` plies (1:1 up to
-     * `MAX_RECORD_PLIES`). `null` at index `i` means "no eval data at this
-     * ply" — distinct from a real `0 cp` — and round-trips through the
-     * render-side `extractEmbeddedEvals` which treats `null` as missing.
+     * Optional per-ply centipawn evals. Originally populated from Lichess
+     * game analysis (chess.com archives carry none), but the analysis pass also
+     * back-fills cloud evals here — sparsely — for a game it defers awaiting a
+     * masters verdict, so a chess.com record may carry a partial `ev` too.
+     * Indices align with `m` plies (1:1 up to `MAX_RECORD_PLIES`). `null` at
+     * index `i` means "no eval data at this ply" — distinct from a real `0 cp`
+     * — and round-trips through the render-side `extractEmbeddedEvals` which
+     * treats `null` as missing.
      */
     ev?: (number | null)[];
     /**

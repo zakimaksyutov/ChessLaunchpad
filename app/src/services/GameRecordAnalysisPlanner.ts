@@ -1,7 +1,4 @@
-import { GameRecord } from '../models/RepertoireData';
-import { ExplorerEvals } from '../models/ExplorerEvals';
 import {
-    AmbiguousTheoryPosition,
     MastersLookupLike,
     CloudEvalProvider,
 } from './GameAnnotationService';
@@ -13,7 +10,6 @@ import {
     toMastersCacheKey,
 } from './MastersExplorerService';
 import { fetchCloudCp } from './LichessCloudEvalService';
-import { annotateRecord } from './RecordAnnotation';
 
 /**
  * Thrown by the on-demand cloud/masters providers when the analysis pass must
@@ -29,37 +25,19 @@ export class AnalysisSkipError extends Error {
 }
 
 /**
- * Discover the ambiguous-zone opponent moves that need a masters DB lookup
- * for a given record.
- *
- * Delegates to the canonical annotation engine (`annotateRecord`) without a
- * masters lookup so the engine populates `ambiguousTheoryPositions` for
- * every opponent move that:
- *   - leaves the user's repertoire
- *   - has an eval drop in `[AMBIGUOUS_THEORY_THRESHOLD, OUT_OF_THEORY_THRESHOLD)`
- *
- * Used by `buildAnalysisPlan` for the network-free OAuth gate (a Lichess game
- * with ambiguous positions needs a Lichess connection). Runs with no masters
- * and no cloud — a pure repertoire + static-eval walk — so it never touches the
- * network. The real analysis pass resolves these on demand inside a single
- * engine walk instead.
+ * Thrown by the no-token masters lookup when the walk actually reaches an
+ * ambiguous-zone opponent move. Distinct from `AnalysisSkipError`: it means
+ * "this game needs a masters verdict but no Lichess token is connected," so the
+ * pass defers the game (banner: "connect Lichess"), persists the cloud evals it
+ * already gathered, and re-derives once a token is available — rather than
+ * baking an optimistic in-theory verdict (which would mis-color out-of-theory
+ * positions for Chess.com games; see docs/product-specs/GAMES.md).
  */
-export async function planAmbiguousPositions(
-    record: GameRecord,
-    accountUsernameLower: string,
-    repertoireFens: Set<string>,
-    explorerEvals: ExplorerEvals | null,
-): Promise<AmbiguousTheoryPosition[]> {
-    const annotation = await annotateRecord(
-        record,
-        accountUsernameLower,
-        repertoireFens,
-        explorerEvals,
-        // No masters lookup -> annotation engine collects ambiguous positions
-        // into `ambiguousTheoryPositions` rather than resolving them.
-        undefined,
-    );
-    return annotation?.ambiguousTheoryPositions ?? [];
+export class AwaitingMastersError extends Error {
+    constructor() {
+        super('awaiting masters connection');
+        this.name = 'AwaitingMastersError';
+    }
 }
 
 /**
@@ -203,5 +181,26 @@ export class OnDemandMastersLookup implements MastersLookupLike {
         if (entry.kind === 'error') throw new AnalysisSkipError();
         this.cache.add(fen, entry.result);
         this.fetched.add(key);
+    }
+}
+
+/**
+ * Masters lookup used when no Lichess token is connected. The engine consults a
+ * masters lookup only at ambiguous-zone (15–44 cp) opponent moves, so the first
+ * such consultation throws `AwaitingMastersError` — deferring the game until a
+ * token is available instead of falling through to the engine's optimistic
+ * in-theory default. Games that never reach the ambiguous band never consult
+ * this and freeze normally.
+ *
+ * `getMoveStats` is never reached (the engine only calls it after a non-null
+ * verdict, and `isOutOfTheory` always throws first).
+ */
+export class AwaitingMastersLookup implements MastersLookupLike {
+    isOutOfTheory(): never {
+        throw new AwaitingMastersError();
+    }
+
+    getMoveStats(): MoveStats | null {
+        return null;
     }
 }

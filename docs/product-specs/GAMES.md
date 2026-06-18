@@ -27,7 +27,7 @@ On opening `/games` (logged-in, with linked accounts):
 
 1. **Render immediately** from records that already have `fan`, newest first.
 2. **Background ingest** — run the same ingest pipeline the Dashboard runs. New games land as new records; the 100-record retention cap is enforced inside the ingest write path (see below). The two entry points (Dashboard auto, Games page) share the same pipeline, so neither can leave the blob over-cap.
-3. **Plan** — enumerate records lacking `fan`, oldest-first; the network-free plan flags each game's ambiguous-zone opponent moves (used only to gate Lichess games behind OAuth). Analysis itself resolves evals and masters verdicts **on demand** in a single engine walk per game — see "Move highlighting" below.
+3. **Plan** — enumerate records lacking `fan`, oldest-first. No network and no per-game gating: every queued game runs. Analysis resolves evals and masters verdicts **on demand** in a single engine walk per game, and the walk itself defers any game that reaches a masters-needing position with no Lichess token connected — see "Move highlighting" and "Masters theory" below.
 4. **Reserve placeholders** — every queued record gets a **skeleton row** in its final sorted slot before the analyze loop begins. This prevents the "rows pop in newest-first, push everything down" jumping effect as each game's `fan` lands.
 5. **Analyze sequentially, oldest-first**. Each game's frozen annotation is computed (full engine run, then frozen), written back optimistically to the in-memory tree, and the row hydrates from skeleton to content in place. Annotations flush to the backend in batches.
 6. A manual **Sync** button (next to the header) re-runs the same pipeline; the auto-trigger and the button share a single-flight lock.
@@ -55,16 +55,17 @@ A status pill next to the Games header shows the current state — syncing (spin
 - **`mb`** is the mini-board anchor ply: the half-move depth of the position shown on the row's mini board. For a deviation it's the position *before* the code-`1` ply (where the arrows are drawn).
 - **No automatic invalidation.** `fan` is not recomputed when the repertoire changes — that's the whole point of freezing it. The user applies their current repertoire to a game deliberately via **Re-annotate**.
 
-### Masters theory + the Lichess OAuth gate
+### Masters theory + the Lichess OAuth requirement
 
-Computing `fan` for a Lichess game can require the masters opening explorer (`explorer.lichess.org/masters`), which needs a Lichess OAuth token. The masters decision is **baked into the frozen codes** at analysis time — nothing about it is cached separately or re-queried at render.
+Computing `fan` can require the masters opening explorer (`explorer.lichess.org/masters`), which needs a Lichess OAuth token. The masters decision is **baked into the frozen codes** at analysis time — nothing about it is cached separately or re-queried at render. Masters is consulted only at the ambiguous-zone (15–44 cp) opponent moves the walk actually reaches, and applies to **both platforms** — the masters database is opening theory, independent of where the game was played.
 
-- **Chess.com records** never need masters — they freeze with the optimistic in-theory default for ambiguous opponent moves.
-- **Lichess records with no ambiguous positions** (K = 0) also need no masters.
-- **Lichess records with K > 0** require a connected Lichess account. When disconnected, these records are held out of the pass (no `fan`), so they're **not rendered** — a top-of-page banner counts them and prompts the user to connect.
+- **Games that never reach an ambiguous position** freeze normally without any masters query, regardless of token or platform.
+- **A game that reaches an ambiguous position with a token connected** resolves the verdict on demand and freezes it.
+- **A game that reaches an ambiguous position with no token** is **deferred**, not frozen — we must not bake an optimistic in-theory verdict, because for a position that is genuinely out of theory that would mis-color the user's subsequent moves as mistakes (this is why Chess.com games are no longer optimistically frozen). The deferred game stays unrendered and counts toward a top-of-page banner prompting the user to connect Lichess. On connect, it re-runs and freezes.
+  - To keep deferral cheap, the cloud evals the walk gathered before deferring are persisted into `record.ev` (additively, never overwriting). The re-run resolves those plies from `ev` instead of re-hitting the rate-limited cloud API, reaching the masters check with no cloud calls.
 - If the user has linked accounts but no Lichess connection, the empty-state copy nudges them to connect.
 
-Transient masters failures (network / HTTP) leave the game without a `fan` — it re-queues on the next pass; a banner counts the deferred games for the current session.
+Transient masters failures (network / HTTP) also leave the game without a `fan` — it re-queues on the next pass; a separate banner counts those for the current session.
 
 ## Re-annotate
 
@@ -97,8 +98,8 @@ Each row shows:
 Eval drops use the same thresholds as the Repertoire page (inaccuracy ≥ 30 cp, mistake ≥ 50 cp, blunder ≥ 70 cp). They are computed **at analysis time** (frozen into `fan.hl`), resolving each position's eval in priority order:
 
 1. **`ExplorerEvals`** — pre-computed static evals for repertoire positions (no network).
-2. **Embedded Lichess per-ply evals** (`record.ev`). Absent for Chess.com.
-3. **Lichess cloud-eval API** (`lichess.org/api/cloud-eval`, public — no OAuth, so it covers Chess.com too) — consulted only for the **gaps** the first two sources miss, resolved on demand as the engine walks the game. Sources may mix per move (e.g. an explorer "before" with a cloud "after"). Throttled and deduped per-pass; not cached across passes, since the verdict is frozen into `fan`.
+2. **Embedded per-ply evals** (`record.ev`). Originally Lichess-only (absent for Chess.com), but a deferred game's persisted cloud back-fill (see "Masters theory") also lands here, so a Chess.com record may carry a sparse `ev`.
+3. **Lichess cloud-eval API** (`lichess.org/api/cloud-eval`, public — no OAuth, so it covers Chess.com too) — consulted only for the **gaps** the first two sources miss, resolved on demand as the engine walks the game. Sources may mix per move (e.g. an explorer "before" with a cloud "after"). Throttled and deduped per-pass. Not cached across passes for a frozen game (its verdict is in `fan`); for a *deferred* game the gathered evals are persisted into `record.ev` so its re-run needn't refetch.
 
 When no source has eval data for a position (a cloud miss is common for off-book lines), the engine falls back to its optimistic in-theory default — the same as before cloud existed. Render itself reads none of this — it replays `m` and paints the frozen `hl` codes.
 

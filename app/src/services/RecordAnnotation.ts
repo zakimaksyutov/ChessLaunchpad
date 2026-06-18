@@ -101,6 +101,7 @@ export async function annotateRecord(
     mastersLookup?: MastersLookupLike,
     debug?: boolean,
     cloudEval?: CloudEvalProvider,
+    cloudEvalSink?: Map<number, number>,
 ): Promise<GameAnnotation | null> {
     const userColor = getRecordUserColor(record, accountUsernameLower);
     if (!userColor) return null;
@@ -117,6 +118,7 @@ export async function annotateRecord(
         mastersLookup,
         debug,
         cloudEval,
+        cloudEvalSink,
     );
 }
 

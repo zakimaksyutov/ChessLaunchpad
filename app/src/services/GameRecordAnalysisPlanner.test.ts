@@ -3,24 +3,9 @@ import {
     fetchMastersWithMemo,
     fetchCloudWithMemo,
     MastersMemoEntry,
-    planAmbiguousPositions,
+    AwaitingMastersLookup,
+    AwaitingMastersError,
 } from './GameRecordAnalysisPlanner';
-import { GameRecord } from '../models/RepertoireData';
-import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
-import { pgnToRepertoires } from '../test-utils/repertoireBuilders';
-
-function makeRecord(opts: Partial<GameRecord> & { m: string }): GameRecord {
-    return {
-        id: 'r1',
-        p: 'l',
-        t: Date.now(),
-        wa: 'me',
-        ba: 'opp',
-        res: 'draw',
-        rt: 1,
-        ...opts,
-    };
-}
 
 describe('fetchMastersWithMemo', () => {
     it('caches successful results across calls', async () => {
@@ -109,16 +94,14 @@ describe('fetchCloudWithMemo', () => {
     });
 });
 
-describe('planAmbiguousPositions', () => {
-    it('returns an empty plan for a fully in-repertoire game', async () => {
-        const reps = pgnToRepertoires([{ pgn: '1. e4 e5 2. Nf3', orientation: 'white' }]);
-        const fens = buildRepertoireFenSets(reps);
-        const rec = makeRecord({ m: 'e4 e5 Nf3' });
-        // Note: planAmbiguousPositions runs against the user's color implied by record.wa.
-        const plan = await planAmbiguousPositions(rec, 'me', fens.whiteFens, null);
-        expect(plan).toEqual([]);
+describe('AwaitingMastersLookup', () => {
+    it('throws AwaitingMastersError the moment the walk needs a masters verdict', () => {
+        const lookup = new AwaitingMastersLookup();
+        expect(() => lookup.isOutOfTheory()).toThrow(AwaitingMastersError);
     });
 
-    // Plans for games leaving the repertoire are exercised by GameAnnotationService.test
-    // (this planner delegates to annotateRecord); a smoke test here is sufficient.
+    it('exposes a no-op getMoveStats (never reached after the throw)', () => {
+        const lookup = new AwaitingMastersLookup();
+        expect(lookup.getMoveStats()).toBeNull();
+    });
 });
