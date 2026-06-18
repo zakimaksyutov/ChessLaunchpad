@@ -76,12 +76,17 @@ walk move i:
    │                                       out of theory → STOP
    │                                       in theory     → keep analysing
    │                                       no token      → DEFER the game
+   │        no eval   → assume in theory → keep analysing user moves
+   │                                       (no drop is computed, so this path
+   │                                        never reaches masters and never defers)
    ├─ user response (post-theory)       → eval drop; first notable drop → STOP
+   │                                       (no eval → treated as ok, keep going)
    └─ stop after ~30 plies, or theory-end + a short buffer
    │
    ▼
 eval for any position is resolved in priority order, on demand:
    ExplorerEvals (static) → record.ev (embedded) → Lichess cloud-eval (gaps only)
+   a total miss (no source has it) falls back to the optimistic in-theory default
 ```
 
 The walk produces a live annotation that is immediately **frozen** into `fan` (below); render never re-runs this walk — it is a pure read of `fan`.
