@@ -14,7 +14,6 @@ For a deeper understanding of the product (FSRS training system, pages, data flo
 - chess.js for game logic and PGN parsing
 - ts-fsrs for spaced-repetition scheduling
 - chess-control (in-house) for interactive board rendering, vendored in `app/vendor/chess-control/`
-- idb for IndexedDB access (Lichess cloud-eval cache)
 - React Router for client-side routing
 - Microsoft Application Insights for telemetry
 

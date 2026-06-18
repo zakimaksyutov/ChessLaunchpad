@@ -1,37 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-    uciToSan,
     uciLineToSan,
-    formatEval,
-    formatMoveWithNumber,
     fetchCloudEval,
     fetchCloudCp,
 } from './LichessCloudEvalService';
-
-describe('uciToSan', () => {
-    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-
-    it('converts e2e4 from starting position', () => {
-        expect(uciToSan(startFen, 'e2e4')).toBe('e4');
-    });
-
-    it('converts g1f3 from starting position', () => {
-        expect(uciToSan(startFen, 'g1f3')).toBe('Nf3');
-    });
-
-    it('converts promotion move', () => {
-        const fen = '8/P7/8/8/8/8/8/4K2k w - - 0 1';
-        expect(uciToSan(fen, 'a7a8q')).toBe('a8=Q+');
-    });
-
-    it('returns null for illegal move', () => {
-        expect(uciToSan(startFen, 'e2e5')).toBeNull();
-    });
-
-    it('returns null for invalid FEN', () => {
-        expect(uciToSan('invalid', 'e2e4')).toBeNull();
-    });
-});
 
 describe('uciLineToSan', () => {
     const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -48,53 +20,6 @@ describe('uciLineToSan', () => {
 
     it('returns empty array for empty input', () => {
         expect(uciLineToSan(startFen, [])).toEqual([]);
-    });
-});
-
-describe('formatEval', () => {
-    it('formats positive centipawns', () => {
-        expect(formatEval(35, null)).toBe('+0.35');
-    });
-
-    it('formats negative centipawns', () => {
-        expect(formatEval(-120, null)).toBe('-1.20');
-    });
-
-    it('formats zero centipawns', () => {
-        expect(formatEval(0, null)).toBe('+0.00');
-    });
-
-    it('formats positive mate', () => {
-        expect(formatEval(null, 3)).toBe('M3');
-    });
-
-    it('formats negative mate', () => {
-        expect(formatEval(null, -5)).toBe('-M5');
-    });
-
-    it('mate takes precedence over cp', () => {
-        expect(formatEval(100, 2)).toBe('M2');
-    });
-
-    it('returns ? when both are null', () => {
-        expect(formatEval(null, null)).toBe('?');
-    });
-});
-
-describe('formatMoveWithNumber', () => {
-    it('formats white move at move 1', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        expect(formatMoveWithNumber(fen, 'e4')).toBe('1. e4');
-    });
-
-    it('formats black move at move 1', () => {
-        const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-        expect(formatMoveWithNumber(fen, 'e5')).toBe('1... e5');
-    });
-
-    it('formats white move at move 5', () => {
-        const fen = 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
-        expect(formatMoveWithNumber(fen, 'Nc3')).toBe('4. Nc3');
     });
 });
 
