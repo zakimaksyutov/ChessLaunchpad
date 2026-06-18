@@ -156,12 +156,20 @@ describe('annotateGame', () => {
     });
 
     describe('opponent deviation from repertoire', () => {
-        it('evaluates user response after opponent deviation', async () => {
+        it('evaluates user response after opponent deviation (opponent stays in theory)', async () => {
             // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5
             // Game: 1. e4 e5 2. Nf3 d6 ... (opponent plays d6 instead of Nc6)
-            // User's next move (3. Bb5 or 3. d4, etc.) should be evaluated
+            // d6 is a small drop (in theory) so the user's response is analysed.
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3', 'user', 'opp');
-            const result = await annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
+
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4']);
+            const evals = makeEvals({
+                [compact(fens[3])]: [30],  // after Nf3 (before d6)
+                [compact(fens[4])]: [30],  // after d6 → opponent drop 0 (in theory)
+                [compact(fens[5])]: [25],  // after d4 → user drop 5 (ok)
+            });
+
+            const result = await annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
@@ -169,7 +177,7 @@ describe('annotateGame', () => {
             expect(moves[0].highlight).toBe('in-repertoire'); // e4
             expect(moves[1].highlight).toBe('in-repertoire'); // e5
             expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
-            expect(moves[3].highlight).toBe('out-of-repertoire'); // d6 — opponent deviated
+            expect(moves[3].highlight).toBe('out-of-repertoire'); // d6 — opponent deviated but in theory
             expect(moves[3].isUserMove).toBe(false);
             expect(moves[4].highlight).toBe('out-of-repertoire-response');     // d4 — user's first response
             expect(moves[4].isUserMove).toBe(true);
@@ -184,6 +192,7 @@ describe('annotateGame', () => {
             const fenAfter = fens[5];  // after d4
 
             const evals = makeEvals({
+                [compact(fens[3])]: [50],    // after Nf3 (before d6) → opponent drop 0 (in theory)
                 [compact(fenBefore)]: [50],  // 50cp for White
                 [compact(fenAfter)]: [10],   // 10cp for White → drop = 50-10 = 40
             });
@@ -197,37 +206,58 @@ describe('annotateGame', () => {
             expect(userResponse.evalDrop!.category).toBe('inaccuracy');
         });
 
-        it('marks user response as deviation even without eval data', async () => {
+        it('treats opponent deviation as out-of-theory when no source has an eval', async () => {
+            // With no eval anywhere (explorer/embedded/cloud all miss), the
+            // opponent's departure is treated as too rare to be theory: it and
+            // the user's subsequent moves are out-of-theory, not graded.
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6', 'user', 'opp');
             const result = await annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
 
             expect(result).not.toBeNull();
+            expect(result!.moves[3].highlight).toBe('out-of-theory'); // d6 — opponent, no eval
             const userResponse = result!.moves[4]; // d4
-            expect(userResponse.highlight).toBe('out-of-repertoire-response');
+            expect(userResponse.highlight).toBe('out-of-theory');
             expect(userResponse.evalDrop).toBeUndefined();
         });
 
         it('sets mini board to user response position after opponent deviation', async () => {
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6', 'user', 'opp');
-            const result = await annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
+            // d6 in theory (small drop) so the user's response opens post-theory.
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4']);
+            const evals = makeEvals({
+                [compact(fens[3])]: [30],  // after Nf3 (before d6)
+                [compact(fens[4])]: [30],  // after d6 → opponent drop 0 (in theory)
+                [compact(fens[5])]: [25],  // after d4 → user drop 5 (ok)
+            });
+            const result = await annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
 
             expect(result).not.toBeNull();
-            // Mini board should show position after d4 (first deviation fen)
-            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4']);
+            // Mini board should show position after d4 (first post-theory fen)
             expect(result!.miniBoardFen).toBe(fens[5]);
         });
 
-        it('subsequent moves after user response continue analysis without evals', async () => {
+        it('continues analysis across subsequent moves while opponent stays in theory', async () => {
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
-            const result = await annotateGame(gameData, 'user', repertoireFens, null, 30, 'lichess');
+            // Small (in-theory) drops for both opponent moves so the post-theory
+            // walk keeps grading the user's responses across multiple plies.
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3', 'Be7']);
+            const evals = makeEvals({
+                [compact(fens[3])]: [30],  // after Nf3 (before d6)
+                [compact(fens[4])]: [30],  // after d6 → opponent drop 0 (in theory)
+                [compact(fens[5])]: [25],  // after d4 → user drop 5 (ok)
+                [compact(fens[6])]: [25],  // after Nf6 → opponent drop 0 (in theory)
+                [compact(fens[7])]: [20],  // after Nc3 → user drop 5 (ok)
+                [compact(fens[8])]: [20],  // after Be7 → opponent drop 0 (in theory)
+            });
+            const result = await annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
             expect(moves[4].highlight).toBe('out-of-repertoire-response');     // d4 — user response
-            expect(moves[5].highlight).toBe('out-of-repertoire'); // Nf6 — opponent (no evals, analysis continues)
+            expect(moves[5].highlight).toBe('out-of-repertoire'); // Nf6 — opponent, still in theory
             expect(moves[6].highlight).toBe('out-of-repertoire-response'); // Nc3 — user still analyzed
-            expect(moves[7].highlight).toBe('out-of-repertoire'); // Be7 — opponent
+            expect(moves[7].highlight).toBe('out-of-repertoire'); // Be7 — opponent, still in theory
         });
     });
 
@@ -249,6 +279,7 @@ describe('annotateGame', () => {
             const fenAfterNf6 = fens[6];   // after Nf6
 
             const evals = makeEvals({
+                [compact(fens[3])]: [50],       // after Nf3 (before d6) → opponent drop 0 (in theory)
                 [compact(fenBeforeD4)]: [50],   // after d6: +0.50
                 [compact(fenAfterD4)]: [45],    // after d4: +0.45 → user drop = 5cp (ok)
                 [compact(fenBeforeNf6)]: [45],  // after d4: +0.45
@@ -287,6 +318,7 @@ describe('annotateGame', () => {
             const fenAfterNf6 = fens[6];
 
             const evals = makeEvals({
+                [compact(fens[3])]: [50],        // after Nf3 (before d6) → opponent drop 0 (in theory)
                 [compact(fenBeforeD4)]: [50],
                 [compact(fenAfterD4)]: [45],     // user drop = 5cp (ok)
                 [compact(fenBeforeNf6)]: [45],
@@ -308,7 +340,7 @@ describe('annotateGame', () => {
         });
 
         it('stops analysis after first notable user eval drop', async () => {
-            // No evals for opponent move Nf6 → benefit of the doubt, keep analyzing
+            // d6 is in theory (small drop); the user's d4 inaccuracy then stops analysis.
             const gameData = makeGameData('e4 e5 Nf3 d6 d4 Nf6 Nc3 Be7', 'user', 'opp');
 
             const fens = replayFens(['e4', 'e5', 'Nf3', 'd6', 'd4', 'Nf6', 'Nc3']);
@@ -318,6 +350,7 @@ describe('annotateGame', () => {
             const fenAfterNc3 = fens[7];
 
             const evals = makeEvals({
+                [compact(fens[3])]: [50],       // after Nf3 (before d6) → opponent drop 0 (in theory)
                 [compact(fenBeforeD4)]: [50],
                 [compact(fenAfterD4)]: [20],    // user drop = 30cp (inaccuracy)
                 [compact(fenBeforeNc3)]: [10],
@@ -346,12 +379,20 @@ describe('annotateGame', () => {
             // After transposition, we're back in theory; if user later deviates,
             // a new post-theory phase should start
             const gameData = makeGameData('d4 e6 c4 d5 Nc3 Nf6 Bg5 Be7 Bf4 a6', 'user', 'opp');
-            const result = await annotateGame(gameData, 'user', repFens, null, 30, 'lichess');
+            // e6 is a small drop (in theory) so c4 opens a post-theory phase that
+            // the transposition at d5 then resets.
+            const fens = replayFens(['d4', 'e6', 'c4', 'd5']);
+            const evals = makeEvals({
+                [compact(fens[1])]: [20],  // after d4 (before e6)
+                [compact(fens[2])]: [20],  // after e6 → opponent drop 0 (in theory)
+                [compact(fens[3])]: [15],  // after c4 → user drop 5 (ok)
+            });
+            const result = await annotateGame(gameData, 'user', repFens, evals, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
-            // e6: opponent deviates → out of repertoire (no evals, benefit of doubt)
+            // e6: opponent deviates but stays in theory
             expect(moves[1].highlight).toBe('out-of-repertoire');
             // c4: user response in post-theory
             expect(moves[2].highlight).toBe('out-of-repertoire-response');
@@ -408,13 +449,20 @@ describe('annotateGame', () => {
 
             // Game: 1. e4 e5 2. d4 exd4 (opponent plays d4 instead of Nf3)
             const gameData = makeGameData('e4 e5 d4 exd4 Nf3', 'opp', 'user');
-            const result = await annotateGame(gameData, 'user', blackRepFens, null, 30, 'lichess');
+            // d4 is a small drop (in theory) so the user's recapture is analysed.
+            const fens = replayFens(['e4', 'e5', 'd4', 'exd4']);
+            const evals = makeEvals({
+                [compact(fens[2])]: [20],  // after e5 (before d4)
+                [compact(fens[3])]: [20],  // after d4 → opponent drop 0 (in theory)
+                [compact(fens[4])]: [15],  // after exd4 → user drop 5 (ok)
+            });
+            const result = await annotateGame(gameData, 'user', blackRepFens, evals, 30, 'lichess');
 
             expect(result).not.toBeNull();
             const moves = result!.moves;
 
             expect(moves[1].highlight).toBe('in-repertoire'); // e5
-            expect(moves[2].highlight).toBe('out-of-repertoire'); // d4 — opponent deviated
+            expect(moves[2].highlight).toBe('out-of-repertoire'); // d4 — opponent deviated but in theory
             expect(moves[2].isUserMove).toBe(false);
             expect(moves[3].highlight).toBe('out-of-repertoire-response');     // exd4 — user's response
             expect(moves[3].isUserMove).toBe(true);
@@ -439,8 +487,8 @@ describe('annotateGame', () => {
             const moves = result!.moves;
 
             expect(moves[0].highlight).toBe('in-repertoire'); // d4
-            expect(moves[1].highlight).toBe('out-of-repertoire'); // e6 — opponent deviated
-            expect(moves[2].highlight).toBe('out-of-repertoire-response');     // c4 — user response after opp deviation
+            expect(moves[1].highlight).toBe('out-of-theory'); // e6 — opponent deviated, no eval → out of theory
+            expect(moves[2].highlight).toBe('out-of-theory');     // c4 — post-theory stopped (no eval)
             // d5 reaches same position as repertoire after e6 (transposition!)
             expect(moves[3].highlight).toBe('in-repertoire'); // d5 — back in theory!
             expect(moves[4].highlight).toBe('in-repertoire'); // Nc3 — still in theory
@@ -465,10 +513,10 @@ describe('annotateGame', () => {
             expect(moves[0].highlight).toBe('in-repertoire'); // e4
             expect(moves[1].highlight).toBe('in-repertoire'); // c5
             expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
-            expect(moves[3].highlight).toBe('out-of-repertoire'); // e6 — opponent deviated
-            expect(moves[4].highlight).toBe('out-of-repertoire-response');     // d4 — user response
-            expect(moves[5].highlight).toBe('out-of-repertoire'); // cxd4 — opponent, post-theory continues
-            expect(moves[6].highlight).toBe('out-of-repertoire-response'); // Nxd4 — user, still in post-theory analysis
+            expect(moves[3].highlight).toBe('out-of-theory'); // e6 — opponent deviated, no eval → out of theory
+            expect(moves[4].highlight).toBe('out-of-theory');     // d4 — post-theory stopped (no eval)
+            expect(moves[5].highlight).toBe('out-of-theory'); // cxd4 — opponent, out of theory
+            expect(moves[6].highlight).toBe('out-of-theory'); // Nxd4 — user, out of theory
             // Nc6 transposes back! Same position as after 4...e6 in repertoire
             expect(moves[7].highlight).toBe('in-repertoire'); // Nc6 — transposition!
         });
@@ -488,8 +536,8 @@ describe('annotateGame', () => {
             const moves = result!.moves;
 
             expect(moves[0].highlight).toBe('in-repertoire'); // d4
-            expect(moves[1].highlight).toBe('out-of-repertoire'); // e6 — opponent deviated
-            expect(moves[2].highlight).toBe('out-of-repertoire-response');     // c4 — user response
+            expect(moves[1].highlight).toBe('out-of-theory'); // e6 — opponent deviated, no eval → out of theory
+            expect(moves[2].highlight).toBe('out-of-theory');     // c4 — post-theory stopped (no eval)
             expect(moves[3].highlight).toBe('in-repertoire'); // d5 — transposition back!
             expect(moves[4].highlight).toBe('in-repertoire'); // Nc3 — in theory
             expect(moves[5].highlight).toBe('in-repertoire'); // Nf6 — in theory
@@ -520,7 +568,7 @@ describe('annotateGame', () => {
             expect(moves[0].highlight).toBe('in-repertoire'); // e4
             expect(moves[1].highlight).toBe('in-repertoire'); // c5
             expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
-            expect(moves[3].highlight).toBe('out-of-repertoire'); // a6 — opponent deviated
+            expect(moves[3].highlight).toBe('out-of-theory'); // a6 — opponent deviated, no eval → out of theory
             // User's response (d4) lands in repertoire → in-repertoire, NOT deviation
             expect(moves[4].highlight).toBe('in-repertoire'); // d4 — transposed back!
             expect(moves[4].evalDrop).toBeUndefined();

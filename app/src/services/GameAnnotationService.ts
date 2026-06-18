@@ -583,10 +583,13 @@ export async function annotateGame(
                     }
                 }
             } else {
-                // No eval data — benefit of the doubt, analyse user moves
-                highlight = 'out-of-repertoire';
-                postTheoryAnalysis = true;
-                reason += ', no eval data for opponent drop → analyse user moves';
+                // No eval from any source — including a Lichess cloud-eval miss
+                // (404), which means the position is too rare for anyone on
+                // Lichess to have analysed it. Treat it as out of theory and
+                // stop, rather than the old optimistic "still book" default.
+                highlight = 'out-of-theory';
+                postTheoryAnalysis = false;
+                reason += ', no eval data for opponent drop → out of theory, stop';
             }
         } else if (postTheoryAnalysis && isUserMove) {
             // User move after opponent left repertoire but still in theory — evaluate for eval drop
@@ -652,8 +655,11 @@ export async function annotateGame(
                     }
                 }
             } else {
-                highlight = 'out-of-repertoire';
-                reason += ', no eval data for opponent drop → continue';
+                // No eval from any source (incl. a cloud 404) → too rare to be
+                // theory; stop, same as the opponent's first departure above.
+                highlight = 'out-of-theory';
+                postTheoryAnalysis = false;
+                reason += ', no eval data for opponent drop → out of theory, stop';
             }
         } else {
             highlight = 'out-of-theory';

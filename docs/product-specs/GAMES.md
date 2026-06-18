@@ -76,17 +76,19 @@ walk move i:
    │                                       out of theory → STOP
    │                                       in theory     → keep analysing
    │                                       no token      → DEFER the game
-   │        no eval   → assume in theory → keep analysing user moves
-   │                                       (no drop is computed, so this path
-   │                                        never reaches masters and never defers)
+   │        no eval   → out of theory → STOP (a total miss, incl. a cloud 404,
+   │                                       means the position is too rare to be
+   │                                       book; no drop is computed, so this
+   │                                       path never reaches masters / defers)
    ├─ user response (post-theory)       → eval drop; first notable drop → STOP
-   │                                       (no eval → treated as ok, keep going)
+   │                                       (no eval → can't grade, leave as ok)
    └─ stop after ~30 plies, or theory-end + a short buffer
    │
    ▼
 eval for any position is resolved in priority order, on demand:
    ExplorerEvals (static) → record.ev (embedded) → Lichess cloud-eval (gaps only)
-   a total miss (no source has it) falls back to the optimistic in-theory default
+   a total miss on an opponent's move ends theory (too rare to be book); a miss
+   when grading a user move just leaves that move ungraded (ok)
 ```
 
 The walk produces a live annotation that is immediately **frozen** into `fan` (below); render never re-runs this walk — it is a pure read of `fan`.
@@ -154,7 +156,7 @@ Eval drops use the same thresholds as the Repertoire page (inaccuracy ≥ 30 cp,
 2. **Embedded per-ply evals** (`record.ev`). Originally Lichess-only (absent for Chess.com), but a deferred game's persisted cloud back-fill (see "Masters theory") also lands here, so a Chess.com record may carry a sparse `ev`.
 3. **Lichess cloud-eval API** (`lichess.org/api/cloud-eval`, public — no OAuth, so it covers Chess.com too) — consulted only for the **gaps** the first two sources miss, resolved on demand as the engine walks the game. Sources may mix per move (e.g. an explorer "before" with a cloud "after"). Throttled and deduped per-pass. Not cached across passes for a frozen game (its verdict is in `fan`); for a *deferred* game the gathered evals are persisted into `record.ev` so its re-run needn't refetch.
 
-When no source has eval data for a position (a cloud miss is common for off-book lines), the engine falls back to its optimistic in-theory default — the same as before cloud existed. Render itself reads none of this — it replays `m` and paints the frozen `hl` codes.
+When no source has eval data for an **opponent** move that left the repertoire, the engine treats it as **out of theory** and stops. With cloud-eval as the final source, a total miss means a Lichess cloud-eval 404 — the position is so rare nobody on Lichess has analysed it — which is itself strong evidence the game has left book. (This replaces the older optimistic in-theory default, which made sense when the only eval source was the small static `ExplorerEvals` set.) A miss while grading a **user** move is different: that move simply can't be scored, so it stays an uncolored post-theory move and the walk continues. Render itself reads none of this — it replays `m` and paints the frozen `hl` codes.
 
 Each row's left border is color-coded for at-a-glance status: purple for user-deviation rows, gold/red/purple for EOT inaccuracy/mistake/blunder, no border otherwise.
 
