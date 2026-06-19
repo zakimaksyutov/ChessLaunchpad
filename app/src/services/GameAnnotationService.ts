@@ -379,6 +379,28 @@ function getOpponentName(
 }
 
 /**
+ * Find the repertoire continuations authored from a position: legal moves whose
+ * resulting position is itself in the repertoire FEN set. An empty result means
+ * the position is a repertoire *leaf* (a node with no authored continuation,
+ * e.g. a line that ends on an opponent move), so there is nothing to deviate
+ * from.
+ */
+function findRepertoireContinuations(
+    fenBefore: string,
+    repertoireFens: Set<string>
+): { from: string; to: string; san: string }[] {
+    const continuations: { from: string; to: string; san: string }[] = [];
+    for (const lm of new Chess(fenBefore).moves({ verbose: true })) {
+        const probe = new Chess(fenBefore);
+        probe.move(lm);
+        if (repertoireFens.has(normalizeFenResetHalfmoveClock(probe.fen()))) {
+            continuations.push({ from: lm.from, to: lm.to, san: lm.san });
+        }
+    }
+    return continuations;
+}
+
+/**
  * Annotate a game's moves against the user's repertoire FEN set.
  *
  * @param gameData Raw Lichess NDJSON object
@@ -481,50 +503,82 @@ export async function annotateGame(
             postTheoryAnalysis = false;
             reason = 'after-FEN in repertoire';
         } else if (isUserMove && repertoireFens.has(normalizedFenBefore)) {
-            // User deviated from repertoire (before-FEN was in repertoire, after-FEN is not)
-            highlight = 'deviation';
-            reason = 'before-FEN in repertoire but after-FEN is NOT → user deviated';
+            // Before-FEN is in the repertoire but the user's move left it. This
+            // is only a real *deviation* when the repertoire authors at least
+            // one continuation from here; a user-to-move leaf (e.g. a line that
+            // ends on an opponent move) has nothing to deviate from.
+            const repertoireMoves = findRepertoireContinuations(fenBefore, repertoireFens);
 
-            if (!deviation) {
-                // Compute deviation info: find repertoire moves from this position
-                const deviationChess = new Chess(fenBefore);
-                const legalMoves = deviationChess.moves({ verbose: true });
-                const repertoireMoves: { from: string; to: string; san: string }[] = [];
-                for (const lm of legalMoves) {
-                    const probe = new Chess(fenBefore);
-                    probe.move(lm);
-                    if (repertoireFens.has(normalizeFenResetHalfmoveClock(probe.fen()))) {
-                        repertoireMoves.push({ from: lm.from, to: lm.to, san: lm.san });
-                    }
+            if (repertoireMoves.length === 0) {
+                // Repertoire leaf — the user's authored theory ends here, so
+                // there is no book move to deviate from. Don't stop: grade this
+                // move (and let subsequent moves be graded) just like a
+                // post-theory response, so a mistake here still surfaces.
+                highlight = 'out-of-repertoire-response';
+                reason = 'before-FEN is a repertoire leaf (no authored continuation) → post-theory analysis';
+                postTheoryAnalysis = true;
+
+                if (!firstPostTheoryFen) {
+                    firstPostTheoryFen = fenAfter;
+                    firstPostTheoryPly = i + 1;
                 }
-                deviation = {
-                    fen: fenBefore,
-                    userMove: { from: allMoves[i].from, to: allMoves[i].to, san: allMoves[i].san },
-                    repertoireMoves,
-                };
-                deviationPly = i;
-            }
 
-            if (!firstPostTheoryFen) {
-                firstPostTheoryFen = fenAfter;
-                firstPostTheoryPly = i + 1;
-            }
+                const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
+                if (evalResult) {
+                    const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
+                    const category = categorizeEvalDrop(drop);
+                    evalDrop = { evalDrop: drop, category };
+                    evalSource = evalResult.source;
+                    reason += `, evalDrop=${drop.toFixed(2)} (${category}) [source: ${evalResult.source}]`;
 
-            // Compute eval drop for the deviation
-            const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
-            if (evalResult) {
-                const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
-                const category = categorizeEvalDrop(drop);
-                evalDrop = { evalDrop: drop, category };
-                evalSource = evalResult.source;
-                reason += `, evalDrop=${drop.toFixed(2)} (${category}) [source: ${evalResult.source}]`;
+                    if (!firstEvalDropFen && category !== 'ok') {
+                        firstEvalDropFen = fenAfter;
+                        firstEvalDropPly = i + 1;
+                    }
 
-                if (!firstEvalDropFen && category !== 'ok') {
-                    firstEvalDropFen = fenAfter;
-                    firstEvalDropPly = i + 1;
+                    // Stop after the first notable eval drop, same as a post-theory response.
+                    if (category !== 'ok') {
+                        postTheoryAnalysis = false;
+                        reason += ' → stop (first notable drop)';
+                    }
+                } else {
+                    reason += ', no eval data for drop calc';
                 }
             } else {
-                reason += ', no eval data for drop calc';
+                // User deviated from repertoire (before-FEN was in repertoire, after-FEN is not)
+                highlight = 'deviation';
+                reason = 'before-FEN in repertoire but after-FEN is NOT → user deviated';
+
+                if (!deviation) {
+                    deviation = {
+                        fen: fenBefore,
+                        userMove: { from: allMoves[i].from, to: allMoves[i].to, san: allMoves[i].san },
+                        repertoireMoves,
+                    };
+                    deviationPly = i;
+                }
+
+                if (!firstPostTheoryFen) {
+                    firstPostTheoryFen = fenAfter;
+                    firstPostTheoryPly = i + 1;
+                }
+
+                // Compute eval drop for the deviation
+                const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
+                if (evalResult) {
+                    const drop = computeConservativeDrop(evalResult.beforeVals, evalResult.afterVals, isWhiteMove);
+                    const category = categorizeEvalDrop(drop);
+                    evalDrop = { evalDrop: drop, category };
+                    evalSource = evalResult.source;
+                    reason += `, evalDrop=${drop.toFixed(2)} (${category}) [source: ${evalResult.source}]`;
+
+                    if (!firstEvalDropFen && category !== 'ok') {
+                        firstEvalDropFen = fenAfter;
+                        firstEvalDropPly = i + 1;
+                    }
+                } else {
+                    reason += ', no eval data for drop calc';
+                }
             }
         } else if (!isUserMove && repertoireFens.has(normalizedFenBefore) && !repertoireFens.has(normalizedFenAfter)) {
             // Opponent left the user's repertoire.
