@@ -8,6 +8,7 @@ import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
 import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTodayDateString, findEntryByDate, entryHasAnyActivity } from '../services/ActivityService';
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
 import { runIngest, IngestProgress } from '../services/GameIngestService';
+import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -64,7 +65,13 @@ const DashboardPage: React.FC = () => {
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
+    const [syncStatus, setSyncStatus] = useState<SyncState | null>(() => {
+        // Seed from the shared last-sync time so a throttled first paint shows
+        // the real "Synced @ HH:MM" instead of nothing while we decide whether
+        // to auto-sync.
+        const last = getLastSyncAt();
+        return last !== null ? { phase: 'synced', at: new Date(last) } : null;
+    });
 
     // Stays true while the component is mounted; flipped to false on real
     // unmount and explicitly re-set to true on every effect run so that
@@ -91,11 +98,20 @@ const DashboardPage: React.FC = () => {
 
     const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
 
-    const runSyncCycle = useCallback(async () => {
+    const runSyncCycle = useCallback(async (force = false) => {
         if (!mountedRef.current) return;
         if (syncInFlightRef.current) return;
         const ctrl = pageAbortRef.current;
         if (ctrl?.signal.aborted) return;
+        // Throttle the automatic provider game-download: if we queried the
+        // providers less than SYNC_THROTTLE_MS ago, skip the auto run and just
+        // reflect the shared last-sync time. The manual ↻ button passes
+        // `force` to bypass this. See services/SyncThrottle.ts.
+        if (!force && isSyncThrottled()) {
+            const last = getLastSyncAt();
+            if (last !== null) setSyncStatus({ phase: 'synced', at: new Date(last) });
+            return;
+        }
         syncInFlightRef.current = true;
 
         const handleProgress = (progress: IngestProgress) => {
@@ -110,11 +126,17 @@ const DashboardPage: React.FC = () => {
             // 'done' — both success-with-imports and success-empty/failure are
             // treated the same: stamp the time and show "Synced @ HH:MM". This
             // matches the existing silent-error contract (rare failures aren't
-            // worth a distinct "Sync failed" badge here).
-            setSyncStatus({ phase: 'synced', at: new Date() });
+            // worth a distinct "Sync failed" badge here). Source the displayed
+            // time from the shared throttle stamp (set below) so both pages
+            // agree on "last sync".
+            setSyncStatus({ phase: 'synced', at: new Date(getLastSyncAt() ?? Date.now()) });
         };
 
         try {
+            // Stamp the moment we commit to querying the providers (start, not
+            // completion) so rapid back-and-forth navigation and StrictMode
+            // remounts see a fresh time and don't re-fetch.
+            markSyncedNow();
             const summary = await runIngest(dal, handleProgress, ctrl?.signal);
             if (!mountedRef.current || !summary.didWrite) return;
             const refreshed = await dal.retrieveRepertoireData();
@@ -283,7 +305,7 @@ const DashboardPage: React.FC = () => {
                                 <button
                                     type="button"
                                     className="widget-sync-button"
-                                    onClick={() => runSyncCycle()}
+                                    onClick={() => runSyncCycle(true)}
                                     disabled={syncStatus.phase === 'syncing'}
                                     title="Sync games now"
                                     aria-label="Sync games now"

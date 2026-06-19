@@ -2,6 +2,28 @@
   text-align: center;
 }
 
+/* App shell: the header keeps its natural height at the top and only the
+   content region below it scrolls. This keeps the scrollbar out of the
+   header's box, so the header never reflows when the scrollbar toggles
+   (e.g. during a page's loading→loaded transition). */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.app-content {
+  flex: 1 1 auto;
+  /* Lets this flex child shrink below its content height so it — not the
+     window — becomes the scroll container. */
+  min-height: 0;
+  overflow-y: auto;
+  /* Reserve the scrollbar gutter so toggling the scrollbar never shifts
+     content horizontally. */
+  scrollbar-gutter: stable;
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;

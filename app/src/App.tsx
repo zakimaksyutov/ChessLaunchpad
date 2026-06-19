@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { HashRouter as Router, Routes, Route } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import Header from './components/Header';
 import LandingPage from './pages/LandingPage';
 import DashboardPage from './pages/DashboardPage';
@@ -14,6 +14,18 @@ import { LichessAuthProvider } from './LichessAuthContext';
 import './App.css';
 import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
 import { createSessionStore, clearSessionStore, tryGetSessionStore } from './data/SessionStore';
+
+// Reset the scroll container to the top on every route change. With the
+// app-shell layout the scrolling element is `.app-content` (not the
+// window), and it stays mounted across navigations, so its scrollTop would
+// otherwise persist from the previous page.
+const ScrollToTop: React.FC = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    document.querySelector('.app-content')?.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+};
 
 const App: React.FC = () => {
   // Track logged-in user in state.
@@ -75,17 +87,20 @@ const App: React.FC = () => {
 
   return (
     <LichessAuthProvider>
-      <div>
+      <div className="app-shell">
         <Router>
           <Header username={username} onLogout={handleLogout} />
-          <Routes>
-            <Route path="/" element={username ? <ProtectedRoute isLoggedIn={!!username}><DashboardPage /></ProtectedRoute> : <LandingPage />} />
-            <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
-            <Route path="/training" element={<ProtectedRoute isLoggedIn={!!username}><TrainingPage /></ProtectedRoute>} />
-            <Route path="/explorer" element={<ProtectedRoute isLoggedIn={!!username}><ExplorerPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute isLoggedIn={!!username}><SettingsPage /></ProtectedRoute>} />
-            <Route path="/games" element={<ProtectedRoute isLoggedIn={!!username}><GamesPage /></ProtectedRoute>} />
-          </Routes>
+          <ScrollToTop />
+          <main className="app-content">
+            <Routes>
+              <Route path="/" element={username ? <ProtectedRoute isLoggedIn={!!username}><DashboardPage /></ProtectedRoute> : <LandingPage />} />
+              <Route path="/login" element={<LoginPage onLogin={(user) => setUsername(user)} />} />
+              <Route path="/training" element={<ProtectedRoute isLoggedIn={!!username}><TrainingPage /></ProtectedRoute>} />
+              <Route path="/explorer" element={<ProtectedRoute isLoggedIn={!!username}><ExplorerPage /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute isLoggedIn={!!username}><SettingsPage /></ProtectedRoute>} />
+              <Route path="/games" element={<ProtectedRoute isLoggedIn={!!username}><GamesPage /></ProtectedRoute>} />
+            </Routes>
+          </main>
         </Router>
         <ConflictModal />
       </div>
