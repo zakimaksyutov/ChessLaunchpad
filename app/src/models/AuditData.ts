@@ -1,13 +1,12 @@
 import { PackedCard } from '../utils/BlobCodec';
 
 /**
- * Temporary diagnostic audit data (see `docs/product-specs/FSRS-AUDIT.md`).
+ * Diagnostic audit data (see `docs/product-specs/FSRS-LIST.md`).
  *
- * Capture the FSRS trajectory of cards that fail a real recall so we can
- * inspect scheduling behavior on real user data. Once we have confidence in
- * the scheduler, the field and this entire pipeline are removed.
- *
- * No UI, no migration, no backfill.
+ * Capture the FSRS trajectory of explicitly-tracked cards so we can inspect
+ * scheduling behavior on real user data. Tracking is started/stopped from the
+ * FSRS card list page (`/fsrs`); the field is additive (absent on blobs with
+ * nothing tracked), with no migration or backfill.
  */
 
 /**
@@ -19,7 +18,7 @@ import { PackedCard } from '../utils/BlobCodec';
  * - `'cooldown'` — TrainingEngine, regular traversal step with role `cool-down`
  * - `'branch'`   — TrainingEngine, branch-point alternative (always Good)
  * - `'learn'`    — TrainingEngine, new-card recall pass (the bootstrap Again
- *                  on a fresh `New`-state card; filtered by the trigger rule)
+ *                  on a fresh `New`-state card)
  * - `'ingest'`   — GameIngestService (both Good and Again)
  */
 export type AuditEventSource =
@@ -44,11 +43,11 @@ export interface AuditEvent {
 }
 
 /**
- * One watched card. The snapshot is taken at the moment of the FIRST
- * triggering Again; both Again and Good events are appended after that.
+ * One tracked card. The snapshot is taken when the user turns on tracking via
+ * the FSRS card list page; both Again and Good events are appended after that.
  *
  *   `k`      — `<normalizedFen>::<san>`
- *   `before` — packed FSRS card immediately before the triggering Again
+ *   `before` — packed FSRS card captured at the moment tracking started
  *              (same shape as `PackedCard` in `BlobCodec`)
  *   `events` — append-only, ordered by insertion (≈ chronological)
  */
@@ -58,5 +57,5 @@ export interface AuditEntry {
     events: AuditEvent[];
 }
 
-/** Hard cap on entries. Once full, new triggers on unwatched cards are dropped. */
+/** Hard cap on tracked entries. Track is unavailable once full (until an Untrack frees a slot). */
 export const AUDIT_MAX_ENTRIES = 10;

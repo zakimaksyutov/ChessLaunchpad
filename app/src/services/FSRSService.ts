@@ -81,16 +81,12 @@ export class FSRSService {
      *
      * `source` is an optional FSRS-audit tag identifying the call site
      * (target/warmup/cooldown/branch/learn/ingest). When both `source` and
-     * a constructor-supplied auditor are present, the auditor sees the
-     * pre-call card snapshot and decides whether to start watching this
-     * card or to append an event to an existing watch. See
-     * `docs/product-specs/FSRS-AUDIT.md`. Audit failure must never break
-     * scheduling, so:
-     *   1. we capture the snapshot BEFORE the scheduler mutates `this.cards`
-     *      (ordering guarantees the snapshot reflects pre-call state); AND
-     *   2. we wrap the auditor invocation in `try/catch` so a thrown auditor
-     *      (e.g. from a malformed persisted entry slipping past decode)
-     *      cannot abort the traversal step or ingest run that called us.
+     * a constructor-supplied auditor are present, the auditor appends the
+     * event to this card's log if (and only if) the card is being tracked
+     * (see `docs/product-specs/FSRS-LIST.md`). Audit failure must never
+     * break scheduling, so we wrap the auditor invocation in `try/catch` so
+     * a thrown auditor (e.g. from a malformed persisted entry slipping past
+     * decode) cannot abort the traversal step or ingest run that called us.
      */
     rateCard(
         normalizedFen: string,
@@ -101,15 +97,11 @@ export class FSRSService {
     ): void {
         const key = FSRSService.makeCardKey(normalizedFen, moveSan);
 
-        // Snapshot the pre-call card for the auditor before we replace the
-        // entry below. We pass the live object reference rather than cloning
-        // because `packCardForAudit` reads scalar fields only and we hand off
-        // synchronously inside this method — the auditor never holds the ref.
-        const beforeSnapshot = this.cards[key];
+        const existing = this.cards[key];
 
         let card: Card;
-        if (beforeSnapshot) {
-            card = this.hydrate(beforeSnapshot);
+        if (existing) {
+            card = this.hydrate(existing);
         } else {
             card = createEmptyCard(now);
         }
@@ -120,7 +112,7 @@ export class FSRSService {
 
         if (this.auditor && source) {
             try {
-                this.auditor.onRate(key, beforeSnapshot, rating, now.getTime(), source);
+                this.auditor.onRate(key, rating, now.getTime(), source);
             } catch (err) {
                 // Diagnostic-only failure — log and continue. The scheduler
                 // mutation above has already landed and the caller's
@@ -152,6 +144,23 @@ export class FSRSService {
     getRetrievabilityByKey(key: string, now: Date): number | null {
         const cardData = this.cards[key];
         if (!cardData || cardData.state !== State.Review) return null;
+        const card = this.hydrate(cardData);
+        return this.scheduler.get_retrievability(card, now, false);
+    }
+
+    /**
+     * Retrievability (predicted recall probability) for any card that has been
+     * reviewed at least once, regardless of state. Returns null for New or
+     * never-reviewed cards.
+     *
+     * Differs from {@link getRetrievabilityByKey}, which is gated to Review
+     * state for mastery checks. This one is for the diagnostic FSRS card list,
+     * where Learning/Relearning retrievability is also meaningful and listed by
+     * the spec (`docs/product-specs/FSRS-LIST.md`).
+     */
+    getDisplayRetrievabilityByKey(key: string, now: Date): number | null {
+        const cardData = this.cards[key];
+        if (!cardData || cardData.state === State.New || !cardData.lastReview) return null;
         const card = this.hydrate(cardData);
         return this.scheduler.get_retrievability(card, now, false);
     }

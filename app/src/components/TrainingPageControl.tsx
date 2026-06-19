@@ -27,7 +27,7 @@ interface TrainingPageControlProps {
     /**
      * Shared FSRS-audit array on `RepertoireData.audit`. The engine mutates
      * it in place via `AuditService`; the parent persists the same reference
-     * on save. See `docs/product-specs/FSRS-AUDIT.md`.
+     * on save. See `docs/product-specs/FSRS-LIST.md`.
      */
     audit?: AuditEntry[];
     onTraversalComplete: (cardsRated: number, traversalStats: TraversalStats, elapsedSeconds: number) => Promise<void>;

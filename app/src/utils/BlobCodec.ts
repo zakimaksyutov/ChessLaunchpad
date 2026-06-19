@@ -78,10 +78,10 @@ export interface PersistedBlobV3 {
     activity?: RepertoireData['activity'];
     games?: RepertoireData['games'];
     /**
-     * Temporary FSRS audit trail. See `docs/product-specs/FSRS-AUDIT.md`.
+     * FSRS audit trail (Track/Untrack). See `docs/product-specs/FSRS-LIST.md`.
      * Field is additive; older blobs and fresh accounts omit it entirely.
      * Encode also omits it when the array is absent or empty so the wire
-     * stays clean for users with no captures.
+     * stays clean for users with nothing tracked.
      */
     audit?: AuditEntry[];
 }
@@ -116,6 +116,16 @@ function packCard(card: FSRSCardData): PackedCard {
  */
 export function packCardForAudit(card: FSRSCardData): PackedCard {
     return packCard(card);
+}
+
+/**
+ * Inverse of {@link packCardForAudit}: decode a packed audit `before`
+ * snapshot back into an `FSRSCardData` so the FSRS card list page can render
+ * the captured pre-track state. Throws on a malformed packed array (same
+ * validation as wire decode).
+ */
+export function unpackCardForAudit(packed: unknown): FSRSCardData {
+    return unpackCard(packed);
 }
 
 function unpackCard(packed: unknown): FSRSCardData {

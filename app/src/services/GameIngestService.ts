@@ -279,7 +279,7 @@ function applyIngest(
     // Seed the audit array if missing so AuditService can mutate a stable
     // reference (decode preserves an existing array verbatim; normalize seeds
     // it too — this is a belt-and-braces guard for ingest paths that may
-    // construct a sparse blob in tests). See `docs/product-specs/FSRS-AUDIT.md`.
+    // construct a sparse blob in tests). See `docs/product-specs/FSRS-LIST.md`.
     if (!data.audit) data.audit = [];
     const fsrs = new FSRSService(data.fsrsCards, new AuditService(data.audit));
 

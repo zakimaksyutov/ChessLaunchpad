@@ -5,6 +5,7 @@ import { setLinkedAccounts, getAccountKey } from './LinkedAccountsService';
 import { RepertoireData } from '../models/RepertoireData';
 import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
 import { FSRSService } from './FSRSService';
+import { AuditService } from './AuditService';
 import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
@@ -768,9 +769,10 @@ describe('GameIngestService', () => {
 
     describe('FSRS audit integration', () => {
         // End-to-end coverage of the audit wiring through real game ingest.
-        // Bootstraps the card into Review state via direct FSRSService calls,
-        // then deviates to provoke a real recall failure that must be recorded.
-        it('records a deviation Again on a Review-state card with source `ingest`', async () => {
+        // Bootstraps the card into Review state, turns on tracking (as the
+        // FSRS card list page would), then deviates to provoke a real recall
+        // failure that must be appended to the tracked card's event log.
+        it('appends a deviation Again on a tracked Review-state card with source `ingest`', async () => {
             const variant = makeVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5', 'white');
             const data = makeData([variant]);
             const positionChess = new Chess();
@@ -790,6 +792,13 @@ describe('GameIngestService', () => {
             fsrs1.rateCard(fenAfterE5, 'Nf3', true, new Date(FAKE_NOW.getTime() - 25 * 24 * 60 * 60 * 1000));
             expect(data.fsrsCards![nf3Key].state).toBe(2 /* Review */);
 
+            // Turn on tracking for the Nf3 card before ingest. Ingest reuses
+            // the same `data.audit` reference, so its AuditService sees this
+            // tracked entry and appends events for it.
+            data.audit = [];
+            const tracked = new AuditService(data.audit).track(nf3Key, data.fsrsCards![nf3Key]);
+            expect(tracked).toBe(true);
+
             // Now ingest a game that deviates at move 2 — user plays d4 instead of Nf3
             const game = lichessGame({
                 id: 'g-audit',
@@ -802,7 +811,7 @@ describe('GameIngestService', () => {
             const dal = new MockDal(data);
             await runIngest(dal);
 
-            // The persisted blob now has an audit entry for the Nf3 card
+            // The tracked entry now carries the ingest deviation event.
             expect(dal.data.audit).toBeDefined();
             expect(dal.data.audit).toHaveLength(1);
             const entry = dal.data.audit![0];
@@ -812,6 +821,34 @@ describe('GameIngestService', () => {
             expect(entry.events[0].r).toBe(1 /* Again */);
             // before is packed; element 8 is `state` and must be Review (=2).
             expect(entry.before[8]).toBe(2);
+        });
+
+        it('does NOT auto-create an audit entry for an untracked card on ingest deviation', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3 Nc6 3. Bb5', 'white');
+            const data = makeData([variant]);
+            const positionChess = new Chess();
+            positionChess.move('e4'); positionChess.move('e5');
+            const fenAfterE5 = normalizeFenResetHalfmoveClock(positionChess.fen());
+            const nf3Key = FSRSService.makeCardKey(fenAfterE5, 'Nf3');
+
+            const fsrs1 = new FSRSService(data.fsrsCards!);
+            fsrs1.rateCard(fenAfterE5, 'Nf3', true, new Date(FAKE_NOW.getTime() - 30 * 24 * 60 * 60 * 1000));
+            fsrs1.rateCard(fenAfterE5, 'Nf3', true, new Date(FAKE_NOW.getTime() - 25 * 24 * 60 * 60 * 1000));
+            expect(data.fsrsCards![nf3Key].state).toBe(2 /* Review */);
+
+            const game = lichessGame({
+                id: 'g-audit-untracked',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 d4',
+            });
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+
+            // No tracking was set up → audit stays empty (no auto-capture).
+            expect(dal.data.audit ?? []).toHaveLength(0);
         });
     });
 

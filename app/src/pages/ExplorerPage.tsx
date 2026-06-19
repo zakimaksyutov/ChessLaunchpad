@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessboardControl from '../components/ChessboardControl';
 import ReviewView from '../components/ReviewView';
@@ -455,6 +455,10 @@ interface ExplorerOverflowMenuProps {
     /** Ref the parent populates with the trigger button so it can restore
      *  focus after an Esc-driven close. */
     triggerRefCallback: (el: HTMLButtonElement | null) => void;
+    /** When provided, renders a "FSRS cards" item that opens the `/fsrs`
+     *  diagnostic page. Omitted in Edit mode so navigation can't drop
+     *  pending repertoire edits. */
+    onOpenFsrs?: () => void;
 }
 
 /**
@@ -469,7 +473,7 @@ interface ExplorerOverflowMenuProps {
  */
 const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
     open, onToggle, onExport, exportDisabled, exportDisabledReason, busy,
-    colorLabel, triggerRefCallback,
+    colorLabel, triggerRefCallback, onOpenFsrs,
 }) => {
     const menuRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
@@ -513,6 +517,21 @@ const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
                             </span>
                         )}
                     </button>
+                    {onOpenFsrs && (
+                        <button
+                            type="button"
+                            role="menuitem"
+                            className="explorer-menu-item"
+                            onClick={onOpenFsrs}
+                        >
+                            <span className="explorer-menu-item-label">
+                                FSRS cards
+                            </span>
+                            <span className="explorer-menu-item-hint">
+                                Diagnostic list of every scheduled card
+                            </span>
+                        </button>
+                    )}
                 </div>
             )}
         </div>
@@ -523,6 +542,7 @@ const ExplorerOverflowMenu: React.FC<ExplorerOverflowMenuProps> = ({
 
 const ExplorerPage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
 
     const [data, setData] = useState<RepertoireData | null>(null);
     // Openings start as null while loading. If the static asset fetch fails we
@@ -1057,6 +1077,11 @@ const ExplorerPage: React.FC = () => {
                 settings: data.settings,
                 activity: data.activity,
                 games: data.games,
+                // Preserve the FSRS audit trail (Track/Untrack data from the
+                // /fsrs page). Omitting it here would PUT a blob with no
+                // `audit` array and erase every tracked card on the next
+                // Explorer save. See `docs/product-specs/FSRS-LIST.md`.
+                audit: data.audit,
             };
             const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
             await dal.storeRepertoireData(wire);
@@ -1388,6 +1413,7 @@ const ExplorerPage: React.FC = () => {
                                     busy={importBusy}
                                     colorLabel={resolvedOrientation === 'white' ? 'White' : 'Black'}
                                     triggerRefCallback={el => { menuTriggerRef.current = el; }}
+                                    onOpenFsrs={() => { setMenuOpen(false); navigate('/fsrs'); }}
                                 />
                             </div>
                         )}
