@@ -860,6 +860,21 @@ const GamesPage: React.FC = () => {
         return count;
     }, [orderedRows, annotationByKey, filterReady]);
 
+    /** Count of non-pending, annotated rows — every real game (clean + with mistakes). */
+    const totalGameCount = useMemo(() => {
+        if (!filterReady) return 0;
+        let count = 0;
+        for (const row of orderedRows) {
+            if (row.pending) continue;
+            const key = `${row.record.p}:${row.record.id}`;
+            if (!annotationByKey.get(key)) continue; // unannotated ≠ a counted game
+            count++;
+        }
+        return count;
+    }, [orderedRows, annotationByKey, filterReady]);
+
+    const mistakeGameCount = totalGameCount - cleanGameCount;
+
     const visibleRows = useMemo(() => {
         if (!filterReady || gameFilter === 'all' || cleanGameCount === 0) return orderedRows;
         const visible: typeof orderedRows = [];
@@ -1466,28 +1481,28 @@ const GamesPage: React.FC = () => {
                     {gameFilter === 'with-issues' && cleanGameCount > 0 && (
                         <div className="games-filter-banner">
                             <span className="games-filter-banner-text">
-                                {cleanGameCount} game{cleanGameCount === 1 ? '' : 's'} without mistakes hidden
+                                Showing {mistakeGameCount} game{mistakeGameCount === 1 ? '' : 's'} with mistakes
                             </span>
                             <button
                                 type="button"
                                 className="games-filter-banner-action"
                                 onClick={toggleGameFilter}
                             >
-                                Show all
+                                Show all {totalGameCount} game{totalGameCount === 1 ? '' : 's'}
                             </button>
                         </div>
                     )}
                     {gameFilter === 'all' && cleanGameCount > 0 && (
                         <div className="games-filter-banner">
                             <span className="games-filter-banner-text">
-                                Showing all games
+                                Showing all {totalGameCount} game{totalGameCount === 1 ? '' : 's'}
                             </span>
                             <button
                                 type="button"
                                 className="games-filter-banner-action"
                                 onClick={toggleGameFilter}
                             >
-                                Hide {cleanGameCount} clean game{cleanGameCount === 1 ? '' : 's'}
+                                Hide {cleanGameCount} game{cleanGameCount === 1 ? '' : 's'} without mistakes
                             </button>
                         </div>
                     )}
