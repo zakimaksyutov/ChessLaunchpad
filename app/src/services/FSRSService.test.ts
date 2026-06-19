@@ -459,12 +459,13 @@ describe('FSRSService', () => {
         });
     });
 
-    describe('audit hook (FSRS-AUDIT)', () => {
+    describe('audit hook (FSRS-LIST)', () => {
         // These tests exercise the FSRSService → AuditService bridge end-to-end
-        // through the real scheduler so we catch any pre-call snapshot ordering
-        // bugs (the auditor must see the BEFORE state, not the post-scheduler
-        // state). The AuditService unit tests live in `AuditService.test.ts`.
-        it('records an Again trigger on a Review-state card with `source`', async () => {
+        // through the real scheduler. Entry creation is now driven by the FSRS
+        // card list page via `AuditService.track`; the bridge only appends
+        // events for already-tracked cards. The AuditService unit tests live in
+        // `AuditService.test.ts`.
+        it('appends rating events only for a tracked card', async () => {
             const { AuditService } = await import('./AuditService');
             const audit: any[] = [];
             const auditor = new AuditService(audit);
@@ -476,38 +477,40 @@ describe('FSRSService', () => {
             service.rateCard('fen1', 'e4', true, new Date('2026-05-01T00:00:00Z'), 'target'); // Learning → Review
             const before = service.getCards()['fen1::e4'];
             expect(before.state).toBe(State.Review);
-            // Two Goods on a New-state pre-call → no audit triggers
+            // Untracked card → no auto-capture
             expect(audit).toEqual([]);
 
-            // Now an Again on the Review-state card → must trigger a watch
+            // Track it (as the FSRS card list page would), then rate again.
+            expect(auditor.track('fen1::e4', before)).toBe(true);
             service.rateCard('fen1', 'e4', false, new Date('2026-05-15T00:00:00Z'), 'target');
             expect(audit).toHaveLength(1);
             expect(audit[0].k).toBe('fen1::e4');
             expect(audit[0].events[0].s).toBe('target');
-            // before.state must equal Review (i.e. NOT the post-Again state)
+            // The snapshot reflects the pre-track Review state.
             expect(audit[0].before[8]).toBe(State.Review);
         });
 
-        it('does NOT record anything when `source` is omitted (opt-in by call site)', async () => {
+        it('does NOT append anything when `source` is omitted (opt-in by call site)', async () => {
             const { AuditService } = await import('./AuditService');
             const audit: any[] = [];
             const auditor = new AuditService(audit);
 
             const service = new FSRSService({}, auditor);
             const t0 = new Date('2026-04-20T00:00:00Z');
-            service.rateCard('fen1', 'e4', true, t0);                // no source
-            service.rateCard('fen1', 'e4', true, new Date('2026-05-01T00:00:00Z'));
-            service.rateCard('fen1', 'e4', false, new Date('2026-05-15T00:00:00Z')); // no source
+            service.rateCard('fen1', 'e4', true, t0, 'target');
+            service.rateCard('fen1', 'e4', true, new Date('2026-05-01T00:00:00Z'), 'target');
+            // Track, then rate without a source — nothing should be appended.
+            expect(auditor.track('fen1::e4', service.getCards()['fen1::e4'])).toBe(true);
+            service.rateCard('fen1', 'e4', false, new Date('2026-05-15T00:00:00Z'));
 
-            expect(audit).toEqual([]);
+            expect(audit[0].events).toEqual([]);
         });
 
-        it('does NOT trigger on the bootstrap Again of a fresh New card', async () => {
+        it('does NOT auto-capture an untracked card on Again', async () => {
             const { AuditService } = await import('./AuditService');
             const audit: any[] = [];
             const auditor = new AuditService(audit);
 
-            // Brand-new card → first rating sees pre-call state = New (no record)
             const service = new FSRSService({}, auditor);
             service.rateCard('fen1', 'e4', false, new Date('2026-04-20T00:00:00Z'), 'learn');
 
@@ -523,8 +526,8 @@ describe('FSRSService', () => {
             } as any;
             const service = new FSRSService({}, throwingAuditor);
 
-            // Establish a Review-state card so a later Again would normally
-            // trigger an audit record (and therefore invoke the throwing hook).
+            // Establish a Review-state card; the bridge invokes the throwing
+            // hook on every rate carrying a `source`.
             const t0 = new Date('2026-04-20T00:00:00Z');
             const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
             try {

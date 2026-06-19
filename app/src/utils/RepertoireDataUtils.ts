@@ -43,7 +43,7 @@ export class RepertoireDataUtils {
         // Seed the FSRS audit array so AuditService can mutate a stable
         // reference. Decode preserves an existing array verbatim; this only
         // fires on fresh blobs or older blobs that predate the field.
-        // See `docs/product-specs/FSRS-AUDIT.md`.
+        // See `docs/product-specs/FSRS-LIST.md`.
         if (!repertoireData.audit) {
             repertoireData.audit = [];
         }

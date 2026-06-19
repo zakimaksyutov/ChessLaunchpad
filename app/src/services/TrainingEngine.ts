@@ -134,10 +134,10 @@ export class TrainingEngine {
      *
      * `audit` (optional) is the shared FSRS-audit array on the blob
      * (`RepertoireData.audit`). When provided, the engine wires an
-     * `AuditService` into its FSRSService so failing-recall trajectories
-     * are captured per `docs/product-specs/FSRS-AUDIT.md`. The engine
-     * mutates the array in place — the caller keeps the reference and
-     * persists it on save.
+     * `AuditService` into its FSRSService so rating events for
+     * already-tracked cards are appended per
+     * `docs/product-specs/FSRS-LIST.md`. The engine mutates the array in
+     * place — the caller keeps the reference and persists it on save.
      *
      * Both this and the PGN constructor route through `init()` to keep
      * graph/planner/annotation hydration consistent — any future per-edge

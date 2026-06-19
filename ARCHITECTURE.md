@@ -58,6 +58,7 @@ See `docs/product-specs/FSRS.md` for the full behavioral specification.
 | `/explorer`         | Browse the repertoire as positions (read-only navigation, FSRS status per move) |
 | `/games`            | Annotated game history from linked Lichess and Chess.com accounts |
 | `/settings`         | FSRS tuning, linked accounts, repertoire import/export, and account settings |
+| `/fsrs`             | Diagnostic FSRS card list (Track/Untrack audit). Reached via the Explorer `⋯` menu; no header nav link |
 
 ## Tech Stack
 

@@ -8,8 +8,13 @@ import {
 import { packCardForAudit } from '../utils/BlobCodec';
 
 /**
- * Capture FSRS rating trajectories for cards that fail a real recall.
- * See `docs/product-specs/FSRS-AUDIT.md`.
+ * Capture FSRS rating trajectories for explicitly-tracked cards.
+ * See `docs/product-specs/FSRS-LIST.md`.
+ *
+ * Entry creation is now driven exclusively by the FSRS card list page via
+ * {@link track}; the old automatic capture (a watch started on an `Again`
+ * rating of a non-`New` card) has been removed. {@link onRate} only appends
+ * events to cards that are already tracked.
  *
  * Mutates the caller-supplied `audit` array in place — `RepertoireData.audit`
  * is the same array reference, so changes are visible to anyone holding it
@@ -37,16 +42,9 @@ export class AuditService {
     /**
      * Notify the auditor of a rating event.
      *
-     * Behavior:
-     * - If `key` is already watched, append the event unconditionally.
-     * - Otherwise, if the rating is `Again` AND `beforeCard` is non-null and
-     *   not in `State.New` AND the audit array has room (< 10 entries),
-     *   create a new watched entry and record the trigger event.
-     * - Otherwise, no-op.
-     *
-     * `beforeCard` is the snapshot of the FSRS card immediately before the
-     * scheduler ran. The caller is responsible for taking that snapshot
-     * because the scheduler replaces (not mutates) the card record.
+     * Behavior: if `key` is already tracked, append the event; otherwise
+     * no-op. Entry creation happens only via {@link track} (the FSRS card
+     * list page) — this method never starts a new watch.
      *
      * This method is defensive against malformed entries (e.g. `events`
      * clobbered to a non-array after construction) so an audit corruption
@@ -55,35 +53,68 @@ export class AuditService {
      */
     onRate(
         key: string,
-        beforeCard: FSRSCardData | undefined,
         rating: Rating,
         ts: number,
         source: AuditEventSource,
     ): void {
         const existing = this.byKey.get(key);
-        if (existing) {
-            if (!Array.isArray(existing.events)) {
-                existing.events = [];
-            }
-            existing.events.push({ ts, r: rating, s: source });
-            return;
+        if (!existing) return;
+        if (!Array.isArray(existing.events)) {
+            existing.events = [];
         }
+        existing.events.push({ ts, r: rating, s: source });
+    }
 
-        // Trigger rule (spec): Again on a card whose pre-call state is not New.
-        if (rating !== Rating.Again) return;
-        if (!beforeCard) return;
-        if (beforeCard.state === State.New) return;
+    /** True when a card with this key is currently tracked. */
+    isTracked(key: string): boolean {
+        return this.byKey.has(key);
+    }
 
-        // Capacity: silently drop new triggers once the array is full. Existing
-        // watched entries are unaffected (handled above).
-        if (this.audit.length >= AUDIT_MAX_ENTRIES) return;
+    /** True when the audit array is at capacity — Track is unavailable. */
+    isFull(): boolean {
+        return this.audit.length >= AUDIT_MAX_ENTRIES;
+    }
+
+    /**
+     * Begin tracking a card: snapshot its current FSRS state and start an
+     * empty event log. Subsequent ratings flow in via {@link onRate}.
+     *
+     * Returns `false` (and makes no change) when tracking can't start:
+     * - the card is already tracked,
+     * - there is no card to snapshot (`beforeCard` is undefined),
+     * - the card is in `State.New` (no meaningful FSRS state yet), or
+     * - the audit array is already at {@link AUDIT_MAX_ENTRIES} capacity.
+     */
+    track(key: string, beforeCard: FSRSCardData | undefined): boolean {
+        if (this.byKey.has(key)) return false;
+        if (!beforeCard) return false;
+        if (beforeCard.state === State.New) return false;
+        if (this.isFull()) return false;
 
         const entry: AuditEntry = {
             k: key,
             before: packCardForAudit(beforeCard),
-            events: [{ ts, r: rating, s: source }],
+            events: [],
         };
         this.audit.push(entry);
         this.byKey.set(key, entry);
+        return true;
+    }
+
+    /**
+     * Stop tracking a card: remove its audit entry (snapshot + events),
+     * freeing a capacity slot. Removes every entry matching `key` so a
+     * corrupt blob carrying duplicates can't leave a stale shadow entry.
+     * Returns `false` when no entry matched.
+     */
+    untrack(key: string): boolean {
+        if (!this.byKey.has(key)) return false;
+        for (let i = this.audit.length - 1; i >= 0; i--) {
+            if (this.audit[i] && this.audit[i].k === key) {
+                this.audit.splice(i, 1);
+            }
+        }
+        this.byKey.delete(key);
+        return true;
     }
 }

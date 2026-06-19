@@ -59,10 +59,9 @@ mistake — an `Again` on a non-New card); that trigger is removed.
   snapshot, so Track is unavailable for them — see above.)
 - A tracked card's block lists its captured evaluations inline — each
   `Again`/`Good` with when it happened, in chronological order.
-- Reuse the existing audit plumbing (`FSRS-AUDIT.md`): the top-level
-  `audit` array on the user blob keyed by `<normalizedFen>::<san>`,
-  with the same packed `before` snapshot + append-only `events`. Track
-  adds no new storage.
+- Reuse the existing audit plumbing: the top-level `audit` array on the
+  user blob keyed by `<normalizedFen>::<san>`, with the same packed
+  `before` snapshot + append-only `events`. Track adds no new storage.
 - Capacity is capped (max 10 tracked cards); Track is unavailable once
   full. **Untrack** frees a slot — there's no auto-eviction, but the
   user can always remove an entry (including legacy auto-captured ones)

@@ -240,10 +240,11 @@ export interface RepertoireData {
     /** Per-account game-ingest state, keyed by `${platform}:${usernameLower}`. */
     games?: GamesIngestMap;
     /**
-     * Temporary FSRS scheduling audit trail. See
-     * `docs/product-specs/FSRS-AUDIT.md`. Mutated in place by `AuditService`
-     * during training and game ingest. Absent on existing blobs; seeded as
-     * an empty array by `RepertoireDataUtils.normalize`.
+     * FSRS scheduling audit trail for cards the user has chosen to Track on
+     * the `/fsrs` page. See `docs/product-specs/FSRS-LIST.md`. Entries are
+     * created/removed by Track/Untrack; `AuditService` appends rating events
+     * in place during training and game ingest. Absent on existing blobs;
+     * seeded as an empty array by `RepertoireDataUtils.normalize`.
      */
     audit?: AuditEntry[];
 }
