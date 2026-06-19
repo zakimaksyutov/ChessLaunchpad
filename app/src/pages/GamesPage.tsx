@@ -57,6 +57,7 @@ import {
 } from '../services/OpponentAnalysisService';
 import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuilder';
 import { runIngest } from '../services/GameIngestService';
+import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
 import { selectRenderableRows } from '../services/GameRowSelection';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
@@ -559,7 +560,12 @@ const GamesPage: React.FC = () => {
     const [explorerEvals, setExplorerEvals] = useState<ExplorerEvals | null>(null);
     const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({ phase: 'idle' });
     const [analysisError, setAnalysisError] = useState<string>('');
-    const [syncStatus, setSyncStatus] = useState<SyncState | null>(null);
+    const [syncStatus, setSyncStatus] = useState<SyncState | null>(() => {
+        // Seed from the shared last-sync time so a throttled visit shows the
+        // real "Synced @ HH:MM" immediately (shared with the Dashboard).
+        const last = getLastSyncAt();
+        return last !== null ? { phase: 'synced', at: new Date(last) } : null;
+    });
     const [awaitingMastersCount, setAwaitingMastersCount] = useState(0);
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
@@ -885,7 +891,7 @@ const GamesPage: React.FC = () => {
      * Callers (Re-annotate, the cleanup effect) await this promise to
      * chain new passes / cancellation safely without busy-waiting.
      */
-    const runAnalysisPass = useCallback((): Promise<void> => {
+    const runAnalysisPass = useCallback((force = false): Promise<void> => {
         // Single-flight guard.
         if (passStartedRef.current) {
             return passDonePromiseRef.current ?? Promise.resolve();
@@ -911,9 +917,21 @@ const GamesPage: React.FC = () => {
                 setAnalysisError('');
                 // Step 1 + 2: ingest (writes records + evicts). The ingest pipeline
                 // is the shared write path for record append + eviction.
+                //
+                // Throttle the provider game-download: skip the auto ingest when
+                // we queried the providers < SYNC_THROTTLE_MS ago. The analysis
+                // steps below still run, so already-stored but not-yet-annotated
+                // games (e.g. just ingested from the Dashboard) are still
+                // annotated. The ↻ button passes `force` to bypass this. See
+                // services/SyncThrottle.ts.
                 setSyncStatus(prev => (prev?.phase === 'syncing' ? prev : { phase: 'syncing' }));
                 setAnalysisProgress({ phase: 'planning' });
-                await runIngest(dal, undefined, signal);
+                if (force || !isSyncThrottled()) {
+                    // Stamp at commit-to-fetch (start) so rapid navigation
+                    // between pages doesn't re-query the providers.
+                    markSyncedNow();
+                    await runIngest(dal, undefined, signal);
+                }
 
                 // Re-fetch the blob to pick up newly ingested records.
                 const fresh = await dal.retrieveRepertoireData();
@@ -1074,7 +1092,10 @@ const GamesPage: React.FC = () => {
             } finally {
                 // Stamp the sync time on every completion path (success, error,
                 // empty-run) — matches the Dashboard's silent-error contract.
-                setSyncStatus({ phase: 'synced', at: new Date() });
+                // Source it from the shared throttle stamp so both pages agree
+                // on "last sync" (falls back to now if we've never synced, e.g.
+                // an analysis-only pass with no linked accounts).
+                setSyncStatus({ phase: 'synced', at: new Date(getLastSyncAt() ?? Date.now()) });
                 // Drop any remaining skeleton slots. The per-game drop in
                 // the analyze loop handles successful completions; this
                 // covers abort / error / network-skip leftovers so we don't
@@ -1381,7 +1402,7 @@ const GamesPage: React.FC = () => {
                                 <button
                                     type="button"
                                     className="games-sync-button"
-                                    onClick={() => runAnalysisPass()}
+                                    onClick={() => runAnalysisPass(true)}
                                     disabled={syncStatus.phase === 'syncing'}
                                     title="Sync games now"
                                     aria-label="Sync games now"

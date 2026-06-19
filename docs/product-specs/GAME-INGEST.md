@@ -80,7 +80,8 @@ Storage / build rules:
 ## 2. Trigger
 
 - Runs automatically each time the Dashboard mounts and each time the Games page mounts.
-- Both entry points and a manual **Sync** button (on the Dashboard and the Games page) share a single in-process lock; concurrent runs never overlap.
+- **Auto runs are throttled to once per 5 minutes** (shared `localStorage` timestamp keyed by app username), so bouncing between the Dashboard and Games page does not re-hit the provider APIs on every mount. The manual **Sync** button bypasses the throttle. On the Games page only the provider download is throttled — analysis of already-stored games still runs.
+- All entry points (auto + manual **Sync** button) share a single in-process lock; concurrent runs never overlap.
 - Cross-tab runs are serialized by the blob's ETag / If-Match optimistic-concurrency flow (see §5).
 - Successful ingestion surfaces in the Dashboard Activity Feed (see §6).
 - In-progress runs surface via a sync-status indicator on whichever page triggered them.
