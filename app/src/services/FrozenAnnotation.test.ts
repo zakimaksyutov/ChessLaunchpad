@@ -154,18 +154,17 @@ describe('frozen-annotation round trip (annotateRecord -> freeze -> thaw)', () =
         expect(fan.mb).toBe(5);
     });
 
-    it('round-trips a deviation that has no repertoire alternatives (alt omitted, still an issue)', async () => {
+    it('round-trips a move from a user-to-move leaf as a graded post-theory move, not a deviation', async () => {
         // Repertoire ends after 1...e5 (a leaf — no authored 2nd white move),
-        // so the user's 2.Nf3 is a deviation but there is no book alternative.
+        // so the user's 2.Nf3 leaves the leaf but had nothing to deviate from.
+        // It's graded as a post-theory response (small drop → ok, code 2), not a deviation.
         const reps = pgnToRepertoires([{ pgn: '1. e4 e5', orientation: 'white' }]);
         const fens = buildRepertoireFenSets(reps);
-        const record = rec({ m: 'e4 e5 Nf3' });
+        const record = rec({ m: 'e4 e5 Nf3', ev: [20, 18, 20] });
         const { fan, thawed } = await expectRoundTrip(record, 'me', fens.whiteFens);
-        expect(fan.hl).toEqual([0, 1]);
+        expect(fan.hl).toEqual([0, 2]);
         expect(fan.alt).toBeUndefined();
-        expect(thawed.deviation).toBeDefined();
-        expect(thawed.deviation!.repertoireMoves).toEqual([]);
-        expect(thawed.deviation!.userMove.san).toBe('Nf3');
+        expect(thawed.deviation).toBeUndefined();
     });
 });
 

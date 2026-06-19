@@ -155,6 +155,48 @@ describe('annotateGame', () => {
         });
     });
 
+    describe('user-to-move repertoire leaf', () => {
+        // Repertoire authored only to 2...Nc6 — the position after Nc6 (White to
+        // move) is a leaf: it's in the FEN set but has no authored continuation.
+        const leafRepertoireFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
+
+        it('does not mark a move from a user-to-move leaf as a deviation', async () => {
+            // Game: 1. e4 e5 2. Nf3 Nc6 3. Bb5 — Bb5 leaves the leaf, but there
+            // was nothing to deviate from (no repertoire continuation existed).
+            // It should be graded (post-theory), not flagged as a deviation.
+            const gameData = makeGameData('e4 e5 Nf3 Nc6 Bb5 a6', 'user', 'opp');
+            const result = await annotateGame(gameData, 'user', leafRepertoireFens, null, 30, 'lichess');
+
+            expect(result).not.toBeNull();
+            const moves = result!.moves;
+
+            expect(moves[0].highlight).toBe('in-repertoire'); // e4
+            expect(moves[2].highlight).toBe('in-repertoire'); // Nf3
+            expect(moves[4].highlight).toBe('out-of-repertoire-response'); // Bb5 — leaf, graded not deviation
+            expect(result!.deviation).toBeUndefined();
+        });
+
+        it('grades a mistake played from a user-to-move leaf and keeps analysing', async () => {
+            // Game: 1. e4 e5 2. Nf3 Nc6 3. Bb5 — leaf move with a 50 cp drop.
+            const gameData = makeGameData('e4 e5 Nf3 Nc6 Bb5 a6', 'user', 'opp');
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']);
+            const evals = makeEvals({
+                [compact(fens[4])]: [30],  // before Bb5
+                [compact(fens[5])]: [-20], // after Bb5 → drop = 50 (mistake)
+            });
+
+            const result = await annotateGame(gameData, 'user', leafRepertoireFens, evals, 30, 'lichess');
+
+            expect(result).not.toBeNull();
+            const bb5 = result!.moves[4];
+            expect(bb5.highlight).toBe('out-of-repertoire-response');
+            expect(bb5.evalDrop).toBeDefined();
+            expect(bb5.evalDrop!.evalDrop).toBe(50);
+            expect(bb5.evalDrop!.category).toBe('mistake');
+            expect(result!.deviation).toBeUndefined();
+        });
+    });
+
     describe('opponent deviation from repertoire', () => {
         it('evaluates user response after opponent deviation (opponent stays in theory)', async () => {
             // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5
@@ -666,8 +708,8 @@ describe('annotateGame', () => {
 
     describe('embedded eval fallback in annotation', () => {
         it('uses embedded evals when ExplorerEvals has no data for the position', async () => {
-            // Repertoire: 1. e4 e5 2. Nf3 Nc6
-            const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
+            // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5 (Bb5 authored so Bc4 is a real deviation)
+            const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']]);
 
             // Game: 1. e4 e5 2. Nf3 Nc6 3. Bc4 (user deviation at ply 4)
             // Lichess analysis[i] = eval of position AFTER ply i.
@@ -702,8 +744,8 @@ describe('annotateGame', () => {
         });
 
         it('prefers ExplorerEvals over embedded evals', async () => {
-            // Repertoire: 1. e4 e5 2. Nf3 Nc6
-            const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6']]);
+            // Repertoire: 1. e4 e5 2. Nf3 Nc6 3. Bb5 (Bb5 authored so Bc4 is a real deviation)
+            const repFens = buildRepertoireFens([['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']]);
 
             const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4']);
 
