@@ -629,7 +629,7 @@ const FsrsCardListPage: React.FC = () => {
                     <div className="fsrs-title-row">
                         <h1 className="fsrs-title">FSRS cards</h1>
                         <p className="fsrs-subtitle">
-                            Diagnostic view of every scheduled card. Read-only except Track/Untrack.
+                            Diagnostic view of every scheduled card.
                         </p>
                     </div>
                     <div className="fsrs-summary" role="group" aria-label="Card summary">
