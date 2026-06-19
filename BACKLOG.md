@@ -22,6 +22,22 @@ Two ways out:
 - **(a)** Make fuzz real by adopting the "stamp `request_retention`, return stored `card.due` verbatim when it matches" fix from the **Exact due dates** item above — this restores ts-fsrs's intended load-spreading and also closes the ±1-day drift.
 - **(b)** Drop fuzz entirely by passing `enable_fuzz: false`, which also lets the end-to-end snapshot test stop poking the scheduler's private `parameters.enable_fuzz` to disable it.
 
+### "last 1d ago" visualization
+
+Pure visualization — `app/src/pages/ExplorerPage.tsx:80`:
+
+```ts
+const day = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+if (day < 60) return `last ${day}d ago`;
+```
+
+Two things conspire to give you "last 1d ago" right after rating:
+
+1. `Math.round` — anything ≥ 12h ago rounds up to "1d ago"; anything < 12h rounds down to 0d.
+2. `Math.max(1, …)` — that 0 is then clamped to 1, so the smallest label this formatter can ever produce is "last 1d ago", even one second after a review.
+
+So the stored `lr` is fine (it's an ISO timestamp with millisecond precision written from `now` in `FSRSService.rateCard → scheduler.next(...)`; you can confirm with `FSRSService.test.ts:31` asserting `cardData.lr === now.toISOString()`). No FSRS bug — just the day-granularity formatter. If you ever wanted to show "just now / 5m ago / 2h ago" you'd add cases above the `day < 60` branch, but per the note: no change needed.
+
 ## Games
 
 ### False deviation from a user-to-move repertoire leaf
@@ -31,3 +47,31 @@ When a repertoire line ends on an *opponent* move, the resulting user-to-move po
 In a real game that reaches such a leaf and then plays a non-transposing move, `annotateGame` flags that move as a **deviation** (purple border) with **empty** `repertoireMoves` (no green arrows) — even though there was nothing to deviate from. The deviation branch only tests `isUserMove && repertoireFens.has(fenBefore)` (`GameAnnotationService.ts:400`); it never checks that a repertoire continuation exists. Confirmed with a repro: repertoire authored to `2...Nc6`, game `e4 e5 Nf3 Nc6 Bb5 …` → `Bb5` returns `deviation`, `alts = 0`.
 
 **Fix:** in the deviation branch, require at least one repertoire continuation from `fenBefore` (non-empty alternatives); when there is none, classify the move as **out-of-theory** instead. Independent of the frozen-annotation (`fan`) work, though `fan` would otherwise freeze this misclassification into stored data.
+
+## Explorer
+
+### Move on board in read mode to navigate
+
+`/explorer`: Move on explorer in read mode on the board to navigate. If a new move / annotation — toast — "Switch to edit mode?".
+
+### Home / Back / Forward navigation
+
+Home, Back, Forward in `/explorer`.
+
+## Dashboard
+
+### Link to /games for activity tiles with non-analyzed games
+
+On dashboard — for activity tiles with non-analyzed games — let's have a link to `/games`.
+
+## Badges
+
+### Position milestone badges
+
+Badges — 10, 100, 1000, 2000, 5000 positions; dedication. Capture from stack overflow.
+
+## Authentication
+
+### Lichess / Chess.com login
+
+Lichess / Chess.com login.
