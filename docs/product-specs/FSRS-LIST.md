@@ -91,6 +91,3 @@ The old behavior is replaced, not extended:
 - Keep the audit storage/codec plumbing (`AuditData` model, the
   top-level `audit` blob array + codec packing, and event appending for
   already-tracked cards).
-- Delete `docs/product-specs/FSRS-AUDIT.md` and repoint the
-  code/comments that referenced it to this spec — its content is now
-  fully covered here.
