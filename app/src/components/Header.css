@@ -6,6 +6,8 @@
   align-items: center;
   padding: 0.3rem;
   margin: 0;
+  /* Never let the app-shell flex column compress the header. */
+  flex-shrink: 0;
 }
 
 .header-title-link {

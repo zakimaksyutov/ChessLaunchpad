@@ -6,7 +6,7 @@ const LandingPage: React.FC = () => {
     return (
         <div style={{ 
             padding: '1rem',
-            minHeight: 'calc(100vh - 60px)', // Subtract header height
+            minHeight: '100%',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between'
