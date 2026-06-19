@@ -121,7 +121,6 @@ describe('AuditService', () => {
             expect(audit[0].events).toEqual([]);
             // before is the packed shape (length 10 because reviewCard has lastReview)
             expect(audit[0].before).toHaveLength(10);
-            expect(svc.isTracked('k1')).toBe(true);
         });
 
         it('refuses to track a New-state card', () => {
@@ -172,7 +171,6 @@ describe('AuditService', () => {
 
             expect(svc.untrack('k1')).toBe(true);
             expect(audit).toEqual([]);
-            expect(svc.isTracked('k1')).toBe(false);
             expect(svc.isFull()).toBe(false);
         });
 
@@ -193,7 +191,7 @@ describe('AuditService', () => {
 
             svc.untrack('k0');
             expect(svc.track('new', reviewCard())).toBe(true);
-            expect(svc.isTracked('new')).toBe(true);
+            expect(audit.find(e => e.k === 'new')).toBeDefined();
         });
 
         it('removes every entry matching the key (corrupt-blob duplicates)', () => {

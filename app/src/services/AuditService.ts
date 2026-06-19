@@ -65,11 +65,6 @@ export class AuditService {
         existing.events.push({ ts, r: rating, s: source });
     }
 
-    /** True when a card with this key is currently tracked. */
-    isTracked(key: string): boolean {
-        return this.byKey.has(key);
-    }
-
     /** True when the audit array is at capacity — Track is unavailable. */
     isFull(): boolean {
         return this.audit.length >= AUDIT_MAX_ENTRIES;
