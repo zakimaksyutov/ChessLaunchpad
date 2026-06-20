@@ -249,6 +249,38 @@ test.describe('Explorer page — Edit mode', () => {
         await expect(page.locator('.explorer-save-bar')).toContainText(/1 added/);
     });
 
+    test('Open in Explorer link from an Added review tile focuses the position (delta intact)', async ({ page }) => {
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4', orientation: 'white' },
+        ]);
+        await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
+
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
+        await page.locator('button.explorer-move-san', { hasText: 'e4' }).first().click();
+        await dragPiece(page, 'e7', 'e5');
+        await page.locator('.explorer-save-bar').getByRole('button', { name: 'Review & Save' }).click();
+        const review = page.locator('.explorer-review');
+        await expect(review).toBeVisible();
+
+        // The Added tile exposes an "Open in Explorer" deep link.
+        const openLink = review.getByRole('link', { name: 'Open in Explorer ↗' }).first();
+        await expect(openLink).toBeVisible();
+        await openLink.click();
+
+        // Leaves Review for the main Edit view, focused on the linked position.
+        await expect(review).toHaveCount(0);
+        await expect(page.locator('.explorer-save-bar')).toBeVisible();
+        await expect(page.locator('.explorer-save-bar')).toContainText(/1 added/);
+        // URL carries the position FEN (after 1.e4 e5: black to move).
+        await expect.poll(() => page.url()).toContain('fen=');
+        await expect(page.url()).not.toContain('review=1');
+        // The board shows the linked position (e5 occupied).
+        await expectPiece(page, 'e5', 'bp');
+    });
+
     test('orientation toggle is hidden in Edit mode; delta survives in-page navigation', async ({ page }) => {
         const fixture = buildRepertoireData([
             { pgn: '1. e4 e5', orientation: 'white' },

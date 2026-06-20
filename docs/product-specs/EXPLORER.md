@@ -81,7 +81,10 @@ cascades through a seven-move branch shows as eight removed.
 Added, Removed, Edited — where co-linear edits collapse into
 expandable chains. Chain tails call out transposition consequences:
 a deletion stopped by a still-reachable descendant, or an addition
-that joined an existing subtree, are both annotated inline.
+that joined an existing subtree, are both annotated inline. Added
+and Edited tiles carry an **Open in Explorer** link that jumps to
+that position in the main Edit view (the pending delta is preserved);
+Removed tiles omit it since the position no longer exists.
 
 **Save** writes the new blob (refusing on a concurrent-edit
 conflict, prompting the user to refresh and lose local edits).
