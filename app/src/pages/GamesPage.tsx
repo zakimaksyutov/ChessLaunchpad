@@ -40,6 +40,7 @@ import {
     analyzeOneGame,
     flushFanUpdates,
     persistOpponentAnalysis,
+    persistGameReviewed,
     persistReannotateClear,
     persistReannotateRefresh,
     persistDeleteRecordsFromTimestamp,
@@ -78,7 +79,47 @@ type SyncState =
  *  up for every 1-2 game refresh. */
 const SYNC_PROGRESS_BAR_THRESHOLD = 3;
 
-type GameFilter = 'with-issues' | 'all';
+/**
+ * Game list filter. The default `unreviewed` is the "review queue" — mistake
+ * games the user hasn't yet marked reviewed. `reviewed` and `mistakes` are the
+ * other mistake views; `all` shows every game (clean ones too).
+ */
+type GameFilter = 'unreviewed' | 'reviewed' | 'mistakes' | 'all';
+
+/** Coerce a stored filter value to a valid `GameFilter`, migrating the legacy
+ *  two-way toggle (`with-issues`/`all`) onto the new set. */
+function normalizeStoredFilter(stored: string | null): GameFilter {
+    switch (stored) {
+        case 'all':
+        case 'reviewed':
+        case 'mistakes':
+        case 'unreviewed':
+            return stored;
+        case 'with-issues': // legacy: "hide clean games"
+            return 'unreviewed';
+        default:
+            return 'unreviewed';
+    }
+}
+
+/** Message shown when the active filter selects no games. */
+function filterEmptyMessage(
+    filter: GameFilter,
+    counts: { mistakes: number },
+): string {
+    switch (filter) {
+        case 'reviewed':
+            return 'No games marked as reviewed yet.';
+        case 'unreviewed':
+            return counts.mistakes === 0
+                ? 'No mistakes — every game followed your repertoire. 🎉'
+                : 'All mistakes reviewed — your queue is clear. 🎉';
+        case 'mistakes':
+            return 'No mistakes — every game followed your repertoire. 🎉';
+        case 'all':
+            return 'No games to show.';
+    }
+}
 
 /** True when a game annotation contains a repertoire deviation or an EOT eval-drop issue. */
 function gameRowHasIssue(ann: GameAnnotation): boolean {
@@ -297,8 +338,12 @@ interface GameRowProps {
      * Render hides the result block and re-enables the menu action.
      */
     opIsStale: boolean;
+    /** True when the user has marked this game reviewed (`record.rv === 1`). */
+    reviewed: boolean;
     onReannotate: (record: GameRecord, userLower: string) => void;
     onAnalyzeOpponent: (record: GameRecord) => void;
+    /** Toggle this game's reviewed flag. Only offered on mistake rows. */
+    onToggleReviewed: (record: GameRecord) => void;
     /** DEBUG / TEMP — delete this record and every newer one. */
     onDeleteFromHere: (record: GameRecord) => void;
 }
@@ -313,8 +358,10 @@ const GameRow: React.FC<GameRowProps> = ({
     analyzeProgress,
     analyzeDisabled,
     opIsStale,
+    reviewed,
     onReannotate,
     onAnalyzeOpponent,
+    onToggleReviewed,
     onDeleteFromHere,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -378,6 +425,9 @@ const GameRow: React.FC<GameRowProps> = ({
     const blackIsUser = meta.userColor === 'black';
 
     const hasDeviation = annotation?.deviation != null;
+    // A "mistake" row — has a deviation or an EOT eval-drop. Mirrors
+    // `gameRowHasIssue`. Only mistake rows offer the reviewed toggle.
+    const isMistake = hasDeviation || eotSummary !== null;
     const tileClass = hasDeviation
         ? ' game-row-deviation'
         : eotSummary
@@ -468,6 +518,18 @@ const GameRow: React.FC<GameRowProps> = ({
                     {meta.openingName && <span className="game-opening">{meta.openingName}</span>}
                     {reannotating && <span className="game-reannotating-badge">Re-annotating…</span>}
                     {pending && <span className="game-pending-badge">Analyzing…</span>}
+                    {!pending && isMistake && (
+                        <button
+                            type="button"
+                            className={`game-review-toggle${reviewed ? ' game-review-toggle-done' : ''}`}
+                            onClick={() => onToggleReviewed(record)}
+                            title={reviewed
+                                ? 'Marked as reviewed — click to move back to your review queue'
+                                : 'Mark this game as reviewed'}
+                        >
+                            {reviewed ? '✓ Reviewed' : 'Mark reviewed'}
+                        </button>
+                    )}
                 </div>
 
                 {pending ? (
@@ -616,21 +678,18 @@ const GamesPage: React.FC = () => {
      */
     const [pendingAnalysisKeys, setPendingAnalysisKeys] = useState<Set<string>>(new Set());
 
-    // Filter: hide clean games by default. Persisted per-user in localStorage.
+    // Filter: show the unreviewed-mistakes "review queue" by default.
+    // Persisted per-user in localStorage.
     const filterKey = useMemo(
         () => `games:filter:${localStorage.getItem('username') ?? ''}`,
         [],
     );
-    const [gameFilter, setGameFilter] = useState<GameFilter>(() => {
-        const stored = localStorage.getItem(filterKey);
-        return stored === 'all' ? 'all' : 'with-issues';
-    });
-    const toggleGameFilter = useCallback(() => {
-        setGameFilter(prev => {
-            const next: GameFilter = prev === 'all' ? 'with-issues' : 'all';
-            localStorage.setItem(filterKey, next);
-            return next;
-        });
+    const [gameFilter, setGameFilter] = useState<GameFilter>(
+        () => normalizeStoredFilter(localStorage.getItem(filterKey)),
+    );
+    const selectGameFilter = useCallback((next: GameFilter) => {
+        setGameFilter(next);
+        localStorage.setItem(filterKey, next);
     }, [filterKey]);
 
     const measurePerf = useMemo(() => getMeasurePerf(), []);
@@ -846,35 +905,61 @@ const GamesPage: React.FC = () => {
     // content row). No external resource (ExplorerEvals) gates the filter.
     const filterReady = data != null;
 
-    /** Count of non-pending rows that have no deviation or EOT issue. */
-    const cleanGameCount = useMemo(() => {
-        if (!filterReady) return 0;
-        let count = 0;
-        for (const row of orderedRows) {
-            if (row.pending) continue;
-            const key = `${row.record.p}:${row.record.id}`;
-            const ann = annotationByKey.get(key);
-            if (!ann) continue; // unannotated ≠ clean
-            if (!gameRowHasIssue(ann)) count++;
+    /**
+     * Per-bucket counts across non-pending, annotated rows. A "mistake" is a
+     * row with a deviation or EOT eval-drop issue; mistakes split into
+     * `reviewed` (`record.rv === 1`) vs `unreviewed`. `clean` rows have no
+     * issue. These drive the filter-bar chip counts.
+     */
+    const filterCounts = useMemo(() => {
+        let clean = 0;
+        let unreviewed = 0;
+        let reviewed = 0;
+        if (filterReady) {
+            for (const row of orderedRows) {
+                if (row.pending) continue;
+                const key = `${row.record.p}:${row.record.id}`;
+                const ann = annotationByKey.get(key);
+                if (!ann) continue; // unannotated ≠ a counted game
+                if (gameRowHasIssue(ann)) {
+                    if (row.record.rv === 1) reviewed++;
+                    else unreviewed++;
+                } else {
+                    clean++;
+                }
+            }
         }
-        return count;
+        const mistakes = unreviewed + reviewed;
+        return { clean, unreviewed, reviewed, mistakes, total: clean + mistakes };
     }, [orderedRows, annotationByKey, filterReady]);
 
     const visibleRows = useMemo(() => {
-        if (!filterReady || gameFilter === 'all' || cleanGameCount === 0) return orderedRows;
+        if (!filterReady || gameFilter === 'all') return orderedRows;
         const visible: typeof orderedRows = [];
         for (const row of orderedRows) {
+            // Pending rows are still being analyzed — we don't yet know if
+            // they're mistakes, so keep them visible regardless of filter.
             if (row.pending) {
                 visible.push(row);
                 continue;
             }
             const key = `${row.record.p}:${row.record.id}`;
             const ann = annotationByKey.get(key);
-            // Show rows whose annotation hasn't been computed yet (unannotated ≠ clean)
-            if (!ann || gameRowHasIssue(ann)) visible.push(row);
+            // Show rows whose annotation hasn't been computed yet (unannotated ≠ clean).
+            if (!ann) {
+                visible.push(row);
+                continue;
+            }
+            const issue = gameRowHasIssue(ann);
+            const reviewed = row.record.rv === 1;
+            const show =
+                gameFilter === 'mistakes' ? issue
+                    : gameFilter === 'reviewed' ? issue && reviewed
+                        : /* unreviewed */ issue && !reviewed;
+            if (show) visible.push(row);
         }
         return visible;
-    }, [orderedRows, annotationByKey, gameFilter, cleanGameCount, filterReady]);
+    }, [orderedRows, annotationByKey, gameFilter, filterReady]);
 
     // ─────────────────────────────────────────────────────────────────────
     // Analysis pass
@@ -1326,6 +1411,48 @@ const GamesPage: React.FC = () => {
     }, [dal, analyzingRecordKey, orderedRows, annotationByKey]);
 
     // ─────────────────────────────────────────────────────────────────────
+    // Mark reviewed
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Toggle a game's `rv` (reviewed) flag. Patches the in-memory tree
+     * optimistically so the row reacts instantly (and drops out of the
+     * "to review" filter), then persists. We deliberately patch `rv` in
+     * place rather than swapping in the persisted blob — that would clobber
+     * any `fan` the analysis pass has written optimistically but not yet
+     * flushed. Rolls back the patch on a hard failure.
+     */
+    const handleToggleReviewed = useCallback(async (record: GameRecord) => {
+        const nextReviewed = record.rv !== 1;
+        const applyLocal = (reviewed: boolean) => {
+            setData(d => {
+                if (!d?.activity) return d;
+                const target = findRecord(d.activity, record.id, record.p);
+                if (!target) return d;
+                if (reviewed) target.record.rv = 1;
+                else delete target.record.rv;
+                return { ...d };
+            });
+        };
+        applyLocal(nextReviewed);
+        try {
+            await persistGameReviewed(
+                dal, record.id, record.p, nextReviewed, pageAbortRef.current?.signal,
+            );
+        } catch (e) {
+            // Abort = navigation away; 412 = the app-root <ConflictModal>
+            // owns recovery. Neither is a real failure to surface here.
+            if ((e as { name?: string })?.name === 'AbortError'
+                || pageAbortRef.current?.signal.aborted) {
+                return;
+            }
+            if (e instanceof DataAccessError && e.statusCode === 412) return;
+            console.warn('Mark-reviewed failed:', e);
+            applyLocal(!nextReviewed); // roll back
+        }
+    }, [dal]);
+
+    // ─────────────────────────────────────────────────────────────────────
     // DEBUG / TEMP — "Delete from here" action (remove before merging)
     // ─────────────────────────────────────────────────────────────────────
 
@@ -1463,37 +1590,30 @@ const GamesPage: React.FC = () => {
                 </div>
             ) : (
                 <div className="games-list">
-                    {gameFilter === 'with-issues' && cleanGameCount > 0 && (
-                        <div className="games-filter-banner">
-                            <span className="games-filter-banner-text">
-                                {cleanGameCount} game{cleanGameCount === 1 ? '' : 's'} without mistakes hidden
-                            </span>
-                            <button
-                                type="button"
-                                className="games-filter-banner-action"
-                                onClick={toggleGameFilter}
-                            >
-                                Show all
-                            </button>
+                    {filterReady && (
+                        <div className="games-filter-bar" role="group" aria-label="Filter games">
+                            {([
+                                ['unreviewed', 'To review', filterCounts.unreviewed],
+                                ['reviewed', 'Reviewed', filterCounts.reviewed],
+                                ['mistakes', 'All mistakes', filterCounts.mistakes],
+                                ['all', 'All games', filterCounts.total],
+                            ] as [GameFilter, string, number][]).map(([value, label, count]) => (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    className={`games-filter-chip${gameFilter === value ? ' games-filter-chip-active' : ''}`}
+                                    aria-pressed={gameFilter === value}
+                                    onClick={() => selectGameFilter(value)}
+                                >
+                                    {label}
+                                    <span className="games-filter-chip-count">{count}</span>
+                                </button>
+                            ))}
                         </div>
                     )}
-                    {gameFilter === 'all' && cleanGameCount > 0 && (
-                        <div className="games-filter-banner">
-                            <span className="games-filter-banner-text">
-                                Showing all games
-                            </span>
-                            <button
-                                type="button"
-                                className="games-filter-banner-action"
-                                onClick={toggleGameFilter}
-                            >
-                                Hide {cleanGameCount} clean game{cleanGameCount === 1 ? '' : 's'}
-                            </button>
-                        </div>
-                    )}
-                    {gameFilter === 'with-issues' && cleanGameCount > 0 && visibleRows.length === 0 && (
+                    {filterReady && visibleRows.length === 0 && (
                         <div className="games-empty">
-                            <p>All {cleanGameCount} game{cleanGameCount === 1 ? '' : 's'} followed your repertoire — nothing to review. 🎉</p>
+                            <p>{filterEmptyMessage(gameFilter, filterCounts)}</p>
                         </div>
                     )}
                     {visibleRows.map(({ record, userLower, pending }) => {
@@ -1508,12 +1628,14 @@ const GamesPage: React.FC = () => {
                                 annotation={annotation}
                                 opponentAnalysis={op?.live ?? null}
                                 opIsStale={op?.stale ?? false}
+                                reviewed={record.rv === 1}
                                 reannotating={reannotatingKeys.has(key)}
                                 pending={pending}
                                 analyzeProgress={analyzingRecordKey === key ? analyzeProgress : null}
                                 analyzeDisabled={analyzingRecordKey !== null}
                                 onReannotate={handleReannotate}
                                 onAnalyzeOpponent={handleAnalyzeOpponent}
+                                onToggleReviewed={handleToggleReviewed}
                                 onDeleteFromHere={handleDeleteFromHere}
                             />
                         );

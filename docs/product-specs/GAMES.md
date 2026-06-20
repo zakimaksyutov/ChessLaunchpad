@@ -160,9 +160,11 @@ When no source has eval data for an **opponent** move that left the repertoire, 
 
 Each row's left border is color-coded for at-a-glance status: purple for user-deviation rows, gold/red/purple for EOT inaccuracy/mistake/blunder, no border otherwise.
 
-### Mistakes filter
+### Filter bar & "mark reviewed"
 
-By default the list hides **clean** games (no deviation, no eval-drop mistake), showing only games worth reviewing. A banner reports how many are hidden with a toggle to show all (and to hide them again). The preference is remembered on the device, per user.
+A filter bar selects one of four views — **To review** (default; unreviewed mistakes), **Reviewed**, **All mistakes**, **All games** — each with a live count. The choice is remembered per user on the device.
+
+Each mistake row has a **Mark reviewed** toggle that sets a persistent `rv` flag, so the decision syncs across devices and the row leaves the **To review** queue. It's a user decision independent of the annotation: **Re-annotate does not clear it**, and clean games never carry it.
 
 ## Opponent Analysis (`op`)
 

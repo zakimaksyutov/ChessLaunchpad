@@ -91,6 +91,14 @@ export interface GameRecord {
     fan?: FrozenAnnotation;
     /** Saved opponent-analysis result; on-demand, independent of `fan`. */
     op?: OpponentAnalysisRecord;
+    /**
+     * Reviewed flag — the user has marked this game's mistake as reviewed
+     * (analyzed / addressed) from the /games page. A user decision,
+     * independent of `fan`: it drives the page's "to review" filter, not the
+     * annotation. Present (`1`) means reviewed; absent means not yet
+     * reviewed. Re-annotate does NOT clear it. See `docs/product-specs/GAMES.md`.
+     */
+    rv?: 1;
 }
 
 /**
