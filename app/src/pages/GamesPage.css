@@ -766,7 +766,11 @@
     font-size: 0.72rem;
     font-weight: 600;
     line-height: 1;
-    padding: 0.12rem 0.4rem;
+    /* Extra top vs. bottom padding compensates for the font's descent space,
+       which otherwise leaves the (descenderless) digits sitting visibly high
+       in the badge. Total vertical padding is unchanged, so badge height and
+       its centering against the label are preserved. */
+    padding: 0.18rem 0.4rem 0.06rem;
     border-radius: 999px;
     background: rgba(0, 0, 0, 0.08);
     color: inherit;
