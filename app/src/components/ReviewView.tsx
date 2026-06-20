@@ -1,8 +1,27 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessboardControl from './ChessboardControl';
-import { PendingDelta, EditChain, AnnotationDiff, EditedEdge } from '../services/PendingEditModel';
+import { PendingDelta, EditChain, AnnotationDiff, EditedEdge, Orientation } from '../services/PendingEditModel';
 import { Annotation } from '../models/Annotation';
+
+/**
+ * "Open in Explorer" deep-link for a reviewed position. Reuses the same
+ * `?o=&fen=` query contract the Explorer reads from the URL. Because the
+ * Review view is itself rendered inside `/explorer`, this stays on the same
+ * route — the SPA nav gate permits same-route Explorer navigation and the
+ * pending delta survives — and dropping `?review=1` returns the user to the
+ * main Edit view focused on the linked position.
+ */
+const OpenInExplorerLink: React.FC<{ fen: string; orientation: Orientation }> = ({ fen, orientation }) => (
+    <Link
+        className="explorer-review-open-link"
+        to={{ pathname: '/explorer', search: `?o=${orientation}&fen=${encodeURIComponent(fen)}` }}
+        title="Open this position in Explorer"
+    >
+        Open in Explorer ↗
+    </Link>
+);
 
 interface ReviewViewProps {
     delta: PendingDelta;
@@ -143,6 +162,9 @@ const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
                     </div>
                     <div className="explorer-review-chain-pgn">{headPgn || '(start)'}</div>
                     <div className="explorer-review-chain-fen">FEN: <code>{chain.head.to}</code></div>
+                    {side === 'added' && (
+                        <OpenInExplorerLink fen={chain.head.to} orientation={chain.orientation} />
+                    )}
                     {chain.tailHint && (
                         <div className="explorer-review-chain-hint">
                             {chain.tailHint.kind === 'joins-existing' && (
@@ -276,6 +298,9 @@ const TailEdgeRow: React.FC<TailEdgeRowProps> = ({ parentSans, edge, side }) => 
             <div className="explorer-review-chain-body">
                 <div className="explorer-review-chain-pgn">{pgnLabel}</div>
                 <div className="explorer-review-chain-fen">FEN: <code>{edge.to}</code></div>
+                {side === 'added' && (
+                    <OpenInExplorerLink fen={edge.to} orientation={edge.orientation} />
+                )}
             </div>
         </div>
     );
@@ -321,6 +346,7 @@ const AnnotationDiffRow: React.FC<AnnotationDiffRowProps> = ({ diff, rootFen }) 
                 </div>
                 <div className="explorer-review-chain-pgn">{diff.pgn || '(start)'}</div>
                 <div className="explorer-review-chain-fen">FEN: <code>{diff.fen}</code></div>
+                <OpenInExplorerLink fen={diff.fen} orientation={diff.orientation} />
             </div>
             <div className="explorer-review-edit-boards">
                 <div className="explorer-review-edit-side">

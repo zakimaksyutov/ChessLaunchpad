@@ -899,6 +899,20 @@
   background: #e3edf8;
 }
 
+.explorer-review-open-link {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2f80ed;
+  text-decoration: none;
+  white-space: nowrap;
+  margin-top: 0.1rem;
+}
+
+.explorer-review-open-link:hover {
+  text-decoration: underline;
+}
+
 .explorer-review-chain-tail {
   list-style: none;
   margin: 0.55rem 0 0;
