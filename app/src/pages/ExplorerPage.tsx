@@ -771,7 +771,7 @@ const ExplorerPage: React.FC = () => {
 
         // Off-repertoire: snap to root, emit toast, replace URL.
         setCurrentFen(root);
-        setSnapToast(`That position isn't in your ${resolvedOrientation} repertoire — opened the starting position instead.`);
+        setSnapToast(`That position isn't in your current ${resolvedOrientation} repertoire — opened the starting position instead.`);
         const next = new URLSearchParams(searchParams);
         next.set('o', resolvedOrientation);
         next.delete('fen');

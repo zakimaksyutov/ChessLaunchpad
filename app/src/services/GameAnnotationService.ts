@@ -208,6 +208,11 @@ export interface AnnotatedMove {
     evalDrop?: EvalDrop;
     /** Which eval source provided data for this move's eval drop */
     evalSource?: EvalSource;
+    /**
+     * Normalized FEN (half-move clock reset) of the position after this move.
+     * Used to deep-link in-repertoire user moves into the Explorer.
+     */
+    fenAfter?: string;
 }
 
 /** Info about the first user deviation from repertoire */
@@ -715,6 +720,7 @@ export async function annotateGame(
             highlight,
             evalDrop,
             evalSource,
+            fenAfter: normalizedFenAfter,
         });
 
         // Stop after maxPlies or theory end + some buffer
@@ -1171,6 +1177,7 @@ export function buildAnnotationFromFrozen(
             isUserMove,
             highlight,
             evalDrop,
+            fenAfter: normalizeFenResetHalfmoveClock(replay.fen()),
         });
 
         if (isUserMove && userMoveIdx >= fan.hl.length) break;
