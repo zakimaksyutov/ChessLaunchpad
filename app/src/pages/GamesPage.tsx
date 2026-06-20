@@ -543,15 +543,33 @@ const GameRow: React.FC<GameRowProps> = ({
                     <>
                         {annotation && annotation.moves.length > 0 && (
                             <div className="game-pgn">
-                                {annotation.moves.map((move, idx) => (
-                                    <React.Fragment key={idx}>
-                                        {move.moveNumber !== undefined && (
-                                            <span className="move-number">{move.moveNumber}.&nbsp;</span>
-                                        )}
-                                        <span className={getMoveClassName(move)}>{move.san}</span>
-                                        {' '}
-                                    </React.Fragment>
-                                ))}
+                                {annotation.moves.map((move, idx) => {
+                                    const explorerLink =
+                                        move.isUserMove &&
+                                        move.highlight === 'in-repertoire' &&
+                                        move.fenAfter
+                                            ? `?o=${meta.userColor}&fen=${encodeURIComponent(move.fenAfter)}`
+                                            : null;
+                                    return (
+                                        <React.Fragment key={idx}>
+                                            {move.moveNumber !== undefined && (
+                                                <span className="move-number">{move.moveNumber}.&nbsp;</span>
+                                            )}
+                                            {explorerLink ? (
+                                                <Link
+                                                    className={`${getMoveClassName(move)} move-link`}
+                                                    to={{ pathname: '/explorer', search: explorerLink }}
+                                                    title="Open in Explorer"
+                                                >
+                                                    {move.san}
+                                                </Link>
+                                            ) : (
+                                                <span className={getMoveClassName(move)}>{move.san}</span>
+                                            )}
+                                            {' '}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </div>
                         )}
 
