@@ -8,6 +8,7 @@ import {
     buildAnalysisPlan,
     flushFanUpdates,
     persistOpponentAnalysis,
+    persistGameReviewed,
     persistReannotateClear,
     persistReannotateRefresh,
 } from './GameRecordAnalysisPass';
@@ -339,6 +340,43 @@ describe('persistOpponentAnalysis', () => {
         };
         const fresh = await persistOpponentAnalysis(dal, 'gone', 'l', op);
         expect(fresh.activity!.practiceLog).toEqual([]);
+        expect(dal.storeCount).toBe(0);
+    });
+});
+
+describe('persistGameReviewed', () => {
+    it('sets rv = 1 on the matching record when reviewed', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const fresh = await persistGameReviewed(dal, 'g1', 'l', true);
+        expect(fresh.activity!.practiceLog[0].games!.records![0].rv).toBe(1);
+    });
+
+    it('deletes rv when un-reviewed', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE, rv: 1 }));
+        const dal = new MockDal(data);
+        const fresh = await persistGameReviewed(dal, 'g1', 'l', false);
+        expect(fresh.activity!.practiceLog[0].games!.records![0].rv).toBeUndefined();
+    });
+
+    it('is a silent no-op when the record was evicted', async () => {
+        const data = makeData();
+        const dal = new MockDal(data);
+        const fresh = await persistGameReviewed(dal, 'gone', 'l', true);
+        expect(fresh.activity!.practiceLog).toEqual([]);
+        expect(dal.storeCount).toBe(0);
+    });
+
+    it('throws AbortError when signal is pre-aborted', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const controller = new AbortController();
+        controller.abort();
+        await expect(persistGameReviewed(dal, 'g1', 'l', true, controller.signal))
+            .rejects.toThrow();
         expect(dal.storeCount).toBe(0);
     });
 });

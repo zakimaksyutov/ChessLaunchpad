@@ -363,6 +363,38 @@ export async function persistOpponentAnalysis(
 }
 
 /**
+ * Persist a single game's reviewed flag (`rv`) back to the blob.
+ * `reviewed: true` sets `rv = 1`; `false` deletes the field.
+ *
+ * Single-attempt: GET fresh blob → toggle `rv` on the target record → PUT
+ * once. No 412 retry — the app-root `<ConflictModal>` owns recovery, same
+ * posture as `persistOpponentAnalysis`. If the target record was evicted,
+ * the change is silently dropped.
+ *
+ * Optional `signal` short-circuits between the GET and the PUT.
+ */
+export async function persistGameReviewed(
+    dal: IRepertoireDataStore,
+    recordId: string,
+    recordPlatform: 'l' | 'c',
+    reviewed: boolean,
+    signal?: AbortSignal,
+): Promise<RepertoireData> {
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) return fresh;
+    const found = findRecord(activity, recordId, recordPlatform);
+    if (!found) return fresh;
+    if (reviewed) found.record.rv = 1;
+    else delete found.record.rv;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return fresh;
+}
+
+/**
  * Persist a Re-annotate clear (drop `fan` and `op` for one record).
  *
  * Single-attempt: GET fresh blob → delete `fan`, `op`, and any legacy `an`
