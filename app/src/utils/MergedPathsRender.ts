@@ -143,6 +143,39 @@ export function mergePathsAsVariations(
     return tokens;
 }
 
+/**
+ * Serialize the merged "How you got here" paths into a single
+ * PGN-with-variations string suitable for handing to an external board (e.g.
+ * Lichess `/analysis/pgn/<pgn>`).
+ *
+ * Reuses {@link mergePathsAsVariations} so the emitted PGN matches the rendered
+ * line exactly — including attaching each alternative path as a `(…)` variation
+ * at its true divergence point. Naive `mainLine (otherPath)` concatenation is
+ * invalid PGN whenever paths diverge at ply 1; walking the token stream avoids
+ * that.
+ *
+ * The render-time move-number prefix uses a unicode ellipsis (`…`) for black
+ * continuations; we emit ASCII `...` here so the result is a standards-compliant
+ * PGN that strict parsers accept. Returns '' for empty/root input.
+ */
+export function mergedPathsToPgn(paths: Path[], rootFen: string): string {
+    const tokens = mergePathsAsVariations(paths, rootFen);
+    if (tokens.length === 0) return '';
+
+    const parts: string[] = [];
+    for (const t of tokens) {
+        if (t.kind === 'open-var') parts.push('(');
+        else if (t.kind === 'close-var') parts.push(')');
+        else parts.push(t.prefix + t.edge.san);
+    }
+
+    return parts
+        .join(' ')
+        .replace(/\( /g, '(')
+        .replace(/ \)/g, ')')
+        .replace(/\u2026/g, '...');
+}
+
 function computePrefix(
     depth: number,
     prevDepth: number | null,

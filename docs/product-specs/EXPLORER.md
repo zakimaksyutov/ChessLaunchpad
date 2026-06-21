@@ -25,7 +25,9 @@ how many sequences arrive at it.
   position to the current FEN, shortest first, capped for readability.
   A **Home · Back · Forward** toolbar leads the section: Home jumps to
   the start, while Back/Forward step through the positions visited
-  inside Explorer during the session.
+  inside Explorer during the session. An **Open in Lichess** icon link
+  ends the section, opening the displayed line (with variations) on the
+  Lichess analysis board, oriented to the side being studied.
 - **Opening name** classified from the current PGN appears above the
   move list.
 - **Move list** — "Your moves from here" or "Opponent's replies" by
