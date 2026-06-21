@@ -128,41 +128,76 @@ const ClickablePly: React.FC<ClickablePlyProps> = ({ prefix, san, targetFen, onJ
 };
 
 /**
- * Renders the canonical-form PGN of a path with each ply clickable. Plies
- * land on the position AFTER they are played. The move number prefix is
- * rendered as plain text outside the click target.
+ * Home · Back · Forward toolbar that leads the "How you got here" line.
+ * Home jumps to the start position; Back/Forward step through the Explorer's
+ * own in-page position history (see the history stack in `ExplorerPage`).
+ * Each button disables at the relevant end of the stack. `onHoverHome`
+ * previews the root position on the board, mirroring the old start pill.
  */
-/**
- * "start" pill — renders as an interactive button when `onJump` is provided
- * (jumps to `rootFen`), or as a static visual badge when the Explorer is
- * already at the starting position.
- */
-const StartPill: React.FC<{ onJump?: (fen: string) => void; rootFen?: string; onHover?: (fen: string | null) => void }> = ({ onJump, rootFen, onHover }) => {
-    if (onJump && rootFen) {
-        return (
+const HistoryNav: React.FC<{
+    rootFen: string;
+    canHome: boolean;
+    canBack: boolean;
+    canForward: boolean;
+    onHome: () => void;
+    onBack: () => void;
+    onForward: () => void;
+    onHoverHome?: (fen: string | null) => void;
+}> = ({ rootFen, canHome, canBack, canForward, onHome, onBack, onForward, onHoverHome }) => {
+    const homeHover = onHoverHome && canHome
+        ? {
+            onMouseEnter: () => onHoverHome(rootFen),
+            onMouseLeave: () => onHoverHome(null),
+            onFocus: () => onHoverHome(rootFen),
+            onBlur: () => onHoverHome(null),
+        }
+        : {};
+    // Use `aria-disabled` rather than the native `disabled` attribute: a
+    // button can disable itself as a direct result of being activated (e.g.
+    // Home → land on root → Home greys out), and native `disabled` would drop
+    // keyboard focus to <body>. Keeping the button focusable preserves the
+    // user's place in the toolbar; the onClick guards no-op when inactive.
+    return (
+        <div className="explorer-history-nav" role="group" aria-label="Position history">
             <button
                 type="button"
-                className="explorer-path-start"
-                onClick={() => onJump(rootFen)}
-                onMouseEnter={onHover ? () => onHover(rootFen) : undefined}
-                onMouseLeave={onHover ? () => onHover(null) : undefined}
-                onFocus={onHover ? () => onHover(rootFen) : undefined}
-                onBlur={onHover ? () => onHover(null) : undefined}
+                className="explorer-history-btn explorer-history-home"
+                onClick={() => { if (canHome) onHome(); }}
+                aria-disabled={!canHome}
                 aria-label="Go to starting position"
                 title="Go to starting position"
+                {...homeHover}
             >
-                start
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 10.2 12 3l9 7.2" />
+                    <path d="M5 9v11h5v-6h4v6h5V9" />
+                </svg>
             </button>
-        );
-    }
-    return (
-        <span
-            className="explorer-path-start explorer-path-start-static"
-            aria-label="Starting position"
-            title="Starting position"
-        >
-            start
-        </span>
+            <button
+                type="button"
+                className="explorer-history-btn explorer-history-back"
+                onClick={() => { if (canBack) onBack(); }}
+                aria-disabled={!canBack}
+                aria-label="Back to previous position"
+                title="Back to previous position"
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M15 5l-7 7 7 7" />
+                </svg>
+            </button>
+            <button
+                type="button"
+                className="explorer-history-btn explorer-history-forward"
+                onClick={() => { if (canForward) onForward(); }}
+                aria-disabled={!canForward}
+                aria-label="Forward to next position"
+                title="Forward to next position"
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 5l7 7-7 7" />
+                </svg>
+            </button>
+        </div>
     );
 };
 
@@ -182,7 +217,7 @@ const MergedPathsLine: React.FC<{
     onHover?: (fen: string | null) => void;
 }> = ({ shown, rootFen, orientation, onJump, onHover }) => {
     if (shown.length === 0) return null;
-    if (shown[0].length === 0) return <StartPill />;
+    if (shown[0].length === 0) return null;
     const tokens = mergePathsAsVariations(shown, rootFen);
 
     // Walk the flat token stream, grouping each (open-var … close-var) into a
@@ -233,7 +268,6 @@ const MergedPathsLine: React.FC<{
 
     return (
         <span className="explorer-path-line">
-            <StartPill onJump={onJump} rootFen={rootFen} onHover={onHover} />
             {stack[0].nodes}
         </span>
     );
@@ -696,6 +730,13 @@ const ExplorerPage: React.FC = () => {
     }, [explicitOrientationParam]);
 
     const [currentFen, setCurrentFen] = useState<string | null>(null);
+    // The orientation that `currentFen` was resolved under. `resolvedOrientation`
+    // is derived synchronously from the URL, but `currentFen` is written one
+    // render later by the settle effect below — so for navigations that change
+    // BOTH fen and orientation there is an intermediate render where the two
+    // disagree. This state is set together with `currentFen`, giving the history
+    // stack a single atomic (fen, orientation) source of truth.
+    const [resolvedFenOrientation, setResolvedFenOrientation] = useState<Orientation | null>(null);
 
     // Hover preview: which FEN to render on the board instead of `currentFen`.
     // Set when the pointer is over (or focus is on) any clickable ply on the
@@ -760,6 +801,7 @@ const ExplorerPage: React.FC = () => {
 
         if (service.isInRepertoire(desiredFen, resolvedOrientation)) {
             setCurrentFen(desiredFen);
+            setResolvedFenOrientation(resolvedOrientation);
             // Canonicalize URL with explicit ?o= when missing.
             if (!explicitOrientationParam) {
                 const next = new URLSearchParams(searchParams);
@@ -771,6 +813,7 @@ const ExplorerPage: React.FC = () => {
 
         // Off-repertoire: snap to root, emit toast, replace URL.
         setCurrentFen(root);
+        setResolvedFenOrientation(resolvedOrientation);
         setSnapToast(`That position isn't in your current ${resolvedOrientation} repertoire — opened the starting position instead.`);
         const next = new URLSearchParams(searchParams);
         next.set('o', resolvedOrientation);
@@ -801,6 +844,58 @@ const ExplorerPage: React.FC = () => {
         setFindInput('');
         setFindError(null);
     }, [searchParams, setSearchParams, resolvedOrientation]);
+
+    // ── In-page navigation history ───────────────────────────────────
+    // A self-contained stack of positions viewed inside `/explorer` that
+    // drives the Home/Back/Forward toolbar in "How you got here". It is a
+    // separate index over visited positions — navigation still updates the
+    // URL (and thus browser history) like every other jump. Each settled
+    // position change appends an entry (truncating any forward entries
+    // first). Back/Forward move `index` then re-navigate; when the new
+    // position settles it equals `entries[index]`, so the push effect skips
+    // re-recording it. `historyRef` is the authoritative store read by the
+    // handlers (immune to stale closures); `history` state mirrors it for
+    // rendering the button states. Component-local, so it resets on reload
+    // or when leaving the page.
+    type HistoryEntry = { fen: string; orientation: Orientation };
+    type HistoryStack = { entries: HistoryEntry[]; index: number };
+    const historyRef = useRef<HistoryStack>({ entries: [], index: -1 });
+    const [history, setHistory] = useState<HistoryStack>(historyRef.current);
+    const commitHistory = useCallback((next: HistoryStack) => {
+        historyRef.current = next;
+        setHistory(next);
+    }, []);
+
+    useEffect(() => {
+        if (!currentFen || !resolvedFenOrientation) return;
+        const fen = currentFen;
+        const orientation = resolvedFenOrientation;
+        const h = historyRef.current;
+        const cur = h.entries[h.index];
+        if (cur && cur.fen === fen && cur.orientation === orientation) return;
+        const entries = h.entries.slice(0, h.index + 1);
+        entries.push({ fen, orientation });
+        commitHistory({ entries, index: entries.length - 1 });
+    }, [currentFen, resolvedFenOrientation, commitHistory]);
+
+    const canHistoryBack = history.index > 0;
+    const canHistoryForward = history.index < history.entries.length - 1;
+
+    const goHistoryBack = useCallback(() => {
+        const h = historyRef.current;
+        if (h.index <= 0) return;
+        const target = h.entries[h.index - 1];
+        commitHistory({ ...h, index: h.index - 1 });
+        jumpTo(target.fen, target.orientation, true);
+    }, [commitHistory, jumpTo]);
+
+    const goHistoryForward = useCallback(() => {
+        const h = historyRef.current;
+        if (h.index >= h.entries.length - 1) return;
+        const target = h.entries[h.index + 1];
+        commitHistory({ ...h, index: h.index + 1 });
+        jumpTo(target.fen, target.orientation, true);
+    }, [commitHistory, jumpTo]);
 
     const handleToggleOrientation = () => {
         if (!service || !currentFen) return;
@@ -1560,41 +1655,48 @@ const ExplorerPage: React.FC = () => {
                     <div className="explorer-right-col">
                         <section className="explorer-how-you-got-here">
                             <div className="explorer-section-title">How you got here</div>
-                            {currentFen === service.getRootFen() ? (
-                                <ul className="explorer-paths">
-                                    <li>
-                                        <span className="explorer-path-line">
-                                            <StartPill />
-                                            {repertoireEmpty && (
-                                                <span className="explorer-empty-path">
-                                                    — no lines in your {resolvedOrientation} repertoire yet
-                                                </span>
-                                            )}
+                            <div className="explorer-howyougothere-row">
+                                <HistoryNav
+                                    rootFen={service.getRootFen()}
+                                    canHome={currentFen !== service.getRootFen()}
+                                    canBack={canHistoryBack}
+                                    canForward={canHistoryForward}
+                                    onHome={() => jumpTo(service.getRootFen(), undefined, true)}
+                                    onBack={goHistoryBack}
+                                    onForward={goHistoryForward}
+                                    onHoverHome={handleHover}
+                                />
+                                <div className="explorer-howyougothere-content">
+                                {currentFen === service.getRootFen() ? (
+                                    repertoireEmpty ? (
+                                        <span className="explorer-empty-path">
+                                            no lines in your {resolvedOrientation} repertoire yet
                                         </span>
-                                    </li>
-                                </ul>
-                            ) : summary.shown.length === 0 ? (
-                                <div className="explorer-empty-path">(not reachable)</div>
-                            ) : (
-                                <ul className="explorer-paths">
-                                    <li>
-                                        <MergedPathsLine
-                                            shown={summary.shown}
-                                            rootFen={service.getRootFen()}
-                                            orientation={resolvedOrientation}
-                                            onJump={fen => jumpTo(fen, undefined, true)}
-                                            onHover={handleHover}
-                                        />
-                                    </li>
-                                    {summary.moreCount > 0 && (
-                                        <li className="explorer-paths-more">
-                                            {summary.moreIsLowerBound
-                                                ? `… ${summary.moreCount}+ more ways`
-                                                : `… ${summary.moreCount} more ${summary.moreCount === 1 ? 'way' : 'ways'}`}
+                                    ) : null
+                                ) : summary.shown.length === 0 ? (
+                                    <div className="explorer-empty-path">(not reachable)</div>
+                                ) : (
+                                    <ul className="explorer-paths">
+                                        <li>
+                                            <MergedPathsLine
+                                                shown={summary.shown}
+                                                rootFen={service.getRootFen()}
+                                                orientation={resolvedOrientation}
+                                                onJump={fen => jumpTo(fen, undefined, true)}
+                                                onHover={handleHover}
+                                            />
                                         </li>
-                                    )}
-                                </ul>
-                            )}
+                                        {summary.moreCount > 0 && (
+                                            <li className="explorer-paths-more">
+                                                {summary.moreIsLowerBound
+                                                    ? `… ${summary.moreCount}+ more ways`
+                                                    : `… ${summary.moreCount} more ${summary.moreCount === 1 ? 'way' : 'ways'}`}
+                                            </li>
+                                        )}
+                                    </ul>
+                                )}
+                                </div>
+                            </div>
                         </section>
 
                         {currentLabel && (

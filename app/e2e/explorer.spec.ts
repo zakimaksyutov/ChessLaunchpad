@@ -48,12 +48,16 @@ test.describe('Explorer page — navigation and URL sync', () => {
         // Board: starting position.
         await expectStartingPosition(page);
 
-        // "How you got here" at root shows only the static start pill — no
-        // clickable start button (we're already at root), and no empty-state
-        // hint (the repertoire is not empty).
+        // "How you got here" at root: the Home/Back/Forward toolbar is present
+        // but every button is disabled (nowhere to go yet), and there is no
+        // empty-state hint (the repertoire is not empty).
         const howYouGotHere = page.locator('.explorer-how-you-got-here');
-        await expect(howYouGotHere.locator('.explorer-path-start-static')).toBeVisible();
-        await expect(howYouGotHere.locator('button.explorer-path-start')).toHaveCount(0);
+        const homeBtn = howYouGotHere.getByRole('button', { name: 'Go to starting position' });
+        const backBtn = howYouGotHere.getByRole('button', { name: 'Back to previous position' });
+        const fwdBtn = howYouGotHere.getByRole('button', { name: 'Forward to next position' });
+        await expect(homeBtn).toHaveAttribute('aria-disabled', 'true');
+        await expect(backBtn).toHaveAttribute('aria-disabled', 'true');
+        await expect(fwdBtn).toHaveAttribute('aria-disabled', 'true');
         await expect(howYouGotHere.locator('.explorer-empty-path')).toHaveCount(0);
 
         // White's turn → "Your moves from here".
@@ -84,9 +88,11 @@ test.describe('Explorer page — navigation and URL sync', () => {
         await expectPiece(page, 'e4', 'wp');
         await expectEmpty(page, 'e2');
 
-        // "How you got here" now shows: clickable start pill + 1.e4.
+        // "How you got here" now shows the 1.e4 path, and the toolbar's Home
+        // and Back buttons light up (we navigated away from root).
+        await expect(homeBtn).toHaveAttribute('aria-disabled', 'false');
+        await expect(backBtn).toHaveAttribute('aria-disabled', 'false');
         const path = howYouGotHere.locator('.explorer-paths .explorer-path-line').first();
-        await expect(path.locator('button.explorer-path-start')).toBeVisible();
         await expect(path.getByRole('button', { name: 'e4', exact: true })).toBeVisible();
 
         // Heading switches to "Opponent's replies".
@@ -123,19 +129,18 @@ test.describe('Explorer page — navigation and URL sync', () => {
         await expect(nf3Row.locator('.explorer-state-pill.state-new')).toBeVisible();
         await expect(nf3Row.locator('.explorer-meta')).toHaveCount(0);
 
-        // ── Click the start pill in "How you got here" ──────────────
-        // Capture the after-e5 URL first so the goBack assertion below can
-        // confirm the start-pill click actually pushed a new history entry.
+        // ── Click the Home button in "How you got here" ─────────────
+        // Capture the after-e5 URL first so we can confirm the Home click
+        // actually pushed a new history entry.
         const urlAfterE5 = page.url();
-        await howYouGotHere.locator('button.explorer-path-start').first().click();
+        await homeBtn.click();
 
         // Board returns to the starting position. (The URL keeps fen= set to
         // the root FEN — the page does not drop the param, it just navigates
-        // to the root position; the visible signal is the board + the
-        // static start pill replacing the path list.)
+        // to the root position; the visible signal is the board + the Home
+        // button going disabled now that we're back at root.)
         await expectStartingPosition(page);
-        await expect(howYouGotHere.locator('.explorer-path-start-static')).toBeVisible();
-        await expect(howYouGotHere.locator('button.explorer-path-start')).toHaveCount(0);
+        await expect(homeBtn).toHaveAttribute('aria-disabled', 'true');
         // URL must have changed from the after-e5 entry (a new history
         // entry was pushed, otherwise goBack below would be a no-op).
         expect(page.url()).not.toBe(urlAfterE5);
@@ -150,6 +155,95 @@ test.describe('Explorer page — navigation and URL sync', () => {
 
         // Explorer is read-only — no PUTs captured throughout.
         expect(saves).toHaveLength(0);
+    });
+
+    test('Home/Back/Forward toolbar traverses in-page history', async ({ page }) => {
+        const variants = [
+            { pgn: '1. e4 e5 2. Nf3', orientation: 'white' as const },
+        ];
+        const fixture = buildRepertoireData(variants);
+        await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+
+        const howYouGotHere = page.locator('.explorer-how-you-got-here');
+        const homeBtn = howYouGotHere.getByRole('button', { name: 'Go to starting position' });
+        const backBtn = howYouGotHere.getByRole('button', { name: 'Back to previous position' });
+        const fwdBtn = howYouGotHere.getByRole('button', { name: 'Forward to next position' });
+        const moves = page.locator('.explorer-moves');
+
+        // Navigate root → 1.e4 → 1…e5 via the move list.
+        await moves.getByRole('button', { name: 'e4', exact: true }).click();
+        await expectPiece(page, 'e4', 'wp');
+        await moves.getByRole('button', { name: 'e5', exact: true }).click();
+        await expectPiece(page, 'e5', 'bp');
+        await expect(fwdBtn).toHaveAttribute('aria-disabled', 'true');
+
+        // Back walks to the 1.e4 position (e5 retracted).
+        await expect(backBtn).toHaveAttribute('aria-disabled', 'false');
+        await backBtn.click();
+        await expectPiece(page, 'e4', 'wp');
+        await expectEmpty(page, 'e5');
+        await expect(fwdBtn).toHaveAttribute('aria-disabled', 'false');
+
+        // Back again returns to the root position; Back/Home now bottom out.
+        await backBtn.click();
+        await expectStartingPosition(page);
+        await expect(backBtn).toHaveAttribute('aria-disabled', 'true');
+        await expect(homeBtn).toHaveAttribute('aria-disabled', 'true');
+
+        // Forward replays root → 1.e4, then 1.e4 → 1…e5.
+        await fwdBtn.click();
+        await expectPiece(page, 'e4', 'wp');
+        await expectEmpty(page, 'e5');
+        await fwdBtn.click();
+        await expectPiece(page, 'e5', 'bp');
+        await expect(fwdBtn).toHaveAttribute('aria-disabled', 'true');
+
+        // A fresh navigation after going Back truncates the forward stack:
+        // step Back to 1.e4, then Home — Forward must disable.
+        await backBtn.click();
+        await expectPiece(page, 'e4', 'wp');
+        await homeBtn.click();
+        await expectStartingPosition(page);
+        await expect(fwdBtn).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    test('cross-orientation Back returns to the exact prior entry (no phantom snap)', async ({ page }) => {
+        // White line through 1.e4; the Black line is unrelated (1.d4 d5), so
+        // the white e4-position is NOT in the Black repertoire. This exercises
+        // the orientation-toggle-that-snaps-to-root path, where `currentFen`
+        // and `resolvedOrientation` momentarily disagree — the history stack
+        // must still record only the real positions.
+        const variants = [
+            { pgn: '1. e4 e5', orientation: 'white' as const },
+            { pgn: '1. d4 d5', orientation: 'black' as const },
+        ];
+        const fixture = buildRepertoireData(variants);
+        await setupMockEnvironment(page, fixture);
+
+        const e4Fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+        await page.goto(`/#/explorer?o=white&fen=${encodeURIComponent(e4Fen)}`);
+
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+        await expectPiece(page, 'e4', 'wp');
+
+        // Toggle to Black: the e4 position isn't in the Black repertoire, so the
+        // page snaps to the Black root (start position).
+        await page.getByRole('button', { name: 'Black', exact: true }).click();
+        await expect.poll(() => page.url(), { timeout: 5_000 }).toMatch(/[?&]o=black/);
+        await expectStartingPosition(page);
+
+        // Back must return to the EXACT prior entry — the e4 position in White —
+        // not a phantom {e4, black} that would immediately re-snap to root.
+        const backBtn = page.locator('.explorer-history-back');
+        await backBtn.click();
+        await expect.poll(() => page.url(), { timeout: 5_000 }).toMatch(/[?&]o=white/);
+        await expectPiece(page, 'e4', 'wp');
     });
 
     test('"How you got here" merges transposition paths as PGN variations', async ({ page }) => {
@@ -179,8 +273,8 @@ test.describe('Explorer page — navigation and URL sync', () => {
         await expect(lines).toHaveCount(1);
         const line = lines.first();
 
-        // Start pill is clickable.
-        await expect(line.locator('button.explorer-path-start')).toBeVisible();
+        // Home button is enabled (we're at a non-root position).
+        await expect(howYouGotHere.getByRole('button', { name: 'Go to starting position' })).toHaveAttribute('aria-disabled', 'false');
 
         // Variation segment is wrapped in PGN parens and styled distinctly.
         const variation = line.locator('.explorer-path-variation');

@@ -311,12 +311,12 @@ test.describe('Explorer page — Edit mode', () => {
         const initialCount = (await saveBar.locator('.explorer-save-bar-counts').textContent())!;
         expect(initialCount).toMatch(/1 added/);
 
-        // Jump back to start (now that we've navigated away, the start pill
-        // renders as a real button) so we can navigate into the existing
-        // 1.e4 line from the move list.
-        const startBtn = page.locator('button.explorer-path-start').first();
-        await expect(startBtn).toBeAttached();
-        await startBtn.dispatchEvent('click');
+        // Jump back to start via the Home button (we navigated away, so it's
+        // enabled now) to navigate into the existing 1.e4 line from the move
+        // list.
+        const homeBtn = page.getByRole('button', { name: 'Go to starting position' });
+        await expect(homeBtn).toHaveAttribute('aria-disabled', 'false');
+        await homeBtn.dispatchEvent('click');
 
         // Navigate into the existing line via the move list — delta survives
         // in-page navigation. Scope to the moves list so we don't accidentally
