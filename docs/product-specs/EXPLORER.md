@@ -23,6 +23,9 @@ how many sequences arrive at it.
   arrows and square highlights.
 - **"How you got here"** lists the canonical PGN paths from the start
   position to the current FEN, shortest first, capped for readability.
+  A **Home · Back · Forward** toolbar leads the section: Home jumps to
+  the start, while Back/Forward step through the positions visited
+  inside Explorer during the session.
 - **Opening name** classified from the current PGN appears above the
   move list.
 - **Move list** — "Your moves from here" or "Opponent's replies" by
