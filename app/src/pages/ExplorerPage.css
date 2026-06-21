@@ -236,34 +236,62 @@
   gap: 0.1rem 0.25rem;
 }
 
-/* "start" jump button at the beginning of each "How you got here" row.
-   Styled subtly so it reads as a navigation affordance rather than a ply. */
-.explorer-path-start {
-  background: #f1f4f8;
-  border: 1px solid #dde2ea;
-  border-radius: 999px;
+/* ===== "How you got here" — Home/Back/Forward toolbar ===== */
+.explorer-howyougothere-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.2rem 0.5rem;
+}
+
+/* Nudge the path text down so its first line optically centers against the
+   26px toolbar, while keeping wrapped lines top-aligned (flex-start above). */
+.explorer-howyougothere-content {
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.explorer-history-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.explorer-history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #5a6270;
   cursor: pointer;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.72rem;
-  color: #4a505a;
-  padding: 0 6px;
-  line-height: 1.4;
-  align-self: baseline;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.explorer-path-start:hover {
-  background: #e3edf8;
+.explorer-history-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.explorer-history-btn:hover:not([aria-disabled="true"]) {
+  background: #eef3f9;
+  border-color: #d6e1ee;
   color: rgb(0, 130, 210);
-  border-color: #b0d4ee;
 }
 
-/* Static variant — used when the Explorer is already at the starting
-   position. Looks identical but is not interactive. */
-.explorer-path-start-static,
-.explorer-path-start-static:hover {
-  background: #f1f4f8;
-  color: #4a505a;
-  border-color: #dde2ea;
+.explorer-history-btn:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 1px;
+}
+
+.explorer-history-btn[aria-disabled="true"] {
+  color: #c4c9d1;
   cursor: default;
 }
 
