@@ -24,3 +24,6 @@ app/package-lock.json
 # Playwright test artifacts
 app/test-results/
 app/playwright-report/
+
+# Spec local-only assets (screenshots, not for git history)
+docs/product-specs/local-assets/
