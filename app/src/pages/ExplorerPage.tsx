@@ -216,7 +216,9 @@ const MergedPathsLine: React.FC<{
     orientation: Orientation;
     onJump: (fen: string) => void;
     onHover?: (fen: string | null) => void;
-}> = ({ shown, rootFen, orientation, onJump, onHover }) => {
+    /** Optional element rendered as the last item of the line (e.g. an action icon). */
+    trailing?: React.ReactNode;
+}> = ({ shown, rootFen, orientation, onJump, onHover, trailing }) => {
     if (shown.length === 0) return null;
     if (shown[0].length === 0) return null;
     const tokens = mergePathsAsVariations(shown, rootFen);
@@ -270,6 +272,7 @@ const MergedPathsLine: React.FC<{
     return (
         <span className="explorer-path-line">
             {stack[0].nodes}
+            {trailing}
         </span>
     );
 };
@@ -1693,6 +1696,22 @@ const ExplorerPage: React.FC = () => {
                                                 orientation={resolvedOrientation}
                                                 onJump={fen => jumpTo(fen, undefined, true)}
                                                 onHover={handleHover}
+                                                trailing={lichessHref && (
+                                                    <a
+                                                        className="explorer-lichess-link"
+                                                        href={lichessHref}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        aria-label="Open in Lichess analysis board"
+                                                        title="Open in Lichess analysis board"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                                            <path d="M15 3h6v6" />
+                                                            <path d="M10 14 21 3" />
+                                                        </svg>
+                                                    </a>
+                                                )}
                                             />
                                         </li>
                                         {summary.moreCount > 0 && (
@@ -1703,22 +1722,6 @@ const ExplorerPage: React.FC = () => {
                                             </li>
                                         )}
                                     </ul>
-                                )}
-                                {lichessHref && (
-                                    <a
-                                        className="explorer-lichess-link"
-                                        href={lichessHref}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        aria-label="Open in Lichess analysis board"
-                                        title="Open in Lichess analysis board"
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                            <path d="M15 3h6v6" />
-                                            <path d="M10 14 21 3" />
-                                        </svg>
-                                    </a>
                                 )}
                                 </div>
                             </div>
