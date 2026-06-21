@@ -13,9 +13,12 @@ It does not edit the repertoire; its only write is Track/Untrack.
 
 ## Content
 
-Lists every card across both repertoires — one **card block** per
-`(normalized FEN, move SAN)`. Each block shows:
+Lists the cards across both repertoires — one **card block** per
+`(normalized FEN, move SAN)`, with the filtered + sorted set capped to
+the **top 50**. Each block shows:
 
+- **Mini board** — the card's position with a green arrow for the move,
+  oriented to the repertoire (display-only), like the Games tiles.
 - **Repertoire** — White or Black, derived from the FEN's side to move.
 - **Identity** — the move SAN and the normalized FEN of the card's
   position.
@@ -36,15 +39,18 @@ Internal/derivable fields (elapsed days, learning steps) are omitted.
 
 ## Behavior
 
-- No board interaction and no repertoire- or card-level editing. The
-  only mutation is **Track/Untrack** on the audit array, persisted as
-  described below.
+- The board is **display-only**; the only mutation is **Track/Untrack**
+  on the audit array, persisted as described below.
 - **Find position** — a FEN/PGN input at the top (like Explorer's)
   that filters the list to the matching position's card(s).
 - **Sort dropdown** over any shown field — due, retrievability,
   stability, difficulty, reps, lapses, last reviewed, state — ascending
   or descending. Default: most overdue first; New cards last.
-- New/Learning/Due counts shown as a summary header.
+- The summary counts (Total / New / Learning / Due now / Tracked) double
+  as a **single-select filter**; default **Total**, not persisted. Find
+  and the chips are mutually exclusive.
+- Only the **top 50** of the filtered + sorted list render, with a count
+  note when more match.
 - Empty repertoire → simple empty state.
 
 ## Tracking (audit)

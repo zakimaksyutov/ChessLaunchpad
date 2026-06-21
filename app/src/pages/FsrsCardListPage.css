@@ -60,9 +60,10 @@
 
 .fsrs-summary-chip {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.3rem;
-  padding: 3px 10px;
+  min-height: 32px;
+  padding: 4px 11px;
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 500;
@@ -70,6 +71,27 @@
   background: #f0f1f4;
   border: 1px solid #e1e2e6;
   white-space: nowrap;
+  font-family: inherit;
+  cursor: pointer;
+  transition: box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.fsrs-summary-chip:hover:not(:disabled) { filter: brightness(0.95); }
+.fsrs-summary-chip:focus-visible {
+  outline: 2px solid #2f80ed;
+  outline-offset: 1px;
+}
+
+.fsrs-summary-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Selected filter — a clear ring plus a subtle lift, layered over each
+   chip's own colour so the active state reads on every variant. */
+.fsrs-summary-chip.is-active {
+  box-shadow: 0 0 0 2px #2f80ed inset, 0 1px 3px rgba(0, 0, 0, 0.12);
+  font-weight: 700;
 }
 
 .fsrs-summary-chip strong { font-weight: 700; font-size: 0.85rem; }
@@ -236,6 +258,27 @@
   background: #fff;
   padding: 0.7rem 0.85rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+/* Mini board + textual content side by side, mirroring the Games tiles. */
+.fsrs-block-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.fsrs-mini-board {
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  /* Display-only: block all pointer/touch input so the board can't capture
+     right-click annotation gestures or swallow page scroll on touch. */
+  pointer-events: none;
+}
+
+.fsrs-block-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .fsrs-block-head {
@@ -499,6 +542,17 @@
     margin-left: 0;
     margin-top: 0.35rem;
     justify-content: space-between;
+  }
+  .fsrs-block-layout {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .fsrs-mini-board {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    max-width: 200px;
+    align-self: center;
   }
   .fsrs-details {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

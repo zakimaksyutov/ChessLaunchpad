@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Chess } from 'chess.js';
+import { ChessBoard } from 'chess-control';
+import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { State, Rating } from 'ts-fsrs';
 import { getSessionStore } from '../data/SessionStore';
 import { DataAccessError } from '../data/DataAccessLayer';
@@ -45,6 +48,35 @@ type SortField =
 
 type SortDir = 'asc' | 'desc';
 
+/**
+ * The summary chips double as a single-select filter over the list. `total`
+ * shows every card; the others narrow to the matching subset. Not persisted —
+ * resets to `total` on each visit.
+ */
+type ChipFilter = 'total' | 'new' | 'learning' | 'due' | 'tracked';
+
+// Render only the strongest N rows of the current filtered + sorted list. The
+// page is a diagnostic, so a hard cap keeps it responsive on large repertoires
+// while still surfacing the most relevant cards (e.g. most overdue first).
+const TOP_N = 50;
+
+const FILTER_LABEL: Record<ChipFilter, { one: string; many: string }> = {
+    total: { one: 'card', many: 'cards' },
+    new: { one: 'new card', many: 'new cards' },
+    learning: { one: 'learning card', many: 'learning cards' },
+    due: { one: 'due card', many: 'due cards' },
+    tracked: { one: 'tracked card', many: 'tracked cards' },
+};
+
+function filterNoun(filter: ChipFilter, count: number): string {
+    const label = FILTER_LABEL[filter];
+    return count === 1 ? label.one : label.many;
+}
+
+// Stable empty identity for the non-interactive mini boards so the up-to-50
+// ChessBoard instances don't see a fresh `legalMoves` prop on every clock tick.
+const EMPTY_LEGAL_MOVES = new Map();
+
 const SORT_OPTIONS: { value: SortField; label: string }[] = [
     { value: 'due', label: 'Due' },
     { value: 'retrievability', label: 'Retrievability' },
@@ -68,6 +100,22 @@ const STATE_LABELS: Record<number, StateLabel> = {
 function repertoireForFen(fen: string): Orientation {
     const active = fen.split(' ')[1] ?? 'w';
     return active === 'b' ? 'black' : 'white';
+}
+
+/**
+ * Build a single green arrow for the card's move, played from its position
+ * (the FEN is the position *before* the move). Tolerant of a move that fails
+ * to parse — returns no annotations rather than throwing.
+ */
+function moveArrows(fen: string, san: string): ChessControlAnnotation[] {
+    try {
+        const chess = new Chess(fen);
+        const m = chess.move(san);
+        if (!m) return [];
+        return [{ color: 'green', from: m.from as Square, to: m.to as Square }];
+    } catch {
+        return [];
+    }
 }
 
 function formatAbsolute(d: Date): string {
@@ -275,73 +323,89 @@ const CardBlock: React.FC<{
 }> = ({ row, now, full, busy, onTrack, onUntrack }) => {
     const isNew = row.card.state === State.New;
     const explorerSearch = `?o=${row.repertoire}&fen=${encodeURIComponent(row.fen)}`;
+    const arrows = useMemo(() => moveArrows(row.fen, row.san), [row.fen, row.san]);
 
     return (
         <li className="fsrs-block">
-            <div className="fsrs-block-head">
-                <span className={`fsrs-pill fsrs-rep fsrs-rep--${row.repertoire}`}>
-                    {row.repertoire === 'white' ? 'White' : 'Black'}
-                </span>
-                <span className={`fsrs-pill fsrs-state state-${row.stateLabel.toLowerCase()}`}>
-                    {row.stateLabel}
-                </span>
-                <span className="fsrs-move" title="Move (SAN)">{row.san}</span>
-                {row.tracked && <span className="fsrs-tracked-badge" title="Tracked">●&nbsp;tracked</span>}
-                <div className="fsrs-block-actions">
-                    <Link
-                        className="fsrs-open-link"
-                        to={{ pathname: '/explorer', search: explorerSearch }}
-                    >
-                        Open in Explorer ↗
-                    </Link>
-                    <CardMenu
-                        row={row}
-                        full={full}
-                        busy={busy}
-                        onTrack={onTrack}
-                        onUntrack={onUntrack}
+            <div className="fsrs-block-layout">
+                <div className="fsrs-mini-board" aria-hidden="true">
+                    <ChessBoard
+                        fen={row.fen}
+                        orientation={row.repertoire}
+                        interactive={false}
+                        coordinates={false}
+                        turnColor="white"
+                        legalMoves={EMPTY_LEGAL_MOVES}
+                        annotations={arrows}
                     />
                 </div>
+                <div className="fsrs-block-content">
+                    <div className="fsrs-block-head">
+                        <span className={`fsrs-pill fsrs-rep fsrs-rep--${row.repertoire}`}>
+                            {row.repertoire === 'white' ? 'White' : 'Black'}
+                        </span>
+                        <span className={`fsrs-pill fsrs-state state-${row.stateLabel.toLowerCase()}`}>
+                            {row.stateLabel}
+                        </span>
+                        <span className="fsrs-move" title="Move (SAN)">{row.san}</span>
+                        {row.tracked && <span className="fsrs-tracked-badge" title="Tracked">●&nbsp;tracked</span>}
+                        <div className="fsrs-block-actions">
+                            <Link
+                                className="fsrs-open-link"
+                                to={{ pathname: '/explorer', search: explorerSearch }}
+                            >
+                                Open in Explorer ↗
+                            </Link>
+                            <CardMenu
+                                row={row}
+                                full={full}
+                                busy={busy}
+                                onTrack={onTrack}
+                                onUntrack={onUntrack}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="fsrs-fen" title="Normalized FEN">{row.fen}</div>
+
+                    {isNew ? (
+                        <p className="fsrs-new-note">Not yet reviewed — no scheduling data.</p>
+                    ) : (
+                        <dl className="fsrs-details">
+                            {row.dueAt && (
+                                <Detail
+                                    label="Due"
+                                    value={<>
+                                        <span className="fsrs-rel">{formatDueRelative(row.dueAt, now)}</span>
+                                        <span className="fsrs-abs">{formatAbsolute(row.dueAt)}</span>
+                                    </>}
+                                />
+                            )}
+                            {row.retrievability !== undefined && (
+                                <Detail label="Retrievability" value={`${(row.retrievability * 100).toFixed(1)}%`} />
+                            )}
+                            <Detail label="Stability" value={`${row.card.stability.toFixed(2)}d`} />
+                            <Detail label="Difficulty" value={row.card.difficulty.toFixed(2)} />
+                            {row.intervalDays !== undefined && (
+                                <Detail label="Interval" value={`${row.intervalDays}d`} />
+                            )}
+                            <Detail label="Reps" value={row.card.reps} />
+                            <Detail label="Lapses" value={row.card.lapses} />
+                            {row.lastReviewedAt && (
+                                <Detail
+                                    label="Last reviewed"
+                                    value={<>
+                                        <span className="fsrs-rel">{formatLastReviewed(row.lastReviewedAt, now)}</span>
+                                        <span className="fsrs-abs">{formatAbsolute(row.lastReviewedAt)}</span>
+                                    </>}
+                                />
+                            )}
+                        </dl>
+                    )}
+
+                    {row.tracked && row.trackedEntry && <TrackLog entry={row.trackedEntry} now={now} />}
+                </div>
             </div>
-
-            <div className="fsrs-fen" title="Normalized FEN">{row.fen}</div>
-
-            {isNew ? (
-                <p className="fsrs-new-note">Not yet reviewed — no scheduling data.</p>
-            ) : (
-                <dl className="fsrs-details">
-                    {row.dueAt && (
-                        <Detail
-                            label="Due"
-                            value={<>
-                                <span className="fsrs-rel">{formatDueRelative(row.dueAt, now)}</span>
-                                <span className="fsrs-abs">{formatAbsolute(row.dueAt)}</span>
-                            </>}
-                        />
-                    )}
-                    {row.retrievability !== undefined && (
-                        <Detail label="Retrievability" value={`${(row.retrievability * 100).toFixed(1)}%`} />
-                    )}
-                    <Detail label="Stability" value={`${row.card.stability.toFixed(2)}d`} />
-                    <Detail label="Difficulty" value={row.card.difficulty.toFixed(2)} />
-                    {row.intervalDays !== undefined && (
-                        <Detail label="Interval" value={`${row.intervalDays}d`} />
-                    )}
-                    <Detail label="Reps" value={row.card.reps} />
-                    <Detail label="Lapses" value={row.card.lapses} />
-                    {row.lastReviewedAt && (
-                        <Detail
-                            label="Last reviewed"
-                            value={<>
-                                <span className="fsrs-rel">{formatLastReviewed(row.lastReviewedAt, now)}</span>
-                                <span className="fsrs-abs">{formatAbsolute(row.lastReviewedAt)}</span>
-                            </>}
-                        />
-                    )}
-                </dl>
-            )}
-
-            {row.tracked && row.trackedEntry && <TrackLog entry={row.trackedEntry} now={now} />}
         </li>
     );
 };
@@ -398,6 +462,8 @@ const FsrsCardListPage: React.FC = () => {
 
     const [sortField, setSortField] = useState<SortField>('due');
     const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+    const [filter, setFilter] = useState<ChipFilter>('total');
 
     const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -514,10 +580,41 @@ const FsrsCardListPage: React.FC = () => {
         return { n, learning, due };
     }, [rows, now]);
 
-    const visibleRows = useMemo(() => {
-        const filtered = filterFen ? rows.filter(r => r.fen === filterFen) : rows;
-        return [...filtered].sort((a, b) => compareRows(a, b, sortField, sortDir));
-    }, [rows, filterFen, sortField, sortDir]);
+    // Apply the active chip filter and the Find-position filter, then sort.
+    // The chip predicates mirror the summary counts: New state; Learning or
+    // Relearning; non-New cards past due; tracked. `now` is a dependency only
+    // for the time-sensitive "due" predicate.
+    const filteredRows = useMemo(() => {
+        let base = rows;
+        switch (filter) {
+            case 'new':
+                base = base.filter(r => r.card.state === State.New);
+                break;
+            case 'learning':
+                base = base.filter(r => r.card.state === State.Learning || r.card.state === State.Relearning);
+                break;
+            case 'due':
+                base = base.filter(r => r.dueAt !== undefined && r.dueAt.getTime() <= now.getTime());
+                break;
+            case 'tracked':
+                base = base.filter(r => r.tracked);
+                break;
+        }
+        if (filterFen) base = base.filter(r => r.fen === filterFen);
+        return [...base].sort((a, b) => compareRows(a, b, sortField, sortDir));
+    }, [rows, filter, filterFen, sortField, sortDir, now]);
+
+    const visibleRows = useMemo(() => filteredRows.slice(0, TOP_N), [filteredRows]);
+    const truncated = filteredRows.length > TOP_N;
+
+    // The orphan section is a maintenance affordance (free a tracking slot), so
+    // it belongs only with the Total/Tracked views and never alongside a precise
+    // single-position Find. Computing it once lets the main list suppress its
+    // "no match" empty state when the orphan section is the real content (e.g.
+    // the Tracked filter when every tracked slot is orphaned).
+    const orphansShown = !filterFen
+        && (filter === 'total' || filter === 'tracked')
+        && orphanEntries.length > 0;
 
     const handleFind = useCallback((e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -542,11 +639,24 @@ const FsrsCardListPage: React.FC = () => {
             setFindError('That position has no card — it may be the opponent’s move.');
             return;
         }
+        // Find is a precise single-position lookup; the broad category chips
+        // would silently AND with it and could hide the found card. Reset to
+        // Total so the searched position reliably shows.
+        setFilter('total');
         setFilterFen(result.fen);
         setFindError(null);
     }, [explorer, findInput, rows]);
 
     const clearFilter = useCallback(() => {
+        setFilterFen(null);
+        setFindInput('');
+        setFindError(null);
+    }, []);
+
+    // Selecting a category chip clears any active Find — the two filters are
+    // mutually exclusive so the visible list always reflects a single intent.
+    const selectFilter = useCallback((f: ChipFilter) => {
+        setFilter(f);
         setFilterFen(null);
         setFindInput('');
         setFindError(null);
@@ -632,14 +742,56 @@ const FsrsCardListPage: React.FC = () => {
                             Diagnostic view of every scheduled card.
                         </p>
                     </div>
-                    <div className="fsrs-summary" role="group" aria-label="Card summary">
-                        <span className="fsrs-summary-chip"><strong>{totalCards}</strong> total</span>
-                        <span className="fsrs-summary-chip fsrs-chip-new" title="Cards in New state (never reviewed)"><strong>{summary.n}</strong> new</span>
-                        <span className="fsrs-summary-chip fsrs-chip-learning" title="Cards in Learning or Relearning state"><strong>{summary.learning}</strong> learning</span>
-                        <span className="fsrs-summary-chip fsrs-chip-due" title="Non-New cards whose due date has passed (overlaps learning)"><strong>{summary.due}</strong> due now</span>
-                        <span className="fsrs-summary-chip fsrs-chip-tracked">
+                    <div className="fsrs-summary" role="group" aria-label="Filter cards">
+                        <button
+                            type="button"
+                            className={`fsrs-summary-chip${filter === 'total' ? ' is-active' : ''}`}
+                            aria-pressed={filter === 'total'}
+                            title="Show all cards"
+                            onClick={() => selectFilter('total')}
+                        >
+                            <strong>{totalCards}</strong> total
+                        </button>
+                        <button
+                            type="button"
+                            className={`fsrs-summary-chip fsrs-chip-new${filter === 'new' ? ' is-active' : ''}`}
+                            aria-pressed={filter === 'new'}
+                            disabled={summary.n === 0}
+                            title="Cards in New state (never reviewed)"
+                            onClick={() => selectFilter('new')}
+                        >
+                            <strong>{summary.n}</strong> new
+                        </button>
+                        <button
+                            type="button"
+                            className={`fsrs-summary-chip fsrs-chip-learning${filter === 'learning' ? ' is-active' : ''}`}
+                            aria-pressed={filter === 'learning'}
+                            disabled={summary.learning === 0}
+                            title="Cards in Learning or Relearning state"
+                            onClick={() => selectFilter('learning')}
+                        >
+                            <strong>{summary.learning}</strong> learning
+                        </button>
+                        <button
+                            type="button"
+                            className={`fsrs-summary-chip fsrs-chip-due${filter === 'due' ? ' is-active' : ''}`}
+                            aria-pressed={filter === 'due'}
+                            disabled={summary.due === 0}
+                            title="Non-New cards whose due date has passed (overlaps learning)"
+                            onClick={() => selectFilter('due')}
+                        >
+                            <strong>{summary.due}</strong> due now
+                        </button>
+                        <button
+                            type="button"
+                            className={`fsrs-summary-chip fsrs-chip-tracked${filter === 'tracked' ? ' is-active' : ''}`}
+                            aria-pressed={filter === 'tracked'}
+                            disabled={trackedCount === 0}
+                            title="Tracked cards (audit capture) — count is slots used of the cap; orphaned entries are listed below"
+                            onClick={() => selectFilter('tracked')}
+                        >
                             <strong>{trackedCount}</strong>/{AUDIT_MAX_ENTRIES} tracked
-                        </span>
+                        </button>
                     </div>
                 </header>
 
@@ -700,14 +852,19 @@ const FsrsCardListPage: React.FC = () => {
                                 </div>
 
                                 {findError && <div className="fsrs-find-error" role="alert">{findError}</div>}
-                                {filterFen && (
+                                {(filter !== 'total' || filterFen || truncated) && (
                                     <div className="fsrs-filter-note">
-                                        Showing {visibleRows.length} card{visibleRows.length === 1 ? '' : 's'} at the filtered position.
+                                        {truncated
+                                            ? `Showing top ${TOP_N} of ${filteredRows.length} ${filterNoun(filter, filteredRows.length)}`
+                                            : `Showing ${filteredRows.length} ${filterNoun(filter, filteredRows.length)}`}
+                                        {filterFen ? ' at the filtered position' : ''}.
                                     </div>
                                 )}
 
                                 {visibleRows.length === 0 ? (
-                                    <div className="fsrs-empty"><p>No cards match the current filter.</p></div>
+                                    orphansShown ? null : (
+                                        <div className="fsrs-empty"><p>No cards match the current filter.</p></div>
+                                    )
                                 ) : (
                                     <ul className="fsrs-list">
                                         {visibleRows.map(row => (
@@ -726,7 +883,7 @@ const FsrsCardListPage: React.FC = () => {
                             </>
                         )}
 
-                        {orphanEntries.length > 0 && (
+                        {orphansShown && (
                             <section className="fsrs-orphans" aria-label="Tracked positions no longer in repertoire">
                                 <h2 className="fsrs-section-title">Tracked positions no longer in your repertoire</h2>
                                 <ul className="fsrs-list">
