@@ -299,4 +299,56 @@ test.describe('Explorer page — navigation and URL sync', () => {
         const mainPlyTokens = line.locator(':scope > .explorer-ply-token');
         await expect(mainPlyTokens.nth(1)).toContainText('1\u2026c5');
     });
+
+    test('"How you got here" shows an Open-in-Lichess link carrying the merged PGN with variations', async ({ page }) => {
+        // Black repertoire: the Caro-Kann reached via two white move orders
+        // (a real transposition). The link must carry the same merged
+        // PGN-with-variations the line renders, oriented for Black.
+        const variants = [
+            { pgn: '1. e4 c6 2. d4 d5', orientation: 'black' as const },
+            { pgn: '1. d4 d5 2. e4 c6', orientation: 'black' as const },
+        ];
+        const fixture = buildRepertoireData(variants);
+        await setupMockEnvironment(page, fixture);
+
+        const targetFen = 'rnbqkbnr/pp2pppp/2p5/3p4/3PP3/8/PPP2PPP/RNBQKBNR w KQkq - 0 1';
+        await page.goto(`/#/explorer?o=black&fen=${encodeURIComponent(targetFen)}`);
+
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+
+        const howYouGotHere = page.locator('.explorer-how-you-got-here');
+        const link = howYouGotHere.locator('a.explorer-lichess-link');
+        await expect(link).toHaveCount(1);
+        await expect(link).toHaveAttribute('aria-label', 'Open in Lichess analysis board');
+        await expect(link).toHaveAttribute('target', '_blank');
+        await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+        const href = await link.getAttribute('href');
+        expect(href).not.toBeNull();
+        expect(href!.startsWith('https://lichess.org/analysis/pgn/')).toBe(true);
+        expect(href!.endsWith('?color=black')).toBe(true);
+
+        const encoded = href!
+            .replace('https://lichess.org/analysis/pgn/', '')
+            .replace('?color=black', '');
+        const pgn = decodeURIComponent(encoded);
+        // Canonical main line is the lex-smaller 1.d4 order; the 1.e4 order
+        // becomes a variation attached after the first move (not the tail).
+        expect(pgn).toBe('1.d4 (1.e4 c6 2.d4 d5) 1...d5 2.e4 c6');
+    });
+
+    test('"How you got here" has no Lichess link at the root position', async ({ page }) => {
+        const variants = [{ pgn: '1. e4 c6 2. d4 d5', orientation: 'black' as const }];
+        const fixture = buildRepertoireData(variants);
+        await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer?o=black');
+
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+
+        const howYouGotHere = page.locator('.explorer-how-you-got-here');
+        await expect(howYouGotHere.locator('a.explorer-lichess-link')).toHaveCount(0);
+    });
 });

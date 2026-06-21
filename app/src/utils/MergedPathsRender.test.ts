@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergePathsAsVariations, MergedPathToken } from './MergedPathsRender';
+import { mergePathsAsVariations, mergedPathsToPgn, MergedPathToken } from './MergedPathsRender';
 import { GraphEdge } from '../services/RepertoireGraph';
 import { Path } from '../services/ExplorerService';
 
@@ -264,5 +264,63 @@ describe('mergePathsAsVariations', () => {
         const varSlice = tokens.slice(1, tokens.findIndex(t => t.kind === 'close-var') + 1);
         const varSans = san(varSlice);
         expect(varSans).toEqual(['a2', 'b2', 'c2', 'd2', 'e2']);
+    });
+});
+
+describe('mergedPathsToPgn', () => {
+    const ROOT = 'fen:root';
+
+    it('returns empty string for empty/root input', () => {
+        expect(mergedPathsToPgn([], ROOT)).toBe('');
+        expect(mergedPathsToPgn([[]], ROOT)).toBe('');
+    });
+
+    it('serializes a single path as a plain PGN line', () => {
+        const path: Path = [
+            E(ROOT, 'A', 'e4'),
+            E('A', 'B', 'e5'),
+            E('B', 'C', 'Nf3'),
+            E('C', 'D', 'Nc6'),
+        ];
+        expect(mergedPathsToPgn([path], ROOT)).toBe('1.e4 e5 2.Nf3 Nc6');
+    });
+
+    it('places a ply-1 divergence (transposition) as a variation after the first move, not at the tail', () => {
+        // Two move orders reaching the same Caro-Kann position. Naive
+        // `main (other)` concatenation would be invalid PGN; the variation must
+        // attach right after the divergence move (1.e4).
+        const main: Path = [
+            E(ROOT, 'A', 'e4'),
+            E('A', 'B', 'c6'),
+            E('B', 'C', 'd4'),
+            E('C', 'D', 'd5'),
+        ];
+        const variation: Path = [
+            E(ROOT, 'X', 'd4'),
+            E('X', 'Y', 'd5'),
+            E('Y', 'Z', 'e4'),
+            E('Z', 'D', 'c6'),
+        ];
+        expect(mergedPathsToPgn([main, variation], ROOT)).toBe(
+            '1.e4 (1.d4 d5 2.e4 c6) 1...c6 2.d4 d5',
+        );
+    });
+
+    it('emits ASCII "..." (not a unicode ellipsis) for black-continuation prefixes', () => {
+        const main: Path = [
+            E(ROOT, 'A', 'e4'),
+            E('A', 'B', 'c6'),
+            E('B', 'C', 'd4'),
+            E('C', 'D', 'd5'),
+        ];
+        const variation: Path = [
+            E(ROOT, 'X', 'd4'),
+            E('X', 'Y', 'd5'),
+            E('Y', 'Z', 'e4'),
+            E('Z', 'D', 'c6'),
+        ];
+        const pgn = mergedPathsToPgn([main, variation], ROOT);
+        expect(pgn).toContain('1...c6');
+        expect(pgn).not.toContain('\u2026');
     });
 });

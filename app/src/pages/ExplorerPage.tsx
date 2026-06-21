@@ -29,7 +29,8 @@ import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
 import { isExplorerHash, isExplorerRoute } from '../utils/Routes';
 import { formatDueRelative, formatLastReviewed } from '../utils/ExplorerRelativeTime';
-import { mergePathsAsVariations } from '../utils/MergedPathsRender';
+import { mergePathsAsVariations, mergedPathsToPgn } from '../utils/MergedPathsRender';
+import { buildLichessAnalysisUrl } from '../utils/LichessUrl';
 import {
     encodeRepertoirePgn,
     decodeRepertoirePgn,
@@ -1399,6 +1400,14 @@ const ExplorerPage: React.FC = () => {
     const currentPgn = service.pathToPgn(canonical);
     const currentDepth = canonical.length;
     const summary = service.summarizePaths(currentFen, resolvedOrientation);
+    // PGN-with-variations of the visualized "How you got here" line, handed to
+    // Lichess's analysis board (which hosts the opening explorer). Empty when
+    // there is no path to show (root returns a single empty path, unreachable
+    // returns none), in which case we hide the link.
+    const lichessPgn = mergedPathsToPgn(summary.shown, service.getRootFen());
+    const lichessHref = lichessPgn
+        ? buildLichessAnalysisUrl(lichessPgn, resolvedOrientation)
+        : null;
     const edges = service.getEdges(currentFen, resolvedOrientation);
     // Board rendering: when the user is hovering a ply, show that position
     // instead of the navigation position. Annotations follow the displayed
@@ -1694,6 +1703,22 @@ const ExplorerPage: React.FC = () => {
                                             </li>
                                         )}
                                     </ul>
+                                )}
+                                {lichessHref && (
+                                    <a
+                                        className="explorer-lichess-link"
+                                        href={lichessHref}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        aria-label="Open in Lichess analysis board"
+                                        title="Open in Lichess analysis board"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                            <path d="M15 3h6v6" />
+                                            <path d="M10 14 21 3" />
+                                        </svg>
+                                    </a>
                                 )}
                                 </div>
                             </div>

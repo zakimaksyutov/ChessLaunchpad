@@ -295,6 +295,40 @@
   cursor: default;
 }
 
+/* ===== "How you got here" — Open in Lichess link ===== */
+.explorer-lichess-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-top: 0.2rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #5a6270;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.explorer-lichess-link svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.explorer-lichess-link:hover {
+  background: #eef3f9;
+  border-color: #d6e1ee;
+  color: rgb(0, 130, 210);
+}
+
+.explorer-lichess-link:focus-visible {
+  outline: 2px solid rgb(0, 130, 210);
+  outline-offset: 1px;
+}
+
 /* ===== Opening label ===== */
 .explorer-opening-current {
   display: flex;
