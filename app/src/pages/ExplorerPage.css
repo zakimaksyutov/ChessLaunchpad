@@ -44,8 +44,8 @@
   width: min(560px, calc(100vw - 1.5rem));
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 0.6rem 0.55rem 0.95rem;
+  gap: 0.5rem;
+  padding: 0.55rem 0.95rem;
   background: #fff7d6;
   border: 1px solid #f0d265;
   border-radius: 8px;
@@ -93,6 +93,19 @@
 
 .explorer-toast .explorer-toast-dismiss:hover {
   background: rgba(107, 85, 0, 0.12);
+}
+
+/* In the floating snackbar the × hugs the right edge so its gap from
+ * the border matches the message's left padding (symmetric inset).
+ * The glyph is right-aligned, and the tap target is grown outward with
+ * padding that's cancelled by equal negative margins, so it stays
+ * touch-friendly without shifting the glyph or bloating the pill. */
+.explorer-toast .explorer-toast-dismiss {
+  justify-content: flex-end;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.5rem 0.6rem 0.5rem 0.55rem;
+  margin: -0.5rem -0.6rem -0.5rem 0;
 }
 
 /* ===== Toolbar (orientation toggle + edit affordance) =====
