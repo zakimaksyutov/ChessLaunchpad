@@ -381,6 +381,47 @@ test.describe('Explorer page — Edit mode', () => {
         expect(annotated).toBeDefined();
     });
 
+    test('a drawn annotation does not bleed onto the next position when navigating', async ({ page }) => {
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4', orientation: 'white' },
+        ]);
+        await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
+        await page.getByRole('button', { name: 'Edit repertoire', exact: true }).click();
+
+        // Draw a green arrow e2→e4 on the start position.
+        const center = (sq: string) => page.evaluate((s) => {
+            const r = document.querySelector(`[data-square="${s}"]`)!.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }, sq);
+        const e2 = await center('e2');
+        const e4 = await center('e4');
+        await page.mouse.move(e2.x, e2.y);
+        await page.mouse.down({ button: 'right' });
+        await page.mouse.move(e4.x, e4.y, { steps: 8 });
+        await page.mouse.up({ button: 'right' });
+
+        const arrows = page.locator('.arrow-layer line[opacity="0.6"]:not([display="none"])');
+        const counts = page.locator('.explorer-save-bar .explorer-save-bar-counts');
+        await expect(counts).toContainText('1 changed');
+        // Drawn arrow is rendered (internal draw state + the prop-derived copy).
+        expect(await arrows.count()).toBeGreaterThan(0);
+
+        // Navigate to the position after 1.e4 (move-list click, no board
+        // interaction). The drawn arrow must NOT bleed onto the new position…
+        await page.getByRole('button', { name: 'e4', exact: true }).first().click();
+        await expect(arrows).toHaveCount(0);
+        // …and the pending edit survives (the reset is silent — no clobber).
+        await expect(counts).toContainText('1 changed');
+
+        // Navigate back to the start — the saved arrow re-renders exactly once.
+        await page.getByRole('button', { name: 'Go to starting position' }).click();
+        await expect(arrows).toHaveCount(1);
+        await expect(counts).toContainText('1 changed');
+    });
+
     test('Header is fully disabled while in Edit mode', async ({ page }) => {
         const fixture = buildRepertoireData([
             { pgn: '1. e4', orientation: 'white' },
