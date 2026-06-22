@@ -19,8 +19,10 @@ how many sequences arrive at it.
 - **Orientation toggle** picks the side being studied; persisted per
   user. Toggling preserves the current position when possible,
   otherwise snaps to the start.
-- **Board** (non-interactive) shows the position with any saved
-  arrows and square highlights.
+- **Board** shows the position with any saved arrows and square
+  highlights. Playing a prepared move navigates to that position; an
+  off-repertoire move or an annotation attempt is read-only and
+  instead offers a **Switch to edit mode** toast.
 - **"How you got here"** lists the canonical PGN paths from the start
   position to the current FEN, shortest first, capped for readability.
   A **Home · Back · Forward** toolbar leads the section: Home jumps to

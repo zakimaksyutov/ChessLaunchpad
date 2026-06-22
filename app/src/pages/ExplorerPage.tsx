@@ -637,6 +637,14 @@ const ExplorerPage: React.FC = () => {
     const [importBusy, setImportBusy] = useState(false);
     const [pgnToast, setPgnToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
+    // ── Read-mode "switch to edit?" prompt ──────────────────────────
+    // Raised when, in Read mode, the user plays a move that isn't in the
+    // repertoire or attempts to draw an annotation (both are edits). The
+    // toast offers a one-click jump into Edit mode at the current
+    // position; the user re-plays the move/annotation there. No edit is
+    // auto-applied — Read mode never mutates the repertoire.
+    const [editPromptToast, setEditPromptToast] = useState<{ kind: 'move' | 'annotation' } | null>(null);
+
     // Tick `now` once a minute so the relative due/last labels update.
     const [now, setNow] = useState(() => new Date());
     useEffect(() => {
@@ -1154,6 +1162,54 @@ const ExplorerPage: React.FC = () => {
         bumpPending();
     }, [mode, pendingModel, resolvedOrientation, bumpPending]);
 
+    /**
+     * Read-mode board move = navigation. A move that matches an existing
+     * edge from the current position jumps to that position (pushing
+     * history, like clicking a move row). A legal move that isn't in the
+     * repertoire is rejected (the piece snaps back) and raises the
+     * "switch to edit mode?" prompt — Read mode never mutates the tree.
+     */
+    const handleReadNavigateMove = useCallback((from: string, to: string): boolean => {
+        if (mode !== 'read' || !currentFen || !service) return false;
+        try {
+            const chess = new Chess(currentFen);
+            // (from, to) alone is ambiguous for promotions — the board can't
+            // tell us which piece. chess.js lists candidates N,B,R,Q, so we
+            // can't just take the first match (that would be the knight
+            // underpromotion and miss a queen-promotion edge). We resolve a
+            // promotion drag queen-first, matching the conventional "drag =
+            // auto-queen" board semantics (chess-control has no promotion
+            // dialog). If only an underpromotion edge is prepared we still
+            // navigate to it; in the (practically nonexistent) case where a
+            // position prepares several promotions from the same square, the
+            // non-queen branches stay reachable through the move list.
+            const PROMO_ORDER = ['q', 'r', 'b', 'n'];
+            const candidates = chess.moves({ verbose: true })
+                .filter(m => m.from === from && m.to === to)
+                .sort((a, b) => PROMO_ORDER.indexOf(a.promotion ?? 'q') - PROMO_ORDER.indexOf(b.promotion ?? 'q'));
+            if (candidates.length === 0) return false;
+            const edges = service.getEdges(currentFen, resolvedOrientation);
+            const edge = candidates
+                .map(c => edges.find(e => e.san === c.san))
+                .find((e): e is GraphEdge => e !== undefined);
+            if (edge) {
+                jumpTo(edge.to, undefined, true);
+                return true;
+            }
+            setSnapToast(null);
+            setEditPromptToast({ kind: 'move' });
+            return false;
+        } catch {
+            return false;
+        }
+    }, [mode, currentFen, service, resolvedOrientation, jumpTo]);
+
+    /** Read-mode annotation attempt — blocked, raises the edit prompt. */
+    const handleReadAnnotationAttempt = useCallback(() => {
+        setSnapToast(null);
+        setEditPromptToast({ kind: 'annotation' });
+    }, []);
+
     /** Sticky-bar Save handler. */
     const handleSave = useCallback(async () => {
         if (!pendingModel || !data) return;
@@ -1351,6 +1407,18 @@ const ExplorerPage: React.FC = () => {
         return () => window.clearTimeout(id);
     }, [pgnToast]);
 
+    // Auto-dismiss the read-mode "switch to edit?" prompt.
+    useEffect(() => {
+        if (!editPromptToast) return;
+        const id = window.setTimeout(() => setEditPromptToast(null), 6000);
+        return () => window.clearTimeout(id);
+    }, [editPromptToast]);
+
+    // Leaving Read mode (or starting an edit session) makes the prompt moot.
+    useEffect(() => {
+        if (mode !== 'read') setEditPromptToast(null);
+    }, [mode]);
+
     // Close the menu when clicking outside, on Escape, or any keyboard
     // dismissal — the `role="menu"` we expose requires at least an Esc
     // handler for keyboard / screen-reader users.
@@ -1463,6 +1531,34 @@ const ExplorerPage: React.FC = () => {
                     </div>
                 )}
 
+                {editPromptToast && (
+                    <div className="explorer-toast explorer-toast--prompt" role="alert">
+                        <span>
+                            {editPromptToast.kind === 'move'
+                                ? "That move isn't in your repertoire yet."
+                                : 'Annotations are read-only here.'}
+                        </span>
+                        <button
+                            type="button"
+                            className="explorer-toast-action"
+                            onClick={() => {
+                                setEditPromptToast(null);
+                                enterEditMode();
+                            }}
+                        >
+                            Switch to edit mode
+                        </button>
+                        <button
+                            type="button"
+                            className="explorer-toast-dismiss"
+                            aria-label="Dismiss"
+                            onClick={() => setEditPromptToast(null)}
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
                 {view === 'main' && (
                 <div className="explorer-body">
                     {/* Toolbar lives in the body's top-left grid cell so it
@@ -1569,15 +1665,16 @@ const ExplorerPage: React.FC = () => {
                     </div>
                     <div className="explorer-left-col">
                     <div
-                        className="explorer-board-col"
+                        className={`explorer-board-col${!isPreviewing ? ' explorer-board-col--interactive' : ''}`}
                         /*
-                         * Read mode: vendored chess-control still handles
-                         * right-click annotation drawing even when
-                         * `interactive={false}`. Capture and cancel pointer
-                         * events from the right mouse button before they
-                         * reach the board so users cannot draw ephemeral
-                         * arrows in Read mode (per EXPLORER.md "Arrows are
-                         * read-only").
+                         * Read mode: the board is interactive so the user
+                         * can play moves to navigate, but vendored
+                         * chess-control still treats right-click as
+                         * annotation drawing. We capture the right mouse
+                         * button before it reaches the board so no
+                         * ephemeral arrow is drawn (annotations stay
+                         * read-only here, per EXPLORER.md), and instead
+                         * surface the "switch to edit mode?" prompt.
                          *
                          * Edit mode: pass-through — the user is encouraged
                          * to drop arrows; we route them via the model.
@@ -1586,6 +1683,7 @@ const ExplorerPage: React.FC = () => {
                             if (e.button === 2) {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                handleReadAnnotationAttempt();
                             }
                         } : undefined}
                         onContextMenu={mode === 'read' ? (e) => e.preventDefault() : undefined}
@@ -1594,10 +1692,16 @@ const ExplorerPage: React.FC = () => {
                             roundId={`explorer-${mode}-${resolvedOrientation}-${currentFen}`}
                             fen={boardFen}
                             orientation={resolvedOrientation}
-                            movePlayed={mode === 'edit' && !isPreviewing ? handleBoardMove : () => false}
+                            movePlayed={
+                                isPreviewing
+                                    ? () => false
+                                    : mode === 'edit'
+                                        ? handleBoardMove
+                                        : handleReadNavigateMove
+                            }
                             annotationsChanged={mode === 'edit' && !isPreviewing ? handleAnnotationsChanged : undefined}
                             annotations={annotations}
-                            interactive={mode === 'edit' && !isPreviewing}
+                            interactive={!isPreviewing}
                         />
                     </div>
 

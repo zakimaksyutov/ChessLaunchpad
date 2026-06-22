@@ -22,12 +22,6 @@ Two ways out:
 - **(a)** Make fuzz real by adopting the "stamp `request_retention`, return stored `card.due` verbatim when it matches" fix from the **Exact due dates** item above — this restores ts-fsrs's intended load-spreading and also closes the ±1-day drift.
 - **(b)** Drop fuzz entirely by passing `enable_fuzz: false`, which also lets the end-to-end snapshot test stop poking the scheduler's private `parameters.enable_fuzz` to disable it.
 
-## Explorer
-
-### Move on board in read mode to navigate
-
-`/explorer`: Move on explorer in read mode on the board to navigate. If a new move / annotation — toast — "Switch to edit mode?".
-
 ## Dashboard
 
 ### Link to /games for activity tiles with non-analyzed games

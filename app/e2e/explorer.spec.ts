@@ -352,3 +352,153 @@ test.describe('Explorer page — navigation and URL sync', () => {
         await expect(howYouGotHere.locator('a.explorer-lichess-link')).toHaveCount(0);
     });
 });
+
+// ── Board piece helpers shared by the read-mode navigation tests ─────
+
+async function dragPiece(page: Page, from: string, to: string) {
+    const fromBox = await page.locator(`[data-square="${from}"]`).first().boundingBox();
+    const toBox = await page.locator(`[data-square="${to}"]`).first().boundingBox();
+    if (!fromBox || !toBox) throw new Error(`Cannot find square ${from} → ${to}`);
+    await page.mouse.move(fromBox.x + fromBox.width / 2, fromBox.y + fromBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(toBox.x + toBox.width / 2, toBox.y + toBox.height / 2, { steps: 8 });
+    await page.mouse.up();
+}
+
+async function rightDrag(page: Page, from: string, to: string) {
+    const fromBox = await page.locator(`[data-square="${from}"]`).first().boundingBox();
+    const toBox = await page.locator(`[data-square="${to}"]`).first().boundingBox();
+    if (!fromBox || !toBox) throw new Error(`Cannot find square ${from} → ${to}`);
+    await page.mouse.move(fromBox.x + fromBox.width / 2, fromBox.y + fromBox.height / 2);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(toBox.x + toBox.width / 2, toBox.y + toBox.height / 2, { steps: 8 });
+    await page.mouse.up({ button: 'right' });
+}
+
+test.describe('Explorer page — Read-mode board navigation', () => {
+    test('playing a prepared move on the board navigates the tree', async ({ page }) => {
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4 e5 2. Nf3', orientation: 'white' as const },
+        ]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        const board = page.locator('[data-testid="chessboard"]');
+        await expect(board).toBeVisible({ timeout: 10_000 });
+
+        const moves = page.locator('.explorer-moves');
+
+        // Play 1.e4 by dragging the pawn — the page navigates after the move.
+        await dragPiece(page, 'e2', 'e4');
+        await expectPiece(page, 'e4', 'wp');
+        await expectEmpty(page, 'e2');
+        await expect.poll(() => page.url(), { timeout: 5_000 }).toContain('fen=');
+        await expect(moves.locator('.explorer-section-title')).toHaveText("Opponent's replies");
+
+        // Play the prepared reply 1…e5, then 2.Nf3 — each board move navigates.
+        await dragPiece(page, 'e7', 'e5');
+        await expectPiece(page, 'e5', 'bp');
+        await expect(moves.locator('.explorer-section-title')).toHaveText('Your moves from here');
+
+        await dragPiece(page, 'g1', 'f3');
+        await expectPiece(page, 'f3', 'wn');
+
+        // No "switch to edit?" prompt ever fired, and nothing was persisted.
+        await expect(page.locator('.explorer-toast--prompt')).toHaveCount(0);
+        expect(saves).toHaveLength(0);
+
+        // Board-move navigation pushes Explorer history, so Back retracts the
+        // last move (Nf3 → the 1.e4 e5 position).
+        const backBtn = page.locator('.explorer-history-back');
+        await backBtn.click();
+        await expectPiece(page, 'e5', 'bp');
+        await expectEmpty(page, 'f3');
+        await expectPiece(page, 'g1', 'wn');
+        await expect(moves.locator('.explorer-move-row button.explorer-move-san')).toHaveText(['Nf3']);
+    });
+
+    test('an off-repertoire move snaps back and prompts to switch to edit mode', async ({ page }) => {
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4', orientation: 'white' as const },
+        ]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
+
+        // 1.d4 is legal but not in the (1.e4-only) repertoire.
+        await dragPiece(page, 'd2', 'd4');
+
+        // The prompt appears; the piece snaps back and the URL stays at root.
+        const prompt = page.locator('.explorer-toast--prompt');
+        await expect(prompt).toBeVisible();
+        await expect(prompt).toContainText("isn't in your repertoire");
+        await expectPiece(page, 'd2', 'wp');
+        await expectEmpty(page, 'd4');
+        expect(page.url()).not.toContain('fen=');
+        // No save bar yet — we're still in Read mode.
+        await expect(page.locator('.explorer-save-bar')).toHaveCount(0);
+
+        // Clicking the action jumps into Edit mode at the current position.
+        await prompt.getByRole('button', { name: 'Switch to edit mode' }).click();
+        await expect(page.locator('.explorer-save-bar')).toBeVisible();
+        await expect(prompt).toHaveCount(0);
+        // Switching mode alone must not persist anything.
+        expect(saves).toHaveLength(0);
+    });
+
+    test('drawing an annotation in read mode prompts to switch to edit mode', async ({ page }) => {
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4', orientation: 'white' as const },
+        ]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer');
+        await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
+
+        // Baseline arrow count before any gesture (chess-control keeps a
+        // hidden drag-preview line in the layer even with no annotations).
+        const arrowLines = page.locator('[data-testid="chessboard"] .arrow-layer line');
+        const baselineArrows = await arrowLines.count();
+
+        await rightDrag(page, 'e2', 'e4');
+
+        const prompt = page.locator('.explorer-toast--prompt');
+        await expect(prompt).toBeVisible();
+        await expect(prompt).toContainText('read-only');
+        // The gesture is blocked — no new arrow is drawn on the board.
+        await expect(arrowLines).toHaveCount(baselineArrows);
+        expect(saves).toHaveLength(0);
+    });
+
+    test('board navigation works in a black repertoire', async ({ page }) => {
+        const fixture = buildRepertoireData([
+            { pgn: '1. e4 c5 2. Nf3 d6', orientation: 'black' as const },
+        ]);
+        const { saves } = await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer?o=black');
+        await expect(page.locator('[data-testid="chessboard"]')).toBeVisible({ timeout: 10_000 });
+
+        const moves = page.locator('.explorer-moves');
+
+        // White's prepared first move (opponent) drags forward to 1.e4.
+        await dragPiece(page, 'e2', 'e4');
+        await expectPiece(page, 'e4', 'wp');
+        await expect.poll(() => page.url(), { timeout: 5_000 }).toContain('fen=');
+        await expect(moves.locator('.explorer-section-title')).toHaveText('Your moves from here');
+
+        // Our prepared Sicilian reply 1…c5 navigates.
+        await dragPiece(page, 'c7', 'c5');
+        await expectPiece(page, 'c5', 'bp');
+        await expect(moves.locator('.explorer-section-title')).toHaveText("Opponent's replies");
+
+        // An off-repertoire white reply (2.d4) is rejected with the prompt.
+        await dragPiece(page, 'd2', 'd4');
+        await expect(page.locator('.explorer-toast--prompt')).toBeVisible();
+        await expectEmpty(page, 'd4');
+
+        expect(saves).toHaveLength(0);
+    });
+});
+
