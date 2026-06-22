@@ -81,31 +81,21 @@
   line-height: 1;
   color: #6b5500;
   border-radius: 6px;
-  /* Comfortable tap target on touch devices; never shrink. */
   flex: 0 0 auto;
-  min-width: 44px;
-  min-height: 44px;
-  margin: -0.35rem -0.25rem -0.35rem 0;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  /* The × hugs the right edge so its gap from the border matches the
+   * message's left padding (symmetric inset). The tap target is grown
+   * outward with padding that's cancelled by equal negative margins,
+   * so it stays touch-friendly without shifting the glyph or bloating
+   * the pill. */
+  justify-content: flex-end;
+  padding: 0.5rem 0.6rem 0.5rem 0.55rem;
+  margin: -0.5rem -0.6rem -0.5rem 0;
 }
 
 .explorer-toast .explorer-toast-dismiss:hover {
   background: rgba(107, 85, 0, 0.12);
-}
-
-/* In the floating snackbar the × hugs the right edge so its gap from
- * the border matches the message's left padding (symmetric inset).
- * The glyph is right-aligned, and the tap target is grown outward with
- * padding that's cancelled by equal negative margins, so it stays
- * touch-friendly without shifting the glyph or bloating the pill. */
-.explorer-toast .explorer-toast-dismiss {
-  justify-content: flex-end;
-  min-width: 0;
-  min-height: 0;
-  padding: 0.5rem 0.6rem 0.5rem 0.55rem;
-  margin: -0.5rem -0.6rem -0.5rem 0;
 }
 
 /* ===== Toolbar (orientation toggle + edit affordance) =====
