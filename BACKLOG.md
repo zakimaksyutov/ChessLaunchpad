@@ -28,10 +28,6 @@ Two ways out:
 
 `/explorer`: Move on explorer in read mode on the board to navigate. If a new move / annotation — toast — "Switch to edit mode?".
 
-### Home / Back / Forward navigation
-
-Home, Back, Forward in `/explorer`.
-
 ## Dashboard
 
 ### Link to /games for activity tiles with non-analyzed games
