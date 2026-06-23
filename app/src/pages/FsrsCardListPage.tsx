@@ -14,7 +14,7 @@ import { AuditService } from '../services/AuditService';
 import { ExplorerService, Orientation } from '../services/ExplorerService';
 import { unpackCardForAudit } from '../utils/BlobCodec';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
-import { formatDueRelative, formatLastReviewed } from '../utils/ExplorerRelativeTime';
+import { formatDueRelative, formatLastReviewed, formatElapsed } from '../utils/ExplorerRelativeTime';
 import './FsrsCardListPage.css';
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ const TrackLog: React.FC<{ entry: AuditEntry; now: Date }> = ({ entry, now }) =>
                     {ordered.map((e, i) => (
                         <li key={i} className={`fsrs-event fsrs-event--${ratingLabel(e.r).toLowerCase()}`}>
                             <span className="fsrs-event-rating">{ratingLabel(e.r)}</span>
-                            <span className="fsrs-event-when">{formatLastReviewed(new Date(e.ts), now)}</span>
+                            <span className="fsrs-event-when">{formatElapsed(new Date(e.ts), now)}</span>
                             <span className="fsrs-event-source">{e.s}</span>
                         </li>
                     ))}

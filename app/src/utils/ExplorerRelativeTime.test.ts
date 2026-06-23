@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDueRelative, formatLastReviewed } from './ExplorerRelativeTime';
+import { formatDueRelative, formatLastReviewed, formatElapsed } from './ExplorerRelativeTime';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -50,6 +50,25 @@ describe('ExplorerRelativeTime', () => {
 
         it('treats future timestamps defensively as "just now"', () => {
             expect(formatLastReviewed(ahead(HOUR), NOW)).toBe('just now');
+        });
+    });
+
+    describe('formatElapsed', () => {
+        it('shows "just now" for a sub-minute-old event', () => {
+            expect(formatElapsed(NOW, NOW)).toBe('just now');
+            expect(formatElapsed(ago(59 * SECOND), NOW)).toBe('just now');
+        });
+
+        it('formats minute, hour, day, month and year ranges without a "last" prefix', () => {
+            expect(formatElapsed(ago(5 * MINUTE), NOW)).toBe('5 min ago');
+            expect(formatElapsed(ago(12 * HOUR), NOW)).toBe('12h ago');
+            expect(formatElapsed(ago(3 * DAY), NOW)).toBe('3d ago');
+            expect(formatElapsed(ago(90 * DAY), NOW)).toBe('3 mo ago');
+            expect(formatElapsed(ago(800 * DAY), NOW)).toBe('2.2 yr ago');
+        });
+
+        it('treats future timestamps defensively as "just now"', () => {
+            expect(formatElapsed(ahead(HOUR), NOW)).toBe('just now');
         });
     });
 
