@@ -1625,6 +1625,16 @@ const GamesPage: React.FC = () => {
                                 >
                                     {label}
                                     <span className="games-filter-chip-count">{count}</span>
+                                    {value === 'all' && orderedRows.length >= MAX_TOTAL_RECORDS && (
+                                        <span
+                                            className="games-filter-chip-info"
+                                            role="img"
+                                            aria-label={`Only your most recent ${MAX_TOTAL_RECORDS} games are kept. Older games are dropped as you play new ones.`}
+                                            title={`Only your most recent ${MAX_TOTAL_RECORDS} games are kept. Older games are dropped as you play new ones.`}
+                                        >
+                                            ⓘ
+                                        </span>
+                                    )}
                                 </button>
                             ))}
                         </div>
@@ -1658,11 +1668,6 @@ const GamesPage: React.FC = () => {
                             />
                         );
                     })}
-                    {orderedRows.length >= MAX_TOTAL_RECORDS && (
-                        <div className="games-footer-hint">
-                            Showing your last {MAX_TOTAL_RECORDS} analyzed games. Older games are dropped as you play new ones.
-                        </div>
-                    )}
                 </div>
             )}
         </div>
