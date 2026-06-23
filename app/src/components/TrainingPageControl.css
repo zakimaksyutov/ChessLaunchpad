@@ -96,7 +96,8 @@
 .session-complete-actions button {
     padding: 8px 16px;
     font-size: 0.95rem;
-    border-radius: 4px;
+    font-weight: var(--cta-font-weight);
+    border-radius: var(--cta-radius);
     cursor: pointer;
     border: 1px solid transparent;
     transition: background-color 0.15s ease, border-color 0.15s ease;
@@ -113,14 +114,14 @@
 }
 
 .session-complete-primary {
-    background-color: #2e7d32;
+    background-color: var(--cta-green);
     color: #ffffff;
-    border-color: #2e7d32 !important;
+    border-color: var(--cta-green) !important;
 }
 
 .session-complete-primary:hover {
-    background-color: #266b29;
-    border-color: #266b29 !important;
+    background-color: var(--cta-green-hover);
+    border-color: var(--cta-green-hover) !important;
 }
 
 .board-glow-teaching {

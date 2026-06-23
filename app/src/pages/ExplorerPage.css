@@ -657,7 +657,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--cta-radius);
   padding: 0.5rem 1rem;
   cursor: pointer;
   font-weight: 600;
@@ -684,21 +684,21 @@
 
 /* Color modifiers. */
 .explorer-btn--primary {
-  background: #1f7a3a;
-  border-color: #1f7a3a;
+  background: var(--cta-green);
+  border-color: var(--cta-green);
   color: #fff;
 }
 .explorer-btn--primary:hover:not(:disabled) {
-  background: #186029;
-  border-color: #186029;
+  background: var(--cta-green-hover);
+  border-color: var(--cta-green-hover);
 }
 
 .explorer-btn--ghost {
-  color: #1f7a3a;
-  border-color: #1f7a3a;
+  color: var(--cta-green);
+  border-color: var(--cta-green);
 }
 .explorer-btn--ghost:hover:not(:disabled) {
-  background: rgba(31, 122, 58, 0.08);
+  background: rgba(46, 125, 50, 0.08);
 }
 
 .explorer-btn--neutral {
@@ -1287,9 +1287,9 @@
  * rather than dropping the controls onto a second line. */
 .explorer-toast-action {
   flex: 0 0 auto;
-  background: #1f7a3a;
-  border: 1px solid #1f7a3a;
-  border-radius: 5px;
+  background: var(--cta-green);
+  border: 1px solid var(--cta-green);
+  border-radius: var(--cta-radius);
   color: #fff;
   font-size: 0.85rem;
   font-weight: 600;
@@ -1300,7 +1300,7 @@
 }
 
 .explorer-toast-action:hover {
-  background: #186029;
-  border-color: #186029;
+  background: var(--cta-green-hover);
+  border-color: var(--cta-green-hover);
 }
 
