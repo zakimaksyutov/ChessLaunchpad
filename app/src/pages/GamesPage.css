@@ -793,6 +793,13 @@
     background: rgba(255, 255, 255, 0.25);
 }
 
+.games-filter-chip-info {
+    font-size: 0.9rem;
+    line-height: 1;
+    opacity: 0.65;
+    cursor: help;
+}
+
 /* ─── Per-row "mark reviewed" toggle ─── */
 
 .game-review-toggle {

@@ -232,8 +232,8 @@ const DashboardPage: React.FC = () => {
                         onClick={() => navigate('/training')}
                     >
                         {cards.dueNow > 0
-                            ? `🚀 Start Training (${cards.dueNow} due)`
-                            : '🚀 Start Training'}
+                            ? `Start Training (${cards.dueNow} due)`
+                            : 'Start Training'}
                     </button>
                 </div>
 

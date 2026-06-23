@@ -28,17 +28,17 @@
 .dashboard-cta-button {
     padding: 0.75rem 2rem;
     font-size: 1.1rem;
-    font-weight: 600;
+    font-weight: var(--cta-font-weight);
     color: #fff;
-    background: #4caf50;
+    background: var(--cta-green);
     border: none;
-    border-radius: 8px;
+    border-radius: var(--cta-radius);
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .dashboard-cta-button:hover {
-    background: #388e3c;
+    background: var(--cta-green-hover);
 }
 
 /* Widget Grid */

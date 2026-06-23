@@ -302,6 +302,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                 setPgn(chess.pgn());
 
                 const status = eng.advanceAutoplay();
+
+                // When a variant's terminal move is an opponent/autoplay move,
+                // the traversal completes here (not via handleMove). Play the
+                // success sound so finishing on an opponent move is acknowledged
+                // just like finishing on a user move.
+                if (status.phase === 'complete') {
+                    playSound(soundSuccess);
+                }
+
                 setPhase(status.phase);
                 setIsTeaching(status.isTeaching);
                 setIsRecalling(status.isRecalling);
