@@ -140,6 +140,75 @@ describe('GameIngestService', () => {
         } as unknown as Response);
     }
 
+    /**
+     * Mocks the first-run Chess.com fetch sequence: the `/archives` index (one
+     * URL per supplied month, ascending) followed by each month's archive in the
+     * most-recent-first order the fetcher walks them.
+     */
+    function mockChesscomFirstRun(
+        months: Array<{ label: string; games: Record<string, unknown>[]; etag?: string }>,
+    ) {
+        const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+        const ascending = [...months].map(m => m.label).sort();
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            json: async () => ({
+                archives: ascending.map(l => {
+                    const [y, mm] = l.split('-');
+                    return `https://api.chess.com/pub/player/me/games/${y}/${mm}`;
+                }),
+            }),
+            text: async () => '',
+        } as unknown as Response);
+        const recentFirst = [...months].sort((a, b) =>
+            a.label < b.label ? 1 : a.label > b.label ? -1 : 0,
+        );
+        for (const m of recentFirst) {
+            fetchMock.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                statusText: 'OK',
+                headers: new Headers(m.etag ? { 'ETag': m.etag } : {}),
+                json: async () => ({ games: m.games }),
+                text: async () => JSON.stringify({ games: m.games }),
+            } as unknown as Response);
+        }
+    }
+
+    /** Mocks a single fetch response (status/body controllable). */
+    function mockFetchOnce(opts: {
+        ok?: boolean;
+        status?: number;
+        json?: unknown;
+        etag?: string;
+    }) {
+        (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+            ok: opts.ok ?? true,
+            status: opts.status ?? 200,
+            statusText: 'X',
+            headers: new Headers(opts.etag ? { 'ETag': opts.etag } : {}),
+            json: async () => opts.json ?? {},
+            text: async () => JSON.stringify(opts.json ?? {}),
+        } as unknown as Response);
+    }
+
+    /** Mocks the Chess.com `/archives` index for the supplied month labels. */
+    function mockChesscomArchiveIndex(labels: string[], ok = true) {
+        mockFetchOnce({
+            ok,
+            status: ok ? 200 : 404,
+            json: {
+                archives: [...labels].sort().map(l => {
+                    const [y, mm] = l.split('-');
+                    return `https://api.chess.com/pub/player/me/games/${y}/${mm}`;
+                }),
+            },
+        });
+    }
+
     it('returns early when no linked accounts', async () => {
         const data = makeData();
         const dal = new MockDal(data);
@@ -314,7 +383,7 @@ describe('GameIngestService', () => {
         expect(result.didWrite).toBe(false);
     });
 
-    it('filters out games older than 5 days', async () => {
+    it('filters out games older than 5 days (steady state)', async () => {
         const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
         const data = makeData([variant]);
         const game = lichessGame({
@@ -323,6 +392,12 @@ describe('GameIngestService', () => {
             userIsWhite: true,
             moves: 'e4 e5 Nf3',
         });
+        // Pre-existing account state → not a first run, so the 5-day age window
+        // applies. Watermark is older than the game so only the age gate filters.
+        const acctKey = getAccountKey('lichess', 'me');
+        data.games = {
+            [acctKey]: { watermarkMs: FAKE_NOW.getTime() - 10 * 24 * 60 * 60 * 1000, recentIds: [] },
+        };
         mockLichessOnce([game]);
         setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
 
@@ -699,14 +774,7 @@ describe('GameIngestService', () => {
             userIsWhite: true,
             moves: '1. e4 e5 2. Nf3',
         });
-        (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-            ok: true,
-            status: 200,
-            statusText: 'OK',
-            headers: new Headers({ 'ETag': 'cc-etag' }),
-            text: async () => '',
-            json: async () => ({ games: [chesscomGameData] }),
-        } as unknown as Response);
+        mockChesscomFirstRun([{ label: '2026-05', games: [chesscomGameData], etag: 'cc-etag' }]);
 
         setAccounts(data, [
             { platform: 'lichess', username: 'me' },
@@ -916,14 +984,7 @@ describe('GameIngestService', () => {
                 '[Result "*"]',
                 '[Result "*"]\n[ECOUrl "https://www.chess.com/openings/Sicilian-Defense"]',
             );
-            (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-                ok: true,
-                status: 200,
-                statusText: 'OK',
-                headers: new Headers(),
-                json: async () => ({ games: [game] }),
-                text: async () => JSON.stringify({ games: [game] }),
-            } as unknown as Response);
+            mockChesscomFirstRun([{ label: '2026-05', games: [game] }]);
             setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
             const dal = new MockDal(data);
             await runIngest(dal);
@@ -991,14 +1052,7 @@ describe('GameIngestService', () => {
                 userIsWhite: true,
                 moves: '1. e4 e5',
             });
-            (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-                ok: true,
-                status: 200,
-                statusText: 'OK',
-                headers: new Headers(),
-                json: async () => ({ games: [game] }),
-                text: async () => JSON.stringify({ games: [game] }),
-            } as unknown as Response);
+            mockChesscomFirstRun([{ label: '2026-05', games: [game] }]);
             setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
             const dal = new MockDal(data);
             await runIngest(dal);
@@ -1054,6 +1108,300 @@ describe('GameIngestService', () => {
             const todayDay = dal.data.activity!.practiceLog.find(e => e.date !== dateStr)!;
             expect(todayDay.games!.records!.length).toBe(1);
             expect(todayDay.games!.records![0].id).toBe('newToday');
+        });
+    });
+
+    describe('first-run backfill', () => {
+        it('backfills a game older than 5 days on first run (within the newest N)', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            // No pre-existing account state → first run. A 6-day-old game would be
+            // filtered by the steady-state age window, but first-run keeps it
+            // because it's among the newest FIRST_RUN_MIN_GAMES.
+            const game = lichessGame({
+                id: 'old1',
+                createdAt: FAKE_NOW.getTime() - 6 * 24 * 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.didWrite).toBe(true);
+            expect(result.gamesProcessed).toBe(1);
+        });
+
+        it('caps the first-run backfill at FIRST_RUN_MIN_GAMES when all games predate the window', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            // 60 games, all older than the 5-day window (6..65 days ago). First
+            // run should keep only the newest 50 (the count floor).
+            const games = Array.from({ length: 60 }, (_, i) => lichessGame({
+                id: `g${String(i).padStart(3, '0')}`,
+                createdAt: FAKE_NOW.getTime() - (6 + i) * 24 * 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            }));
+            mockLichessOnce(games);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.gamesProcessed).toBe(50);
+            // Watermark is the newest game (g000, 6 days ago); the oldest games
+            // beyond the 50-game floor are never processed.
+            const acctKey = getAccountKey('lichess', 'me');
+            expect(dal.data.games![acctKey].watermarkMs).toBe(games[0].createdAt);
+        });
+
+        it('keeps every in-window game on first run even beyond the count floor', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            // 55 games all inside the 5-day window: the union(window, newest 50)
+            // keeps all 55, not just the newest 50.
+            const baseMs = FAKE_NOW.getTime() - 24 * 60 * 60 * 1000;
+            const games = Array.from({ length: 55 }, (_, i) => lichessGame({
+                id: `w${String(i).padStart(3, '0')}`,
+                createdAt: baseMs + i * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            }));
+            mockLichessOnce(games);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.gamesProcessed).toBe(55);
+        });
+
+        it('uses dateDesc without `since` on first run, then dateAsc + `since` once state exists', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            const game = lichessGame({
+                id: 'fr1',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([game]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            await runIngest(dal);
+
+            const firstUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+            expect(firstUrl).toContain('sort=dateDesc');
+            expect(firstUrl).not.toContain('since=');
+
+            // Second run: state now exists → incremental steady-state query.
+            const game2 = lichessGame({
+                id: 'fr2',
+                createdAt: FAKE_NOW.getTime() - 30 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([game2]);
+            await runIngest(dal);
+            const secondUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1][0] as string;
+            expect(secondUrl).toContain('sort=dateAsc');
+            expect(secondUrl).toContain('since=');
+        });
+
+        it('walks the Chess.com archives index to backfill older months on first run', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            const recentGame = buildChesscomGame({
+                uuid: 'cc-recent',
+                endTimeSec: Math.floor((FAKE_NOW.getTime() - 60 * 60 * 1000) / 1000),
+                userIsWhite: true,
+                moves: '1. e4 e5 2. Nf3',
+            });
+            const oldGame = buildChesscomGame({
+                uuid: 'cc-old',
+                endTimeSec: Math.floor((FAKE_NOW.getTime() - 80 * 24 * 60 * 60 * 1000) / 1000),
+                userIsWhite: true,
+                moves: '1. e4 e5 2. Nf3',
+            });
+            // Two months in the index; the older month is outside the 5-day
+            // window but is still backfilled (within the count floor).
+            mockChesscomFirstRun([
+                { label: '2026-03', games: [oldGame] },
+                { label: '2026-05', games: [recentGame], etag: 'cc-etag' },
+            ]);
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.gamesProcessed).toBe(2);
+            // Cursor seeded from the current month for the next steady-state run.
+            const acctKey = getAccountKey('chess.com', 'me');
+            expect(dal.data.games![acctKey].providerCursor).toEqual({ month: '2026-05', etag: 'cc-etag' });
+        });
+
+        it('does NOT replay out-of-window backfilled games into FSRS (display/heatmap only)', async () => {
+            // Established user with a repertoire (so processGame *would* rate
+            // in-repertoire moves). On first run, only the in-window game should
+            // feed FSRS; the 6-day-old backfilled game is recorded but not rated.
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            const oldGame = lichessGame({
+                id: 'old',
+                createdAt: FAKE_NOW.getTime() - 6 * 24 * 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            const recentGame = lichessGame({
+                id: 'recent',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([oldGame, recentGame]);
+            setAccounts(data, [{ platform: 'lichess', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+
+            // Both games are backfilled (display + activity)…
+            expect(result.gamesProcessed).toBe(2);
+            const entries = dal.data.activity!.practiceLog.filter(e => e.games);
+            const ingestedSum = entries.reduce((s, e) => s + (e.games!.ingested ?? 0), 0);
+            expect(ingestedSum).toBe(2);
+            // …but only the in-window game (e4 + Nf3) produced FSRS reviews.
+            const reviewedSum = entries.reduce((s, e) => s + (e.games!.reviewed ?? 0), 0);
+            expect(reviewedSum).toBe(2);
+        });
+
+        it('does not persist state for an account whose first-run fetch fails (backfill retried next run)', async () => {
+            // Account A (lichess) succeeds and triggers the persist; account B
+            // (chess.com) fails its first-run fetch. B must be left state-less so
+            // its one-time backfill is retried, not silently downgraded.
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            const okGame = lichessGame({
+                id: 'ok1',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([okGame]);
+            // chess.com first run: index ok, but the month archive 500s → the
+            // whole account fetch throws → fetchSucceeded === false.
+            mockChesscomArchiveIndex(['2026-05']);
+            mockFetchOnce({ ok: false, status: 500 });
+            setAccounts(data, [
+                { platform: 'lichess', username: 'me' },
+                { platform: 'chess.com', username: 'me' },
+            ]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+
+            expect(result.didWrite).toBe(true);
+            expect(dal.data.games![getAccountKey('lichess', 'me')]).toBeDefined();
+            expect(dal.data.games![getAccountKey('chess.com', 'me')]).toBeUndefined();
+        });
+
+        it('caps the Chess.com first-run walk at FIRST_RUN_MAX_ARCHIVES months', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            // 8 months in the index, one game each (well under the 50-game floor,
+            // so the walk never early-stops). Only the newest 6 may be fetched.
+            const months = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
+            const monthFixtures = months.map((label, i) => ({
+                label,
+                games: [buildChesscomGame({
+                    uuid: `cc-${label}`,
+                    endTimeSec: Math.floor((FAKE_NOW.getTime() - (5 + i) * 24 * 60 * 60 * 1000) / 1000),
+                    userIsWhite: true,
+                    moves: '1. e4 e5 2. Nf3',
+                })],
+            }));
+            mockChesscomFirstRun(monthFixtures);
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+
+            // 1 index fetch + 6 month fetches (the 2 oldest months are skipped).
+            expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(7);
+            expect(result.gamesProcessed).toBe(6);
+        });
+
+        it('stops the Chess.com walk early once the count floor and window are covered', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            // Newest month already supplies >= FIRST_RUN_MIN_GAMES in-window
+            // games; an older month exists but must NOT be fetched (break fired).
+            const recentGames = Array.from({ length: 50 }, (_, i) => buildChesscomGame({
+                uuid: `cc-r${i}`,
+                endTimeSec: Math.floor((FAKE_NOW.getTime() - (i + 1) * 60 * 1000) / 1000),
+                userIsWhite: true,
+                moves: '1. e4 e5 2. Nf3',
+            }));
+            mockChesscomFirstRun([
+                { label: '2026-02', games: [buildChesscomGame({
+                    uuid: 'cc-older',
+                    endTimeSec: Math.floor((FAKE_NOW.getTime() - 100 * 24 * 60 * 60 * 1000) / 1000),
+                    userIsWhite: true,
+                    moves: '1. e4 e5 2. Nf3',
+                })] },
+                { label: '2026-05', games: recentGames },
+            ]);
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+
+            // 1 index + 1 month (2026-05) only — 2026-02 never fetched.
+            expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+            expect(result.gamesProcessed).toBe(50);
+        });
+
+        it('treats a 404 Chess.com archives index as no games (no crash, no state churn)', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            mockChesscomArchiveIndex([], false); // index 404 → definitive "no archives"
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.didWrite).toBe(false);
+            expect(result.gamesProcessed).toBe(0);
+        });
+
+        it('retries the first run (no state persisted) when the archives index fails transiently', async () => {
+            // A 5xx on the archives index must NOT degrade to a current-month-only
+            // fetch that consumes the one-time backfill — the account fetch fails
+            // so it stays state-less and is retried next run.
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            const okGame = lichessGame({
+                id: 'ok2',
+                createdAt: FAKE_NOW.getTime() - 60 * 60 * 1000,
+                userIsWhite: true,
+                moves: 'e4 e5 Nf3',
+            });
+            mockLichessOnce([okGame]); // a second account persists, exposing the gap
+            mockFetchOnce({ ok: false, status: 503 }); // chess.com archives index 5xx
+            setAccounts(data, [
+                { platform: 'lichess', username: 'me' },
+                { platform: 'chess.com', username: 'me' },
+            ]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.didWrite).toBe(true);
+            expect(dal.data.games![getAccountKey('chess.com', 'me')]).toBeUndefined();
+        });
+
+        it('skips a 404 month mid-walk and keeps ingesting older months', async () => {
+            const variant = makeVariant('1. e4 e5 2. Nf3', 'white');
+            const data = makeData([variant]);
+            mockChesscomArchiveIndex(['2026-03', '2026-05']);
+            mockFetchOnce({ ok: false, status: 404 }); // 2026-05 archive missing
+            const oldGame = buildChesscomGame({
+                uuid: 'cc-mar',
+                endTimeSec: Math.floor((FAKE_NOW.getTime() - 80 * 24 * 60 * 60 * 1000) / 1000),
+                userIsWhite: true,
+                moves: '1. e4 e5 2. Nf3',
+            });
+            mockFetchOnce({ json: { games: [oldGame] } }); // 2026-03 archive
+            setAccounts(data, [{ platform: 'chess.com', username: 'me' }]);
+            const dal = new MockDal(data);
+            const result = await runIngest(dal);
+            expect(result.gamesProcessed).toBe(1);
         });
     });
 

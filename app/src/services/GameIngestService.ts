@@ -31,6 +31,22 @@ const AGE_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 const MAX_RECENT_IDS = 50;
 const LICHESS_MAX_PER_REQUEST = 500;
 
+// First-run backfill: when an account has no prior ingest state we seed the
+// user with a starter set of games so /games and the activity heatmap aren't
+// empty. We take the union of "games in the last AGE_WINDOW_MS" and "the newest
+// FIRST_RUN_MIN_GAMES games" — i.e. max(5 days, 50 games), whichever yields more.
+// Backfilled games older than AGE_WINDOW_MS populate /games records and the
+// activity heatmap only — applyIngest never replays them into FSRS — so this
+// path never writes past-dated reviews, even when an established user (with a
+// non-empty repertoire) links a second account (also a "first run" for that
+// account). In-window games are rated exactly as in steady state.
+const FIRST_RUN_MIN_GAMES = 50;
+// One-time first-run fetch ceilings, bounded so an account with a long history
+// doesn't pull everything. Steady-state runs revert to the incremental
+// AGE_WINDOW path once state exists.
+const FIRST_RUN_LICHESS_MAX = 100;
+const FIRST_RUN_MAX_ARCHIVES = 6;
+
 interface IngestGame {
     id: string;
     createdAt: number;
@@ -175,7 +191,7 @@ async function runIngestInternal(
         return summary;
     }
 
-    applyIngest(data, eligible, linkedAccounts);
+    applyIngest(data, eligible, linkedAccounts, runNowMs);
     updateAccountStates(data, fetches, eligible);
 
     if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
@@ -246,16 +262,40 @@ function composeEligibleGames(
     runNowMs: number,
 ): IngestGame[] {
     const eligible: IngestGame[] = [];
+    const ageCutoffMs = runNowMs - AGE_WINDOW_MS;
     for (const af of fetches) {
         const state = gamesMap?.[af.accountKey];
+        const isFirstRun = !state;
         const watermarkMs = state?.watermarkMs ?? 0;
         const recentIds = new Set((state?.recentIds ?? []).map(r => r.id));
-        for (const g of af.games) {
-            if (g.createdAt <= watermarkMs) continue;
-            if (recentIds.has(g.id)) continue;
-            if (runNowMs - g.createdAt > AGE_WINDOW_MS) continue;
-            if (g.createdAt > runNowMs) continue;
-            eligible.push(g);
+
+        // Shared validity gates (apply to every run): unseen, not future, and
+        // strictly newer than the watermark (a no-op on first run where it's 0).
+        const valid = af.games.filter(g =>
+            g.createdAt > watermarkMs &&
+            !recentIds.has(g.id) &&
+            g.createdAt <= runNowMs
+        );
+
+        if (isFirstRun) {
+            // First run for this account: keep the union of "within the age
+            // window" and "the newest FIRST_RUN_MIN_GAMES". Sort newest-first so
+            // the count floor reaches back beyond the window when the user hasn't
+            // played much recently.
+            const newestFirst = [...valid].sort((a, b) => {
+                if (a.createdAt !== b.createdAt) return b.createdAt - a.createdAt;
+                return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+            });
+            newestFirst.forEach((g, idx) => {
+                if (g.createdAt >= ageCutoffMs || idx < FIRST_RUN_MIN_GAMES) {
+                    eligible.push(g);
+                }
+            });
+        } else {
+            for (const g of valid) {
+                if (g.createdAt < ageCutoffMs) continue;
+                eligible.push(g);
+            }
         }
     }
     // Sort by createdAt ASC, then id ASC for determinism.
@@ -270,6 +310,7 @@ function applyIngest(
     data: RepertoireData,
     games: IngestGame[],
     linkedAccounts: LinkedAccount[],
+    runNowMs: number,
 ): void {
     if (games.length === 0) return;
 
@@ -297,7 +338,15 @@ function applyIngest(
         if (!userColor) continue;
 
         const repFens = userColor === 'white' ? whiteFens : blackFens;
-        const result = processGame(game, userColor, repFens, fsrs);
+        // FSRS reacts only to recent play. A first-run backfill may include games
+        // older than the age window (to reach FIRST_RUN_MIN_GAMES); those are
+        // recorded for /games + the activity heatmap only and never replayed into
+        // the schedule, so an established user's FSRS history stays intact when
+        // they link a second account. In-window games rate exactly as steady state.
+        const withinWindow = game.createdAt >= runNowMs - AGE_WINDOW_MS;
+        const result = withinWindow
+            ? processGame(game, userColor, repFens, fsrs)
+            : { reviewed: 0, hadMistake: false };
 
         const date = getDateStringForTimestamp(game.createdAt);
         const entry = getOrCreateEntryByDate(activity, date);
@@ -423,6 +472,11 @@ function updateAccountStates(
     }
 
     for (const af of fetches) {
+        // A failed fetch must not initialize or advance state. Otherwise a
+        // transient first-run miss (while another account in the same run
+        // triggers the persist) would write {watermarkMs:0}, flipping the
+        // account to steady-state and permanently skipping its one-time backfill.
+        if (!af.fetchSucceeded) continue;
         const prev: GameIngestState = data.games[af.accountKey] ?? { watermarkMs: 0, recentIds: [] };
         const processed = processedByAccount.get(af.accountKey) ?? [];
 
@@ -475,6 +529,7 @@ async function fetchLichessGames(
     runNowMs: number,
     signal?: AbortSignal,
 ): Promise<IngestGame[]> {
+    const isFirstRun = !state;
     const watermark = state?.watermarkMs ?? 0;
     // Use the max of (watermark+1, runNow - AGE_WINDOW) so initial runs don't pull years of history.
     const sinceMs = Math.max(watermark + 1, runNowMs - AGE_WINDOW_MS);
@@ -482,9 +537,12 @@ async function fetchLichessGames(
     const params = new URLSearchParams({
         rated: 'true',
         perfType: 'blitz,rapid',
-        sort: 'dateAsc',
-        max: LICHESS_MAX_PER_REQUEST.toString(),
-        since: sinceMs.toString(),
+        // First run: grab the newest games (dateDesc, no `since` floor) so we can
+        // reach the FIRST_RUN_MIN_GAMES count even when the user hasn't played in
+        // the last AGE_WINDOW. Steady-state: dateAsc + `since` watermark, so a
+        // truncated page drops the *newest* games (recovered next run).
+        sort: isFirstRun ? 'dateDesc' : 'dateAsc',
+        max: (isFirstRun ? FIRST_RUN_LICHESS_MAX : LICHESS_MAX_PER_REQUEST).toString(),
         // Per-ply server evals — GameRecordBuilder stores them as `record.ev`,
         // which drives eval-drop badges and ambiguous-zone masters checks.
         evals: 'true',
@@ -495,6 +553,9 @@ async function fetchLichessGames(
         // Re-annotate refetched through `/game/export/{id}?opening=true`.
         opening: 'true',
     });
+    if (!isFirstRun) {
+        params.set('since', sinceMs.toString());
+    }
 
     const url = `https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params}`;
 
@@ -538,14 +599,15 @@ async function fetchLichessGames(
         });
     }
 
-    // Lichess returns at most LICHESS_MAX_PER_REQUEST raw rows per call and we
-    // don't paginate. We use sort=dateAsc, so the truncation drops the *newest*
-    // games beyond the cap — but those will reappear in the next ingest run
-    // because the watermark only advances to the highest createdAt we did
-    // process. The warn is purely an observability signal: if it ever fires in
-    // production telemetry we should implement pagination so a single ingest
-    // run sees the full window.
-    if (rawLineCount >= LICHESS_MAX_PER_REQUEST) {
+    // Steady-state runs return at most LICHESS_MAX_PER_REQUEST raw rows per call
+    // and we don't paginate. We use sort=dateAsc, so the truncation drops the
+    // *newest* games beyond the cap — but those reappear next run because the
+    // watermark only advances to the highest createdAt we processed. The warn is
+    // purely an observability signal: if it ever fires in production telemetry we
+    // should implement pagination so a single ingest run sees the full window.
+    // (First-run uses dateDesc and intentionally keeps only the newest page, so
+    // truncation there is by-design and not warned.)
+    if (!isFirstRun && rawLineCount >= LICHESS_MAX_PER_REQUEST) {
         // eslint-disable-next-line no-console
         console.warn(
             `GameIngest: Lichess fetch for ${username} returned ${rawLineCount} rows — at LICHESS_MAX_PER_REQUEST cap. Newer games in window deferred until next run; consider adding pagination if this recurs.`
@@ -568,12 +630,52 @@ function archiveUrlForLabel(username: string, label: string): string {
     return `https://api.chess.com/pub/player/${encodeURIComponent(username)}/games/${yyyy}/${mm}`;
 }
 
+/** Extracts a `YYYY-MM` label from a Chess.com monthly-archive URL. */
+function labelFromArchiveUrl(url: string): string | null {
+    const m = /(\d{4})\/(\d{2})\/?$/.exec(url);
+    return m ? `${m[1]}-${m[2]}` : null;
+}
+
+/** Maps a Chess.com monthly-archive JSON payload to ingestable games. */
+function parseChesscomArchiveGames(
+    json: unknown,
+    username: string,
+    accountKey: string,
+): IngestGame[] {
+    const out: IngestGame[] = [];
+    const monthGames = Array.isArray((json as { games?: unknown })?.games)
+        ? (json as { games: unknown[] }).games
+        : [];
+    for (const g of monthGames as Array<Record<string, unknown>>) {
+        if (g.rules !== 'chess') continue;
+        const speed = g.time_class as string | undefined;
+        if (speed !== 'blitz' && speed !== 'rapid') continue;
+        if (g.rated !== true) continue;
+        const uuid = g.uuid as string | undefined;
+        const endTime = g.end_time as number | undefined;
+        if (!uuid || typeof endTime !== 'number') continue;
+        out.push({
+            id: uuid,
+            createdAt: endTime * 1000,
+            platform: 'chess.com',
+            username,
+            accountKey,
+            gameData: g,
+        });
+    }
+    return out;
+}
+
 async function fetchChesscomGames(
     username: string,
     state: GameIngestState | undefined,
     runNowMs: number,
     signal?: AbortSignal,
 ): Promise<{ games: IngestGame[]; providerCursor?: ChesscomProviderCursor }> {
+    if (!state) {
+        return fetchChesscomGamesFirstRun(username, runNowMs, signal);
+    }
+
     const currentLabel = archiveLabelFromMs(runNowMs);
     const accountKey = getAccountKey('chess.com', username);
 
@@ -617,24 +719,76 @@ async function fetchChesscomGames(
             newCursor = { month: label, etag };
         }
 
-        const monthGames = Array.isArray(json?.games) ? json.games : [];
-        for (const g of monthGames as Array<Record<string, unknown>>) {
-            if (g.rules !== 'chess') continue;
-            const speed = g.time_class as string | undefined;
-            if (speed !== 'blitz' && speed !== 'rapid') continue;
-            if (g.rated !== true) continue;
-            const uuid = g.uuid as string | undefined;
-            const endTime = g.end_time as number | undefined;
-            if (!uuid || typeof endTime !== 'number') continue;
-            const createdAt = endTime * 1000;
-            allGames.push({
-                id: uuid,
-                createdAt,
-                platform: 'chess.com',
-                username,
-                accountKey,
-                gameData: g,
-            });
+        allGames.push(...parseChesscomArchiveGames(json, username, accountKey));
+    }
+
+    return { games: allGames, providerCursor: newCursor };
+}
+
+/**
+ * First-run Chess.com fetch. Chess.com has no "last N games" endpoint — games
+ * are only served as monthly archives — so we read the `/archives` index (which
+ * lists exactly the months the user has games in, ascending) and walk it
+ * most-recent-first. We stop once both the count floor (FIRST_RUN_MIN_GAMES) and
+ * the age window are covered, capped at FIRST_RUN_MAX_ARCHIVES months so a long
+ * history doesn't trigger an unbounded number of requests. Eligibility trimming
+ * to the exact union(age window, newest N) happens in composeEligibleGames.
+ */
+async function fetchChesscomGamesFirstRun(
+    username: string,
+    runNowMs: number,
+    signal?: AbortSignal,
+): Promise<{ games: IngestGame[]; providerCursor?: ChesscomProviderCursor }> {
+    const accountKey = getAccountKey('chess.com', username);
+    const currentLabel = archiveLabelFromMs(runNowMs);
+    const ageBoundaryLabel = archiveLabelFromMs(runNowMs - AGE_WINDOW_MS);
+
+    // Read the archives index. A transient failure (5xx / network) must propagate
+    // so fetchAllAccounts marks this account failed and updateAccountStates leaves
+    // it state-less — that way the one-time backfill is retried next run rather
+    // than silently consumed by a degraded current-month-only fetch. A 404 is the
+    // definitive "no archives" answer (e.g. unknown user) → nothing to back-fill.
+    const idxUrl = `https://api.chess.com/pub/player/${encodeURIComponent(username)}/games/archives`;
+    const idxResp = await fetch(idxUrl, { signal });
+    let labelsAscending: string[] = [];
+    if (idxResp.status !== 404) {
+        if (!idxResp.ok) {
+            throw new Error(`Chess.com API error: ${idxResp.status} ${idxResp.statusText}`);
+        }
+        const idxJson = await idxResp.json();
+        const urls: unknown = (idxJson as { archives?: unknown })?.archives;
+        labelsAscending = Array.isArray(urls)
+            ? (urls as string[]).map(labelFromArchiveUrl).filter((l): l is string => l !== null)
+            : [];
+    }
+
+    // Sort defensively (zero-padded YYYY-MM sorts chronologically) so we don't
+    // rely on the index arriving in ascending order, then take the most recent.
+    const recentFirst = [...labelsAscending].sort().reverse().slice(0, FIRST_RUN_MAX_ARCHIVES);
+    const allGames: IngestGame[] = [];
+    let newCursor: ChesscomProviderCursor | undefined;
+
+    for (const label of recentFirst) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+        const response = await fetch(archiveUrlForLabel(username, label), { signal });
+        if (response.status === 404) continue;
+        if (!response.ok) {
+            throw new Error(`Chess.com API error: ${response.status} ${response.statusText}`);
+        }
+        const json = await response.json();
+        const etag = response.headers.get('ETag') ?? undefined;
+        // Seed the cursor from the current month so the next (steady-state) run
+        // can issue conditional If-None-Match fetches.
+        if (label === currentLabel && etag) {
+            newCursor = { month: label, etag };
+        }
+        allGames.push(...parseChesscomArchiveGames(json, username, accountKey));
+
+        // Stop once we've both reached the count floor and covered the age
+        // window (labels are `YYYY-MM`, so lexicographic <= means "this month or
+        // older than the window boundary").
+        if (allGames.length >= FIRST_RUN_MIN_GAMES && label <= ageBoundaryLabel) {
+            break;
         }
     }
 
