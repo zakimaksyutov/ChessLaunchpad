@@ -731,18 +731,19 @@ export async function annotateGame(
     if (debugThis) console.groupEnd();
 
     // Determine mini board position (spec §3.3)
-    // For user deviations, show the position BEFORE the deviation (with arrows)
+    // Priority: user deviation > first eval-drop > end of theory > last in-repertoire > start.
+    // For user deviations, show the position BEFORE the deviation (with arrows).
     let miniBoardFen: string;
     let miniBoardPly: number;
     if (deviation) {
         miniBoardFen = deviation.fen;
         miniBoardPly = deviationPly;
-    } else if (firstPostTheoryFen) {
-        miniBoardFen = firstPostTheoryFen;
-        miniBoardPly = firstPostTheoryPly;
     } else if (firstEvalDropFen) {
         miniBoardFen = firstEvalDropFen;
         miniBoardPly = firstEvalDropPly;
+    } else if (firstPostTheoryFen) {
+        miniBoardFen = firstPostTheoryFen;
+        miniBoardPly = firstPostTheoryPly;
     } else if (lastInRepertoireFen) {
         miniBoardFen = lastInRepertoireFen;
         miniBoardPly = lastInRepertoirePly;
