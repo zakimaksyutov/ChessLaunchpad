@@ -96,12 +96,13 @@ A game is ingested only if **all** hold:
 - Rated standard chess (no variants).
 - Time class is blitz or rapid.
 - `createdAt > watermarkMs` **and** `id ∉ recentIds`.
-- `now − createdAt ≤ 5 days` (inclusive). Older games are never ingested.
-- `createdAt ≤ now` (defends against clock skew — a future-dated game would otherwise be impossible to age out).
+- **Steady state** (account has prior state): `now − createdAt ≤ 5 days` (inclusive).
+- **First run** (no prior state): one-time backfill of `max(5 days, 50 games)` so a new account immediately has games. Fetch ceiling: Lichess newest 100; Chess.com walks `/archives` back ≤ 6 months.
+- `createdAt ≤ now` (clock-skew guard).
 
 A game that produces no rating matches is still considered processed: it advances `watermarkMs`, joins `recentIds`, and (if a record can be built) gets a `GameRecord`.
 
-First-time sync ingests only games from the last 5 days; there is no full-history backfill.
+**First-run notes:** backfilled games older than 5 days populate records/heatmap only — never replayed into FSRS (so no past-dated reviews when an established user links a second account). A failed first-run fetch writes no state, so the backfill retries next run.
 
 **On account unlink:**
 - The `games[${platform}:${user}]` entry is removed from the blob — next ingest starts fresh.

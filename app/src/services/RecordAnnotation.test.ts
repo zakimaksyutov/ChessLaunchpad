@@ -59,6 +59,39 @@ describe('annotateRecord', () => {
     });
 });
 
+describe('annotateRecord — start-position seeding (empty / uncovered repertoire)', () => {
+    it('grades a white user\'s first move instead of stopping out-of-theory', async () => {
+        const fens = buildRepertoireFenSets([], { seedInitialPosition: true });
+        const rec = makeLichessRecord({ m: 'e4 e5 d3', wa: 'me', ba: 'opp' });
+        const ann = await annotateRecord(rec, 'me', fens.whiteFens, null);
+        const e4 = ann!.moves.find(m => m.san === 'e4');
+        // Start position seeded as book -> the empty repertoire's move 1 is a
+        // leaf (no authored continuation) -> post-theory response, not an
+        // immediate out-of-theory stop.
+        expect(e4?.highlight).toBe('out-of-repertoire-response');
+    });
+
+    it('without seeding, the same first move is out-of-theory', async () => {
+        const fens = buildRepertoireFenSets([]);
+        const rec = makeLichessRecord({ m: 'e4 e5 d3', wa: 'me', ba: 'opp' });
+        const ann = await annotateRecord(rec, 'me', fens.whiteFens, null);
+        const e4 = ann!.moves.find(m => m.san === 'e4');
+        expect(e4?.highlight).toBe('out-of-theory');
+    });
+
+    it('grades a black user\'s game past move 1 when evals are available', async () => {
+        const fens = buildRepertoireFenSets([], { seedInitialPosition: true });
+        const rec = makeLichessRecord({ m: 'e4 e5 Nf3 Nc6', wa: 'opp', ba: 'me' });
+        const cloudEval = () => [20]; // ~equal -> tiny drops, stays "in theory"
+        const ann = await annotateRecord(rec, 'me', fens.blackFens, null, undefined, false, cloudEval);
+        const e4 = ann!.moves.find(m => m.san === 'e4');
+        // Opponent's first move leaves the (start-only) book; a ~0 drop keeps it
+        // in theory rather than stopping the walk at move 1.
+        expect(e4?.highlight).toBe('out-of-repertoire');
+        expect(ann!.moves.length).toBe(4);
+    });
+});
+
 describe('getRecordMetadata', () => {
     it('uses the record res field as the authoritative result', async () => {
         const rec = makeLichessRecord({ m: 'e4 e5', res: 'loss' });

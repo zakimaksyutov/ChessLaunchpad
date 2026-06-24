@@ -259,3 +259,129 @@ export async function setupMockLichess(
     armNext: (games) => { armed = games; },
   };
 }
+
+// ── Chess.com game-ingest mocks ──────────────────────────────────────
+
+export interface ChesscomGameOpts {
+  uuid: string;
+  endTimeMs: number;
+  userIsWhite: boolean;
+  /** PGN movetext, e.g. "1. e4 e5 2. Nf3". */
+  moves: string;
+  /** Defaults to the chess.com username being mocked. */
+  username: string;
+  rated?: boolean;
+  timeClass?: 'blitz' | 'rapid';
+}
+
+/**
+ * Build a single Chess.com monthly-archive game object in the shape the
+ * GameIngestService parser + GameRecordBuilder expect (PGN movetext +
+ * white/black `username`, `end_time` in seconds).
+ */
+export function buildChesscomGame(opts: ChesscomGameOpts): Record<string, unknown> {
+  const me = opts.username.toLowerCase();
+  const opp = 'chesscom_opponent';
+  const white = opts.userIsWhite ? me : opp;
+  const black = opts.userIsWhite ? opp : me;
+  const pgn = `[Event "Live Chess"]\n[White "${white}"]\n[Black "${black}"]\n[Result "*"]\n\n${opts.moves} *`;
+  return {
+    url: `https://www.chess.com/game/live/${opts.uuid}`,
+    pgn,
+    time_control: '180+0',
+    end_time: Math.floor(opts.endTimeMs / 1000),
+    rated: opts.rated ?? true,
+    time_class: opts.timeClass ?? 'blitz',
+    rules: 'chess',
+    uuid: opts.uuid,
+    white: { username: white, rating: 1500, result: 'win' },
+    black: { username: black, rating: 1500, result: 'lose' },
+  };
+}
+
+export interface ChesscomMock {
+  /** Number of `/games/archives` index requests intercepted so far. */
+  indexCallCount: () => number;
+  /** Number of monthly-archive requests intercepted so far. */
+  monthCallCount: () => number;
+  /**
+   * Make the NEXT first-run fetch sequence (one `/archives` index read plus the
+   * monthly-archive reads it triggers) serve the given games. The archives
+   * index is derived from the months the games fall in. Once a sequence
+   * consumes the arm, subsequent sequences see an empty index (no games),
+   * mirroring `setupMockLichess.armNext`'s one-shot semantics so StrictMode's
+   * mount-time double-sync doesn't double-count.
+   */
+  armNext: (games: Record<string, unknown>[]) => void;
+}
+
+function chesscomMonthLabel(game: Record<string, unknown>): string {
+  const d = new Date((game.end_time as number) * 1000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Intercept the Chess.com first-run endpoints for `username`:
+ *   - `GET /pub/player/{username}/games/archives` → `{ archives: [monthUrl…] }`
+ *   - `GET /pub/player/{username}/games/{yyyy}/{mm}` → `{ games: [...] }`
+ *
+ * By default both return empty. `armNext(games)` arms the next first-run
+ * sequence; the index is adopted (and the pending arm cleared) on the index
+ * read, so the monthly reads of that same sequence still see the games while a
+ * following sequence sees nothing. GameIngestService's in-process lock
+ * serializes runs, so sequences never interleave.
+ */
+export async function setupMockChesscom(
+  page: Page,
+  username: string,
+): Promise<ChesscomMock> {
+  let indexCalls = 0;
+  let monthCalls = 0;
+  let armed: Record<string, unknown>[] | null = null;
+  let active: Record<string, unknown>[] | null = null;
+
+  const userLower = username.toLowerCase();
+  const indexRegex = new RegExp(
+    `^https://api\\.chess\\.com/pub/player/${userLower}/games/archives$`,
+  );
+  const monthRegex = new RegExp(
+    `^https://api\\.chess\\.com/pub/player/${userLower}/games/(\\d{4})/(\\d{2})(\\?|$)`,
+  );
+
+  await page.route(indexRegex, async (route) => {
+    indexCalls += 1;
+    active = armed;
+    armed = null;
+    const labels = active
+      ? [...new Set(active.map(chesscomMonthLabel))].sort()
+      : [];
+    const archives = labels.map((l) => {
+      const [y, m] = l.split('-');
+      return `https://api.chess.com/pub/player/${userLower}/games/${y}/${m}`;
+    });
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ archives }),
+    });
+  });
+
+  await page.route(monthRegex, async (route) => {
+    monthCalls += 1;
+    const m = monthRegex.exec(route.request().url())!;
+    const label = `${m[1]}-${m[2]}`;
+    const games = (active ?? []).filter((g) => chesscomMonthLabel(g) === label);
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { ETag: `"cc-${label}"`, 'Access-Control-Expose-Headers': 'ETag' },
+      body: JSON.stringify({ games }),
+    });
+  });
+
+  return {
+    indexCallCount: () => indexCalls,
+    monthCallCount: () => monthCalls,
+    armNext: (games) => { armed = games; },
+  };
+}
