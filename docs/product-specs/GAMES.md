@@ -93,6 +93,8 @@ eval for any position is resolved in priority order, on demand:
 
 The walk produces a live annotation that is immediately **frozen** into `fan` (below); render never re-runs this walk — it is a pure read of `fan`.
 
+The **starting position is always treated as book** (seeded into the analysis pass's FEN set; ingest excluded), so move 1 is graded even for an opening the repertoire doesn't cover — including an empty repertoire.
+
 ## Frozen Annotation (`fan`)
 
 `fan` is the page's "done" marker on a record and the **only** input render reads. It freezes everything the row needs at analysis time, so render is a pure read — no repertoire lookups, no eval lookups, no masters queries. This means editing your repertoire later can never retroactively turn an old, previously-fine game into a "mistake," and a row paints correctly on first render (no eval-resource load-order flash).

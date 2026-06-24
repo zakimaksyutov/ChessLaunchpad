@@ -20,7 +20,7 @@ import {
 import { IDataAccessLayer, DataAccessError } from '../data/DataAccessLayer';
 import { appendGameRecord } from './GameRecordStore';
 import { pgnToRepertoires } from '../test-utils/repertoireBuilders';
-import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
+import { buildRepertoireFenSets, INITIAL_POSITION_FEN } from '../models/RepertoireFenSet';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 
 function makeData(): RepertoireData {
@@ -120,6 +120,13 @@ describe('buildAnalysisPlan', () => {
         appendGameRecord(data.activity!, rec({ id: 'dbg', t: BASE_DATE }));
         const plan = await buildAnalysisPlan(data, new Set(['l:dbg']));
         expect(plan[0].debug).toBe(true);
+    });
+
+    it('seeds the start position into each job fen set so move 1 can be graded', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g', t: BASE_DATE }));
+        const plan = await buildAnalysisPlan(data);
+        expect(plan[0].repertoireFens.has(INITIAL_POSITION_FEN)).toBe(true);
     });
 
     it('orphans records whose linked account was unlinked', async () => {

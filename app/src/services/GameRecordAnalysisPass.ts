@@ -95,7 +95,7 @@ export function buildAnalysisPlan(
 ): AnalysisJob[] {
     const activity = data.activity;
     if (!activity) return [];
-    const fenSets = buildRepertoireFenSets(data.repertoires ?? []);
+    const fenSets = buildRepertoireFenSets(data.repertoires ?? [], { seedInitialPosition: true });
 
     // accountKey → userLower
     const accountLookup = new Map<string, string>();
