@@ -1,0 +1,154 @@
+.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 2rem 1rem;
+}
+
+.login-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 2rem;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.login-title {
+  margin: 0 0 1.5rem;
+  font-size: 1.5rem;
+  text-align: center;
+  color: #1a1a1a;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.login-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 0.3rem;
+}
+
+.login-input {
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: var(--cta-green);
+  box-shadow: 0 0 0 2px rgba(46, 125, 50, 0.15);
+}
+
+.login-submit {
+  margin-top: 0.25rem;
+  padding: 0.7rem 1rem;
+  border: none;
+  border-radius: var(--cta-radius);
+  background-color: var(--cta-green);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: var(--cta-font-weight);
+  cursor: pointer;
+}
+
+.login-submit:hover:not(:disabled) {
+  background-color: var(--cta-green-hover);
+}
+
+.login-submit:disabled,
+.login-lichess-btn:disabled,
+.login-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-security-note {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #666;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #999;
+  font-size: 0.85rem;
+  margin: 1.25rem 0;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.login-divider span {
+  padding: 0 0.75rem;
+}
+
+.login-lichess-btn {
+  display: block;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #333;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.login-lichess-btn:hover:not(:disabled) {
+  background-color: #555;
+}
+
+.login-error {
+  margin-top: 1rem;
+  margin-bottom: 0;
+  padding: 0.6rem 0.75rem;
+  background-color: #ffe3e3;
+  border: 1px solid #ff9a9a;
+  border-radius: 6px;
+  color: #8a1c1c;
+  font-size: 0.9rem;
+}
+
+.login-toggle {
+  display: block;
+  width: 100%;
+  margin-top: 1.25rem;
+  padding: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--cta-green);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.login-toggle:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .login-page {
+    padding: 1rem 0.75rem;
+  }
+
+  .login-card {
+    padding: 1.5rem;
+  }
+}

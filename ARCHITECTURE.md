@@ -68,6 +68,8 @@ React 19 · TypeScript · Vite · Vitest · chess.js · ts-fsrs · chess-control
 
 Users can connect their Lichess account via OAuth2 PKCE on the Settings page. No extra OAuth scopes are requested — only public APIs are used. The token is passed as a `Bearer` header to identify the caller and improve rate limits.
 
+Users can also **sign in with Lichess** as an alternative to a username/password account. The login reuses the same OAuth connection, exchanges the Lichess token with the backend (`POST /auth/lichess`) for a JWT, and establishes a session whose data-layer requests use `Authorization: Bearer <jwt>` (password accounts send the derived password). The session is auth-mode aware but otherwise behaves identically. See `docs/product-specs/LICHESS-LOGIN.md`.
+
 #### CLI / Agentic Access
 
 A personal Lichess API token is stored in `.env` at the repo root (git-ignored) as `LICHESS_TOKEN`. Example query:

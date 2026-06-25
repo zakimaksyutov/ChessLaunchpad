@@ -504,6 +504,40 @@ describe("SessionStore", () => {
             warn.mockRestore();
         }
     });
+
+    it("retries once with a renewed credential after a 401", async () => {
+        const data = makeData();
+        let auth = "Bearer stale";
+        const onUnauthorized = vi.fn(async () => { auth = "Bearer fresh"; return true; });
+        const credential = { getAuthorization: () => auth, onUnauthorized };
+        fetchMock
+            .mockResolvedValueOnce(errorResponse(401, "expired"))
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-1"));
+
+        const store = new SessionStore("alice", credential);
+        const snap = await store.getSnapshot();
+
+        expect(snap.etag).toBe("etag-1");
+        expect(onUnauthorized).toHaveBeenCalledTimes(1);
+        // First attempt used the stale token, the retry used the renewed one.
+        expect((fetchMock.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe("Bearer stale");
+        expect((fetchMock.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe("Bearer fresh");
+    });
+
+    it("surfaces a 401 when the credential cannot renew", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const onUnauthorized = vi.fn(async () => false);
+            const credential = { getAuthorization: () => "Bearer dead", onUnauthorized };
+            fetchMock.mockImplementation(() => Promise.resolve(errorResponse(401, "expired")));
+
+            const store = new SessionStore("alice", credential);
+            await expect(store.getSnapshot()).rejects.toBeInstanceOf(DataAccessError);
+            expect(onUnauthorized).toHaveBeenCalled();
+        } finally {
+            warn.mockRestore();
+        }
+    });
 });
 
 describe("SessionStore module-level singleton", () => {

@@ -1,16 +1,38 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from "react-router-dom";
+import { useLichessAuth } from '../LichessAuthContext';
 import { derivePassword } from '../utils/HashPassword';
 import { IDataAccessLayer, DataAccessError, createDataAccessLayer } from '../data/DataAccessLayer';
-import { createSessionStore, clearSessionStore } from '../data/SessionStore';
+import { createSessionStore, clearSessionStore, getSessionStore } from '../data/SessionStore';
+import {
+    LichessCredential,
+    persistPasswordSession,
+    persistLichessSession,
+    isLichessLoginPending,
+    setLichessLoginPending,
+    clearLichessLoginPending,
+} from '../data/AuthSession';
+import {
+    exchangeLichessToken,
+    createLichessAccount,
+    fetchLichessDisplayName,
+} from '../services/LichessAccountAuth';
+import { setLinkedAccounts } from '../services/LinkedAccountsService';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { trackEvent, setAuthenticatedUserContext } from '../AppInsights';
+import './LoginPage.css';
 
 type LoginPageProps = {
     onLogin: (username: string) => void;
 };
 
+// Marks an in-progress "Sign in with Lichess" so the login can resume after
+// the full-page OAuth redirect to Lichess and back.
+const LICHESS_GENERIC_ERROR = 'Could not sign in with Lichess. Please try again.';
+
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const navigate = useNavigate();
+    const { ready: lichessReady, token: lichessToken, login: lichessLogin } = useLichessAuth();
 
     // This ref will help us prevent running the effect twice in Strict Mode
     const didInit = useRef(false);
@@ -24,7 +46,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         const storedUser = localStorage.getItem('username');
 
-        if (storedUser) {
+        // Don't auto-redirect while a Lichess sign-in is mid-flight: the
+        // session is not established until the exchange resumes below.
+        if (storedUser && !isLichessLoginPending()) {
             navigate(`/training`);
         }
     }, [navigate]);
@@ -36,6 +60,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const [password, setPassword] = useState<string>('');
     const [confirmPassword, setConfirmPassword] = useState<string>('');
     const [error, setError] = useState<string>('');
+
+    // Lichess sign-in is busy while redirecting out or resuming on return.
+    const [lichessBusy, setLichessBusy] = useState<boolean>(
+        () => isLichessLoginPending(),
+    );
+    const resumeStarted = useRef(false);
 
     const handleLogin = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -62,9 +92,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 await dal.retrieveRepertoireData();
             }
 
-            // Store the derived password in localStorage (instead of the real password)
-            localStorage.setItem('username', username);
-            localStorage.setItem('hashedPassword', derivedPassword);
+            // Persist the username/password session (clears any prior Lichess keys).
+            persistPasswordSession(username, derivedPassword);
 
             // Construct the SessionStore now so its eager GET /variants
             // overlaps with React's re-render → navigate cycle and the
@@ -94,64 +123,173 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
     };
 
-    return (
-        <div style={{ maxWidth: '400px', margin: 'auto' }}>
-            <h2>{isSignUp ? 'Sign Up' : 'Login'}</h2>
+    // ── Sign in with Lichess ────────────────────────────────────────────
 
-            <form onSubmit={handleLogin}>
-                <div style={{ marginBottom: '8px' }}>
-                    <label htmlFor="username">Username:</label><br />
+    const finishLichessLogin = useCallback(async (token: string) => {
+        setError('');
+        try {
+            // Exchange the Lichess token for a backend JWT + resolved id.
+            // This is the gate: nothing is persisted until it succeeds.
+            const { jwt, userId } = await exchangeLichessToken(token);
+            const displayName = await fetchLichessDisplayName(userId);
+            // First-ever sign-in creates the account; 409 ("already exists")
+            // is a normal sign-in.
+            const created = await createLichessAccount(userId, jwt);
+
+            // Install the in-memory session so we can seed linked accounts
+            // (if newly created) before committing the session to storage.
+            clearSessionStore();
+            createSessionStore(userId, new LichessCredential(userId, jwt));
+
+            if (created) {
+                // Seed Linked Accounts with this Lichess account so the user's
+                // own games are ingested with no manual entry — only at creation.
+                // Best-effort: a seeding failure must not block sign-in, since
+                // the account already exists and the session is valid.
+                try {
+                    const store = getSessionStore();
+                    await store.ready();
+                    const dal = store.createDataAccessProxyLayer();
+                    const data = await dal.retrieveRepertoireData();
+                    const account = { platform: 'lichess' as const, username: userId };
+                    data.settings = { ...(data.settings ?? {}), linkedAccounts: [account] };
+                    await dal.storeRepertoireData(RepertoireDataUtils.prepareDataForSave(data));
+                    setLinkedAccounts([account]);
+                } catch (seedErr) {
+                    console.warn('Lichess linked-account seeding failed:', seedErr);
+                }
+            }
+
+            // Commit the session now that everything has succeeded.
+            persistLichessSession(userId, displayName, jwt);
+            setAuthenticatedUserContext(userId);
+            trackEvent(created ? 'UserSignUp' : 'UserLogin');
+
+            clearLichessLoginPending();
+            onLogin(userId);
+            navigate('/training');
+        } catch (err) {
+            console.error('Lichess sign-in failed:', err);
+            // Clear the pending intent and tear down the in-memory store. No
+            // Lichess session was ever committed to storage (persist is the
+            // last step), so we deliberately do NOT clear stored session keys —
+            // that would wipe an unrelated pre-existing session.
+            clearLichessLoginPending();
+            clearSessionStore();
+            setLichessBusy(false);
+            setError(LICHESS_GENERIC_ERROR);
+        }
+    }, [navigate, onLogin]);
+
+    // Resume a pending Lichess login once the OAuth layer has settled after
+    // the redirect back from Lichess.
+    useEffect(() => {
+        if (!lichessReady) return;
+        if (!isLichessLoginPending()) return;
+        if (resumeStarted.current) return;
+        resumeStarted.current = true;
+
+        if (!lichessToken) {
+            // The user denied access or the token could not be obtained. No
+            // session was committed, so only the pending intent needs clearing.
+            clearLichessLoginPending();
+            setLichessBusy(false);
+            setError(LICHESS_GENERIC_ERROR);
+            return;
+        }
+        finishLichessLogin(lichessToken);
+    }, [lichessReady, lichessToken, finishLichessLogin]);
+
+    const handleLichessSignIn = async () => {
+        setError('');
+        setLichessBusy(true);
+        // Record the intent so it survives the full-page redirect.
+        setLichessLoginPending();
+        try {
+            await lichessLogin();
+        } catch (err) {
+            console.error('Lichess redirect failed:', err);
+            clearLichessLoginPending();
+            setLichessBusy(false);
+            setError(LICHESS_GENERIC_ERROR);
+        }
+    };
+
+    return (
+        <div className="login-page">
+            <div className="login-card">
+                <h2 className="login-title">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
+
+                <form onSubmit={handleLogin} className="login-form">
+                    <label className="login-label" htmlFor="username">Username</label>
                     <input
                         id="username"
+                        className="login-input"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
                         autoFocus
                     />
-                </div>
-                <div style={{ marginBottom: '8px' }}>
-                    <label htmlFor="password">Password:</label><br />
+
+                    <label className="login-label" htmlFor="password">Password</label>
                     <input
                         type="password"
                         id="password"
+                        className="login-input"
                         autoComplete="new-password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                     />
+
+                    {/* Show "Confirm Password" only if isSignUp is true */}
+                    {isSignUp && (
+                        <>
+                            <label className="login-label" htmlFor="confirmPassword">Confirm Password</label>
+                            <input
+                                type="password"
+                                id="confirmPassword"
+                                className="login-input"
+                                autoComplete="new-password"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                required
+                            />
+                        </>
+                    )}
+
+                    <button type="submit" className="login-submit" disabled={lichessBusy}>
+                        {isSignUp ? 'Sign Up' : 'Log In'}
+                    </button>
+                </form>
+
+                <div className="login-security-note">
+                    🔒 Your password is securely derived using PBKDF2 in your browser. Only this
+                    derived value is sent to our servers — your actual password never leaves your device.
                 </div>
 
-                {/* Show "Confirm Password" only if isSignUp is true */}
-                {isSignUp && (
-                    <div style={{ marginBottom: '8px' }}>
-                        <label htmlFor="confirmPassword">Confirm Password:</label><br />
-                        <input
-                            type="password"
-                            id="confirmPassword"
-                            autoComplete="new-password"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            required
-                        />
-                    </div>
-                )}
-                
-                <div style={{ marginBottom: '12px', fontSize: '0.85rem', color: '#555' }}>
-                    🔒 Security Note: Your password is securely derived using PBKDF2 in your browser. Only this derived value is sent to our servers — your actual password never leaves your device.
-                </div>
-                
-                <button type="submit">
-                    {isSignUp ? 'Sign Up' : 'Login'}
+                <div className="login-divider"><span>or</span></div>
+
+                <button
+                    type="button"
+                    className="login-lichess-btn"
+                    onClick={handleLichessSignIn}
+                    disabled={lichessBusy}
+                >
+                    {lichessBusy ? 'Signing in…' : '♞ Sign in with Lichess'}
                 </button>
-            </form>
 
-            {error && <p style={{ color: 'red' }}>{error}</p>}
+                {error && <p className="login-error">{error}</p>}
 
-            <hr />
-
-            <button onClick={() => setIsSignUp(!isSignUp)}>
-                {isSignUp ? 'Have an account? Log in here.' : 'No account? Sign up here.'}
-            </button>
+                <button
+                    type="button"
+                    className="login-toggle"
+                    onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
+                    disabled={lichessBusy}
+                >
+                    {isSignUp ? 'Have an account? Log in' : 'No account? Sign up'}
+                </button>
+            </div>
         </div>
     );
 };
