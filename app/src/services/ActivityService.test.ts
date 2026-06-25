@@ -558,6 +558,94 @@ describe('ActivityService', () => {
             // Log shows 30-day streak (all entries active) but persisted 45 is preserved
             expect(data.activity!.lifetime.currentStreak).toBe(45);
         });
+
+        it('grows currentStreak and bestStreak past the log window on a new day', () => {
+            // 30 consecutive active days ending YESTERDAY — fills the log window.
+            const entries = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date(2026, 4, 24 - 29 + i); // Apr 25 .. May 24 (yesterday)
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return { date, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            });
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: entries,
+                    lifetime: { reviewed: 30, mistakes: 0, learned: 0, traversals: 30, timeSeconds: 300, currentStreak: 30, bestStreak: 30 },
+                },
+            });
+
+            // Playing today (a brand-new day) extends the streak to 31 even though
+            // the log can only hold 30 entries and the oldest day is evicted.
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10);
+
+            expect(data.activity!.practiceLog).toHaveLength(30);
+            expect(data.activity!.lifetime.currentStreak).toBe(31);
+            expect(data.activity!.lifetime.bestStreak).toBe(31);
+        });
+
+        it('does not double-count currentStreak on a second traversal the same day', () => {
+            const entries = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date(2026, 4, 24 - 29 + i);
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return { date, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            });
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: entries,
+                    lifetime: { reviewed: 30, mistakes: 0, learned: 0, traversals: 30, timeSeconds: 300, currentStreak: 30, bestStreak: 30 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10); // new day -> 31
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10); // same day, must stay 31
+
+            expect(data.activity!.lifetime.currentStreak).toBe(31);
+            expect(data.activity!.lifetime.bestStreak).toBe(31);
+        });
+
+        it('keeps growing currentStreak across multiple new days past the window', () => {
+            const entries = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date(2026, 4, 24 - 29 + i);
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return { date, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            });
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: entries,
+                    lifetime: { reviewed: 30, mistakes: 0, learned: 0, traversals: 30, timeSeconds: 300, currentStreak: 30, bestStreak: 30 },
+                },
+            });
+
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10); // May 25 -> 31
+            expect(data.activity!.lifetime.currentStreak).toBe(31);
+
+            vi.setSystemTime(new Date('2026-05-26T12:00:00'));
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10); // May 26 -> 32
+            expect(data.activity!.lifetime.currentStreak).toBe(32);
+            expect(data.activity!.lifetime.bestStreak).toBe(32);
+        });
+
+        it('resets a window-filling streak when a day is missed', () => {
+            // 30 consecutive active days ending YESTERDAY, then the user skips a
+            // day and plays again two days later — the streak must reset, not grow.
+            const entries = Array.from({ length: 30 }, (_, i) => {
+                const d = new Date(2026, 4, 24 - 29 + i);
+                const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                return { date, reviewed: 1, mistakes: 0, learned: 0, traversals: 1, timeSeconds: 10 };
+            });
+            const data = makeRepertoireData({
+                activity: {
+                    practiceLog: entries,
+                    lifetime: { reviewed: 30, mistakes: 0, learned: 0, traversals: 30, timeSeconds: 300, currentStreak: 30, bestStreak: 30 },
+                },
+            });
+
+            // Skip May 25, play on May 26.
+            vi.setSystemTime(new Date('2026-05-26T12:00:00'));
+            recordTraversal(data, { reviewed: 1, mistakes: 0, learned: 0 }, 10);
+
+            expect(data.activity!.lifetime.currentStreak).toBe(1);
+            expect(data.activity!.lifetime.bestStreak).toBe(30);
+        });
     });
 
     describe('getCurrentStreak helper', () => {
