@@ -647,6 +647,7 @@ const GamesPage: React.FC = () => {
         return last !== null ? { phase: 'synced', at: new Date(last) } : null;
     });
     const [awaitingMastersCount, setAwaitingMastersCount] = useState(0);
+    const [cloudThrottledCount, setCloudThrottledCount] = useState(0);
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
     const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
@@ -1051,6 +1052,9 @@ const GamesPage: React.FC = () => {
                 // Reset the "awaiting Lichess" banner; it re-accumulates below as
                 // games defer on reaching an ambiguous position with no token.
                 setAwaitingMastersCount(0);
+                // Reset the cloud-eval throttle banner; re-accumulates below as
+                // games defer on a 429 from the Lichess cloud-eval API.
+                setCloudThrottledCount(0);
 
                 if (runnable.length === 0) {
                     setAnalysisProgress({ phase: 'idle' });
@@ -1071,6 +1075,9 @@ const GamesPage: React.FC = () => {
                 // walks each game; both memos dedup those lookups across games.
                 const memo = new Map<string, MastersMemoEntry>();
                 const cloudMemo = new Map<string, number | null>();
+                // Pass-level latch: once Lichess 429's the cloud-eval API, every
+                // remaining cloud-needing game defers instead of re-hitting it.
+                const cloudThrottle = { throttled: false };
                 const pendingFlush: AnalyzedGameOutcome[] = [];
                 let networkRetryCount = 0;
 
@@ -1089,6 +1096,8 @@ const GamesPage: React.FC = () => {
                         cloudMemo,
                         explorerEvals,
                         signal,
+                        undefined,
+                        cloudThrottle,
                     );
                     if (outcome.skipped) {
                         if (outcome.awaitingMasters) {
@@ -1096,6 +1105,14 @@ const GamesPage: React.FC = () => {
                             // the banner and queue its cloud-eval back-fill so a
                             // later connect re-runs without re-fetching.
                             setAwaitingMastersCount(c => c + 1);
+                            if (outcome.evUpdate && outcome.evUpdate.size > 0) {
+                                pendingFlush.push(outcome);
+                            }
+                        } else if (outcome.awaitingCloudEval) {
+                            // Deferred because the Lichess cloud-eval API throttled
+                            // us (429). Transient — a later pass retries. Count it
+                            // for the banner and persist the evals gathered so far.
+                            setCloudThrottledCount(c => c + 1);
                             if (outcome.evUpdate && outcome.evUpdate.size > 0) {
                                 pendingFlush.push(outcome);
                             }
@@ -1567,6 +1584,15 @@ const GamesPage: React.FC = () => {
                     <Link to="/settings">Connect to Lichess</Link> to finish analysis of{' '}
                     {awaitingMastersCount === 1 ? 'this game' : 'these games'} and to see{' '}
                     {awaitingMastersCount === 1 ? 'it' : 'them'}.
+                </div>
+            )}
+
+            {cloudThrottledCount > 0 && (
+                <div className="lichess-warning">
+                    {cloudThrottledCount} game{cloudThrottledCount === 1 ? '' : 's'} (not shown){' '}
+                    {cloudThrottledCount === 1 ? 'requires' : 'require'} additional analysis from Lichess,
+                    which is temporarily unavailable (rate limit).{' '}
+                    {cloudThrottledCount === 1 ? 'It' : 'They'}&apos;ll be analyzed automatically later.
                 </div>
             )}
 
