@@ -18,6 +18,7 @@ import {
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireData } from '../models/RepertoireData';
 import { getSessionStore } from '../data/SessionStore';
+import { isLichessSession } from '../data/AuthSession';
 import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
@@ -53,6 +54,9 @@ const SettingsPage: React.FC = () => {
     // Lichess integration (separate, not part of Save/Discard)
     const [lichessLoading, setLichessLoading] = useState(false);
     const { connected, login, logout } = useLichessAuth();
+    // For a Lichess-login session the OAuth connection *is* the sign-in, so the
+    // separate connect/disconnect section is redundant and hidden.
+    const isLichessLogin = useMemo(() => isLichessSession(), []);
 
     // Import/Export
     const [importing, setImporting] = useState(false);
@@ -561,6 +565,7 @@ const SettingsPage: React.FC = () => {
                 )}
             </div>
 
+            {!isLichessLogin && (
             <div className="settings-card lichess-section">
                 <h1>Lichess Integration</h1>
                 <p className="settings-description">
@@ -587,6 +592,7 @@ const SettingsPage: React.FC = () => {
                     </button>
                 )}
             </div>
+            )}
 
             <div className="settings-card">
                 <h1>Repertoire Backup</h1>
