@@ -8,9 +8,10 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
 ## 1. Visualization
 
 - **Entry point.** An inviting link **"Suggest a fix"** sits to the right of
-  **"Analyze opponent"** in the summary row of any row with a user error
-  (both deviation and EOT). It works independently of opponent analysis, and is
-  **always shown** on a user-error row (for discoverability) regardless of
+  **"Analyze opponent"** on **EOT** rows. **Not shown on deviation rows** — the
+  user left their own repertoire, which already holds the intended move, so they
+  already know the fix. It works independently of opponent analysis, and is
+  **always shown** on an EOT row (for discoverability) regardless of
   Lichess connection state.
 - **On click.** If producing the suggestion takes time, show an inline
   progress/spinner in the same style as "Analyze opponent"; otherwise resolve
