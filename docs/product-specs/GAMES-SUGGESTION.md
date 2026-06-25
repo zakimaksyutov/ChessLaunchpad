@@ -54,10 +54,17 @@ which stays on the real game until the first deviation.
 For the position before the user ply, take the masters Top 5 moves and score
 each on three dimensions, all from the **user's orientation**:
 
-- **Master games** — `games(m) / Σ games(Top5)`.
-- **Win%** — the move's win rate (orientation-adjusted), normalized across the 5.
-- **Eval after the move** — from our DB, falling back to Lichess cloud-eval,
-  normalized across the 5.
+- **Master games** (`dGames`) — `games(m) / Σ games(Top5)`.
+- **Win%** (`dWin`) — softmax over win-margin (win% − loss%, user orientation),
+  with temperature `τ = 0.25`; strictly positive, so it never collapses even
+  when every Top-5 move is below even (e.g. Black in most openings).
+- **Eval after the move** (`dEval`) — eval-after in centipawns (user
+  orientation, from our DB, falling back to Lichess cloud-eval), mapped to an
+  expected score in 0–1 via the logistic `1 / (1 + 10^(−cp/400))`, then
+  L1-normalized across the 5. **Eval-missing** (our-DB miss *and* cloud-eval
+  404 — the common case for out-of-book candidates) is treated as ≈ **−10 cp**
+  (a small disadvantage), never 0, so a sound popular move is never silently
+  eliminated and the candidates can't all collapse to zero.
 
 Combined score = the three normalized dimensions raised to per-dimension
 weights **`(wG, wW, wE) = (1, 2, 2)`** and **multiplied**
