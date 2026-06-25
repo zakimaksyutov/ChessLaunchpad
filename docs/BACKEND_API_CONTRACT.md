@@ -2,7 +2,12 @@
 
 Base URL: `https://<host>/api`
 
-All endpoints require an `Authorization` header containing the user's secret (established at account creation).
+Account and repertoire endpoints require an `Authorization` header. Two authorization modes are supported:
+
+- **Username/password auth:** `Authorization: <password>` for accounts created with a caller-chosen password.
+- **Lichess auth:** `Authorization: Bearer <jwt>` for Lichess accounts. The token is issued by `POST /auth/lichess` and authorizes requests for the returned Lichess user ID.
+
+The reserved `lichess:` prefix cannot be used for username/password account IDs. Lichess clients use the plain lowercased Lichess user ID in URLs.
 
 CORS is enabled for all origins (`*`).
 
@@ -12,11 +17,11 @@ CORS is enabled for all origins (`*`).
 
 ### Request Headers
 
-| Header          | Required | Description                                              |
-| --------------- | -------- | -------------------------------------------------------- |
-| `Authorization` | Yes      | The user's secret (established at account creation). |
+| Header          | Required | Description |
+| --------------- | -------- | ----------- |
+| `Authorization` | Varies   | Required for account and repertoire endpoints. Use either a username/password account password or `Bearer <jwt>`. Not required for CORS preflight. |
 | `If-Match`      | Varies   | ETag for optimistic concurrency (required on `PUT /variants`). |
-| `Content-Type`  | Varies   | `application/json` when sending a request body.          |
+| `Content-Type`  | Varies   | `application/json` when sending a request body. |
 
 ### Response Headers
 
@@ -25,7 +30,7 @@ All successful responses include these CORS headers:
 | Header                             | Value                                    |
 | ---------------------------------- | ---------------------------------------- |
 | `Access-Control-Allow-Origin`      | `*`                                      |
-| `Access-Control-Allow-Methods`     | `GET,PUT,OPTIONS,DELETE`                 |
+| `Access-Control-Allow-Methods`     | `GET,PUT,POST,OPTIONS,DELETE`            |
 | `Access-Control-Allow-Headers`     | `Authorization,If-Match,Content-Type`    |
 | `Access-Control-Expose-Headers`    | `ETag`                                   |
 
@@ -35,25 +40,57 @@ The `ETag` response header is returned by `GET` and `PUT` on the variants endpoi
 
 ## Endpoints
 
+### Lichess Login
+
+```
+POST /auth/lichess
+```
+
+Exchanges a Lichess OAuth token for a Chess Launchpad token. This endpoint validates the Lichess token but does **not** create a user account. The client should call `PUT /user/{userId}` with the returned `jwt` and `userId` when account creation is needed.
+
+**Request:**
+
+```json
+{ "token": "lip_..." }
+```
+
+**Responses:**
+
+| Status | Body | Meaning |
+| ------ | ---- | ------- |
+| 200 | `{ "jwt": "<token>", "userId": "<lichessUserId>" }` | Success. The token authorizes the returned `userId`. |
+| 400 | error msg | Missing token or malformed JSON. |
+| 401 | error msg | Lichess token invalid/expired. |
+| 502 | error msg | Lichess unreachable. |
+| 500 | *(empty)* | Internal server error. |
+
 ### Create User
 
 ```
 PUT /user/{userId}
 ```
 
-Creates a new user account. The `Authorization` header value becomes the user's secret for all future requests.
+Creates a new user account.
+
+For username/password accounts, the `Authorization` header value is the user's password for future requests.
+
+For Lichess accounts, send `Authorization: Bearer <jwt>`. The token must authorize the requested `{userId}`.
+
+The `lichess:` prefix is reserved and cannot be used as a username/password account ID.
 
 **Request:**
 - No body required.
 
 **Responses:**
 
-| Status | Body                                | Meaning                    |
-| ------ | ----------------------------------- | -------------------------- |
-| 200    | `User '{userId}' has been created.` | User created successfully. |
-| 401    | `Missing Authorization header.`     | No `Authorization` header. |
-| 409    | `User '{userId}' already exists.`   | userId is already taken.   |
-| 500    | *(empty)*                           | Internal server error.     |
+| Status | Body | Meaning |
+| ------ | ---- | ------- |
+| 200 | `User '{userId}' has been created.` | User created successfully. |
+| 400 | error msg | Reserved user ID prefix. |
+| 401 | error msg | Missing authorization, or token invalid/expired. |
+| 403 | error msg | Credential does not authorize the requested user. |
+| 409 | `User '{userId}' already exists.` | userId is already taken. |
+| 500 | *(empty)* | Internal server error. |
 
 ---
 
@@ -65,18 +102,21 @@ DELETE /user/{userId}
 
 Permanently deletes a user and all their data.
 
+Username/password accounts use `Authorization: <password>`. Lichess-auth accounts use `Authorization: Bearer <jwt>`. The credential must authorize the requested `{userId}`.
+
 **Request:**
 - No body.
 
 **Responses:**
 
-| Status | Body                                              | Meaning                       |
-| ------ | ------------------------------------------------- | ----------------------------- |
-| 200    | `User '{userId}' has been successfully deleted.`  | Deleted.                      |
-| 401    | `Missing Authorization header.`                   | No `Authorization` header.    |
-| 403    | `Wrong secret.`                                   | Secret doesn't match.         |
-| 404    | `User '{userId}' does not exist.`                 | No such user.                 |
-| 500    | *(empty)*                                         | Internal server error.        |
+| Status | Body | Meaning |
+| ------ | ---- | ------- |
+| 200 | `User '{userId}' has been successfully deleted.` | Deleted. |
+| 400 | error msg | Reserved user ID prefix. |
+| 401 | error msg | Missing authorization, or token invalid/expired. |
+| 403 | error msg | Credential does not authorize the requested user. |
+| 404 | `User '{userId}' does not exist.` | No such user. |
+| 500 | *(empty)* | Internal server error. |
 
 ---
 
@@ -88,15 +128,18 @@ GET /user/{userId}/variants
 
 Returns the user's full repertoire as JSON.
 
+Username/password accounts use `Authorization: <password>`. Lichess-auth accounts use `Authorization: Bearer <jwt>`. The credential must authorize the requested `{userId}`.
+
 **Responses:**
 
-| Status | Body                                | Meaning                    |
-| ------ | ----------------------------------- | -------------------------- |
-| 200    | Repertoire JSON (see schema below)  | Success. `ETag` header is set. |
-| 401    | `Missing Authorization header.`     | No `Authorization` header. |
-| 403    | `Wrong secret.`                     | Secret doesn't match.      |
-| 404    | `User '{userId}' does not exist.`   | No such user.              |
-| 500    | *(empty)*                           | Internal server error.     |
+| Status | Body | Meaning |
+| ------ | ---- | ------- |
+| 200 | Repertoire JSON (see schema below) | Success. `ETag` header is set. |
+| 400 | error msg | Reserved user ID prefix. |
+| 401 | error msg | Missing authorization, or token invalid/expired. |
+| 403 | error msg | Credential does not authorize the requested user. |
+| 404 | `User '{userId}' does not exist.` | No such user. |
+| 500 | *(empty)* | Internal server error. |
 
 The `ETag` response header must be saved and sent back as `If-Match` when updating.
 
@@ -110,27 +153,30 @@ PUT /user/{userId}/variants
 
 Replaces the user's entire repertoire. Uses optimistic concurrency — the `If-Match` header must carry the ETag received from the most recent `GET` or `PUT`.
 
+Username/password accounts use `Authorization: <password>`. Lichess-auth accounts use `Authorization: Bearer <jwt>`. The credential must authorize the requested `{userId}`.
+
 **Request:**
 - Body: Repertoire JSON (see schema below).
 - `If-Match` header: Required.
 
 **Responses:**
 
-| Status | Body                                           | Meaning                              |
-| ------ | ---------------------------------------------- | ------------------------------------ |
-| 200    | `Variants updated successfully.`               | Success. New `ETag` header is set.   |
-| 400    | Validation error message                       | Body failed schema validation.       |
-| 401    | `Missing Authorization header.`                | No `Authorization` header.           |
-| 403    | `Wrong secret.`                                | Secret doesn't match.                |
-| 404    | `User '{userId}' does not exist.`              | No such user.                        |
-| 412    | `{ "message": "If-Match: '{value}'" }`         | ETag mismatch — re-fetch and retry.  |
-| 500    | *(empty)*                                      | Internal server error.               |
+| Status | Body | Meaning |
+| ------ | ---- | ------- |
+| 200 | `Variants updated successfully.` | Success. New `ETag` header is set. |
+| 400 | Validation error message | Body is empty, not valid JSON, exceeds 1 MiB, `If-Match` is missing, or user ID uses a reserved prefix. |
+| 401 | error msg | Missing authorization, or token invalid/expired. |
+| 403 | error msg | Credential does not authorize the requested user. |
+| 404 | `User '{userId}' does not exist.` | No such user. |
+| 412 | `{ "message": "If-Match: '{value}'" }` | ETag mismatch — re-fetch and retry. |
+| 500 | *(empty)* | Internal server error. |
 
 ---
 
 ### CORS Preflight
 
 ```
+OPTIONS /auth/lichess
 OPTIONS /user/{userId}
 OPTIONS /user/{userId}/variants
 ```
@@ -139,91 +185,16 @@ Returns `200 OK` with CORS headers. No `Authorization` required.
 
 ---
 
-## Repertoire JSON Schema
+## Repertoire JSON Body
 
-> **⚠️ Note:** Full schema validation is currently **disabled** to allow fast iteration.
-> The server only checks that the body is valid JSON. The detailed constraints below
-> will be re-enforced before the project is opened to the public.
-> See `RepertoireValidation.cs` for the implementation (marked with `// TODO`).
+> **⚠️ Note:** The backend does **not** enforce any schema on the repertoire body. The
+> only server-side checks on `PUT /variants` are that the body is **non-empty valid JSON**
+> and **at most 1 MiB** (1,048,576 bytes, measured as UTF-8). Any valid JSON document
+> within that size limit is accepted unchanged. The example below is a
+> **non-normative** illustration of the shape the client currently produces and consumes;
+> it is not validated by the server and may evolve freely.
 
-A newly created user starts with `{}`. After the first update, the repertoire must conform to the following schema.
-
-### Root Object
-
-| Property          | Type     | Required | Description                                    |
-| ----------------- | -------- | -------- | ---------------------------------------------- |
-| `data`            | array    | Yes      | Array of opening items (max **500**).          |
-| `currentEpoch`    | number   | Yes      | Current training epoch counter.                |
-| `lastPlayedDate`  | string   | Yes      | ISO 8601 date string (max 256 chars).          |
-| `dailyPlayCount`  | number   | Yes      | Number of plays today.                         |
-| `weightSettings`  | object \| null | No | Weight configuration (see below). May be `null` or omitted. |
-| `fsrsCards`       | object \| null | No | Map of FSRS card states keyed by string. May be `null` or omitted. |
-| `settings`        | object \| null | No | Training configuration (free-form object). May be `null` or omitted. |
-| `activity`        | object \| null | No | Activity data (free-form object). May be `null` or omitted. |
-| `games`           | object \| null | No | Games data (free-form object). May be `null` or omitted. |
-
-No additional properties are allowed on the root object.
-
-### Data Item
-
-Each element in the `data` array:
-
-| Property              | Type     | Required | Constraints                            |
-| --------------------- | -------- | -------- | -------------------------------------- |
-| `pgn`                 | string   | Yes      | Non-empty. Max **1024** characters.    |
-| `orientation`         | string   | Yes      | Must be `"white"` or `"black"`.        |
-| `classifications`     | array    | Yes      | Array of non-empty strings (max **20** items, each max 256 chars). |
-| `errorEMA`            | number   | Yes      | Exponential moving average of errors.  |
-| `numberOfTimesPlayed` | number   | Yes      | Total play count for this opening.     |
-| `lastSucceededEpoch`  | number   | Yes      | Epoch of last successful attempt.      |
-| `successEMA`          | number   | Yes      | Exponential moving average of successes. |
-
-No additional properties are allowed on data items. Each item must have exactly these 7 properties.
-
-### Weight Settings
-
-When present and non-null:
-
-| Property         | Type   | Required | Description                        |
-| ---------------- | ------ | -------- | ---------------------------------- |
-| `recencyPower`   | number | Yes      | Weight exponent for recency.       |
-| `frequencyPower` | number | Yes      | Weight exponent for frequency.     |
-| `errorPower`     | number | Yes      | Weight exponent for error rate.    |
-
-No additional properties are allowed. Must have exactly these 3 properties.
-
-### FSRS Card Entry
-
-When `fsrsCards` is present and non-null, it must be a JSON object. Each key must be a non-empty string (max 256 characters). Each value must conform to:
-
-| Minified Key | Full Name        | Type   | Required | Constraints                                      |
-| ------------ | ---------------- | ------ | -------- | ------------------------------------------------ |
-| `d`          | due              | string | Yes      | Non-empty. Max 256 characters. ISO 8601 date.    |
-| `s`          | stability        | number | Yes      | FSRS stability parameter.                        |
-| `di`         | difficulty       | number | Yes      | FSRS difficulty parameter.                       |
-| `e`          | elapsed_days     | number | Yes      | Days since last review.                          |
-| `sd`         | scheduled_days   | number | Yes      | Days until next scheduled review.                |
-| `ls`         | learning_steps   | number | Yes      | Current learning step index.                     |
-| `r`          | reps             | number | Yes      | Total review count.                              |
-| `l`          | lapses           | number | Yes      | Number of times the card lapsed.                 |
-| `st`         | state            | number | Yes      | Must be `0` (New), `1` (Learning), `2` (Review), or `3` (Relearning). |
-| `lr`         | last_review      | string | No       | Non-empty. Max 256 characters. ISO 8601 date.    |
-
-No additional properties are allowed. Each entry must have exactly 9 required properties, plus optionally `lr` (9 or 10 total).
-
-### Settings
-
-When present and non-null, `settings` must be a JSON object. Any properties are allowed inside (no strict schema validation on contents).
-
-```json
-{
-  "settings": {
-    "contextDepth": 2,
-    "retention": 0.97,
-    "maxInterval": 90
-  }
-}
-```
+A newly created user starts with `{}`.
 
 ### Example
 
@@ -263,6 +234,6 @@ When present and non-null, `settings` must be a JSON object. Any properties are 
 
 ## Error Handling
 
-- **400** — Request body failed validation. The response body contains a human-readable message describing the first validation error found.
+- **400** — Request body is empty, not valid JSON, or exceeds the 1 MiB size limit. The response body contains a human-readable message describing the problem. No structural/schema validation is performed.
 - **412** — Optimistic concurrency conflict. The client should re-fetch the resource to get the latest ETag, then retry the update.
 - **500** — Unexpected server error. Details are logged server-side only.
