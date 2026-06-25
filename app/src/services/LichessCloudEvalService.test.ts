@@ -3,6 +3,8 @@ import {
     uciLineToSan,
     fetchCloudEval,
     fetchCloudCp,
+    fetchCloudCpOutcome,
+    CloudCpOutcome,
 } from './LichessCloudEvalService';
 
 describe('uciLineToSan', () => {
@@ -164,5 +166,52 @@ describe('fetchCloudCp', () => {
         await vi.advanceTimersByTimeAsync(600);
         await p2;
         expect(mockFetch.mock.calls.length).toBe(callsAfterFirst + 1);
+    });
+});
+
+describe('fetchCloudCpOutcome', () => {
+    const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    async function run(mockFetch: unknown): Promise<CloudCpOutcome> {
+        const p = fetchCloudCpOutcome(startFen, mockFetch as typeof fetch);
+        await vi.runAllTimersAsync();
+        return p;
+    }
+
+    function okWith(pv: Record<string, unknown> | null) {
+        return vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ pvs: pv ? [pv] : [], depth: 30, knodes: 1 }),
+        });
+    }
+
+    it('returns ok with the top-line cp', async () => {
+        expect(await run(okWith({ moves: 'e2e4', cp: 42, mate: null }))).toEqual({ kind: 'ok', cp: 42 });
+    });
+
+    it('coalesces a forced mate to ±MATE_CP', async () => {
+        expect(await run(okWith({ moves: 'e2e4', cp: null, mate: 4 }))).toEqual({ kind: 'ok', cp: 10000 });
+    });
+
+    it('treats a 404 (and an empty PV list) as a genuine no-eval', async () => {
+        const notFound = vi.fn().mockResolvedValue({ ok: false, status: 404 });
+        expect(await run(notFound)).toEqual({ kind: 'no_eval' });
+        expect(await run(okWith(null))).toEqual({ kind: 'no_eval' });
+    });
+
+    it('treats a 429 / 5xx as a transient error (NOT no-eval)', async () => {
+        const rateLimited = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+        expect(await run(rateLimited)).toEqual({ kind: 'error' });
+        const serverError = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+        expect(await run(serverError)).toEqual({ kind: 'error' });
+    });
+
+    it('treats a network/parse failure as a transient error', async () => {
+        const networkErr = vi.fn().mockRejectedValue(new Error('network'));
+        expect(await run(networkErr)).toEqual({ kind: 'error' });
     });
 });

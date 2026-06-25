@@ -57,6 +57,16 @@ import {
     fromPersistedOp,
 } from '../services/OpponentAnalysisService';
 import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuilder';
+import {
+    computeSuggestion,
+    SuggestionResult,
+    SuggestionPly,
+    MastersProvider,
+    CloudEvalCpProvider,
+} from '../services/GameSuggestionService';
+import { fetchMastersOutcome } from '../services/MastersExplorerService';
+import { fetchCloudCpOutcome } from '../services/LichessCloudEvalService';
+import { buildLichessAnalysisUrl } from '../utils/LichessUrl';
 import { runIngest } from '../services/GameIngestService';
 import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
@@ -313,6 +323,92 @@ const OpponentAnalysisDisplay: React.FC<{ analysis: OpponentAnalysisResult }> = 
     );
 };
 
+/**
+ * Per-row state for the "Suggest a fix" feature. Recomputed on each click,
+ * not persisted. `need-lichess` is shown when the user clicks with no Lichess
+ * token (the masters explorer the algorithm depends on requires OAuth).
+ */
+type SuggestionState =
+    | { status: 'loading' }
+    | { status: 'need-lichess' }
+    | { status: 'error' }
+    | { status: 'ready'; result: SuggestionResult };
+
+function suggestionMoveClass(ply: SuggestionPly): string {
+    if (ply.inRepertoire) return 'move-token move-in-repertoire';
+    if (!ply.isUserMove) return 'move-token move-opponent';
+    return 'move-token';
+}
+
+const SuggestionDisplay: React.FC<{
+    state: SuggestionState;
+    orientation: 'white' | 'black';
+}> = ({ state, orientation }) => {
+    if (state.status === 'loading') {
+        return (
+            <div className="suggest-fix-result suggest-fix-loading" role="status" aria-live="polite">
+                <span className="games-sync-spinner" aria-hidden="true" />
+                <span>Finding a line to add…</span>
+            </div>
+        );
+    }
+    if (state.status === 'need-lichess') {
+        return (
+            <div className="suggest-fix-result suggest-fix-connect">
+                Suggesting a fix needs the masters opening explorer.{' '}
+                <Link to="/settings">Connect Lichess</Link> to enable it.
+            </div>
+        );
+    }
+    if (state.status === 'error') {
+        return (
+            <div className="suggest-fix-result suggest-fix-error">
+                Couldn&apos;t build a suggestion right now — please try again.
+            </div>
+        );
+    }
+
+    const { result } = state;
+    if (result.plies.length === 0) {
+        return (
+            <div className="suggest-fix-result suggest-fix-error">
+                No suggestion available for this position.
+            </div>
+        );
+    }
+    const lichessUrl = buildLichessAnalysisUrl(result.pgn, orientation);
+    const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}`;
+    return (
+        <div className="suggest-fix-result suggest-fix-ready">
+            <div className="suggest-fix-label">Suggested line</div>
+            <div className="game-pgn suggest-fix-pgn">
+                {result.plies.map((ply, idx) => (
+                    <React.Fragment key={idx}>
+                        {ply.moveNumber !== undefined && (
+                            <span className="move-number">{ply.moveNumber}.&nbsp;</span>
+                        )}
+                        <span className={suggestionMoveClass(ply)}>{ply.san}</span>
+                        {' '}
+                    </React.Fragment>
+                ))}
+            </div>
+            <div className="suggest-fix-actions">
+                <a
+                    className="suggest-fix-action"
+                    href={lichessUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Open in Lichess Opening Explorer
+                </a>
+                <Link className="suggest-fix-action" to={addUrl}>
+                    Add to repertoire
+                </Link>
+            </div>
+        </div>
+    );
+};
+
 interface GameRowProps {
     record: GameRecord;
     userLower: string;
@@ -346,6 +442,10 @@ interface GameRowProps {
     onToggleReviewed: (record: GameRecord) => void;
     /** DEBUG / TEMP — delete this record and every newer one. */
     onDeleteFromHere: (record: GameRecord) => void;
+    /** Current "Suggest a fix" state for this row (null when not yet requested). */
+    suggestion: SuggestionState | null;
+    /** Compute (or recompute) a repertoire-fix suggestion for this row. */
+    onSuggestFix: (record: GameRecord, userLower: string) => void;
 }
 
 const GameRow: React.FC<GameRowProps> = ({
@@ -363,6 +463,8 @@ const GameRow: React.FC<GameRowProps> = ({
     onAnalyzeOpponent,
     onToggleReviewed,
     onDeleteFromHere,
+    suggestion,
+    onSuggestFix,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -604,7 +706,21 @@ const GameRow: React.FC<GameRowProps> = ({
                                         Analyze opponent
                                     </a>
                                 )}
+                                {suggestion?.status !== 'loading' && !hasDeviation && (
+                                    <a
+                                        className="analyze-opponent-link suggest-fix-link"
+                                        role="button"
+                                        onClick={() => onSuggestFix(record, userLower)}
+                                        title="Propose a line to add to your repertoire"
+                                    >
+                                        Suggest a fix
+                                    </a>
+                                )}
                             </div>
+                        )}
+
+                        {eotSummary && !hasDeviation && suggestion && (
+                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} />
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (
@@ -650,6 +766,14 @@ const GamesPage: React.FC = () => {
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
     const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
+    /**
+     * Per-row "Suggest a fix" state, keyed by `${p}:${id}`. Recomputed on each
+     * click (not persisted). Entries live for the page visit and are released
+     * on unmount; growth is bounded by the number of distinct rows clicked.
+     */
+    const [suggestionByKey, setSuggestionByKey] = useState<Map<string, SuggestionState>>(new Map());
+    /** Per-row abort controllers for in-flight suggestion computations. */
+    const suggestAbortByKeyRef = useRef<Map<string, AbortController>>(new Map());
     /**
      * Records currently being re-annotated. We keep them visible in the
      * list during the re-run by holding their prior `fan` in
@@ -1429,6 +1553,83 @@ const GamesPage: React.FC = () => {
     }, [dal, analyzingRecordKey, orderedRows, annotationByKey]);
 
     // ─────────────────────────────────────────────────────────────────────
+    // Suggest a fix
+    // ─────────────────────────────────────────────────────────────────────
+
+    const handleSuggestFix = useCallback(async (record: GameRecord, userLower: string) => {
+        const key = `${record.p}:${record.id}`;
+
+        // The suggestion algorithm depends on the masters explorer (OAuth-gated);
+        // with no token, prompt to connect instead of computing.
+        if (!lichessToken) {
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'need-lichess' }));
+            return;
+        }
+        const userColor = getRecordUserColor(record, userLower);
+        // `fenSets` can still be loading on a very early click; `userColor` should
+        // never be null for a rendered row. Either way, surface feedback rather
+        // than swallowing the click silently.
+        if (!fenSets || !userColor) {
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'error' }));
+            return;
+        }
+
+        // Abort any prior in-flight computation for this row (re-click recomputes).
+        suggestAbortByKeyRef.current.get(key)?.abort();
+        const abort = new AbortController();
+        suggestAbortByKeyRef.current.set(key, abort);
+        const signal = composeSignals(abort.signal, pageAbortRef.current?.signal);
+
+        setSuggestionByKey(prev => new Map(prev).set(key, { status: 'loading' }));
+
+        const token = lichessToken;
+        const masters: MastersProvider = async (fen) => {
+            const outcome = await fetchMastersOutcome(fen, token);
+            // Transient masters failure (429 / network / non-2xx): abort the
+            // suggestion rather than emit a truncated "no master games" line.
+            if (outcome.kind === 'error') throw new Error('masters explorer unavailable');
+            return outcome.result;
+        };
+        const cloudEvalCp: CloudEvalCpProvider = async (fen) => {
+            const outcome = await fetchCloudCpOutcome(fen);
+            if (outcome.kind === 'ok') return outcome.cp;
+            if (outcome.kind === 'no_eval') return null; // genuine 404 → eval-missing fallback
+            throw new Error('cloud-eval unavailable');   // transient → abort the suggestion
+        };
+
+        const repertoireFens = userColor === 'white' ? fenSets.whiteFens : fenSets.blackFens;
+        const sans = record.m.split(/\s+/).filter(Boolean);
+
+        try {
+            const result = await computeSuggestion({
+                sans,
+                userColor,
+                repertoireFens,
+                explorerEvals,
+                embeddedEvals: record.ev,
+                masters,
+                cloudEvalCp,
+                signal,
+            });
+            if (signal.aborted) return;
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'ready', result }));
+        } catch (err) {
+            if ((err as Error).name === 'AbortError' || signal.aborted) return;
+            console.error('Suggest a fix failed:', err);
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'error' }));
+        } finally {
+            if (suggestAbortByKeyRef.current.get(key) === abort) {
+                suggestAbortByKeyRef.current.delete(key);
+            }
+            // Abort the per-click controller so composeSignals removes the
+            // listener it attached to the long-lived pageAbortRef signal —
+            // otherwise dead listeners accumulate across successful clicks
+            // (mirrors runAnalysisPass's finally).
+            abort.abort();
+        }
+    }, [lichessToken, fenSets, explorerEvals]);
+
+    // ─────────────────────────────────────────────────────────────────────
     // Mark reviewed
     // ─────────────────────────────────────────────────────────────────────
 
@@ -1665,6 +1866,8 @@ const GamesPage: React.FC = () => {
                                 onAnalyzeOpponent={handleAnalyzeOpponent}
                                 onToggleReviewed={handleToggleReviewed}
                                 onDeleteFromHere={handleDeleteFromHere}
+                                suggestion={suggestionByKey.get(key) ?? null}
+                                onSuggestFix={handleSuggestFix}
                             />
                         );
                     })}

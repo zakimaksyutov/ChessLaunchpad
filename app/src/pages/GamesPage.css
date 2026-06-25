@@ -697,6 +697,68 @@
     vertical-align: -0.15em;
 }
 
+/* ─── Suggest a fix ─── */
+
+/* Distinguish the "Suggest a fix" affordance from "Analyze opponent" while
+   reusing the inline-link base styling. */
+.suggest-fix-link {
+    color: #2e7d32;
+}
+
+.suggest-fix-result {
+    margin-top: 0.45rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    background: #f4faf4;
+    border: 1px solid #d9ead9;
+    font-size: 0.82rem;
+}
+
+.suggest-fix-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #2e7d32;
+}
+
+.suggest-fix-connect,
+.suggest-fix-error {
+    color: #555;
+    background: #f9f9f9;
+    border-color: #e6e6e6;
+}
+
+.suggest-fix-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #2e7d32;
+    margin-bottom: 0.25rem;
+}
+
+.suggest-fix-pgn {
+    margin-top: 0;
+}
+
+.suggest-fix-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-top: 0.45rem;
+}
+
+.suggest-fix-action {
+    color: rgb(0, 130, 210);
+    font-size: 0.78rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.suggest-fix-action:hover {
+    text-decoration: underline;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     .games-page {

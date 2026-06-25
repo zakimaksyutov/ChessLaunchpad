@@ -847,6 +847,70 @@ const ExplorerPage: React.FC = () => {
         return () => window.clearTimeout(id);
     }, [snapToast]);
 
+    // ── "Add to repertoire" deep-link (?addpgn=…) ────────────────────
+    // The /games "Suggest a fix" action links here with the suggested line as a
+    // movetext PGN. We stage it into a PendingEditModel (reusing the same decode
+    // + apply path as the Edit-mode PGN import) and drop the user on Review &
+    // Save so they can commit (or discard) the proposed line. Handled once per
+    // distinct PGN value.
+    const addPgnHandledRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!data) return;
+        const addPgn = searchParams.get('addpgn');
+        if (!addPgn) return;
+        if (addPgnHandledRef.current === addPgn) return;
+        addPgnHandledRef.current = addPgn;
+
+        const orientation: Orientation =
+            explicitOrientationParam === 'white' || explicitOrientationParam === 'black'
+                ? explicitOrientationParam
+                : resolvedOrientation;
+
+        const next = new URLSearchParams(searchParams);
+        next.delete('addpgn');
+        next.delete('fen');
+
+        try {
+            const decoded = decodeRepertoirePgn(addPgn, { defaultOrientation: orientation });
+            // Mirror the paste-import guard: never silently merge a line of one
+            // color into in-progress edits of the other. (Unreachable via the
+            // /games link, which always sets `o` to match — guards a hand-crafted
+            // URL hit while already editing the opposite color on /explorer.)
+            if (pendingModel && decoded.orientation !== orientation) {
+                setPgnToast({
+                    kind: 'error',
+                    text: `That line is a ${decoded.orientation === 'white' ? 'White' : 'Black'} line, but you're editing ${orientation === 'white' ? 'White' : 'Black'}. Save or Discard your pending edits first.`,
+                });
+                setSearchParams(next, { replace: true });
+                return;
+            }
+            const reps = data.repertoires ?? [];
+            const cards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
+            const model = pendingModel ?? new PendingEditModel(reps, cards);
+            const result = model.applyImportedPgn(
+                decoded.orientation,
+                decoded.edges,
+                decoded.annotationsByFen,
+            );
+            setPendingModel(model);
+            setMode('edit');
+            bumpPending();
+            setPgnToast({
+                kind: 'success',
+                text: result.addedEdges > 0
+                    ? `Staged ${result.addedEdges} new move${result.addedEdges === 1 ? '' : 's'} from the suggested line — Review & Save to add ${result.addedEdges === 1 ? 'it' : 'them'}.`
+                    : 'The suggested line is already in your repertoire.',
+            });
+            next.set('o', decoded.orientation);
+            next.set('review', '1');
+        } catch {
+            setPgnToast({ kind: 'error', text: 'Could not load the suggested line.' });
+        }
+
+        setSearchParams(next, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data, searchParams, resolvedOrientation, explicitOrientationParam]);
+
     const jumpTo = useCallback((fen: string, orientation?: Orientation, push = true) => {
         const next = new URLSearchParams(searchParams);
         const targetOrientation = orientation ?? resolvedOrientation;
