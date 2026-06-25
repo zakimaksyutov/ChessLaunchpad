@@ -33,6 +33,13 @@ export const SCORE_WEIGHTS = { games: 1, win: 2, eval: 2 } as const;
 export const GOOD_SCORE_THRESHOLD = 0.10;
 
 /**
+ * Popularity short-circuit: if the user's move is in the masters Top-5 and has
+ * been played more than this many master games, accept it as good without
+ * querying evals or computing a score — it's popular enough to trust.
+ */
+export const ACCEPT_GAMES_THRESHOLD = 5000;
+
+/**
  * Eval-missing fallback: a candidate whose eval-after is unavailable (our-DB
  * miss *and* cloud-eval 404) is treated as a small disadvantage rather than 0,
  * so a sound popular move is never silently eliminated. Expressed in pawns
@@ -399,10 +406,28 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         const mastersData = await getMasters(fenBefore);
         if (!mastersData || mastersData.moves.length === 0) break; // no master games — stop
 
+        const userUci = uciOf(fenBefore, sans[i]);
+
+        // Popularity short-circuit: a Top-5 masters move played more than
+        // ACCEPT_GAMES_THRESHOLD times is trusted as-is — accept it and keep
+        // walking the real game without querying evals or computing a score.
+        const userTop5 = userUci
+            ? mastersData.moves.slice(0, 5).find(m => uciOf(fenBefore, m.san) === userUci)
+            : undefined;
+        if (userTop5 && userTop5.total > ACCEPT_GAMES_THRESHOLD) {
+            if (debug) console.log(`[walk] user ply ${i} "${sans[i]}": Top-5 with ${userTop5.total} master games (> ${ACCEPT_GAMES_THRESHOLD}) → accept without scoring`);
+            if (!appendMove(sans[i])) return finalize();
+            i++;
+            if (i < sans.length) {
+                if (!appendMove(sans[i])) return finalize();
+                i++;
+            }
+            continue;
+        }
+
         const scored = await scoreMastersMoves(fenBefore, mastersData, userWhite, resolveEvalAfterCp, debug);
         if (scored.length === 0) break;
 
-        const userUci = uciOf(fenBefore, sans[i]);
         const userScored = userUci ? scored.find(s => s.uci === userUci) : undefined;
 
         if (debug) {

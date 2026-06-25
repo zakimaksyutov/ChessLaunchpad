@@ -53,7 +53,9 @@ Walk the game's plies from the start, building the recommended PGN.
      opponent's **top masters reply** (1 ply), then one more user move chosen
      via move-scoring — then **stop**.
 
-   - **(b) User's move IS in masters Top 5** → score it with the same
+   - **(b) User's move IS in masters Top 5** → if it has **> 5,000 master
+     games**, accept it immediately (popular enough to trust — no eval/scoring
+     needed) and continue the walk. Otherwise score it with the same
      **move-scoring**. If it qualifies as **good**, accept the user's ply and
      continue the walk on the actual game (step 2 re-checks the next user ply).
      If it's **not good**, replace it and close out the line exactly as in (a).

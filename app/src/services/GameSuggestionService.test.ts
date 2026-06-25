@@ -159,8 +159,10 @@ describe('computeSuggestion — branch (b) user move in Top-5', () => {
 
         const map = new Map<string, MastersPositionResult | null>();
         // User ply (after Nf3 d6): d4 is the dominant top move → "good".
+        // Kept under 5k games so this exercises the scoring path, not the
+        // popularity short-circuit (covered separately below).
         map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6']), mkMasters([
-            ['d4', 9000, 4000, 2000],
+            ['d4', 2000, 1000, 500],
             ['Bc4', 100, 80, 60],
             ['c3', 50, 40, 30],
         ]));
@@ -180,6 +182,36 @@ describe('computeSuggestion — branch (b) user move in Top-5', () => {
         expect(result.plies.map(p => p.san)).toEqual(['e4', 'e5', 'Nf3', 'd6', 'd4', 'exd4']);
         // The accepted d4 is the user's actual move.
         expect(result.plies[4].san).toBe('d4');
+    });
+
+    it('accepts a Top-5 user move with > 5k games via the popularity short-circuit (no eval queries)', async () => {
+        const repFens = buildRepFens([['e4'], ['e4', 'e5'], ['e4', 'e5', 'Nf3']]);
+        const sans = ['e4', 'e5', 'Nf3', 'd6', 'd4'];
+
+        const map = new Map<string, MastersPositionResult | null>();
+        // d4 is in the Top-5 with > 5,000 games → accepted as-is, no scoring.
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6']), mkMasters([
+            ['d4', 9000, 4000, 2000],
+            ['Bc4', 100, 80, 60],
+        ]));
+
+        let evalCalls = 0;
+        const countingCloud: CloudEvalCpProvider = async () => { evalCalls++; return null; };
+
+        const result = await computeSuggestion({
+            sans,
+            userColor: 'white',
+            repertoireFens: repFens,
+            explorerEvals: null,
+            masters: mastersFromMap(map),
+            cloudEvalCp: countingCloud,
+        });
+
+        // prefix (3) + opponent d6 + accepted d4, then the game ends.
+        expect(result.plies.map(p => p.san)).toEqual(['e4', 'e5', 'Nf3', 'd6', 'd4']);
+        expect(result.plies[4].san).toBe('d4');
+        // The short-circuit means no eval lookups happened.
+        expect(evalCalls).toBe(0);
     });
 
     it('substitutes when the user move is in Top-5 but below the good bar', async () => {
