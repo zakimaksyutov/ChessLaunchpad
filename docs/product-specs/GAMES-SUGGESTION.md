@@ -16,10 +16,10 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
   progress/spinner in the same style as "Analyze opponent"; otherwise resolve
   immediately.
   - **Requires a connected Lichess account** — the algorithm depends on the
-    masters explorer and cloud-eval, which need a live OAuth token. If no token
-    is available at click time, render an inline **connect-Lichess prompt**
-    (link to Settings) in the result area instead of computing, reusing the
-    page's existing connect call-to-action.
+    masters explorer, which needs a live OAuth token. (Cloud-eval is public and
+    needs no token.) If no token is available at click time, render an inline
+    **connect-Lichess prompt** (link to Settings) in the result area instead of
+    computing, reusing the page's existing connect call-to-action.
 - **Result.** A suggested **PGN** appears below the tile's existing content:
   the game's moves up to the critical position, then the recommended
   continuation.
