@@ -220,6 +220,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             <div className="login-card">
                 <h2 className="login-title">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
 
+                <button
+                    type="button"
+                    className="login-lichess-btn"
+                    onClick={handleLichessSignIn}
+                    disabled={lichessBusy}
+                >
+                    {lichessBusy ? 'Signing in…' : '♞ Sign in with Lichess'}
+                </button>
+
+                <div className="login-divider"><span>or</span></div>
+
                 <form onSubmit={handleLogin} className="login-form">
                     <label className="login-label" htmlFor="username">Username</label>
                     <input
@@ -267,17 +278,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                     🔒 Your password is securely derived using PBKDF2 in your browser. Only this
                     derived value is sent to our servers — your actual password never leaves your device.
                 </div>
-
-                <div className="login-divider"><span>or</span></div>
-
-                <button
-                    type="button"
-                    className="login-lichess-btn"
-                    onClick={handleLichessSignIn}
-                    disabled={lichessBusy}
-                >
-                    {lichessBusy ? 'Signing in…' : '♞ Sign in with Lichess'}
-                </button>
 
                 {error && <p className="login-error">{error}</p>}
 
