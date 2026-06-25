@@ -78,3 +78,9 @@ out the line as in (a).
 **Thin masters data.** If fewer than 5 moves come back, score whatever is
 returned (a missing candidate contributes zero and drops out). If the position
 has **no master games at all** (rare), stop and emit the line built so far.
+
+**Reference implementation.** `tools/analyze-position/suggest-score.cjs` (with
+its [`README`](../../tools/analyze-position/README.md)) is an interactive
+harness for this move-scoring — exactly the `dGames`/`dWin`/`dEval` dimensions,
+weights, and mappings above. Explore it as a potential reference implementation
+when building this feature.
