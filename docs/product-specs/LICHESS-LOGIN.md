@@ -30,6 +30,14 @@ repertoire backend and behave identically once signed in.
 5. The app establishes a session from the backend token and lands on the
    same post-login page as username/password.
 
+## Failure & cancellation
+
+Any failure or cancellation — the user denies on Lichess, the token
+can't be obtained or exchanged, or account creation fails — returns to the
+Login page with the pending intent and any partial session cleared and a
+single generic error. A session is only ever established after the
+exchange succeeds, so a refresh can't resume a half-finished login.
+
 ## Session
 
 - The **backend** token is the credential for all account and repertoire
@@ -53,11 +61,12 @@ repertoire backend and behave identically once signed in.
 
 ## Linked accounts & Settings
 
-- A Lichess login is, by definition, a connected Lichess account, so the
-  app **auto-adds it to Linked Accounts** (platform `lichess`, the
-  account's id) on sign-in if not already present, so the user's own games
-  are ingested with no manual entry. It otherwise behaves like any linked
-  account.
+- On **account creation** (the first-ever Lichess sign-in), the app seeds
+  Linked Accounts with this account (platform `lichess`, the account's id)
+  so the user's own games are ingested with no manual entry. This happens
+  **only at creation**, never on subsequent sign-ins — thereafter it is an
+  ordinary, fully removable linked account, and if the user removes it in
+  Settings it stays removed (no silent re-add on the next login).
 - The Settings **"Lichess Integration"** connect/disconnect section is for
   separately attaching Lichess to a username/password account. For a
   Lichess-login session it is redundant and must be **hidden** — the login
