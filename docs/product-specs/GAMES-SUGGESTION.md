@@ -59,15 +59,15 @@ each on three dimensions, all from the **user's orientation**:
 - **Eval after the move** — from our DB, falling back to Lichess cloud-eval,
   normalized across the 5.
 
-Combined score = the three normalized dimensions **multiplied**; pick the
-highest. "Good" (case b) means the user's move is the top-scoring choice (or
-within a tolerance of it).
+Combined score = the three normalized dimensions raised to per-dimension
+weights **`(wG, wW, wE) = (1, 2, 2)`** and **multiplied**
+(`dGames¹ · dWin² · dEval²`), then L1-normalized across the Top-5 so the five
+scores sum to 100%. Pick the highest as the replacement move.
+
+**"Good" bar (case b).** Accept the user's ply and keep walking the real game
+if its normalized score is **≥ 10%**; otherwise treat it as not good and close
+out the line as in (a).
 
 **Thin masters data.** If fewer than 5 moves come back, score whatever is
 returned (a missing candidate contributes zero and drops out). If the position
 has **no master games at all** (rare), stop and emit the line built so far.
-
-## Open questions
-
-- **"Good enough" bar** in case (b) — strictly the top score, or within a
-  tolerance of it?
