@@ -30,8 +30,14 @@ Walk the game's plies from the start, building the recommended PGN.
 1. **Replay the in-repertoire prefix.** While each ply is already in the
    repertoire, append it as-is and continue.
 
-2. **At the first out-of-repertoire user ply**, branch on whether the user's
-   move is in the masters Top 5 for that position:
+   The first ply that leaves the repertoire is either the **user's**
+   (deviation) or the **opponent's** (EOT). If it's the opponent's, append that
+   move as-is — for an EOT row that reaches this feature it's a sound,
+   still-in-theory move (genuine opponent blunders end analysis upstream and
+   never get a "Suggest a fix" link) — then advance to the user's reply.
+
+2. **At that user ply** (the first out-of-repertoire user move), branch on
+   whether the user's move is in the masters Top 5 for that position:
 
    - **(a) User's move is NOT in masters Top 5** → it's clearly off-book. Pick
      a replacement from the Top 5 via the **move-scoring** below. This is a
