@@ -62,3 +62,45 @@ This yields an opening-tailored, blunder-inclusive dataset far smaller than the
 full cloud DB, at the cost of streaming large monthly PGN dumps (tens of GB
 compressed each).
 
+## Backend — in-memory serving
+
+The backend loads the `position → value` store into RAM and answers lookups
+directly (no per-request disk or network I/O). The chosen representation
+dominates memory by ~7×.
+
+RAM by representation (per-entry measured on V8; .NET `Dictionary<string,short>`
+lands near Option A — string objects dominate either way):
+
+| Representation                                   | Per entry | 10M     | 40M     | Full 388M |
+| ------------------------------------------------ | --------- | ------- | ------- | --------- |
+| A. Naive `Map<FEN string, eval>`                 | ~72 B     | ~0.7 GB | ~2.9 GB | ~28 GB    |
+| B. Packed `u64 hash + i16` (sorted, binary search) | ~10 B   | ~0.1 GB | ~0.4 GB | ~3.9 GB   |
+
+### Option B — packed lookup (recommended)
+
+Store no FEN strings at runtime. Keep two parallel arrays sorted by hash:
+
+- `u64[]` — 64-bit hash of the normalized FEN (8 B/entry)
+- `i16[]` — the scalar eval (2 B/entry)
+
+Lookup: hash the query FEN, **binary search** the `u64[]` (O(log N), ~25
+comparisons at 10M), read the parallel `i16[]` slot. This is the same 10 B/entry
+packed-binary layout from the size table, and it scales to the full 388M DB at
+~3.9 GB if the amateur-position filter is ever dropped.
+
+**Hash:** xxHash64 (XXH64), seed `0`, over the normalized 4-field FEN bytes.
+Fast, deterministic, with byte-compatible impls on both stacks (.NET
+`System.IO.Hashing.XxHash64`, Node `hash-wasm` / `xxhash-addon`) — builder and
+server must hash identically. 64-bit collision risk across 388M is ~0.4%
+(negligible at the amateur subset); widen to 128-bit if zero risk is required.
+
+**Value encoding (i16).** The legacy `±(100000 + N)` mate scores overflow
+`i16`, so the packed store keeps each value in one signed 16-bit slot:
+
+- **Centipawns:** stored as-is, clamped to `±29000`.
+- **Mate in N:** `sign * (32000 - N)` (N clamped to 2000) → magnitude in
+  `[30000, 32000]`, never colliding with the cp band.
+
+Decode: `|v| >= 30000` → mate in `32000 - |v|`, side `sign(v)`; else `v` is cp.
+The builder and server must share this exact encode/decode pair.
+
