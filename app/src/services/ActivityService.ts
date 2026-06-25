@@ -188,6 +188,11 @@ export function recordTraversal(
     const activity = ensureActivity(data);
     const entry = getTodayEntry(activity);
 
+    // Capture whether today already counted toward the streak BEFORE adding the
+    // new stats: a brand-new active day extends the streak, but a repeat
+    // traversal on an already-active day must not.
+    const todayWasActive = entryHasTrainingActivity(entry);
+
     entry.reviewed += stats.reviewed;
     entry.mistakes += stats.mistakes;
     entry.learned += stats.learned;
@@ -200,20 +205,48 @@ export function recordTraversal(
     activity.lifetime.traversals += 1;
     activity.lifetime.timeSeconds += Math.round(elapsedSeconds);
 
-    // Update persisted bestStreak so it survives log eviction
-    const logBest = computeBestStreak(activity.practiceLog);
-    activity.lifetime.bestStreak = Math.max(activity.lifetime.bestStreak ?? 0, logBest);
-
-    // Update persisted currentStreak — use log value unless streak may extend beyond window
+    // Update persisted currentStreak.
+    //
+    // The practice log is capped at MAX_LOG_ENTRIES, so computeCurrentStreak()
+    // can never report a streak longer than that window — the oldest day is
+    // evicted the moment a new day is added. To let streaks grow past the
+    // window we keep the true length in lifetime.currentStreak and increment it
+    // by one whenever a brand-new active day extends a streak that already
+    // fills (and may exceed) the window. The most recent days are always
+    // retained in the log, so a real gap is still visible and resets correctly.
     const logCurrentStreak = computeCurrentStreak(activity.practiceLog);
-    const mayBeTruncated = logCurrentStreak > 0
+    const prevCurrentStreak = activity.lifetime.currentStreak ?? 0;
+    const todayIsActive = entryHasTrainingActivity(entry);
+    const newlyActiveDay = todayIsActive && !todayWasActive;
+    // A streak fills the window only when it spans every log entry. When today
+    // is active the streak reaches the newest entry (length); a zero-stat
+    // traversal leaves today inactive, so the streak tops out at length - 1.
+    const fillsWindow = logCurrentStreak > 0
         && activity.practiceLog.length >= MAX_LOG_ENTRIES
-        && logCurrentStreak >= activity.practiceLog.length - 1;
-    if (mayBeTruncated) {
-        activity.lifetime.currentStreak = Math.max(activity.lifetime.currentStreak ?? 0, logCurrentStreak);
-    } else {
+        && logCurrentStreak >= activity.practiceLog.length - (todayIsActive ? 0 : 1);
+
+    if (!fillsWindow) {
+        // Log fully captures the streak — no eviction could have hidden days.
         activity.lifetime.currentStreak = logCurrentStreak;
+    } else if (newlyActiveDay && prevCurrentStreak >= logCurrentStreak) {
+        // A new day extended a streak that already spans the window — grow
+        // beyond what the truncated log alone can show.
+        activity.lifetime.currentStreak = prevCurrentStreak + 1;
+    } else {
+        // Streak fills the window but today is not a fresh extension (repeat
+        // traversal, or a persisted value larger than the window): preserve it.
+        activity.lifetime.currentStreak = Math.max(prevCurrentStreak, logCurrentStreak);
     }
+
+    // Update persisted bestStreak so it survives log eviction. The (now
+    // possibly window-exceeding) current streak is itself a candidate, which
+    // lets best grow past the window too.
+    const logBest = computeBestStreak(activity.practiceLog);
+    activity.lifetime.bestStreak = Math.max(
+        activity.lifetime.bestStreak ?? 0,
+        logBest,
+        activity.lifetime.currentStreak,
+    );
 }
 
 /**
