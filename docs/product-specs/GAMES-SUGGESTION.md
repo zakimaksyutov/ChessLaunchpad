@@ -20,42 +20,54 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
     the tile's main PGN (reuse the in-repertoire styling / FEN-set check).
   - **Open in Lichess Opening Explorer** — link to study the line further.
   - **Add to repertoire** — link to add the suggested line to the repertoire.
-- One suggestion per row; the result may persist on the record like opponent
-  analysis (TBD — see open questions).
+- One suggestion per row, **recomputed on each click** (not persisted to the
+  record for now).
 
-## 2. Suggestion algorithm — 3 options to brainstorm
+## 2. Suggestion algorithm
 
-All start from the **critical position**: the deviation point (user error) or
-the opponent's out-of-book move (EOT). The suggested PGN is that position's
-recommended continuation, extended a few plies.
+Walk the game's plies from the start, building the recommended PGN.
 
-- **A. Theory-driven (masters book).** Query Lichess Masters at the critical
-  position and walk the most-played / best-scoring line.
-  *+* Sound, established theory; reuses `MastersExplorerService`.
-  *–* Masters rarely cover the offbeat amateur moves that caused the error —
-  often thin or empty exactly where it's needed.
+1. **Replay the in-repertoire prefix.** While each ply is already in the
+   repertoire, append it as-is and continue.
 
-- **B. Engine-driven (cloud eval).** Take the engine's top move(s) at the
-  critical position and extend its principal variation.
-  *+* Works for rare positions masters never reached; directly answers "what
-  should I have played." Reuses `LichessCloudEvalService`.
-  *–* Cloud-eval has gaps (404) for very rare positions and is rate-limited;
-  PV depth/quality varies.
+2. **At the first out-of-repertoire user ply**, branch on whether the user's
+   move is in the masters Top 5 for that position:
 
-- **C. Population-driven (what you'll actually face).** Use the broader
-  Lichess explorer (amateur, rating-banded) — and optionally the opponent's
-  own games — to find the moves *real opponents play* at the critical
-  position, then pair the most frequent one(s) with a recommended reply (from
-  A/B).
-  *+* Prioritizes coverage of what the user actually meets at their level, not
-  just textbook lines.
-  *–* Heavier (extra downloads); risks over-fitting to one opponent.
+   - **(a) User's move is NOT in masters Top 5** → it's clearly off-book. Pick
+     a replacement from the Top 5 via the **move-scoring** below. This is a
+     deviation, so close out the line: append the chosen move, then the
+     opponent's **top masters reply** (1 ply), then one more user move chosen
+     via move-scoring — then **stop**.
 
-A practical hybrid is likely: **C to pick which move(s) to prepare for, B (or
-A where available) to pick the reply.**
+   - **(b) User's move IS in masters Top 5** → score it with the same
+     **move-scoring**. If it qualifies as **good**, accept the user's ply and
+     continue the walk on the actual game (step 2 re-checks the next user ply).
+     If it's **not good**, replace it and close out the line exactly as in (a).
+
+**Continuation depth = 1.** Once we deviate (via a, or b-not-good), the line
+ends after exactly: corrected user move → opponent's top masters reply → best
+next user move. The only thing that keeps the walk going is case (b)-good,
+which stays on the real game until the first deviation.
+
+### Move-scoring (pick the best of masters Top 5)
+
+For the position before the user ply, take the masters Top 5 moves and score
+each on three dimensions, all from the **user's orientation**:
+
+- **Master games** — `games(m) / Σ games(Top5)`.
+- **Win%** — the move's win rate (orientation-adjusted), normalized across the 5.
+- **Eval after the move** — from our DB, falling back to Lichess cloud-eval,
+  normalized across the 5.
+
+Combined score = the three normalized dimensions **multiplied**; pick the
+highest. "Good" (case b) means the user's move is the top-scoring choice (or
+within a tolerance of it).
+
+**Thin masters data.** If fewer than 5 moves come back, score whatever is
+returned (a missing candidate contributes zero and drops out). If the position
+has **no master games at all** (rare), stop and emit the line built so far.
 
 ## Open questions
 
-- Does the suggestion apply to deviation rows, EOT rows, or both?
-- Persist the suggested PGN on the record, or recompute each click?
-- How deep should the suggested line go (single best reply vs. a few plies)?
+- **"Good enough" bar** in case (b) — strictly the top score, or within a
+  tolerance of it?

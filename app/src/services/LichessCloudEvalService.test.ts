@@ -3,6 +3,7 @@ import {
     uciLineToSan,
     fetchCloudEval,
     fetchCloudCp,
+    CloudEvalThrottledError,
 } from './LichessCloudEvalService';
 
 describe('uciLineToSan', () => {
@@ -69,6 +70,13 @@ describe('fetchCloudEval', () => {
 
         const result = await fetchCloudEval(startFen, 5, mockFetch as any);
         expect(result).toBeNull();
+    });
+
+    it('throws CloudEvalThrottledError on 429 (rate limit)', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+
+        await expect(fetchCloudEval(startFen, 5, mockFetch as any))
+            .rejects.toBeInstanceOf(CloudEvalThrottledError);
     });
 
     it('handles mate eval in PV', async () => {
@@ -150,6 +158,16 @@ describe('fetchCloudCp', () => {
         const notFound = vi.fn().mockResolvedValue({ ok: false, status: 404 });
         expect(await run(notFound)).toBeNull();
         expect(await run(okWith(null))).toBeNull();
+    });
+
+    it('propagates a 429 throttle as CloudEvalThrottledError', async () => {
+        const throttled = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+        const p = fetchCloudCp(startFen, throttled as unknown as typeof fetch);
+        // Attach the rejection expectation before flushing the throttle timer so
+        // the rejection is never momentarily unhandled.
+        const assertion = expect(p).rejects.toBeInstanceOf(CloudEvalThrottledError);
+        await vi.runAllTimersAsync();
+        await assertion;
     });
 
     it('throttles successive requests by ~1 second', async () => {
