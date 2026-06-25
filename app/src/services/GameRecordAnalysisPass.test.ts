@@ -708,4 +708,45 @@ describe('analyzeOneGame — cloud-eval gap fill', () => {
         // The cloud hit for the opponent's after-position (ply 5) was recorded.
         expect(outcome.evUpdate?.get(5)).toBe(60);
     });
+
+    it('defers a game when the Lichess cloud-eval API throttles (429) instead of freezing a less-informed verdict', async () => {
+        // The opponent leaves the repertoire at ply 5; resolving that boundary
+        // needs a cloud eval, but Lichess rate-limits us (429). The throttle must
+        // NOT be mistaken for a "no eval" miss (which would end theory and freeze
+        // the game) — instead the game is deferred so a later pass retries.
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[5])]: [30], // after Bb5 (before the opponent's a6)
+            // fens[6] (after a6) is a cloud gap that Lichess rate-limits.
+        });
+        const calls = { cloud: 0, masters: 0 };
+        const fn = vi.fn(async (url: string) => {
+            if (url.includes('cloud-eval')) {
+                calls.cloud++;
+                return { ok: false, status: 429 };
+            }
+            if (url.includes('masters')) {
+                calls.masters++;
+                return { ok: true, json: async () => ({ moves: [] }) };
+            }
+            throw new Error(`unexpected url: ${url}`);
+        }) as unknown as typeof fetch;
+        const job: AnalysisJob = {
+            record: rec({ id: 'ct1', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 a6' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+        };
+        // A token is connected — this is the cloud-throttle path, not the
+        // no-token masters-defer path.
+        const outcome = await runAnalysis(job, evals, fn, 'tok');
+        expect(outcome.skipped).toBe(true);
+        expect(outcome.awaitingCloudEval).toBe(true);
+        expect(outcome.awaitingMasters).toBeUndefined();
+        expect(outcome.fan).toBeUndefined();
+        expect(calls.cloud).toBe(1);   // throttled on the boundary gap
+        expect(calls.masters).toBe(0); // throttle threw before the masters check
+        // The pass still hands back the (empty) cloud-eval sink to persist.
+        expect(outcome.evUpdate).toBeInstanceOf(Map);
+    });
 });
