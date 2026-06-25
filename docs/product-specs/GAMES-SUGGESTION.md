@@ -11,8 +11,9 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
   **"Analyze opponent"** on **EOT** rows. **Not shown on deviation rows** — the
   user left their own repertoire, which already holds the intended move, so they
   already know the fix. It works independently of opponent analysis, and is
-  **always shown** on an EOT row (for discoverability) regardless of
-  Lichess connection state.
+  shown on an EOT row (for discoverability) regardless of Lichess connection
+  state — **until a fix has been suggested**, at which point the link hides and
+  the saved suggestion is shown instead (mirroring "Analyze opponent").
 - **On click.** If producing the suggestion takes time, show an inline
   progress/spinner in the same style as "Analyze opponent"; otherwise resolve
   immediately.
@@ -24,8 +25,10 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
 - **Result.** A suggested **PGN** appears below the tile's existing content:
   the game's moves up to the critical position, then the recommended
   continuation.
-  - Plies already in the repertoire get the same **greenish background** as
-    the tile's main PGN (reuse the in-repertoire styling / FEN-set check).
+  - The user's own in-repertoire plies get the same **greenish background** as
+    the tile's main PGN (the in-repertoire styling / FEN-set check). Opponent
+    plies are greyed regardless of repertoire membership — matching the main
+    tile, where repertoire membership is only surfaced on the user's moves.
   - Moves that **differ from the played game** (the corrected move and its
     continuation) are **bold**; everything before reads as "same as you
     played". The first bold move carries a muted **"(instead of X)"** note,
@@ -35,8 +38,11 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
     compared.
   - **Add to repertoire** — link to add the suggested line to the repertoire
     (the corrected line only, without the `X` variation).
-- One suggestion per row, **recomputed on each click** (not persisted to the
-  record for now).
+- One suggestion per row. **Persisted to the game record** (`GameRecord.sg`,
+  anchored on the EOT user ply like the saved `op`) so it survives reloads and
+  the link can hide on return visits. Re-annotate clears it; a repertoire change
+  that moves the anchored deviation marks the saved suggestion stale and
+  re-offers the action (recompute on the next click).
 
 ## 2. Suggestion algorithm
 

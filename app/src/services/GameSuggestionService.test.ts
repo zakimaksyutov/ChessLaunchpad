@@ -3,6 +3,8 @@ import { Chess } from 'chess.js';
 import {
     computeSuggestion,
     scoreMastersMoves,
+    toPersistedSuggestion,
+    fromPersistedSuggestion,
     GOOD_SCORE_THRESHOLD,
     MastersProvider,
     CloudEvalCpProvider,
@@ -379,5 +381,89 @@ describe('computeSuggestion — edge cases', () => {
             masters: mastersFromMap(map),
             cloudEvalCp: throwingCloud,
         })).rejects.toThrow('cloud-eval unavailable');
+    });
+});
+
+describe('toPersistedSuggestion / fromPersistedSuggestion', () => {
+    it('round-trips a branch-(a) suggestion (white), reconstructing per-ply flags from index + orientation', async () => {
+        // 1.e4 e5 2.Nf3 in repertoire; White plays 3...d6? (h4 by user is the
+        // off-book move). Branch (a): substitute, close out at depth 1.
+        const repFens = buildRepFens([['e4'], ['e4', 'e5'], ['e4', 'e5', 'Nf3']]);
+        const sans = ['e4', 'e5', 'Nf3', 'd6', 'h4'];
+        const map = new Map<string, MastersPositionResult | null>();
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6']), mkMasters([
+            ['d4', 6000, 3000, 1000],
+            ['Bc4', 1000, 800, 700],
+        ]));
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'd4']), mkMasters([['exd4', 1500, 500, 1000]]));
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'd4', 'exd4']), mkMasters([['Nxd4', 1000, 600, 1200]]));
+
+        const result = await computeSuggestion({
+            sans, userColor: 'white', repertoireFens: repFens,
+            explorerEvals: null, masters: mastersFromMap(map), cloudEvalCp: noCloud,
+        });
+
+        const sg = toPersistedSuggestion(result, 6);
+        expect(sg.ply).toBe(6);
+        // Compact per-ply shape: san + optional in-rep / new flags only.
+        expect(sg.pl).toEqual(result.plies.map(p => {
+            const out: { s: string; r?: 1; n?: 1 } = { s: p.san };
+            if (p.inRepertoire) out.r = 1;
+            if (p.isNew) out.n = 1;
+            return out;
+        }));
+        expect(sg.pgn).toBe(result.pgn);
+        expect(sg.rep).toBe(result.replacedUserSan);
+        if (result.explorerPgn !== result.pgn) expect(sg.epgn).toBe(result.explorerPgn);
+
+        const hydrated = fromPersistedSuggestion(sg, 'white');
+        expect(hydrated.plies).toEqual(result.plies);
+        expect(hydrated.pgn).toBe(result.pgn);
+        expect(hydrated.explorerPgn).toBe(result.explorerPgn);
+        expect(hydrated.orientation).toBe('white');
+        expect(hydrated.replacedUserSan).toBe(result.replacedUserSan);
+    });
+
+    it('round-trips a black-orientation suggestion (isWhiteMove / isUserMove flip correctly)', async () => {
+        const repFens = buildRepFens([
+            ['e4'], ['e4', 'c5'], ['e4', 'c5', 'Nf3'], ['e4', 'c5', 'Nf3', 'd6'],
+        ]);
+        const sans = ['e4', 'c5', 'Nf3', 'd6', 'b3', 'a6'];
+        const map = new Map<string, MastersPositionResult | null>();
+        map.set(fenAfter(['e4', 'c5', 'Nf3', 'd6', 'b3']), mkMasters([
+            ['e5', 2000, 1000, 2500],
+            ['Nc6', 1500, 1000, 1400],
+        ]));
+        map.set(fenAfter(['e4', 'c5', 'Nf3', 'd6', 'b3', 'e5']), mkMasters([['Bb2', 1500, 500, 1000]]));
+        map.set(fenAfter(['e4', 'c5', 'Nf3', 'd6', 'b3', 'e5', 'Bb2']), mkMasters([['Nc6', 1000, 600, 1200]]));
+
+        const result = await computeSuggestion({
+            sans, userColor: 'black', repertoireFens: repFens,
+            explorerEvals: null, masters: mastersFromMap(map), cloudEvalCp: noCloud,
+        });
+
+        const hydrated = fromPersistedSuggestion(toPersistedSuggestion(result, 8), 'black');
+        expect(hydrated.plies).toEqual(result.plies);
+        // Spot-check the derived flags: ply 0 is White's e4 (not the user's).
+        expect(hydrated.plies[0]).toMatchObject({ isWhiteMove: true, isUserMove: false, moveNumber: 1 });
+        expect(hydrated.plies[5]).toMatchObject({ san: 'e5', isWhiteMove: false, isUserMove: true });
+    });
+
+    it('omits epgn and rep when the suggested line never deviates', () => {
+        const result = {
+            plies: [
+                { san: 'e4', isWhiteMove: true, isUserMove: true, inRepertoire: true, moveNumber: 1, isNew: false },
+                { san: 'e5', isWhiteMove: false, isUserMove: false, inRepertoire: false, isNew: false },
+            ],
+            pgn: '1. e4 e5',
+            explorerPgn: '1. e4 e5',
+            orientation: 'white' as const,
+        };
+        const sg = toPersistedSuggestion(result, 4);
+        expect(sg.epgn).toBeUndefined();
+        expect(sg.rep).toBeUndefined();
+        const hydrated = fromPersistedSuggestion(sg, 'white');
+        expect(hydrated.explorerPgn).toBe('1. e4 e5');
+        expect(hydrated.replacedUserSan).toBeUndefined();
     });
 });

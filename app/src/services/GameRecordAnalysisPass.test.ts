@@ -8,6 +8,7 @@ import {
     buildAnalysisPlan,
     flushFanUpdates,
     persistOpponentAnalysis,
+    persistSuggestion,
     persistGameReviewed,
     persistReannotateClear,
     persistReannotateRefresh,
@@ -351,6 +352,45 @@ describe('persistOpponentAnalysis', () => {
     });
 });
 
+describe('persistSuggestion', () => {
+    const sgFixture = () => ({
+        ply: 6,
+        pl: [{ s: 'e4' }, { s: 'e5' }, { s: 'Nf3', n: 1 as const }],
+        pgn: '1. e4 e5 2. Nf3',
+        rep: 'a3',
+        at: Date.now(),
+    });
+
+    it('writes sg to the matching record', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const sg = sgFixture();
+        const fresh = await persistSuggestion(dal, 'g1', 'l', sg);
+        const stored = fresh.activity!.practiceLog[0].games!.records![0];
+        expect(stored.sg).toEqual(sg);
+    });
+
+    it('is a silent no-op when the record was evicted', async () => {
+        const data = makeData();
+        const dal = new MockDal(data);
+        const fresh = await persistSuggestion(dal, 'gone', 'l', sgFixture());
+        expect(fresh.activity!.practiceLog).toEqual([]);
+        expect(dal.storeCount).toBe(0);
+    });
+
+    it('throws AbortError when signal is pre-aborted', async () => {
+        const data = makeData();
+        appendGameRecord(data.activity!, rec({ id: 'g1', t: BASE_DATE }));
+        const dal = new MockDal(data);
+        const controller = new AbortController();
+        controller.abort();
+        await expect(persistSuggestion(dal, 'g1', 'l', sgFixture(), controller.signal))
+            .rejects.toMatchObject({ name: 'AbortError' });
+        expect(dal.storeCount).toBe(0);
+    });
+});
+
 describe('persistGameReviewed', () => {
     it('sets rv = 1 on the matching record when reviewed', async () => {
         const data = makeData();
@@ -389,12 +429,13 @@ describe('persistGameReviewed', () => {
 });
 
 describe('persistReannotateClear', () => {
-    it('clears fan, op, and any legacy an from the matching record', async () => {
+    it('clears fan, op, sg, and any legacy an from the matching record', async () => {
         const data = makeData();
         const r = rec({
             id: 'g1', t: BASE_DATE,
             fan: fanOf([0, 0], 3),
             op: { ply: 4, m: 100, nb: 5, na: 1, os: 'Nf3', us: 'a3', rb: [], ra: [], at: 0 },
+            sg: { ply: 6, pl: [{ s: 'e4' }], pgn: '1. e4', at: 0 },
         });
         (r as unknown as Record<string, unknown>).an = { tv: [{ ply: 4, in: true }] };
         appendGameRecord(data.activity!, r);
@@ -403,6 +444,7 @@ describe('persistReannotateClear', () => {
         const stored = fresh.activity!.practiceLog[0].games!.records![0];
         expect(stored.fan).toBeUndefined();
         expect(stored.op).toBeUndefined();
+        expect(stored.sg).toBeUndefined();
         expect((stored as unknown as Record<string, unknown>).an).toBeUndefined();
     });
 
@@ -416,7 +458,7 @@ describe('persistReannotateClear', () => {
 });
 
 describe('persistReannotateRefresh', () => {
-    it('replaces the cached record in place at the same slot and strips fan/op', async () => {
+    it('replaces the cached record in place at the same slot and strips fan/op/sg', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({
             id: 'g1', t: BASE_DATE,
@@ -435,9 +477,10 @@ describe('persistReannotateRefresh', () => {
             id: 'g1', t: BASE_DATE,
             m: 'e4 e5 Nf3 Nc6',
             ev: [10, -10, 15, -5],
-            // Carry a `fan`/`op` to prove the helper strips them.
+            // Carry a `fan`/`op`/`sg` to prove the helper strips them.
             fan: fanOf([0, 0]),
             op: { ply: 2, m: 0, nb: 0, na: 0, os: '', us: '', rb: [], ra: [], at: 1 },
+            sg: { ply: 2, pl: [{ s: 'e4' }], pgn: '1. e4', at: 1 },
         });
         const fresh = await persistReannotateRefresh(dal, refreshed);
         const entry = fresh.activity!.practiceLog.find(e =>
@@ -448,6 +491,7 @@ describe('persistReannotateRefresh', () => {
         expect(stored.ev).toEqual([10, -10, 15, -5]);
         expect(stored.fan).toBeUndefined();
         expect(stored.op).toBeUndefined();
+        expect(stored.sg).toBeUndefined();
         // Sibling untouched.
         const g2 = fresh.activity!.practiceLog
             .flatMap(e => e.games?.records ?? [])

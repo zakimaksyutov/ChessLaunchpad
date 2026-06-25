@@ -91,6 +91,8 @@ export interface GameRecord {
     fan?: FrozenAnnotation;
     /** Saved opponent-analysis result; on-demand, independent of `fan`. */
     op?: OpponentAnalysisRecord;
+    /** Saved "Suggest a fix" result; on-demand, independent of `fan`. */
+    sg?: SuggestionRecord;
     /**
      * Reviewed flag — the user has marked this game's mistake as reviewed
      * (analyzed / addressed) from the /games page. A user decision,
@@ -167,6 +169,45 @@ interface OpponentAnalysisGameRef {
     d: number;
     /** Game URL. */
     u: string;
+}
+
+/**
+ * Saved "Suggest a fix" result, persisted as part of the game record.
+ * Independent of `fan`; computed on-demand from the /games "Suggest a fix"
+ * action.
+ *
+ * Anchored on the EOT user ply (`ply`) the suggestion fixes — the same
+ * anchor `op` uses — so a repertoire change that moves the deviation
+ * marks the saved suggestion stale and re-offers the action. Per-ply
+ * `isWhiteMove` / `isUserMove` / `moveNumber` are derived at hydration from
+ * the ply index and orientation (the line always starts at move 1), so only
+ * `san` / in-repertoire / diverges-from-game are persisted per ply.
+ */
+export interface SuggestionRecord {
+    /** Ply of the EOT user move this suggestion fixes (staleness anchor). */
+    ply: number;
+    /** Suggested-line plies, index-aligned from move 1. */
+    pl: SuggestionRecordPly[];
+    /** Movetext PGN of the suggested line (for "Add to repertoire"). */
+    pgn: string;
+    /**
+     * Explorer movetext — the line with the replaced move as a `(…)`
+     * variation. Omitted when equal to `pgn` (no divergence).
+     */
+    epgn?: string;
+    /** The user's replaced move SAN ("instead of X"). Omitted when no divergence. */
+    rep?: string;
+    /** Suggested at — ms epoch. */
+    at: number;
+}
+
+interface SuggestionRecordPly {
+    /** SAN. */
+    s: string;
+    /** Resulting FEN is in the user's repertoire (greenish). `1` when true. */
+    r?: 1;
+    /** Diverges from the played game (bold). `1` when true. */
+    n?: 1;
 }
 
 export interface PracticeLogEntry {

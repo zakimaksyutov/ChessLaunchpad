@@ -13,6 +13,7 @@
 
 import { Chess } from 'chess.js';
 import { ExplorerEvals } from '../models/ExplorerEvals';
+import { SuggestionRecord } from '../models/RepertoireData';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { MastersPositionResult } from './MastersExplorerService';
 
@@ -129,6 +130,67 @@ export interface SuggestionResult {
      * in "instead of X"). Undefined when the suggested line never deviates.
      */
     replacedUserSan?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Persistence (compact `GameRecord.sg` shape)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a render-side `SuggestionResult` to the compact persisted
+ * `GameRecord.sg` shape, anchored on the EOT user ply it fixes. Per-ply
+ * `isWhiteMove` / `isUserMove` / `moveNumber` are dropped — they're recomputed
+ * at hydration from the ply index and orientation (the line always starts at
+ * move 1).
+ */
+export function toPersistedSuggestion(
+    result: SuggestionResult,
+    anchorPly: number,
+): SuggestionRecord {
+    const sg: SuggestionRecord = {
+        ply: anchorPly,
+        pl: result.plies.map(p => {
+            const out: SuggestionRecord['pl'][number] = { s: p.san };
+            if (p.inRepertoire) out.r = 1;
+            if (p.isNew) out.n = 1;
+            return out;
+        }),
+        pgn: result.pgn,
+        at: Date.now(),
+    };
+    if (result.explorerPgn !== result.pgn) sg.epgn = result.explorerPgn;
+    if (result.replacedUserSan !== undefined) sg.rep = result.replacedUserSan;
+    return sg;
+}
+
+/**
+ * Hydrate a persisted `sg` back into the in-memory `SuggestionResult` the UI
+ * consumes. `isWhiteMove` / `isUserMove` / `moveNumber` are reconstructed from
+ * each ply's index and the user's orientation.
+ */
+export function fromPersistedSuggestion(
+    sg: SuggestionRecord,
+    orientation: 'white' | 'black',
+): SuggestionResult {
+    const userWhite = orientation === 'white';
+    const plies: SuggestionPly[] = sg.pl.map((p, idx) => {
+        const isWhiteMove = idx % 2 === 0;
+        return {
+            san: p.s,
+            isWhiteMove,
+            isUserMove: isWhiteMove === userWhite,
+            inRepertoire: p.r === 1,
+            moveNumber: isWhiteMove ? Math.floor(idx / 2) + 1 : undefined,
+            isNew: p.n === 1,
+        };
+    });
+    return {
+        plies,
+        pgn: sg.pgn,
+        explorerPgn: sg.epgn ?? sg.pgn,
+        orientation,
+        replacedUserSan: sg.rep,
+    };
 }
 
 // ---------------------------------------------------------------------------

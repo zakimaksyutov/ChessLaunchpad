@@ -363,6 +363,33 @@ export async function persistOpponentAnalysis(
 }
 
 /**
+ * Persist a single `sg` ("Suggest a fix") result back to the blob.
+ *
+ * Same single-attempt / no-412-retry / silent-drop-on-eviction posture as
+ * `persistOpponentAnalysis`. Optional `signal` short-circuits between the GET
+ * and the PUT.
+ */
+export async function persistSuggestion(
+    dal: IRepertoireDataStore,
+    recordId: string,
+    recordPlatform: 'l' | 'c',
+    sg: NonNullable<GameRecord['sg']>,
+    signal?: AbortSignal,
+): Promise<RepertoireData> {
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const fresh = await dal.retrieveRepertoireData();
+    const activity = fresh.activity;
+    if (!activity) return fresh;
+    const found = findRecord(activity, recordId, recordPlatform);
+    if (!found) return fresh;
+    found.record.sg = sg;
+    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
+    await dal.storeRepertoireData(blob, signal);
+    return fresh;
+}
+
+/**
  * Persist a single game's reviewed flag (`rv`) back to the blob.
  * `reviewed: true` sets `rv = 1`; `false` deletes the field.
  *
@@ -395,10 +422,10 @@ export async function persistGameReviewed(
 }
 
 /**
- * Persist a Re-annotate clear (drop `fan` and `op` for one record).
+ * Persist a Re-annotate clear (drop `fan`, `op`, and `sg` for one record).
  *
- * Single-attempt: GET fresh blob → delete `fan`, `op`, and any legacy `an`
- * → PUT once. No 412 retry — the app-root `<ConflictModal>` handles
+ * Single-attempt: GET fresh blob → delete `fan`, `op`, `sg`, and any legacy
+ * `an` → PUT once. No 412 retry — the app-root `<ConflictModal>` handles
  * recovery. Clearing `fan` re-opens the record for the analysis pass (the
  * `fan`-absent gate).
  *
@@ -418,6 +445,7 @@ export async function persistReannotateClear(
     if (!found) return fresh;
     delete found.record.fan;
     delete found.record.op;
+    delete found.record.sg;
     delete (found.record as { an?: unknown }).an;
     if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
     const blob = RepertoireDataUtils.prepareDataForSave(fresh);
@@ -428,7 +456,7 @@ export async function persistReannotateClear(
 /**
  * Persist a Re-annotate **refresh** — replace one record in place with a
  * freshly-built one (typically rebuilt from a re-fetched provider payload
- * so newer `ev` / `o` data lands) and clear its `fan` / `op` so the
+ * so newer `ev` / `o` data lands) and clear its `fan` / `op` / `sg` so the
  * analysis pass picks it up.
  *
  * Single-attempt: GET fresh blob → replace the record in place → PUT
@@ -446,7 +474,7 @@ export async function persistReannotateClear(
  *
  * `freshRecord.id` / `freshRecord.p` must match the target — the function
  * locates the slot by `(id, p)` and `freshRecord` is written into it
- * verbatim with `an` / `op` stripped.
+ * verbatim with `an` / `op` / `sg` stripped.
  */
 export async function persistReannotateRefresh(
     dal: IRepertoireDataStore,
@@ -465,11 +493,12 @@ export async function persistReannotateRefresh(
             r => r.id === freshRecord.id && r.p === freshRecord.p,
         );
         if (idx < 0) continue;
-        // Strip `fan` / `op` defensively — the refresh always wants the
+        // Strip `fan` / `op` / `sg` defensively — the refresh always wants the
         // analysis pass to re-derive the annotation from the new `ev`.
         const stripped: GameRecord = { ...freshRecord };
         delete stripped.fan;
         delete stripped.op;
+        delete stripped.sg;
         delete (stripped as { an?: unknown }).an;
         records[idx] = stripped;
         replaced = true;

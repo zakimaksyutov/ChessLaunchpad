@@ -40,6 +40,7 @@ import {
     analyzeOneGame,
     flushFanUpdates,
     persistOpponentAnalysis,
+    persistSuggestion,
     persistGameReviewed,
     persistReannotateClear,
     persistReannotateRefresh,
@@ -59,6 +60,8 @@ import {
 import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuilder';
 import {
     computeSuggestion,
+    toPersistedSuggestion,
+    fromPersistedSuggestion,
     SuggestionResult,
     SuggestionPly,
     MastersProvider,
@@ -335,10 +338,13 @@ type SuggestionState =
     | { status: 'ready'; result: SuggestionResult };
 
 function suggestionMoveClass(ply: SuggestionPly): string {
-    const base = ply.inRepertoire
-        ? 'move-token move-in-repertoire'
-        : !ply.isUserMove
-            ? 'move-token move-opponent'
+    // Match the main game tile PGN (`getMoveClassName`): opponent plies are
+    // always greyed, and only the user's own in-repertoire plies get the
+    // green background — repertoire membership of opponent plies is not shown.
+    const base = !ply.isUserMove
+        ? 'move-token move-opponent'
+        : ply.inRepertoire
+            ? 'move-token move-in-repertoire'
             : 'move-token';
     return ply.isNew ? `${base} suggest-fix-new` : base;
 }
@@ -558,6 +564,10 @@ const GameRow: React.FC<GameRowProps> = ({
     const showOpponentAnalysis = opponentAnalysis !== null && !opIsStale;
     // Allow Analyze when: no saved op OR saved op is stale; and the row has an EOT eligible.
     const allowAnalyzeAction = eotSummary !== null && (opponentAnalysis === null || opIsStale);
+    // A real fix is already in hand (just computed or hydrated from `record.sg`).
+    // Like Analyze opponent, the "Suggest a fix" link hides once one exists;
+    // error / connect states keep the link so the user can retry.
+    const hasSuggestion = suggestion?.status === 'ready' && suggestion.result.plies.length > 0;
 
     return (
         <div
@@ -714,7 +724,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                         Analyze opponent
                                     </a>
                                 )}
-                                {suggestion?.status !== 'loading' && !hasDeviation && (
+                                {suggestion?.status !== 'loading' && !hasSuggestion && !hasDeviation && (
                                     <>
                                         {allowAnalyzeAction && !analyzeProgress && (
                                             <span className="game-action-sep" aria-hidden="true">|</span>
@@ -1044,6 +1054,30 @@ const GamesPage: React.FC = () => {
             if (ann) {
                 const eot = deriveRecordEotPositions(record, ann);
                 if (eot && eot.targetPly === record.op.ply) stale = false;
+            }
+            map.set(key, { live, stale });
+        }
+        return map;
+    }, [orderedRows, annotationByKey]);
+
+    // Suggest-a-fix live state per record: hydrated from record.sg + the same
+    // ply-anchored "stale?" check as `opByKey`. A row's saved suggestion is
+    // stale once its anchored EOT ply no longer matches the live deviation
+    // (repertoire changed since the suggestion was computed).
+    const sgByKey = useMemo(() => {
+        const map = new Map<string, { live: SuggestionResult; stale: boolean }>();
+        for (const { record, userLower, pending } of orderedRows) {
+            if (pending) continue;
+            if (!record.sg) continue;
+            const userColor = getRecordUserColor(record, userLower);
+            if (!userColor) continue;
+            const key = `${record.p}:${record.id}`;
+            const ann = annotationByKey.get(key);
+            const live = fromPersistedSuggestion(record.sg, userColor);
+            let stale = true;
+            if (ann) {
+                const eot = deriveRecordEotPositions(record, ann);
+                if (eot && eot.targetPly === record.sg.ply) stale = false;
             }
             map.set(key, { live, stale });
         }
@@ -1407,6 +1441,18 @@ const GamesPage: React.FC = () => {
         // against the cleared record (consumed in `runAnalysisPass`).
         debugRecordKeysRef.current.add(key);
 
+        // Drop any in-flight / shown "Suggest a fix" state for this row — the
+        // persisted `sg` is cleared below and the new annotation may move or
+        // remove the deviation the suggestion was anchored on.
+        suggestAbortByKeyRef.current.get(key)?.abort();
+        suggestAbortByKeyRef.current.delete(key);
+        setSuggestionByKey(prev => {
+            if (!prev.has(key)) return prev;
+            const next = new Map(prev);
+            next.delete(key);
+            return next;
+        });
+
         // Abort any in-flight pass and wait for it to actually finish
         // (the abort doesn't propagate into the masters fetcher or the
         // 1 req/sec rate-limit delay, so we have to wait for the pass's
@@ -1631,6 +1677,27 @@ const GamesPage: React.FC = () => {
             });
             if (signal.aborted) return;
             setSuggestionByKey(prev => new Map(prev).set(key, { status: 'ready', result }));
+
+            // Persist so the suggestion survives reloads and the "Suggest a
+            // fix" link can hide on return visits (mirrors the saved `op`).
+            // Best-effort: a persist failure never downgrades the already-shown
+            // result — same no-412-retry posture as Analyze opponent. Anchored
+            // on the EOT user ply so a later repertoire change can stale it.
+            if (result.plies.length > 0) {
+                const ann = annotationByKey.get(key);
+                const eot = ann ? deriveRecordEotPositions(record, ann) : null;
+                if (eot) {
+                    try {
+                        const sg = toPersistedSuggestion(result, eot.targetPly);
+                        const fresh = await persistSuggestion(dal, record.id, record.p, sg, signal);
+                        if (!signal.aborted) setData(fresh);
+                    } catch (perr) {
+                        if ((perr as Error).name !== 'AbortError' && !signal.aborted) {
+                            console.warn('Persisting suggestion failed:', perr);
+                        }
+                    }
+                }
+            }
         } catch (err) {
             if ((err as Error).name === 'AbortError' || signal.aborted) return;
             console.error('Suggest a fix failed:', err);
@@ -1646,7 +1713,7 @@ const GamesPage: React.FC = () => {
             // (mirrors runAnalysisPass's finally).
             abort.abort();
         }
-    }, [lichessToken, fenSets, explorerEvals]);
+    }, [lichessToken, fenSets, explorerEvals, dal, annotationByKey]);
 
     // ─────────────────────────────────────────────────────────────────────
     // Mark reviewed
@@ -1868,6 +1935,12 @@ const GamesPage: React.FC = () => {
                         const key = `${record.p}:${record.id}`;
                         const annotation = annotationByKey.get(key) ?? null;
                         const op = opByKey.get(key);
+                        // Transient (in-flight / just-computed) state wins; else
+                        // fall back to the hydrated, non-stale saved suggestion.
+                        const sg = sgByKey.get(key);
+                        const suggestionState: SuggestionState | null =
+                            suggestionByKey.get(key)
+                            ?? (sg && !sg.stale ? { status: 'ready', result: sg.live } : null);
                         return (
                             <GameRow
                                 key={key}
@@ -1885,7 +1958,7 @@ const GamesPage: React.FC = () => {
                                 onAnalyzeOpponent={handleAnalyzeOpponent}
                                 onToggleReviewed={handleToggleReviewed}
                                 onDeleteFromHere={handleDeleteFromHere}
-                                suggestion={suggestionByKey.get(key) ?? null}
+                                suggestion={suggestionState}
                                 onSuggestFix={handleSuggestFix}
                             />
                         );
