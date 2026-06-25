@@ -62,6 +62,13 @@ ends after exactly: corrected user move → opponent's top masters reply → bes
 next user move. The only thing that keeps the walk going is case (b)-good,
 which stays on the real game until the first deviation.
 
+**Cost / latency (no cap).** Each scored position needs a masters call plus an
+eval-after for up to 5 candidate FENs, resolved by the existing priority
+(static → embedded → cloud-eval); out-of-book candidates usually fall to
+cloud-eval, serialized at Lichess's ~1 req/sec. A click can therefore take
+several seconds (more when case (b)-good chains across plies) — this is
+surfaced via the inline spinner from §1, not bounded by a budget.
+
 ### Move-scoring (pick the best of masters Top 5)
 
 For the position before the user ply, take the masters Top 5 moves and score
