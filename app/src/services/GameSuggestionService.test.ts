@@ -145,6 +145,13 @@ describe('computeSuggestion — branch (a) user move not in Top-5', () => {
         // The substituted move is not the user's actual h4.
         expect(result.plies[4].san).not.toBe('h4');
         expect(result.pgn).toContain('1. e4 e5');
+        // Divergence tracking: the closed-out continuation is flagged "new",
+        // the prefix + opponent EOT move are not; X = the replaced user move.
+        expect(result.plies.map(p => p.isNew)).toEqual([false, false, false, false, true, true, true]);
+        expect(result.replacedUserSan).toBe('h4');
+        // Explorer PGN carries the user's move as a `(…)` variation at the split.
+        expect(result.explorerPgn).toContain('(3. h4)');
+        expect(result.pgn).not.toContain('h4');
     });
 });
 
@@ -212,6 +219,10 @@ describe('computeSuggestion — branch (b) user move in Top-5', () => {
         expect(result.plies[4].san).toBe('d4');
         // The short-circuit means no eval lookups happened.
         expect(evalCalls).toBe(0);
+        // No substitution → nothing new, no "instead of", explorer PGN == PGN.
+        expect(result.plies.some(p => p.isNew)).toBe(false);
+        expect(result.replacedUserSan).toBeUndefined();
+        expect(result.explorerPgn).toBe(result.pgn);
     });
 
     it('substitutes when the user move is in Top-5 but below the good bar', async () => {

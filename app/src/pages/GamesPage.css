@@ -744,6 +744,19 @@
     margin-top: 0;
 }
 
+/* Moves that differ from the played game (the corrected move + continuation)
+   are bolded; everything before reads as "same as you played". */
+.suggest-fix-new {
+    font-weight: 700;
+}
+
+/* "(instead of X)" — muted, non-bold, mirrors the PGN parenthetical. */
+.suggest-fix-instead {
+    color: #777;
+    font-weight: 400;
+    font-style: italic;
+}
+
 .suggest-fix-actions {
     display: flex;
     flex-wrap: wrap;

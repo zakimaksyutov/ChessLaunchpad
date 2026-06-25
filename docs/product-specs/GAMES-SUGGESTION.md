@@ -26,8 +26,15 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
   continuation.
   - Plies already in the repertoire get the same **greenish background** as
     the tile's main PGN (reuse the in-repertoire styling / FEN-set check).
-  - **Open in Lichess Opening Explorer** — link to study the line further.
-  - **Add to repertoire** — link to add the suggested line to the repertoire.
+  - Moves that **differ from the played game** (the corrected move and its
+    continuation) are **bold**; everything before reads as "same as you
+    played". The first bold move carries a muted **"(instead of X)"** note,
+    where `X` is the user's actual move it replaces.
+  - **Open in Lichess Opening Explorer** — link to study the line further; the
+    replaced move `X` is appended as a one-ply `(…)` variation so both can be
+    compared.
+  - **Add to repertoire** — link to add the suggested line to the repertoire
+    (the corrected line only, without the `X` variation).
 - One suggestion per row, **recomputed on each click** (not persisted to the
   record for now).
 

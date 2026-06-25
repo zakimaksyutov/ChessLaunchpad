@@ -335,9 +335,12 @@ type SuggestionState =
     | { status: 'ready'; result: SuggestionResult };
 
 function suggestionMoveClass(ply: SuggestionPly): string {
-    if (ply.inRepertoire) return 'move-token move-in-repertoire';
-    if (!ply.isUserMove) return 'move-token move-opponent';
-    return 'move-token';
+    const base = ply.inRepertoire
+        ? 'move-token move-in-repertoire'
+        : !ply.isUserMove
+            ? 'move-token move-opponent'
+            : 'move-token';
+    return ply.isNew ? `${base} suggest-fix-new` : base;
 }
 
 const SuggestionDisplay: React.FC<{
@@ -376,8 +379,10 @@ const SuggestionDisplay: React.FC<{
             </div>
         );
     }
-    const lichessUrl = buildLichessAnalysisUrl(result.pgn, orientation);
+    const lichessUrl = buildLichessAnalysisUrl(result.explorerPgn, orientation);
     const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}`;
+    // The first diverging ply (the corrected move) carries the "instead of X" note.
+    const firstNewIdx = result.plies.findIndex(p => p.isNew);
     return (
         <div className="suggest-fix-result suggest-fix-ready">
             <div className="suggest-fix-label">Suggested line</div>
@@ -388,6 +393,9 @@ const SuggestionDisplay: React.FC<{
                             <span className="move-number">{ply.moveNumber}.&nbsp;</span>
                         )}
                         <span className={suggestionMoveClass(ply)}>{ply.san}</span>
+                        {idx === firstNewIdx && result.replacedUserSan && (
+                            <span className="suggest-fix-instead">&nbsp;(instead of {result.replacedUserSan})</span>
+                        )}
                         {' '}
                     </React.Fragment>
                 ))}

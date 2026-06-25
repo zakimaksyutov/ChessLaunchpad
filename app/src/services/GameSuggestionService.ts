@@ -105,13 +105,30 @@ export interface SuggestionPly {
     inRepertoire: boolean;
     /** Set only for white moves (1, 2, 3 …). */
     moveNumber?: number;
+    /**
+     * This ply diverges from what the user actually played — the corrected move
+     * and its continuation. Bolded in the UI; everything before the first such
+     * ply is identical to the played game.
+     */
+    isNew: boolean;
 }
 
 export interface SuggestionResult {
     plies: SuggestionPly[];
     /** Movetext PGN of the suggested line, from the starting position. */
     pgn: string;
+    /**
+     * Like `pgn`, but with the user's replaced move inserted as a `(…)`
+     * variation at the divergence point so the Lichess explorer link can show
+     * both. Equals `pgn` when nothing was substituted.
+     */
+    explorerPgn: string;
     orientation: 'white' | 'black';
+    /**
+     * The user's actual move that was replaced at the divergence point (the "X"
+     * in "instead of X"). Undefined when the suggested line never deviates.
+     */
+    replacedUserSan?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +257,31 @@ function uciOf(fenBefore: string, san: string): string | null {
 }
 
 /**
+ * Build movetext for the Lichess explorer link: the suggested line with the
+ * user's replaced move inserted as a one-ply `(…)` variation right after the
+ * corrected move at `correctionIndex`, so the explorer shows both side by side.
+ */
+function buildExplorerMovetext(
+    plies: SuggestionPly[],
+    correctionIndex: number,
+    replacedSan: string,
+): string {
+    const parts: string[] = [];
+    let afterVariation = false;
+    plies.forEach((p, k) => {
+        if (p.isWhiteMove) parts.push(`${p.moveNumber}.`);
+        else if (afterVariation) parts.push(`${Math.floor(k / 2) + 1}...`);
+        parts.push(p.san);
+        afterVariation = false;
+        if (k === correctionIndex) {
+            parts.push(p.isWhiteMove ? `(${p.moveNumber}. ${replacedSan})` : `(${Math.floor(k / 2) + 1}... ${replacedSan})`);
+            afterVariation = true;
+        }
+    });
+    return parts.join(' ');
+}
+
+/**
  * Compute a repertoire-fix suggestion for a played game.
  *
  * The walk always starts from the initial position and replays the in-repertoire
@@ -316,8 +358,13 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
 
     const board = new Chess();
     const plies: SuggestionPly[] = [];
+    // Set at the divergence point: the user's replaced move (X) and the ply
+    // index of the corrected move that replaces it. Both stay undefined when the
+    // suggested line never deviates from the played game.
+    let replacedUserSan: string | undefined;
+    let correctionPlyIndex: number | undefined;
 
-    const appendMove = (san: string): boolean => {
+    const appendMove = (san: string, isNew = false): boolean => {
         let move;
         try {
             move = board.move(san);
@@ -333,14 +380,18 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
             isUserMove: isWhiteMove === userWhite,
             inRepertoire: repertoireFens.has(normalizeFenResetHalfmoveClock(board.fen())),
             moveNumber: isWhiteMove ? Math.floor(plyIndex / 2) + 1 : undefined,
+            isNew,
         });
         return true;
     };
 
     const finalize = (): SuggestionResult => {
-        const result: SuggestionResult = { plies, pgn: board.pgn(), orientation: userColor };
-        if (debug) console.log(`[suggest-fix] final PGN: ${result.pgn || '(empty)'}`);
-        return result;
+        const pgn = board.pgn();
+        const explorerPgn = (replacedUserSan !== undefined && correctionPlyIndex !== undefined)
+            ? buildExplorerMovetext(plies, correctionPlyIndex, replacedUserSan)
+            : pgn;
+        if (debug) console.log(`[suggest-fix] final PGN: ${pgn || '(empty)'}${replacedUserSan ? ` (instead of ${replacedUserSan})` : ''}`);
+        return { plies, pgn, explorerPgn, orientation: userColor, replacedUserSan };
     };
 
     // 1. Replay the in-repertoire prefix.
@@ -373,14 +424,15 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         i++;
     }
 
-    // Close out the line at depth 1 from the chosen replacement user move.
+    // Close out the line at depth 1 from the chosen replacement user move. All
+    // three appended plies diverge from the played game, so they're flagged new.
     const closeOutLine = async (chosenSan: string): Promise<void> => {
         if (debug) console.log(`[close-out] corrected user move: ${chosenSan}`);
-        if (!appendMove(chosenSan)) return;
+        if (!appendMove(chosenSan, true)) return;
 
         const oppData = await getMasters(board.fen());
         const oppTop = oppData?.moves?.[0];
-        if (!oppTop || !appendMove(oppTop.san)) return;
+        if (!oppTop || !appendMove(oppTop.san, true)) return;
         if (debug) console.log(`[close-out] opponent top reply: ${oppTop.san}`);
 
         const data2 = await getMasters(board.fen());
@@ -388,7 +440,7 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         const scored2 = await scoreMastersMoves(board.fen(), data2, userWhite, resolveEvalAfterCp, debug);
         if (scored2.length === 0) return;
         if (debug) console.log(`[close-out] best next user move: ${scored2[0].san}`);
-        appendMove(scored2[0].san);
+        appendMove(scored2[0].san, true);
     };
 
     // 2. Walk the out-of-repertoire user moves.
@@ -442,6 +494,8 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         if (!userScored) {
             // (a) User's move is not in masters Top-5 — substitute + close out.
             if (debug) console.log(`[walk] → (a) off-book: substitute ${scored[0].san}, close out at depth 1`);
+            replacedUserSan = sans[i];
+            correctionPlyIndex = plies.length;
             await closeOutLine(scored[0].san);
             break;
         }
@@ -466,6 +520,8 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         // yields the best (non-user) move — never the second-best.
         const replacement = scored.find(s => s.uci !== userUci) ?? scored[0];
         if (debug) console.log(`[walk] → (b)-not-good: replace ${sans[i]} with ${replacement.san}, close out at depth 1`);
+        replacedUserSan = sans[i];
+        correctionPlyIndex = plies.length;
         await closeOutLine(replacement.san);
         break;
     }
