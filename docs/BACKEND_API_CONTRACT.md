@@ -187,48 +187,12 @@ Returns `200 OK` with CORS headers. No `Authorization` required.
 
 ## Repertoire JSON Body
 
-> **⚠️ Note:** The backend does **not** enforce any schema on the repertoire body. The
-> only server-side checks on `PUT /variants` are that the body is **non-empty valid JSON**
-> and **at most 1 MiB** (1,048,576 bytes, measured as UTF-8). Any valid JSON document
-> within that size limit is accepted unchanged. The example below is a
-> **non-normative** illustration of the shape the client currently produces and consumes;
-> it is not validated by the server and may evolve freely.
+The backend does **not** enforce any schema on the repertoire body. The only
+server-side checks on `PUT /variants` are that the body is **non-empty valid
+JSON** and **at most 1 MiB** (1,048,576 bytes, measured as UTF-8). Any valid JSON
+document within that size limit is accepted unchanged.
 
 A newly created user starts with `{}`.
-
-### Example
-
-```json
-{
-  "data": [
-    {
-      "pgn": "1. e4 e5 2. Nf3 Nc6 3. Bc4",
-      "orientation": "white",
-      "classifications": ["Italian Game"],
-      "errorEMA": 0.15,
-      "numberOfTimesPlayed": 42,
-      "lastSucceededEpoch": 80,
-      "successEMA": 0.85
-    }
-  ],
-  "currentEpoch": 81,
-  "lastPlayedDate": "2025-05-17T00:00:00.000Z",
-  "dailyPlayCount": 12,
-  "weightSettings": {
-    "recencyPower": 1.5,
-    "frequencyPower": 2,
-    "errorPower": 0.75
-  },
-  "fsrsCards": {
-    "pos1": {"d":"2026-05-01T00:00:00.000Z","s":15.23,"di":5.68,"e":3,"sd":7,"ls":0,"r":12,"l":2,"st":2,"lr":"2026-04-19T00:00:00.000Z"}
-  },
-  "settings": {
-    "contextDepth": 2,
-    "retention": 0.97,
-    "maxInterval": 90
-  }
-}
-```
 
 ---
 
