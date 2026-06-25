@@ -1075,6 +1075,9 @@ const GamesPage: React.FC = () => {
                 // walks each game; both memos dedup those lookups across games.
                 const memo = new Map<string, MastersMemoEntry>();
                 const cloudMemo = new Map<string, number | null>();
+                // Pass-level latch: once Lichess 429's the cloud-eval API, every
+                // remaining cloud-needing game defers instead of re-hitting it.
+                const cloudThrottle = { throttled: false };
                 const pendingFlush: AnalyzedGameOutcome[] = [];
                 let networkRetryCount = 0;
 
@@ -1093,6 +1096,8 @@ const GamesPage: React.FC = () => {
                         cloudMemo,
                         explorerEvals,
                         signal,
+                        undefined,
+                        cloudThrottle,
                     );
                     if (outcome.skipped) {
                         if (outcome.awaitingMasters) {

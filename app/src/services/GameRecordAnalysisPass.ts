@@ -20,6 +20,7 @@ import {
     AnalysisSkipError,
     AwaitingMastersError,
     MastersMemoEntry,
+    CloudEvalThrottleState,
 } from './GameRecordAnalysisPlanner';
 
 const ANALYSIS_FLUSH_BATCH = 5;
@@ -204,12 +205,15 @@ export async function analyzeOneGame(
     explorerEvals: ExplorerEvals | null,
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch,
+    cloudThrottle?: CloudEvalThrottleState,
 ): Promise<AnalyzedGameOutcome> {
     const { record, userLower, repertoireFens, debug } = job;
     if (signal?.aborted) return { record, skipped: true };
 
     // Cloud evals back-fill missing eval-drop sides on demand (both platforms).
-    const cloudEval = makeCloudEvalProvider(cloudMemo, signal, fetchFn);
+    // The shared `cloudThrottle` latch makes a 429 abort cloud lookups for the
+    // rest of the pass, so every cloud-needing game defers together.
+    const cloudEval = makeCloudEvalProvider(cloudMemo, signal, fetchFn, cloudThrottle);
     // Cloud hits collected by ply so a deferred game can persist them into `ev`.
     const cloudEvalSink = new Map<number, number>();
     // Masters verdicts for ambiguous-zone opponent moves. With a token, resolve

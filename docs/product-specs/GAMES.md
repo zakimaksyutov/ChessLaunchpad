@@ -126,7 +126,7 @@ Computing `fan` can require the masters opening explorer (`explorer.lichess.org/
 
 Transient masters failures (network / HTTP) also leave the game without a `fan` — it re-queues on the next pass; a separate banner counts those for the current session.
 
-**Cloud-eval throttling.** A Lichess cloud-eval **429 (rate limit)** is a transient deferral, *not* a "no eval" miss: the game stays unfrozen (re-queues on a later pass, no user action), its gathered evals persist into `record.ev`, and it counts toward a distinct "Lichess rate-limited" banner. Mistaking it for a 404 would end theory early and freeze a less-informed verdict; a real 404 (position too rare to be in book) is still a miss that ends theory.
+**Cloud-eval throttling.** A Lichess cloud-eval **429 (rate limit)** is a transient deferral, *not* a "no eval" miss: the game stays unfrozen (re-queues on a later pass, no user action), its gathered evals persist into `record.ev`, and it counts toward a distinct "Lichess rate-limited" banner. Mistaking it for a 404 would end theory early and freeze a less-informed verdict; a real 404 (position too rare to be in book) is still a miss that ends theory. The first 429 also **latches the whole pass**: every subsequent cloud-needing game defers immediately without re-hitting the rate-limited API, so they all back off together. A fresh pass clears the latch and retries.
 
 ## Re-annotate
 
