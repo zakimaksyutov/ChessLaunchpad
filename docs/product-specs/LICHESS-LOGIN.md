@@ -32,12 +32,20 @@ repertoire backend and behave identically once signed in.
 
 ## Session
 
-- The backend token is the credential for **all** account and repertoire
-  requests; the Lichess token is only ever used for the exchange.
-- A Lichess session persists across reloads the same way a
-  username/password session does today (survives refresh, restored on
-  startup), recording that it is a Lichess session plus its id and cased
-  display name.
+- The **backend** token is the credential for all account and repertoire
+  requests. The **Lichess** OAuth connection acquired at login is
+  persisted (the existing OAuth mechanism already does this) and stays
+  live for the session: it both feeds the backend exchange and authorizes
+  direct Lichess API calls — notably authenticated Masters Opening
+  Explorer queries, which get higher rate limits.
+- A Lichess session persists across reloads in `localStorage`, mirroring
+  how an email account stores `username` + `hashedPassword` today. It
+  records that the session is Lichess-mode plus its id, cased display
+  name, and the backend JWT, and is restored on startup so refresh keeps
+  the user signed in.
+- The Lichess OAuth token itself is also persisted in `localStorage` and
+  restored on startup — the same mechanism already used when an email
+  account links Lichess in Settings. Nothing new is needed for it.
 - The repertoire data layer becomes auth-mode aware: password sessions
   keep sending the password as `Authorization`; Lichess sessions send
   `Bearer <token>`. Everything downstream (session cache, ETag/`If-Match`
