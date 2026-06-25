@@ -1,22 +1,5 @@
 import { Chess } from 'chess.js';
 
-/**
- * Thrown when the Lichess cloud-eval API responds with HTTP 429 (rate limit).
- *
- * A throttle must be distinguishable from a genuine "Lichess has no eval for
- * this position" miss: a miss is permanent (the position is too rare to be in
- * book), but a throttle is transient (the eval exists, we were just asked to
- * back off). The /games analysis pass catches this to **defer** the game —
- * leaving it unfrozen so it re-queues on a later pass — instead of baking a
- * less-informed verdict from a position the engine wrongly thinks has no eval.
- */
-export class CloudEvalThrottledError extends Error {
-    constructor() {
-        super('lichess cloud-eval throttled');
-        this.name = 'CloudEvalThrottledError';
-    }
-}
-
 export interface CloudEvalPv {
     /** First move in SAN notation (e.g., "e4") */
     moveSan: string;
@@ -64,34 +47,19 @@ export function uciLineToSan(fen: string, uciMoves: string[]): string[] {
 
 /**
  * Fetch cloud evaluations from the Lichess API for a given position.
- * Returns null if the position has no cloud eval or on any error — *except*
- * a 429 (rate limit), which throws `CloudEvalThrottledError` so callers can
- * tell a transient throttle apart from a permanent miss.
+ * Returns null if the position has no cloud eval or on any error.
  */
 export async function fetchCloudEval(
     fen: string,
     multiPv: number = 5,
     fetchFn: typeof fetch = fetch
 ): Promise<CloudEvalResult | null> {
-    let response: Response;
     try {
         const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=${multiPv}`;
-        response = await fetchFn(url);
-    } catch {
-        // Network failure — treat as a miss (no eval), as before.
-        return null;
-    }
-
-    // A 429 is the one response a caller must react to rather than treat as a
-    // miss: the eval likely exists, Lichess just rate-limited us. Surface it.
-    if (response.status === 429) {
-        throw new CloudEvalThrottledError();
-    }
-    if (!response.ok) {
-        return null;
-    }
-
-    try {
+        const response = await fetchFn(url);
+        if (!response.ok) {
+            return null;
+        }
         const data = await response.json();
 
         const pvs: CloudEvalPv[] = [];
@@ -118,7 +86,6 @@ export async function fetchCloudEval(
             pvs,
         };
     } catch {
-        // Parse error — treat as a miss.
         return null;
     }
 }
@@ -158,9 +125,6 @@ async function cloudRateLimitedDelay(): Promise<void> {
  * any network/parse error.
  *
  * Honors the 1 req/sec Lichess rate limit via a shared module-level throttle.
- *
- * Propagates `CloudEvalThrottledError` (HTTP 429) so the analysis pass can defer
- * the game rather than mistake a transient throttle for a permanent miss.
  */
 export async function fetchCloudCp(
     fen: string,
