@@ -77,6 +77,13 @@ export interface SuggestionInput {
     masters: MastersProvider;
     cloudEvalCp: CloudEvalCpProvider;
     signal?: AbortSignal;
+    /**
+     * When true, emit a grouped `console` trace of every masters / cloud-eval
+     * request and the move-scoring values behind the suggestion (mirrors the
+     * /games Re-annotate one-shot debug log). The caller owns the enclosing
+     * `console.group(Collapsed)` / `console.groupEnd()`.
+     */
+    debug?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +135,7 @@ export async function scoreMastersMoves(
     masters: MastersPositionResult,
     userWhite: boolean,
     resolveEvalAfterCp: (fenAfter: string) => Promise<number | null>,
+    debug = false,
 ): Promise<ScoredMove[]> {
     const top5 = masters.moves.slice(0, 5);
 
@@ -136,6 +144,7 @@ export async function scoreMastersMoves(
         uci: string;
         games: number;
         margin: number;
+        evalCp: number | null;
         evES: number;
     }
     const rows: Row[] = [];
@@ -164,6 +173,7 @@ export async function scoreMastersMoves(
             uci: played.from + played.to + (played.promotion ?? ''),
             games,
             margin,
+            evalCp: cp,
             evES: expectedScore(pawns),
         });
     }
@@ -176,13 +186,32 @@ export async function scoreMastersMoves(
     const sumWin = winExp.reduce((a, b) => a + b, 0) || 1;
     const sumEvES = rows.reduce((a, r) => a + r.evES, 0) || 1;
 
-    const raws = rows.map((r, i) => {
-        const dG = r.games / sumGames;
-        const dW = winExp[i] / sumWin;
-        const dE = r.evES / sumEvES;
-        return Math.pow(dG, SCORE_WEIGHTS.games) * Math.pow(dW, SCORE_WEIGHTS.win) * Math.pow(dE, SCORE_WEIGHTS.eval);
-    });
+    const dims = rows.map((r, i) => ({
+        dG: r.games / sumGames,
+        dW: winExp[i] / sumWin,
+        dE: r.evES / sumEvES,
+    }));
+    const raws = dims.map(d =>
+        Math.pow(d.dG, SCORE_WEIGHTS.games) * Math.pow(d.dW, SCORE_WEIGHTS.win) * Math.pow(d.dE, SCORE_WEIGHTS.eval));
     const sumRaw = raws.reduce((a, b) => a + b, 0) || 1;
+
+    if (debug) {
+        const table = rows
+            .map((r, i) => ({
+                move: r.san,
+                games: r.games,
+                'margin%': +(r.margin * 100).toFixed(1),
+                evalCp: r.evalCp,
+                dGames: +dims[i].dG.toFixed(3),
+                dWin: +dims[i].dW.toFixed(3),
+                dEval: +dims[i].dE.toFixed(3),
+                'score%': +((raws[i] / sumRaw) * 100).toFixed(1),
+            }))
+            .sort((a, b) => b['score%'] - a['score%']);
+        console.groupCollapsed(`[score]   ${fenBefore.split(' ').slice(0, 2).join(' ')} (user=${userWhite ? 'white' : 'black'})`);
+        console.table(table);
+        console.groupEnd();
+    }
 
     return rows
         .map((r, i) => ({ san: r.san, uci: r.uci, score: raws[i] / sumRaw }))
@@ -215,8 +244,11 @@ function uciOf(fenBefore: string, san: string): string | null {
  * substitutes a better one and closes out at depth 1.
  */
 export async function computeSuggestion(input: SuggestionInput): Promise<SuggestionResult> {
-    const { sans, userColor, repertoireFens, signal } = input;
+    const { sans, userColor, repertoireFens, signal, debug } = input;
     const userWhite = userColor === 'white';
+
+    const shortFen = (f: string) => f.split(' ').slice(0, 2).join(' ');
+    if (debug) console.log(`[suggest-fix] user=${userColor}, repertoireFens=${repertoireFens.size}, game="${sans.join(' ')}"`);
 
     const throwIfAborted = () => {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -244,11 +276,17 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
     const resolveEvalAfterCp = async (fenAfterNorm: string): Promise<number | null> => {
         if (evalCache.has(fenAfterNorm)) return evalCache.get(fenAfterNorm) ?? null;
         let cp: number | null = input.explorerEvals?.lookup(fenAfterNorm) ?? null;
-        if (cp === null && embeddedByFen.has(fenAfterNorm)) cp = embeddedByFen.get(fenAfterNorm)!;
+        let source = 'static';
+        if (cp === null && embeddedByFen.has(fenAfterNorm)) {
+            cp = embeddedByFen.get(fenAfterNorm)!;
+            source = 'embedded';
+        }
         if (cp === null) {
             throwIfAborted();
             cp = await input.cloudEvalCp(fenAfterNorm);
+            source = 'cloud-eval';
         }
+        if (debug) console.log(`[eval]    ${shortFen(fenAfterNorm)} → ${cp === null ? 'missing' : `${cp}cp`} (${source})`);
         evalCache.set(fenAfterNorm, cp);
         return cp;
     };
@@ -259,6 +297,12 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         if (mastersCache.has(key)) return mastersCache.get(key) ?? null;
         throwIfAborted();
         const res = await input.masters(fen);
+        if (debug) {
+            const top = res?.moves?.length
+                ? res.moves.slice(0, 5).map(m => `${m.san}:${m.total}`).join(' ')
+                : 'no master games';
+            console.log(`[masters] ${shortFen(key)} → ${top}`);
+        }
         mastersCache.set(key, res);
         return res;
     };
@@ -286,11 +330,11 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         return true;
     };
 
-    const finalize = (): SuggestionResult => ({
-        plies,
-        pgn: board.pgn(),
-        orientation: userColor,
-    });
+    const finalize = (): SuggestionResult => {
+        const result: SuggestionResult = { plies, pgn: board.pgn(), orientation: userColor };
+        if (debug) console.log(`[suggest-fix] final PGN: ${result.pgn || '(empty)'}`);
+        return result;
+    };
 
     // 1. Replay the in-repertoire prefix.
     let i = 0;
@@ -315,6 +359,7 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
 
     // The first out-of-repertoire ply: opponent (EOT) or user (deviation).
     const firstOutIsUser = (board.turn() === 'w') === userWhite;
+    if (debug) console.log(`[walk] in-repertoire prefix = ${i} ${i === 1 ? 'ply' : 'plies'}; first out-of-rep ply is ${firstOutIsUser ? 'USER' : 'OPPONENT'} ("${sans[i]}")`);
     if (!firstOutIsUser) {
         // Opponent's sound, book-leaving move — append as-is, advance to reply.
         if (!appendMove(sans[i])) return finalize();
@@ -323,16 +368,19 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
 
     // Close out the line at depth 1 from the chosen replacement user move.
     const closeOutLine = async (chosenSan: string): Promise<void> => {
+        if (debug) console.log(`[close-out] corrected user move: ${chosenSan}`);
         if (!appendMove(chosenSan)) return;
 
         const oppData = await getMasters(board.fen());
         const oppTop = oppData?.moves?.[0];
         if (!oppTop || !appendMove(oppTop.san)) return;
+        if (debug) console.log(`[close-out] opponent top reply: ${oppTop.san}`);
 
         const data2 = await getMasters(board.fen());
         if (!data2 || data2.moves.length === 0) return;
-        const scored2 = await scoreMastersMoves(board.fen(), data2, userWhite, resolveEvalAfterCp);
+        const scored2 = await scoreMastersMoves(board.fen(), data2, userWhite, resolveEvalAfterCp, debug);
         if (scored2.length === 0) return;
+        if (debug) console.log(`[close-out] best next user move: ${scored2[0].san}`);
         appendMove(scored2[0].san);
     };
 
@@ -351,20 +399,31 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         const mastersData = await getMasters(fenBefore);
         if (!mastersData || mastersData.moves.length === 0) break; // no master games — stop
 
-        const scored = await scoreMastersMoves(fenBefore, mastersData, userWhite, resolveEvalAfterCp);
+        const scored = await scoreMastersMoves(fenBefore, mastersData, userWhite, resolveEvalAfterCp, debug);
         if (scored.length === 0) break;
 
         const userUci = uciOf(fenBefore, sans[i]);
         const userScored = userUci ? scored.find(s => s.uci === userUci) : undefined;
 
+        if (debug) {
+            const userPct = userScored ? `${(userScored.score * 100).toFixed(1)}%` : 'not in Top-5';
+            const top5 = scored
+                .map(s => `${s.san}=${(s.score * 100).toFixed(1)}%${s.uci === userUci ? ' (user)' : ''}`)
+                .join('  ');
+            console.log(`[walk] user ply ${i} "${sans[i]}": ${userPct} (good bar ${(GOOD_SCORE_THRESHOLD * 100).toFixed(0)}%)`);
+            console.log(`       Top-5: ${top5}`);
+        }
+
         if (!userScored) {
             // (a) User's move is not in masters Top-5 — substitute + close out.
+            if (debug) console.log(`[walk] → (a) off-book: substitute ${scored[0].san}, close out at depth 1`);
             await closeOutLine(scored[0].san);
             break;
         }
 
         if (userScored.score >= GOOD_SCORE_THRESHOLD) {
             // (b)-good — accept the user's move, stay on the real game.
+            if (debug) console.log(`[walk] → (b)-good: keep user move ${sans[i]}, continue on the real game`);
             if (!appendMove(sans[i])) return finalize();
             i++;
             if (i < sans.length) {
@@ -381,6 +440,7 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         // user move would have been accepted above. Hence `find(uci !== userUci)`
         // yields the best (non-user) move — never the second-best.
         const replacement = scored.find(s => s.uci !== userUci) ?? scored[0];
+        if (debug) console.log(`[walk] → (b)-not-good: replace ${sans[i]} with ${replacement.san}, close out at depth 1`);
         await closeOutLine(replacement.san);
         break;
     }

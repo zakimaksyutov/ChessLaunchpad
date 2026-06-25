@@ -707,14 +707,19 @@ const GameRow: React.FC<GameRowProps> = ({
                                     </a>
                                 )}
                                 {suggestion?.status !== 'loading' && !hasDeviation && (
-                                    <a
-                                        className="analyze-opponent-link suggest-fix-link"
-                                        role="button"
-                                        onClick={() => onSuggestFix(record, userLower)}
-                                        title="Propose a line to add to your repertoire"
-                                    >
-                                        Suggest a fix
-                                    </a>
+                                    <>
+                                        {allowAnalyzeAction && !analyzeProgress && (
+                                            <span className="game-action-sep" aria-hidden="true">|</span>
+                                        )}
+                                        <a
+                                            className="analyze-opponent-link suggest-fix-link"
+                                            role="button"
+                                            onClick={() => onSuggestFix(record, userLower)}
+                                            title="Propose a line to add to your repertoire"
+                                        >
+                                            Suggest a fix
+                                        </a>
+                                    </>
                                 )}
                             </div>
                         )}
@@ -1600,6 +1605,10 @@ const GamesPage: React.FC = () => {
         const repertoireFens = userColor === 'white' ? fenSets.whiteFens : fenSets.blackFens;
         const sans = record.m.split(/\s+/).filter(Boolean);
 
+        // Grouped, one-shot console trace of every masters / cloud-eval request
+        // and the move-scoring values behind this suggestion (mirrors the
+        // Re-annotate debug log). The group is owned here so it always closes.
+        console.groupCollapsed(`[suggest-fix] ${record.p}/${record.id} — ${userColor}`);
         try {
             const result = await computeSuggestion({
                 sans,
@@ -1610,6 +1619,7 @@ const GamesPage: React.FC = () => {
                 masters,
                 cloudEvalCp,
                 signal,
+                debug: true,
             });
             if (signal.aborted) return;
             setSuggestionByKey(prev => new Map(prev).set(key, { status: 'ready', result }));
@@ -1621,6 +1631,7 @@ const GamesPage: React.FC = () => {
             if (suggestAbortByKeyRef.current.get(key) === abort) {
                 suggestAbortByKeyRef.current.delete(key);
             }
+            console.groupEnd();
             // Abort the per-click controller so composeSignals removes the
             // listener it attached to the long-lived pageAbortRef signal —
             // otherwise dead listeners accumulate across successful clicks

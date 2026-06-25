@@ -699,10 +699,13 @@
 
 /* ─── Suggest a fix ─── */
 
-/* Distinguish the "Suggest a fix" affordance from "Analyze opponent" while
-   reusing the inline-link base styling. */
-.suggest-fix-link {
-    color: #2e7d32;
+/* "Suggest a fix" reuses the blue inline-link styling of "Analyze opponent".
+   A thin separator divides the two actions: "Analyze opponent | Suggest a fix". */
+.game-action-sep {
+    margin-left: 0.5em;
+    color: #c9c9c9;
+    font-size: 0.78rem;
+    user-select: none;
 }
 
 .suggest-fix-result {
