@@ -17,7 +17,7 @@ import { lichessAuth } from '../services/LichessAuthService';
 import { exchangeLichessToken, LichessLoginError } from '../services/LichessAccountAuth';
 import { notifySessionExpired } from './SessionExpiredNotifier';
 
-export type AuthMode = 'password' | 'lichess';
+type AuthMode = 'password' | 'lichess';
 
 // localStorage keys. `username` + `hashedPassword` are the long-standing
 // password-account keys; the rest are added for Lichess sessions.

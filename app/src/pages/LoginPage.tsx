@@ -26,8 +26,8 @@ type LoginPageProps = {
     onLogin: (username: string) => void;
 };
 
-// Marks an in-progress "Sign in with Lichess" so the login can resume after
-// the full-page OAuth redirect to Lichess and back.
+// Single user-facing message for any Lichess sign-in failure or cancellation;
+// the spec intentionally avoids leaking specific causes.
 const LICHESS_GENERIC_ERROR = 'Could not sign in with Lichess. Please try again.';
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
