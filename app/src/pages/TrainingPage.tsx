@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import TrainingPageControl from '../components/TrainingPageControl';
 import { getSessionStore } from '../data/SessionStore';
 import { DataAccessError } from '../data/DataAccessLayer';
@@ -122,7 +122,11 @@ const TrainingPage: React.FC = () => {
 
     const hasContent = (repertoireData?.repertoires ?? []).some(r => Object.keys(r.positions).length > 0);
     if (!repertoireData || !hasContent) {
-        return <div>No variants available.</div>;
+        // Nothing to train yet. Training is meaningless without positions, and
+        // the dashboard owns every onboarding lead (Import PGN, Link account,
+        // Analyze games), so hand off there with a nudge instead of stranding
+        // the user on a dead-end message.
+        return <Navigate to="/" replace state={{ trainingRedirect: true }} />;
     }
 
     return (

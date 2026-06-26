@@ -147,7 +147,7 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
     await expect(board).toBeVisible({ timeout: 10_000 });
 
     await expect(page.locator('text=Error')).not.toBeVisible();
-    await expect(page.locator('text=No variants available')).not.toBeVisible();
+    await expect(page).toHaveURL(/#\/training$/);
   });
 
   test('teaching mode autoplays and waits for user moves', async ({ page }) => {
@@ -337,7 +337,7 @@ test.describe('Training page — one black variant (1. e4 e5)', () => {
     await expect(board).toBeVisible({ timeout: 10_000 });
 
     await expect(page.locator('text=Error')).not.toBeVisible();
-    await expect(page.locator('text=No variants available')).not.toBeVisible();
+    await expect(page).toHaveURL(/#\/training$/);
   });
 
   test('teaching mode autoplays opponent e4 then teaches user e5', async ({ page }) => {
