@@ -17,7 +17,6 @@ import { OpponentAnalysisResult } from '../models/OpponentAnalysis';
 import { buildRepertoireFenSets, RepertoireFenSets } from '../models/RepertoireFenSet';
 import { getExplorerEvals, ExplorerEvals } from '../models/ExplorerEvals';
 import { EvalDropCategory } from '../services/EvalDropService';
-import { getMeasurePerf } from '../utils/PerfUtils';
 import { useLichessAuth } from '../LichessAuthContext';
 import {
     AnnotatedMove,
@@ -924,9 +923,6 @@ const GamesPage: React.FC = () => {
         localStorage.setItem(filterKey, next);
     }, [filterKey]);
 
-    const measurePerf = useMemo(() => getMeasurePerf(), []);
-    const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
-
     const { ready: lichessAuthReady, connected: lichessConnected, token: lichessToken } = useLichessAuth();
     const [linkedAccounts, setLinkedAccountsState] = useState<LinkedAccount[]>(() => getLinkedAccounts());
 
@@ -947,7 +943,6 @@ const GamesPage: React.FC = () => {
                 const repertoireData = await dal.retrieveRepertoireData();
                 if (cancelled) return;
                 const sets = buildRepertoireFenSets(repertoireData.repertoires ?? []);
-                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: 'fenSets-ready', totalMs: Math.round(performance.now() - perfT0Ref.current), whiteFens: sets.whiteFens.size, blackFens: sets.blackFens.size })}`);
                 setData(repertoireData);
                 setFenSets(sets);
                 setLinkedAccountsState(getLinkedAccounts());
@@ -964,7 +959,6 @@ const GamesPage: React.FC = () => {
     useEffect(() => {
         getExplorerEvals()
             .then(ev => {
-                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: 'explorerEvals-ready', totalMs: Math.round(performance.now() - perfT0Ref.current) })}`);
                 setExplorerEvals(ev);
             })
             .catch(err => console.warn('Failed to load explorer evals:', err));
