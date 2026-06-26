@@ -2,6 +2,8 @@
 
 Captured examples from the `/games` "Suggest a fix" scorer (`GameSuggestionService.scoreMastersMoves`), used to evaluate and tune the move-scoring formula (`dGames¹ · dWin² · dEval²`).
 
+Each example here is exercised as a unit test in [`app/src/services/SuggestFixExamples.test.ts`](../app/src/services/SuggestFixExamples.test.ts): the raw rows are fed through the shared pure core `rankMoveStats` (the same function `scoreMastersMoves` uses) and the top move plus Algorithm 2 scores are asserted. Keep the two in sync when adding a position.
+
 Each entry is **one scored position**: its FEN, the PGN line that reaches it, then a **raw** masters-inputs table followed by one scored table per algorithm (named below). Tables are **sorted by number of games (descending)**. All columns are from the user's orientation.
 
 ## Algorithms
