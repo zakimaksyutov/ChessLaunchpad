@@ -58,3 +58,21 @@ export function isSyncThrottled(now: number = Date.now()): boolean {
     const last = getLastSyncAt();
     return last !== null && now - last < SYNC_THROTTLE_MS;
 }
+
+/**
+ * Forget the current user's throttle clock.
+ *
+ * Called from the logout / delete-account teardown so the stamp doesn't leak
+ * across sessions. This matters most for delete-then-re-login with the same
+ * Lichess account: the app username (and therefore the throttle key) is
+ * identical, so without this the fresh account would be wrongly throttled and
+ * skip its first auto game-sync. Must run while `username` is still in
+ * localStorage (i.e. before `clearStoredSession`).
+ */
+export function clearSyncThrottle(): void {
+    try {
+        localStorage.removeItem(storageKey());
+    } catch {
+        // Best-effort — nothing persisted means nothing to clear.
+    }
+}
