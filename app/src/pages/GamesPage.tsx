@@ -21,6 +21,7 @@ import { useLichessAuth } from '../LichessAuthContext';
 import {
     AnnotatedMove,
     GameAnnotation,
+    gameAnnotationHasIssue,
 } from '../services/GameAnnotationService';
 import {
     annotateRecordFromFrozen,
@@ -133,17 +134,6 @@ function filterEmptyMessage(
         case 'all':
             return 'No games to show.';
     }
-}
-
-/** True when a game annotation contains a repertoire deviation or an EOT eval-drop issue. */
-function gameRowHasIssue(ann: GameAnnotation): boolean {
-    if (ann.deviation != null) return true;
-    for (const m of ann.moves) {
-        if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
-            return true;
-        }
-    }
-    return false;
 }
 
 const SyncStatusIndicator: React.FC<{
@@ -562,7 +552,7 @@ const GameRow: React.FC<GameRowProps> = ({
 
     const hasDeviation = annotation?.deviation != null;
     // A "mistake" row — has a deviation or an EOT eval-drop. Mirrors
-    // `gameRowHasIssue`. Only mistake rows offer the reviewed toggle.
+    // `gameAnnotationHasIssue`. Only mistake rows offer the reviewed toggle.
     const isMistake = hasDeviation || eotSummary !== null;
     const tileClass = hasDeviation
         ? ' game-row-deviation'
@@ -1173,7 +1163,7 @@ const GamesPage: React.FC = () => {
                 const key = `${row.record.p}:${row.record.id}`;
                 const ann = annotationByKey.get(key);
                 if (!ann) continue; // unannotated ≠ a counted game
-                if (gameRowHasIssue(ann)) {
+                if (gameAnnotationHasIssue(ann)) {
                     if (row.record.rv === 1) reviewed++;
                     else unreviewed++;
                 } else {
@@ -1202,7 +1192,7 @@ const GamesPage: React.FC = () => {
                 visible.push(row);
                 continue;
             }
-            const issue = gameRowHasIssue(ann);
+            const issue = gameAnnotationHasIssue(ann);
             const reviewed = row.record.rv === 1;
             const show =
                 gameFilter === 'mistakes' ? issue

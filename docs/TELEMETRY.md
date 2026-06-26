@@ -24,5 +24,6 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `OpponentAnalysisComplete` | Opponent analysis run finishes successfully. |
 | `FixSuggested` | A suggested fix line is produced for a deviation. |
 | `SuggestedLineAdded` | User clicks "Add to repertoire" on a suggested fix. |
+| `DashboardView` | Dashboard page loads (logged-in home). |
 
 `OpponentAnalysisStart` and `OpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).
