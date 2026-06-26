@@ -159,6 +159,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleReset = () => {
+        trackEvent('SettingsReset');
         setContextDepth(2);
         setPresetId(DEFAULT_RETENTION_PRESET);
         setLinkedAccountsDraft([]);
@@ -219,6 +220,47 @@ const SettingsPage: React.FC = () => {
             const blobForSave = RepertoireDataUtils.prepareDataForSave(current);
 
             await dal.storeRepertoireData(blobForSave);
+
+            // Telemetry: report only the settings that actually changed in this
+            // save. Account deltas are a net diff of committed vs draft, so an
+            // add-then-remove of the same account within one unsaved session
+            // reports nothing. Read the committed values here, before the
+            // in-memory mutations below overwrite them.
+            const settingsSavedProps: Record<string, string | number> = {};
+            if (contextDepth !== TrainingEngine.getContextDepth()) {
+                settingsSavedProps.ContextDepth = contextDepth;
+            }
+            if (presetId !== committedPresetId) {
+                settingsSavedProps.ReviewIntensity = presetId;
+            }
+            const committedAccountKeys = new Set(
+                getLinkedAccounts().map(a => getAccountKey(a.platform, a.username)),
+            );
+            const draftAccountKeys = new Set(
+                linkedAccounts.map(a => getAccountKey(a.platform, a.username)),
+            );
+            const addedAccounts = linkedAccounts.filter(
+                a => !committedAccountKeys.has(getAccountKey(a.platform, a.username)),
+            );
+            const removedAccounts = getLinkedAccounts().filter(
+                a => !draftAccountKeys.has(getAccountKey(a.platform, a.username)),
+            );
+            const countByPlatform = (accounts: LinkedAccount[], platform: Platform) =>
+                accounts.filter(a => a.platform === platform).length;
+            if (countByPlatform(addedAccounts, 'lichess')) {
+                settingsSavedProps.AddedLichess = countByPlatform(addedAccounts, 'lichess');
+            }
+            if (countByPlatform(addedAccounts, 'chess.com')) {
+                settingsSavedProps.AddedChessCom = countByPlatform(addedAccounts, 'chess.com');
+            }
+            if (countByPlatform(removedAccounts, 'lichess')) {
+                settingsSavedProps.RemovedLichess = countByPlatform(removedAccounts, 'lichess');
+            }
+            if (countByPlatform(removedAccounts, 'chess.com')) {
+                settingsSavedProps.RemovedChessCom = countByPlatform(removedAccounts, 'chess.com');
+            }
+            settingsSavedProps.TotalLinked = linkedAccounts.length;
+            trackEvent('SettingsSaved', settingsSavedProps);
 
             // Apply draft to in-memory services only after save succeeds
             TrainingEngine.setContextDepth(contextDepth);
