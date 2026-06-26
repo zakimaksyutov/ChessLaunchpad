@@ -23,6 +23,15 @@ import { MastersPositionResult } from './MastersExplorerService';
 /** dWin softmax temperature over win-margin (win% − loss%, user orientation). */
 export const WIN_TAU = 0.25;
 
+/**
+ * Win-margin shrinkage pseudo-count (phantom games played at the prior margin).
+ * Before the dWin softmax, each move's raw win-margin is pulled toward the
+ * games-weighted population mean by this many phantom games, so a tiny-sample
+ * 100% can't dominate a popular mainline. Large samples are essentially
+ * unaffected — the weight on the raw margin is games/(games + K).
+ */
+export const WIN_MARGIN_SHRINKAGE_K = 50;
+
 /** Per-dimension weights (exponents) for dGames¹ · dWin² · dEval². */
 export const SCORE_WEIGHTS = { games: 1, win: 2, eval: 2 } as const;
 
@@ -280,8 +289,15 @@ export async function scoreMastersMoves(
     if (rows.length === 0) return [];
 
     const sumGames = rows.reduce((a, r) => a + r.games, 0);
-    const maxMargin = Math.max(...rows.map(r => r.margin));
-    const winExp = rows.map(r => Math.exp((r.margin - maxMargin) / WIN_TAU));
+    // Bayesian shrinkage: pull each move's win-margin toward the games-weighted
+    // population mean by K phantom games, so a noisy tiny-sample margin (e.g. a
+    // 3-game 100%) collapses toward the average and can't out-softmax a popular
+    // mainline. Large samples barely move (weight on raw margin = games/(games+K)).
+    const priorMargin = rows.reduce((a, r) => a + r.games * r.margin, 0) / (sumGames || 1);
+    const shrunkMargin = rows.map(
+        r => (r.games * r.margin + WIN_MARGIN_SHRINKAGE_K * priorMargin) / (r.games + WIN_MARGIN_SHRINKAGE_K));
+    const maxMargin = Math.max(...shrunkMargin);
+    const winExp = shrunkMargin.map(m => Math.exp((m - maxMargin) / WIN_TAU));
     const sumWin = winExp.reduce((a, b) => a + b, 0) || 1;
     const sumEvES = rows.reduce((a, r) => a + r.evES, 0) || 1;
 
@@ -300,6 +316,7 @@ export async function scoreMastersMoves(
                 move: r.san,
                 games: r.games,
                 'margin%': +(r.margin * 100).toFixed(1),
+                'shrunk%': +(shrunkMargin[i] * 100).toFixed(1),
                 evalCp: r.evalCp,
                 dGames: +dims[i].dG.toFixed(3),
                 dWin: +dims[i].dW.toFixed(3),

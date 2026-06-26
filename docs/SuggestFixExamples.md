@@ -2,7 +2,19 @@
 
 Captured examples from the `/games` "Suggest a fix" scorer (`GameSuggestionService.scoreMastersMoves`), used to evaluate and tune the move-scoring formula (`dGames¹ · dWin² · dEval²`).
 
-Each entry is **one scored position**: its FEN, the PGN line that reaches it, then three tables — the **raw** masters inputs, the **current** algorithm's scores, and the **proposed** algorithm's scores. Tables are **sorted by number of games (descending)**. All columns are from the user's orientation.
+Each entry is **one scored position**: its FEN, the PGN line that reaches it, then a **raw** masters-inputs table followed by one scored table per algorithm (named below). Tables are **sorted by number of games (descending)**. All columns are from the user's orientation.
+
+## Algorithms
+
+All algorithms share the same shape: per-candidate dimensions are combined as `score ∝ dGames¹ · dWin² · dEval²`, then normalized so the Top-5 sum to 100%. `dGames` = share of master games; `dEval` = normalized logistic of the eval-after (user POV); `dWin` = softmax (τ=0.25) over a win-margin term. The algorithms differ **only** in that win-margin term.
+
+### Algorithm 1 — Raw margin (current)
+
+`dWin` softmaxes the raw win-margin `(wins − losses) / games` directly.
+
+### Algorithm 2 — Shrinkage
+
+`dWin` softmaxes a **shrunk** margin `(games · margin + K · m0) / (games + K)`, with `K = 50` and prior `m0` = the games-weighted mean margin of the Top-5. Small samples collapse toward `m0`; large samples are essentially unchanged.
 
 ---
 
@@ -22,9 +34,7 @@ Each entry is **one scored position**: its FEN, the PGN line that reaches it, th
 | e5   | 3     | 0       | 63     |
 | a4   | 2     | 50      | 52     |
 
-### Current algorithm
-
-`score ∝ dGames¹ · dWin² · dEval²`, where `dWin` is a softmax (τ=0.25) over the **raw** win-margin.
+### Algorithm 1
 
 | move | dGames | dWin  | dEval | score% |
 |------|--------|-------|-------|--------|
@@ -36,9 +46,7 @@ Each entry is **one scored position**: its FEN, the PGN line that reaches it, th
 
 `h3` wins on a 3-game 100% win-margin despite `Nf3` having 154 games — small-sample win-margin domination.
 
-### Proposed algorithm (Bayesian shrinkage)
-
-Same `dGames¹ · dWin² · dEval²`, but `dWin` softmaxes a **shrunk** margin `(games·margin + K·m0)/(games + K)` (K=50, prior `m0` = 22.4% = games-weighted mean) so small samples collapse toward the average.
+### Algorithm 2
 
 | move | shrunk margin% | dGames | dWin  | dEval | score% |
 |------|----------------|--------|-------|-------|--------|
