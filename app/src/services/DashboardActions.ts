@@ -94,7 +94,7 @@ export function buildDashboardActions(input: DashboardActionInput): DashboardAct
         // Once a mistake exists, "Review opening mistakes" is self-explanatory.
         if (input.dueNow === 0 && input.mistakeGames === 0) {
             reviewGames.why =
-                'We replay each game against your repertoire to find where you left your prep — the opening mistakes worth drilling.';
+                'We check your recent games for opening mistakes and suggest lines to add — the quickest way to grow a repertoire from games you\'ve actually played.';
         }
         actions.push(reviewGames);
     }
