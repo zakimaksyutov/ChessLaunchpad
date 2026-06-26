@@ -7,7 +7,7 @@
 // Top-5 and either accepts a good user move (staying on the real game) or
 // substitutes a better one and closes the line out at depth 1.
 //
-// See docs/product-specs/GAMES-SUGGESTION.md for the full specification.
+// See docs/product-specs/GAMES.md §"Repertoire Suggestion" for the product spec.
 // ---------------------------------------------------------------------------
 
 import { Chess } from 'chess.js';
@@ -17,7 +17,7 @@ import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
 import { MastersPositionResult } from './MastersExplorerService';
 
 // ---------------------------------------------------------------------------
-// Scoring constants (match GAMES-SUGGESTION.md §"Move-scoring")
+// Scoring constants for the move-scoring step (dGames¹ · dWin² · dEval²).
 // ---------------------------------------------------------------------------
 
 /** dWin softmax temperature over win-margin (win% − loss%, user orientation). */
