@@ -10,11 +10,11 @@ Each entry is **one scored position**: its FEN, the PGN line that reaches it, th
 
 All algorithms share the same shape: per-candidate dimensions are combined as `score ∝ dGames¹ · dWin² · dEval²`, then normalized so the Top-5 sum to 100%. `dGames` = share of master games; `dEval` = normalized logistic of the eval-after (user POV); `dWin` = softmax (τ=0.25) over a win-margin term. The algorithms differ **only** in that win-margin term.
 
-### Algorithm 1 — Raw margin (current)
+### Algorithm 1 — Raw margin
 
-`dWin` softmaxes the raw win-margin `(wins − losses) / games` directly.
+`dWin` softmaxes the raw win-margin `(wins − losses) / games` directly. This was the original scorer, kept here for comparison.
 
-### Algorithm 2 — Shrinkage
+### Algorithm 2 — Shrinkage (current)
 
 `dWin` softmaxes a **shrunk** margin `(games · margin + K · m0) / (games + K)`, with `K = 50` and prior `m0` = the games-weighted mean margin of the Top-5. Small samples collapse toward `m0`; large samples are essentially unchanged.
 
