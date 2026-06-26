@@ -10,5 +10,6 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `UserLogin` | Successful sign-in to an existing account (password or Lichess). |
 | `UserSignUp` | Successful account creation (password or Lichess). |
 | `UserLogout` | User logs out. |
+| `UserDelete` | User permanently deletes their account. |
 
 None of these events carry custom properties.

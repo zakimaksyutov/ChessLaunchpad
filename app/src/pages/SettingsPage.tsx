@@ -20,6 +20,7 @@ import { RepertoireData } from '../models/RepertoireData';
 import { getSessionStore, clearSessionStore } from '../data/SessionStore';
 import { isLichessSession, loadSession } from '../data/AuthSession';
 import { clearClientSessionKeys } from '../services/SessionTeardown';
+import { trackEvent } from '../AppInsights';
 import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
@@ -354,6 +355,8 @@ const SettingsPage: React.FC = () => {
             setDeleting(false);
             return;
         }
+
+        trackEvent("UserDelete");
 
         // Account is gone on the backend — tear down the client session and
         // send the user back to the landing page, fully logged out. We have no
