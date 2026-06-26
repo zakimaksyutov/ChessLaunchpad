@@ -1,8 +1,7 @@
 # Dashboard Actions Tile — Product Specification
 
-> Status: **proposed** (not yet implemented). Describes intended
-> behavior. Supersedes the standalone "Start Training" call-to-action
-> described in [`DASHBOARD.md`](./DASHBOARD.md) §1.5.
+> Status: **implemented**. Supersedes the standalone "Start Training"
+> call-to-action described in [`DASHBOARD.md`](./DASHBOARD.md) §1.5.
 
 ## Overview
 

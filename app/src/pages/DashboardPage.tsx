@@ -500,14 +500,14 @@ const PrimaryAction: React.FC<{
                     className="action-why-btn action-why-btn--ondark"
                     aria-expanded={open}
                     aria-controls={panelId}
-                    aria-label={open ? 'Hide explanation' : 'Why this action?'}
+                    aria-label={open ? `Hide explanation for ${action.label}` : `Why ${action.label}?`}
                     title={open ? 'Hide explanation' : 'Why this action?'}
                     onClick={() => setOpen(o => !o)}
                 >
                     <LightbulbIcon />
                 </button>
             </div>
-            {open && <p id={panelId} className="action-why-text">{action.why}</p>}
+            <p id={panelId} className="action-why-text" hidden={!open}>{action.why}</p>
         </div>
     );
 };
@@ -524,7 +524,7 @@ const SecondaryAction: React.FC<{
                 <button type="button" className="action-row-main" onClick={() => onSelect(action.route)}>
                     <span className="action-icon" aria-hidden="true">{action.icon}</span>
                     <span className="action-label">{action.label}</span>
-                    {!action.why && <span className="action-arrow" aria-hidden="true">→</span>}
+                    <span className="action-arrow" aria-hidden="true">→</span>
                 </button>
                 {action.why && (
                     <button
@@ -532,7 +532,7 @@ const SecondaryAction: React.FC<{
                         className="action-why-btn"
                         aria-expanded={open}
                         aria-controls={panelId}
-                        aria-label={open ? 'Hide explanation' : 'Why this action?'}
+                        aria-label={open ? `Hide explanation for ${action.label}` : `Why ${action.label}?`}
                         title={open ? 'Hide explanation' : 'Why this action?'}
                         onClick={() => setOpen(o => !o)}
                     >
@@ -540,7 +540,7 @@ const SecondaryAction: React.FC<{
                     </button>
                 )}
             </div>
-            {open && <p id={panelId} className="action-why-text">{action.why}</p>}
+            {action.why && <p id={panelId} className="action-why-text" hidden={!open}>{action.why}</p>}
         </div>
     );
 };
@@ -590,6 +590,7 @@ const ActionsTile: React.FC<{
                                 className="action-import"
                                 onClick={() => onImport(color)}
                                 disabled={importing !== null}
+                                aria-busy={busy}
                                 title={`Import a ${label} repertoire from a PGN file`}
                             >
                                 <span className="action-import-icon" aria-hidden="true">

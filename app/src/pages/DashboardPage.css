@@ -75,7 +75,7 @@
     border-color: #bbb;
 }
 
-/* Main (navigating) part of a row — fills the row left of any "?" segment. */
+/* Main (navigating) part of a row — fills the row left of any 💡 segment. */
 .action-row-main {
     flex: 1;
     display: flex;
@@ -111,9 +111,10 @@
 }
 
 /*
- * "Why this action?" — an opt-in onboarding rationale. The trigger is a "?"
- * segment fused onto the right edge of the action (a sibling button, so the two
- * click targets stay valid HTML); clicking it expands the explanation below.
+ * "Why this action?" — an opt-in onboarding rationale. The trigger is a 💡
+ * lightbulb segment fused onto the right edge of the action (a sibling button,
+ * so the two click targets stay valid HTML); clicking it expands the
+ * explanation below.
  */
 .action-group {
     display: flex;
@@ -121,7 +122,7 @@
     gap: 0.4rem;
 }
 
-/* Primary CTA split into a label part + "?" segment. */
+/* Primary CTA split into a label part + 💡 segment. */
 .action-primary--split {
     padding: 0;
     gap: 0;
@@ -148,7 +149,7 @@
 }
 
 .action-primary-main:hover {
-    background: rgba(0, 0, 0, 0.10);
+    background: var(--cta-green-hover);
 }
 
 .action-why-btn {
@@ -199,7 +200,7 @@
 .actions-empty {
     margin: 0;
     text-align: center;
-    color: #4caf50;
+    color: #2e7d32;
     font-weight: 600;
 }
 
@@ -216,12 +217,11 @@
 }
 
 .action-import {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
-    min-width: 0;
     padding: 0.45rem 0.75rem;
     font-size: 0.85rem;
     color: #666;
@@ -260,6 +260,26 @@
 
 .actions-import-toast--error {
     color: #c62828;
+}
+
+/*
+ * Keyboard focus rings — match the app-wide convention
+ * (outline: 2px solid rgb(0,130,210)). Controls nested inside the
+ * overflow:hidden split containers (.action-primary--split, .action-row) use an
+ * inset (-2px) offset so the ring isn't clipped; standalone controls use the
+ * usual outset offset.
+ */
+.action-primary:focus-visible,
+.action-import:focus-visible {
+    outline: 2px solid rgb(0, 130, 210);
+    outline-offset: 2px;
+}
+
+.action-primary-main:focus-visible,
+.action-row-main:focus-visible,
+.action-why-btn:focus-visible {
+    outline: 2px solid rgb(0, 130, 210);
+    outline-offset: -2px;
 }
 
 /* Widget Grid */

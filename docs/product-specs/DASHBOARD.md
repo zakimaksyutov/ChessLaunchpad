@@ -60,7 +60,10 @@ A reverse-chronological timeline grouped by date (inspired by Lichess profile ac
 
 ### 1.5 Call to Action
 
-- Prominent "Start Training" button, especially when cards are due.
+> **Superseded.** The standalone "Start Training" button has been replaced by
+> the context-aware Actions tile — see
+> [`DASHBOARD-ACTIONS.md`](./DASHBOARD-ACTIONS.md). Start Training remains the
+> primary action within that tile when cards are due.
 
 ---
 
