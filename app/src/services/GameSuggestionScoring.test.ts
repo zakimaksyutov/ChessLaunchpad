@@ -6,7 +6,7 @@ import { rankMoveStats, MoveStat } from './GameSuggestionService';
 // stats in → ranked moves out, with no chess.js / FEN / eval I/O. This is the
 // exact function `scoreMastersMoves` delegates to, so these lock the ranking
 // behavior at the algorithm level. Position-specific captured examples live in
-// SuggestFixExamples.test.ts (paired with docs/SuggestFixExamples.md).
+// SuggestFixContractTests.test.ts (paired with docs/SuggestFixExamples.md).
 // ---------------------------------------------------------------------------
 
 /** Convenience: the input index of the best-scoring move. */
