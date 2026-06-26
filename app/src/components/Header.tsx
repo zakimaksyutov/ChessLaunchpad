@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { setLinkedAccounts } from '../services/LinkedAccountsService';
 import { PendingEditNotifier } from '../services/PendingEditNotifier';
-import { loadSession, clearStoredSession } from '../data/AuthSession';
+import { clearClientSessionKeys } from '../services/SessionTeardown';
 import { useLichessAuth } from '../LichessAuthContext';
 import './Header.css';  // Import the CSS file
 
@@ -82,13 +81,6 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
         // Close the dropdown (otherwise it would be autoshown after next login)
         setIsDropdownOpen(false);
 
-        // Capture the session mode before we clear it: a Lichess-login session
-        // must also disconnect (revoke) the underlying Lichess OAuth
-        // connection, since for a Lichess login that connection *is* the
-        // sign-in. A password account that merely linked Lichess in Settings
-        // keeps its connection.
-        const session = loadSession();
-
         // Game records live on the synced repertoire blob — no on-device
         // game cache survives logout. Any leftover legacy localStorage
         // sync-watermark keys from before the games-refactor are harmless
@@ -96,15 +88,15 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
         // `data.games[*].watermarkMs`); the boot-time IDB cleanup also
         // sweeps the retired stores.
 
-        // Reset the in-memory LinkedAccountsService cache so a subsequent
-        // login as a different user does not inherit the previous user's
-        // accounts before normalize() runs.
-        setLinkedAccounts([]);
+        // Reset the LinkedAccountsService cache + clear every persisted
+        // session key. The returned mode is captured *before* the clear: a
+        // Lichess-login session must also disconnect (revoke) the underlying
+        // Lichess OAuth connection, since for a Lichess login that connection
+        // *is* the sign-in. A password account that merely linked Lichess in
+        // Settings keeps its connection.
+        const mode = clearClientSessionKeys();
 
-        // Clear all persisted session keys (username/password or Lichess).
-        clearStoredSession();
-
-        if (session?.mode === 'lichess') {
+        if (mode === 'lichess') {
             void lichessOAuthLogout();
         }
 

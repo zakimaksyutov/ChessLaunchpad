@@ -295,6 +295,46 @@ describe("SessionStore", () => {
         });
     });
 
+    it("deleteAccount issues DELETE /user/{id} with the session Authorization header", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-warm"))
+            .mockResolvedValueOnce(
+                new Response("User 'alice' has been successfully deleted.", { status: 200 }),
+            );
+        const store = new SessionStore("alice", "pw");
+        await store.getSnapshot();
+
+        await expect(store.deleteAccount()).resolves.toBeUndefined();
+
+        const [url, init] = fetchMock.mock.calls[1];
+        expect(url).toMatch(/\/user\/alice$/);
+        expect(init?.method).toBe("DELETE");
+        expect((init?.headers as any).Authorization).toBe("pw");
+    });
+
+    it("deleteAccount treats 404 as success (account already gone)", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-warm"))
+            .mockResolvedValueOnce(errorResponse(404, "User 'alice' does not exist."));
+        const store = new SessionStore("alice", "pw");
+        await store.getSnapshot();
+
+        await expect(store.deleteAccount()).resolves.toBeUndefined();
+    });
+
+    it("deleteAccount throws DataAccessError on a non-404 error", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-warm"))
+            .mockResolvedValueOnce(errorResponse(500, "boom"));
+        const store = new SessionStore("alice", "pw");
+        await store.getSnapshot();
+
+        await expect(store.deleteAccount()).rejects.toMatchObject({ statusCode: 500 });
+    });
+
     it("createDataAccessProxyLayer returns a proxy populated from the cache", async () => {
         const data = makeData();
         fetchMock.mockResolvedValueOnce(jsonGetResponse(data, "etag-1"));

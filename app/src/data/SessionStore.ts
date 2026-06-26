@@ -257,6 +257,31 @@ export class SessionStore {
     }
 
     /**
+     * Permanently delete the backend account (and all its data) via
+     * `DELETE /user/{userId}`.
+     *
+     * Goes through {@link authorizedFetch} so the request carries the
+     * session-appropriate `Authorization` header — `<password>` for
+     * password accounts, `Bearer <jwt>` for Lichess sessions — and gets the
+     * one-shot 401 re-exchange. A `404` is treated as success: the account is
+     * already gone, which is the desired end state, so the caller can proceed
+     * to log the user out either way.
+     */
+    public async deleteAccount(): Promise<void> {
+        const response = await this.authorizedFetch(
+            `${this.ApiEndpointUri}/${this.username}`,
+            {
+                method: "DELETE",
+                signal: this.disposeController.signal,
+            },
+        );
+        if (!response.ok && response.status !== 404) {
+            const msg = await response.text();
+            throw new DataAccessError(msg, response.status);
+        }
+    }
+
+    /**
      * Resolves once the cache is populated. Throws on fetch failure;
      * callers can re-invoke to retry.
      *

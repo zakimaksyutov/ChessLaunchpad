@@ -76,7 +76,6 @@ yarn dev
   - `product-specs/DASHBOARD.md` — Dashboard page product specification
   - `product-specs/EXPLORER.md` — Explorer page (`/explorer`) product specification
   - `product-specs/FSRS-LIST.md` — FSRS card list diagnostic page (`/fsrs`) product specification
-  - `product-specs/LICHESS-LOGIN.md` — Lichess account sign-in product specification
 
 ## Backend API
 
