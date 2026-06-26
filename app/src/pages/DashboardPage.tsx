@@ -357,8 +357,7 @@ const ActionsTile: React.FC<{
                 className="action-primary"
                 onClick={() => onSelect(primary.route)}
             >
-                <span className="action-icon" aria-hidden="true">{primary.icon}</span>
-                <span>{primary.label}</span>
+                {primary.label}
             </button>
             {rest.length > 0 && (
                 <div className="actions-list">
