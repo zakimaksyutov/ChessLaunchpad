@@ -385,3 +385,108 @@ export async function setupMockChesscom(
     armNext: (games) => { armed = games; },
   };
 }
+
+// ── Lichess OAuth token ──────────────────────────────────────────────
+
+/**
+ * Seed a restored Lichess OAuth token so the app boots already "connected"
+ * (no redirect dance). `LichessAuthService` restores its token through
+ * `@bity/oauth2-auth-code-pkce`, which recovers its state from
+ * `localStorage["oauth2authcodepkce-state"]` on construction. We hand it a
+ * pre-exchanged access token with a far-future expiry so `getAccessToken()`
+ * resolves synchronously without hitting the network.
+ *
+ * Runs as an `addInitScript` so it lands before the app bundle (and the
+ * `lichessAuth` singleton) loads, and persists across `page.goto()` reloads.
+ */
+export async function setupLichessToken(page: Page, token = 'test-lichess-token') {
+  await page.addInitScript((accessToken: string) => {
+    const state = {
+      accessToken: {
+        value: accessToken,
+        // Far-future so `isAccessTokenExpired()` is false.
+        expiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toString(),
+      },
+      authorizationCode: 'test-auth-code',
+      hasAuthCodeBeenExchangedForAccessToken: true,
+      scopes: [],
+    };
+    localStorage.setItem('oauth2authcodepkce-state', JSON.stringify(state));
+  }, token);
+}
+
+// ── Masters opening-explorer mock ────────────────────────────────────
+
+export interface MastersMockMove {
+  san: string;
+  white: number;
+  draws: number;
+  black: number;
+}
+
+export interface MastersMock {
+  /** Number of masters requests intercepted so far. */
+  callCount: () => number;
+  /** The 4-field FEN cache keys queried so far, in order. */
+  queriedKeys: () => string[];
+}
+
+/** Piece-placement + side + castling + en-passant (drops the move clocks). */
+function mastersKey(fen: string): string {
+  return fen.split(' ').slice(0, 4).join(' ');
+}
+
+/**
+ * Intercept `explorer.lichess.org/masters` and serve canned Top-N move stats
+ * keyed by FEN. `byKey` maps a 4-field FEN cache key (see `mastersKey`) to the
+ * moves to return; positions absent from the map return an empty result (the
+ * "no master games" branch the suggestion walk stops on). The shape mirrors the
+ * fields `parseApiResponse` reads (`moves[].{san,white,draws,black}`).
+ */
+export async function setupMockMasters(
+  page: Page,
+  byKey: Record<string, MastersMockMove[]>,
+): Promise<MastersMock> {
+  let calls = 0;
+  const queried: string[] = [];
+
+  await page.route(/^https:\/\/explorer\.lichess\.org\/masters/, async (route) => {
+    calls += 1;
+    const fen = new URL(route.request().url()).searchParams.get('fen') ?? '';
+    const key = mastersKey(fen);
+    queried.push(key);
+    const moves = byKey[key] ?? [];
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ white: 0, draws: 0, black: 0, moves }),
+    });
+  });
+
+  return {
+    callCount: () => calls,
+    queriedKeys: () => queried,
+  };
+}
+
+// ── Lichess cloud-eval mock ──────────────────────────────────────────
+
+export interface CloudEvalMock {
+  /** Number of cloud-eval requests intercepted so far. */
+  callCount: () => number;
+}
+
+/**
+ * Intercept `lichess.org/api/cloud-eval` and return HTTP 404 for every
+ * position — the authoritative "no cloud eval" signal that maps to the
+ * suggestion scorer's eval-missing fallback (so scoring is driven purely by
+ * the mocked masters games/win stats, no per-candidate eval to control).
+ */
+export async function setupMockCloudEval(page: Page): Promise<CloudEvalMock> {
+  let calls = 0;
+  await page.route(/^https:\/\/lichess\.org\/api\/cloud-eval/, async (route) => {
+    calls += 1;
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+  return { callCount: () => calls };
+}
