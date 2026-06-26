@@ -347,6 +347,84 @@
   color: #b7c2d0;
 }
 
+/* ── Danger Zone (account deletion) ── */
+.danger-zone {
+  margin-top: 1.5rem;
+  border: 1px solid #f3b4b4;
+  border-top: 4px solid #d32f2f;
+}
+
+.danger-zone h1 {
+  color: #b3261e;
+}
+
+.danger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.danger-actions button {
+  padding: 0.5rem 1.25rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.danger-actions .secondary {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.danger-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.danger-button {
+  background-color: #d32f2f;
+  color: #fff;
+  font-weight: 600;
+}
+
+.danger-button:hover:not(:disabled) {
+  background-color: #b3261e;
+}
+
+.danger-confirm {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: #fff5f5;
+  border: 1px solid #f3b4b4;
+  border-radius: 6px;
+}
+
+.danger-confirm-warning {
+  margin: 0 0 0.75rem;
+  color: #8a1c1c;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.danger-confirm-warning code {
+  overflow-wrap: anywhere;
+}
+
+.danger-confirm-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d99; /* picks up the danger context */
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.danger-confirm-input:focus {
+  outline: none;
+  border-color: #d32f2f;
+  box-shadow: 0 0 0 2px rgba(211, 47, 47, 0.18);
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .settings-page {
@@ -394,6 +472,15 @@
   }
 
   .cache-info button {
+    width: 100%;
+    text-align: center;
+  }
+
+  .danger-actions {
+    flex-direction: column;
+  }
+
+  .danger-actions button {
     width: 100%;
     text-align: center;
   }

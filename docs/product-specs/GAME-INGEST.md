@@ -104,6 +104,8 @@ A game that produces no rating matches is still considered processed: it advance
 
 **First-run notes:** backfilled games older than 5 days populate records/heatmap only — never replayed into FSRS (so no past-dated reviews when an established user links a second account). A failed first-run fetch writes no state, so the backfill retries next run.
 
+**On first Lichess sign-in:** creating an account via *Sign in with Lichess* auto-seeds Linked Accounts with that Lichess account, so the user's own games ingest with no manual entry. This happens **only at account creation**; thereafter it is an ordinary, fully removable linked account, and removing it in Settings keeps it removed (no silent re-add on later logins).
+
 **On account unlink:**
 - The `games[${platform}:${user}]` entry is removed from the blob — next ingest starts fresh.
 - Stored `GameRecord` entries whose `wa` / `ba` matches the unlinked account are purged from every day's `practiceLog[].games.records`. Per-day counters (`ingested` / `reviewed` / `mistakes`) are left intact — historical activity remains visible on the Dashboard.

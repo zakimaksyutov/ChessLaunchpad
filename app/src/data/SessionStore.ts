@@ -6,6 +6,11 @@ import { composeSignals } from "../utils/composeSignals";
 import { DataAccessError } from "./DataAccessLayer";
 import { DataAccessProxyLayer } from "./DataAccessProxyLayer";
 import { notifyConflict } from "./ConflictNotifier";
+import {
+    AuthCredential,
+    PasswordCredential,
+    loadCredentialFromStorage,
+} from "./AuthSession";
 
 /**
  * Session-scoped, per-user cache of `(RepertoireData, etag)` that sits in
@@ -59,11 +64,23 @@ export class SessionStore {
     private readonly disposeController = new AbortController();
     private disposed = false;
 
+    /**
+     * Credential used to authorize every backend request. A bare string is
+     * accepted (and wrapped as a {@link PasswordCredential}) so the long-
+     * standing `(username, password)` construction keeps working; Lichess
+     * sessions pass a {@link LichessCredential} that can re-exchange an
+     * expired backend JWT on a 401.
+     */
+    private readonly credential: AuthCredential;
+
     constructor(
         private readonly username: string,
-        private readonly password: string,
+        credential: string | AuthCredential,
     ) {
-        if (!this.username || !this.password) {
+        this.credential = typeof credential === 'string'
+            ? new PasswordCredential(credential)
+            : credential;
+        if (!this.username || !this.credential.getAuthorization()) {
             throw new DataAccessError("No valid user session.");
         }
         // Eagerly fetch so the first page after login finds a warm cache.
@@ -158,12 +175,11 @@ export class SessionStore {
         const composedSignal = signal
             ? composeSignals(signal, this.disposeController.signal)
             : this.disposeController.signal;
-        const response = await fetch(
+        const response = await this.authorizedFetch(
             `${this.ApiEndpointUri}/${this.username}/variants`,
             {
                 method: "PUT",
                 headers: {
-                    "Authorization": this.password,
                     "Content-Type": "application/json",
                     "If-Match": etag,
                 },
@@ -220,11 +236,10 @@ export class SessionStore {
      * be substituted.
      */
     public async importBlob(data: RepertoireData): Promise<void> {
-        const getResponse = await fetch(
+        const getResponse = await this.authorizedFetch(
             `${this.ApiEndpointUri}/${this.username}/variants`,
             {
                 method: "GET",
-                headers: { "Authorization": this.password },
                 signal: this.disposeController.signal,
             },
         );
@@ -239,6 +254,31 @@ export class SessionStore {
         // `save` updates the cache as a side effect. Discard its etag
         // so callers can't accidentally rely on it (importBlob is `void`).
         await this.save(data, freshEtag);
+    }
+
+    /**
+     * Permanently delete the backend account (and all its data) via
+     * `DELETE /user/{userId}`.
+     *
+     * Goes through {@link authorizedFetch} so the request carries the
+     * session-appropriate `Authorization` header — `<password>` for
+     * password accounts, `Bearer <jwt>` for Lichess sessions — and gets the
+     * one-shot 401 re-exchange. A `404` is treated as success: the account is
+     * already gone, which is the desired end state, so the caller can proceed
+     * to log the user out either way.
+     */
+    public async deleteAccount(): Promise<void> {
+        const response = await this.authorizedFetch(
+            `${this.ApiEndpointUri}/${this.username}`,
+            {
+                method: "DELETE",
+                signal: this.disposeController.signal,
+            },
+        );
+        if (!response.ok && response.status !== 404) {
+            const msg = await response.text();
+            throw new DataAccessError(msg, response.status);
+        }
     }
 
     /**
@@ -275,12 +315,30 @@ export class SessionStore {
 
     // ── Internals ────────────────────────────────────────────────────
 
+    /**
+     * Fetch with the session credential applied as the `Authorization`
+     * header. On a 401 the credential is given a chance to renew itself
+     * (Lichess sessions re-exchange the backend JWT); if it does, the
+     * request is retried exactly once with the fresh credential.
+     */
+    private async authorizedFetch(url: string, init: RequestInit): Promise<Response> {
+        const baseHeaders = (init.headers as Record<string, string> | undefined) ?? {};
+        const send = (): Promise<Response> => fetch(url, {
+            ...init,
+            headers: { ...baseHeaders, Authorization: this.credential.getAuthorization() },
+        });
+        let response = await send();
+        if (response.status === 401 && await this.credential.onUnauthorized()) {
+            response = await send();
+        }
+        return response;
+    }
+
     private async fetchAndPopulate(): Promise<void> {
-        const response = await fetch(
+        const response = await this.authorizedFetch(
             `${this.ApiEndpointUri}/${this.username}/variants`,
             {
                 method: "GET",
-                headers: { "Authorization": this.password },
                 signal: this.disposeController.signal,
             },
         );
@@ -323,25 +381,24 @@ function cloneRepertoireData(data: RepertoireData): RepertoireData {
 let currentSessionStore: SessionStore | null = null;
 
 /** Install a new SessionStore as the process-wide singleton, replacing any prior instance. */
-export function createSessionStore(username: string, password: string): SessionStore {
-    currentSessionStore = new SessionStore(username, password);
+export function createSessionStore(username: string, credential: string | AuthCredential): SessionStore {
+    currentSessionStore = new SessionStore(username, credential);
     return currentSessionStore;
 }
 
 /**
- * Return the current SessionStore, lazily bootstrapping from
- * `localStorage` credentials if needed. Covers the brief window
- * between initial render and App.tsx's `useEffect` constructing
- * the store. Throws if no credentials are present.
+ * Return the current SessionStore, lazily bootstrapping from the persisted
+ * `localStorage` session if needed. Covers the brief window between initial
+ * render and App.tsx's `useEffect` constructing the store. Throws if no
+ * usable session is stored.
  */
 export function getSessionStore(): SessionStore {
     if (currentSessionStore) return currentSessionStore;
-    const username = localStorage.getItem('username');
-    const password = localStorage.getItem('hashedPassword');
-    if (!username || !password) {
+    const loaded = loadCredentialFromStorage();
+    if (!loaded) {
         throw new DataAccessError("No active session — log in first.");
     }
-    currentSessionStore = new SessionStore(username, password);
+    currentSessionStore = new SessionStore(loaded.userId, loaded.credential);
     return currentSessionStore;
 }
 

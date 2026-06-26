@@ -173,3 +173,49 @@ export async function fetchCloudCp(
     if (pv.mate !== null) return pv.mate > 0 ? MATE_CP : -MATE_CP;
     return pv.cp;
 }
+
+/**
+ * Outcome of a single cloud-eval lookup, distinguishing a genuine **no-eval**
+ * (HTTP 404 — Lichess has never analysed this position, the common out-of-book
+ * case) from a **transient** failure (429 rate-limit, 5xx, network, parse).
+ *
+ * The repertoire-suggestion scorer needs this distinction: a real 404 maps to
+ * the spec's "eval-missing ≈ −10 cp" fallback, but a transient error must NOT
+ * be silently scored as that fallback (it would skew `dEval`). Callers abort
+ * the suggestion on `error` instead — mirroring the reference scorer, which
+ * aborts the position on a rate-limit rather than treating it as missing data.
+ */
+export type CloudCpOutcome =
+    | { kind: 'ok'; cp: number }
+    | { kind: 'no_eval' }
+    | { kind: 'error' };
+
+/**
+ * Like `fetchCloudCp`, but surfaces the no-eval vs transient-error distinction
+ * (see `CloudCpOutcome`). Shares the same 1 req/sec module-level throttle as
+ * `fetchCloudCp`, so mixing the two callers stays rate-limited.
+ */
+export async function fetchCloudCpOutcome(
+    fen: string,
+    fetchFn: typeof fetch = fetch
+): Promise<CloudCpOutcome> {
+    await cloudRateLimitedDelay();
+    try {
+        const url = `https://lichess.org/api/cloud-eval?fen=${encodeURIComponent(fen)}&multiPv=1`;
+        const response = await fetchFn(url);
+        // 404 is the authoritative "no cloud eval for this position".
+        if (response.status === 404) return { kind: 'no_eval' };
+        // Any other non-OK (429 rate-limit, 5xx, …) is transient.
+        if (!response.ok) return { kind: 'error' };
+        const data = await response.json();
+        const pv = (data.pvs && data.pvs[0]) || null;
+        if (!pv) return { kind: 'no_eval' };
+        if (pv.mate !== null && pv.mate !== undefined) {
+            return { kind: 'ok', cp: pv.mate > 0 ? MATE_CP : -MATE_CP };
+        }
+        if (typeof pv.cp === 'number') return { kind: 'ok', cp: pv.cp };
+        return { kind: 'no_eval' };
+    } catch {
+        return { kind: 'error' };
+    }
+}

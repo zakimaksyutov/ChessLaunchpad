@@ -1,16 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { setLinkedAccounts } from '../services/LinkedAccountsService';
 import { PendingEditNotifier } from '../services/PendingEditNotifier';
+import { clearClientSessionKeys } from '../services/SessionTeardown';
+import { useLichessAuth } from '../LichessAuthContext';
 import './Header.css';  // Import the CSS file
 
 interface HeaderProps {
     username: string | null;
+    /** Cased name shown in the header (defaults to `username`). */
+    displayName?: string | null;
     onLogout: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
+const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
     const navigate = useNavigate();
+    const { logout: lichessOAuthLogout } = useLichessAuth();
 
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -84,14 +88,17 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
         // `data.games[*].watermarkMs`); the boot-time IDB cleanup also
         // sweeps the retired stores.
 
-        // Reset the in-memory LinkedAccountsService cache so a subsequent
-        // login as a different user does not inherit the previous user's
-        // accounts before normalize() runs.
-        setLinkedAccounts([]);
+        // Reset the LinkedAccountsService cache + clear every persisted
+        // session key. The returned mode is captured *before* the clear: a
+        // Lichess-login session must also disconnect (revoke) the underlying
+        // Lichess OAuth connection, since for a Lichess login that connection
+        // *is* the sign-in. A password account that merely linked Lichess in
+        // Settings keeps its connection.
+        const mode = clearClientSessionKeys();
 
-        // Clear localStorage items
-        localStorage.removeItem('username');
-        localStorage.removeItem('hashedPassword');
+        if (mode === 'lichess') {
+            void lichessOAuthLogout();
+        }
 
         // Trigger parent callback to set username to null
         onLogout();
@@ -179,7 +186,7 @@ const Header: React.FC<HeaderProps> = ({ username, onLogout }) => {
                             aria-disabled={inEditMode || undefined}
                             title={editModeTitle}
                         >
-                            <strong>{username}</strong>
+                            <strong>{displayName ?? username}</strong>
                         </span>
 
                         {/* Conditionally render the dropdown menu */}

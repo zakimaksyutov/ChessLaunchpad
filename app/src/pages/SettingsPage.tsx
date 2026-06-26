@@ -17,7 +17,9 @@ import {
 } from '../services/FSRSService';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { RepertoireData } from '../models/RepertoireData';
-import { getSessionStore } from '../data/SessionStore';
+import { getSessionStore, clearSessionStore } from '../data/SessionStore';
+import { isLichessSession, loadSession } from '../data/AuthSession';
+import { clearClientSessionKeys } from '../services/SessionTeardown';
 import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
@@ -53,12 +55,57 @@ const SettingsPage: React.FC = () => {
     // Lichess integration (separate, not part of Save/Discard)
     const [lichessLoading, setLichessLoading] = useState(false);
     const { connected, login, logout } = useLichessAuth();
+    // For a Lichess-login session the OAuth connection *is* the sign-in, so the
+    // separate connect/disconnect section is redundant and hidden.
+    const isLichessLogin = useMemo(() => isLichessSession(), []);
 
     // Import/Export
     const [importing, setImporting] = useState(false);
     const importInputRef = useRef<HTMLInputElement>(null);
 
     const [errorMessage, setErrorMessage] = useState<string>('');
+
+    // Delete-account flow (Danger Zone). Two-step: the "Delete account" button
+    // reveals a typed-confirmation gate before the destructive call fires.
+    const [deleteRevealed, setDeleteRevealed] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState<string>('');
+    const deleteConfirmInputRef = useRef<HTMLInputElement>(null);
+    const deleteTriggerRef = useRef<HTMLButtonElement>(null);
+    // Canonical account id (lowercased username) used both as the DELETE
+    // target and as the value the user must type to confirm.
+    const accountUsername = useMemo(
+        () => loadSession()?.userId ?? localStorage.getItem('username') ?? '',
+        [],
+    );
+    const accountDisplayName = useMemo(
+        () => loadSession()?.displayName ?? accountUsername,
+        [accountUsername],
+    );
+    const deleteConfirmMatches =
+        accountUsername.length > 0 &&
+        deleteConfirmText.trim().toLowerCase() === accountUsername.toLowerCase();
+
+    // Move focus into the typed-confirmation input when the gate is revealed,
+    // so keyboard/screen-reader users land on the step they need to complete.
+    useEffect(() => {
+        if (deleteRevealed) deleteConfirmInputRef.current?.focus();
+    }, [deleteRevealed]);
+
+    const revealDelete = () => {
+        setDeleteError('');
+        setDeleteConfirmText('');
+        setDeleteRevealed(true);
+    };
+
+    const cancelDelete = () => {
+        setDeleteRevealed(false);
+        setDeleteConfirmText('');
+        setDeleteError('');
+        // Return focus to the trigger once it re-mounts.
+        requestAnimationFrame(() => deleteTriggerRef.current?.focus());
+    };
 
     // On mount, fetch RepertoireData to hydrate module-level settings from backend
     useEffect(() => {
@@ -291,6 +338,49 @@ const SettingsPage: React.FC = () => {
             const msg = err instanceof Error ? err.message : String(err);
             setErrorMessage(`Failed to export: ${msg}`);
         }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!deleteConfirmMatches || deleting) return;
+        setDeleteError('');
+        setDeleting(true);
+        try {
+            // Goes through SessionStore so the request is authorized for both
+            // password and Lichess sessions; a 404 is treated as success.
+            await getSessionStore().deleteAccount();
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setDeleteError(`Failed to delete account: ${msg}`);
+            setDeleting(false);
+            return;
+        }
+
+        // Account is gone on the backend — tear down the client session and
+        // send the user back to the landing page, fully logged out. We have no
+        // parent logout handler here, so we clear the SessionStore ourselves
+        // and force a full reload: App re-reads (now-empty) session storage on
+        // boot and renders logged-out.
+        const mode = clearClientSessionKeys();
+        clearSessionStore();
+
+        // Revoke any live Lichess OAuth connection. For a Lichess login the
+        // connection *is* the sign-in; a password account may *also* have
+        // linked Lichess in Settings (`connected`), and deleting the account
+        // should erase that too rather than leak it to the next user on this
+        // browser. Best-effort and time-bounded so a slow/unreachable
+        // lichess.org can't strand the user on a page whose account no longer
+        // exists (the comment-vs-code mismatch the reviewers flagged).
+        if (mode === 'lichess' || connected) {
+            try {
+                await Promise.race([
+                    logout(),
+                    new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+                ]);
+            } catch { /* ignore */ }
+        }
+
+        window.location.hash = '#/';
+        window.location.reload();
     };
 
     const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -561,6 +651,7 @@ const SettingsPage: React.FC = () => {
                 )}
             </div>
 
+            {!isLichessLogin && (
             <div className="settings-card lichess-section">
                 <h1>Lichess Integration</h1>
                 <p className="settings-description">
@@ -587,6 +678,7 @@ const SettingsPage: React.FC = () => {
                     </button>
                 )}
             </div>
+            )}
 
             <div className="settings-card">
                 <h1>Repertoire Backup</h1>
@@ -620,6 +712,90 @@ const SettingsPage: React.FC = () => {
                         onChange={handleImportFileSelected}
                     />
                 </div>
+            </div>
+
+            {/* ── Danger Zone: permanent account deletion ── */}
+            <div className="settings-card danger-zone">
+                <h1>Danger Zone</h1>
+                <p className="settings-description">
+                    Deleting your account <strong>permanently removes</strong> your entire
+                    repertoire, FSRS progress, linked accounts, and settings from the server.
+                    This <strong>cannot be undone.</strong>
+                </p>
+                <p className="settings-description" style={{ fontSize: '0.9rem' }}>
+                    We strongly recommend exporting a <code>.chess</code> backup first — it's the
+                    only way to restore your repertoire later.
+                </p>
+                <div className="danger-actions">
+                    <button
+                        className="secondary"
+                        onClick={handleExport}
+                        disabled={deleting}
+                    >
+                        Export backup first
+                    </button>
+                    {!deleteRevealed && (
+                        <button
+                            ref={deleteTriggerRef}
+                            className="danger-button"
+                            onClick={revealDelete}
+                        >
+                            Delete account…
+                        </button>
+                    )}
+                </div>
+
+                {deleteRevealed && (
+                    <div className="danger-confirm" role="group" aria-label="Confirm account deletion">
+                        <p className="danger-confirm-warning" id="danger-confirm-warning">
+                            This will permanently delete the account
+                            {' '}<strong>{accountDisplayName}</strong> and all of its data.
+                            To confirm, type your username
+                            {' '}<code>{accountUsername}</code> below.
+                        </p>
+                        <input
+                            ref={deleteConfirmInputRef}
+                            type="text"
+                            className="danger-confirm-input"
+                            placeholder="Type your username to confirm"
+                            value={deleteConfirmText}
+                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && deleteConfirmMatches && !deleting) {
+                                    e.preventDefault();
+                                    void handleDeleteAccount();
+                                }
+                            }}
+                            autoComplete="off"
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            disabled={deleting}
+                            aria-label="Type your username to confirm account deletion"
+                            aria-describedby="danger-confirm-warning"
+                        />
+                        {deleteError && (
+                            <div className="settings-error" role="alert" style={{ marginTop: '0.75rem' }}>
+                                {deleteError}
+                            </div>
+                        )}
+                        <div className="danger-actions" style={{ marginTop: '0.75rem' }}>
+                            <button
+                                className="secondary"
+                                onClick={cancelDelete}
+                                disabled={deleting}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="danger-button"
+                                onClick={handleDeleteAccount}
+                                disabled={!deleteConfirmMatches || deleting}
+                            >
+                                {deleting ? 'Deleting…' : 'Permanently delete account'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

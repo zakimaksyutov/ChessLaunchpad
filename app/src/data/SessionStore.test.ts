@@ -295,6 +295,46 @@ describe("SessionStore", () => {
         });
     });
 
+    it("deleteAccount issues DELETE /user/{id} with the session Authorization header", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-warm"))
+            .mockResolvedValueOnce(
+                new Response("User 'alice' has been successfully deleted.", { status: 200 }),
+            );
+        const store = new SessionStore("alice", "pw");
+        await store.getSnapshot();
+
+        await expect(store.deleteAccount()).resolves.toBeUndefined();
+
+        const [url, init] = fetchMock.mock.calls[1];
+        expect(url).toMatch(/\/user\/alice$/);
+        expect(init?.method).toBe("DELETE");
+        expect((init?.headers as any).Authorization).toBe("pw");
+    });
+
+    it("deleteAccount treats 404 as success (account already gone)", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-warm"))
+            .mockResolvedValueOnce(errorResponse(404, "User 'alice' does not exist."));
+        const store = new SessionStore("alice", "pw");
+        await store.getSnapshot();
+
+        await expect(store.deleteAccount()).resolves.toBeUndefined();
+    });
+
+    it("deleteAccount throws DataAccessError on a non-404 error", async () => {
+        const data = makeData();
+        fetchMock
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-warm"))
+            .mockResolvedValueOnce(errorResponse(500, "boom"));
+        const store = new SessionStore("alice", "pw");
+        await store.getSnapshot();
+
+        await expect(store.deleteAccount()).rejects.toMatchObject({ statusCode: 500 });
+    });
+
     it("createDataAccessProxyLayer returns a proxy populated from the cache", async () => {
         const data = makeData();
         fetchMock.mockResolvedValueOnce(jsonGetResponse(data, "etag-1"));
@@ -500,6 +540,40 @@ describe("SessionStore", () => {
             expect(s1.etag).toBe("etag-on-demand");
             expect(s2.etag).toBe("etag-on-demand");
             expect(fetchMock).toHaveBeenCalledTimes(2);
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    it("retries once with a renewed credential after a 401", async () => {
+        const data = makeData();
+        let auth = "Bearer stale";
+        const onUnauthorized = vi.fn(async () => { auth = "Bearer fresh"; return true; });
+        const credential = { getAuthorization: () => auth, onUnauthorized };
+        fetchMock
+            .mockResolvedValueOnce(errorResponse(401, "expired"))
+            .mockResolvedValueOnce(jsonGetResponse(data, "etag-1"));
+
+        const store = new SessionStore("alice", credential);
+        const snap = await store.getSnapshot();
+
+        expect(snap.etag).toBe("etag-1");
+        expect(onUnauthorized).toHaveBeenCalledTimes(1);
+        // First attempt used the stale token, the retry used the renewed one.
+        expect((fetchMock.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe("Bearer stale");
+        expect((fetchMock.mock.calls[1][1].headers as Record<string, string>).Authorization).toBe("Bearer fresh");
+    });
+
+    it("surfaces a 401 when the credential cannot renew", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const onUnauthorized = vi.fn(async () => false);
+            const credential = { getAuthorization: () => "Bearer dead", onUnauthorized };
+            fetchMock.mockImplementation(() => Promise.resolve(errorResponse(401, "expired")));
+
+            const store = new SessionStore("alice", credential);
+            await expect(store.getSnapshot()).rejects.toBeInstanceOf(DataAccessError);
+            expect(onUnauthorized).toHaveBeenCalled();
         } finally {
             warn.mockRestore();
         }

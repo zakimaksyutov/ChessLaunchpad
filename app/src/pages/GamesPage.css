@@ -216,6 +216,15 @@
     color: #8a1c1c;
 }
 
+.game-row-flash {
+    animation: game-row-flash 1.6s ease-out;
+}
+
+@keyframes game-row-flash {
+    0% { box-shadow: 0 0 0 2px rgba(46, 160, 67, 0.85); }
+    100% { box-shadow: 0 0 0 2px rgba(46, 160, 67, 0); }
+}
+
 .games-empty {
     width: 100%;
     text-align: center;
@@ -695,6 +704,91 @@
     height: 1.15em;
     margin-right: 0.3em;
     vertical-align: -0.15em;
+}
+
+/* ─── Suggest a fix ─── */
+
+/* "Suggest a fix" reuses the blue inline-link styling of "Analyze opponent".
+   A thin separator divides the two actions: "Analyze opponent | Suggest a fix". */
+.game-action-sep {
+    margin-left: 0.5em;
+    color: #c9c9c9;
+    font-size: 0.78rem;
+    user-select: none;
+}
+
+.suggest-fix-result {
+    margin-top: 0.45rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    background: #f4faf4;
+    border: 1px solid #d9ead9;
+    font-size: 0.82rem;
+}
+
+.suggest-fix-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #2e7d32;
+}
+
+.suggest-fix-connect,
+.suggest-fix-error {
+    color: #555;
+    background: #f9f9f9;
+    border-color: #e6e6e6;
+}
+
+.suggest-fix-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #2e7d32;
+    margin-bottom: 0.25rem;
+}
+
+.suggest-fix-pgn {
+    margin-top: 0;
+}
+
+/* Moves that differ from the played game (the corrected move + continuation)
+   are bolded; everything before reads as "same as you played". */
+.suggest-fix-new {
+    font-weight: 700;
+}
+
+/* "(instead of X)" — muted, non-bold, mirrors the PGN parenthetical. */
+.suggest-fix-instead {
+    color: #777;
+    font-weight: 400;
+    font-style: italic;
+}
+
+.suggest-fix-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    margin-top: 0.45rem;
+}
+
+.suggest-fix-action {
+    color: rgb(0, 130, 210);
+    font-size: 0.78rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.suggest-fix-action:hover {
+    text-decoration: underline;
+}
+
+.suggest-fix-added {
+    color: #1f6b34;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 /* Mobile responsive */
