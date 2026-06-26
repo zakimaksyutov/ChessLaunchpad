@@ -1100,6 +1100,17 @@ function codeToHighlight(code: number): { highlight: MoveHighlight; evalDrop?: E
 }
 
 /**
+ * True when a frozen annotation carries a repertoire deviation or an EOT
+ * eval-drop issue — i.e. the game is a "mistake" game. This is the pure-`fan`
+ * equivalent of the Games page's `gameRowHasIssue`, derived directly from the
+ * stored `hl` codes: 1 deviation, 3 inaccuracy, 4 mistake, 5 blunder (see
+ * `codeToHighlight`). Codes 0/2/7 are not issues.
+ */
+export function frozenAnnotationHasIssue(fan: FrozenAnnotation): boolean {
+    return fan.hl.some(code => code === 1 || code === 3 || code === 4 || code === 5);
+}
+
+/**
  * Freeze a live `GameAnnotation` into the storable `fan` shape: per-user-move
  * highlight codes, the deviation alternatives (SAN, when present), and the
  * mini-board anchor ply. This is the analysis-time write path; render never
