@@ -88,6 +88,14 @@ exchange succeeds, so a refresh can't resume a half-finished login.
   OAuth connection (revoking the Lichess token), since for a Lichess login
   that connection *is* the sign-in. The next login therefore starts fresh.
 
+## Account deletion
+
+- Settings → **Danger Zone** permanently deletes the account
+  (`DELETE /user/{userId}`) after a type-your-username confirmation, then runs
+  the same client teardown as logout. The Lichess OAuth connection is revoked
+  whenever it exists — for a Lichess login *or* a password account that linked
+  Lichess — so nothing leaks to the next user on the device.
+
 ## UI
 
 - Login page offers **Sign in with Lichess** alongside the existing
