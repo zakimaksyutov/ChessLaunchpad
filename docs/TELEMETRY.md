@@ -13,3 +13,7 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `UserDelete` | User permanently deletes their account. |
 | `SettingsReset` | User clicks "Reset to Defaults" on the Settings page. |
 | `SettingsSaved` | User saves changes on the Settings page. |
+| `LichessConnected` | User links a Lichess account on the Settings page (OAuth connect completes). |
+| `LichessDisconnected` | User unlinks their Lichess account on the Settings page. |
+| `BackupExport` | User exports a repertoire backup file. |
+| `BackupImport` | User imports a repertoire backup file. |

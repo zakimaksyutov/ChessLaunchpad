@@ -26,6 +26,10 @@ import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
 
+// Survives the Lichess OAuth full-page redirect so the post-redirect mount can
+// attribute the established connection to a Settings-initiated "Connect".
+const LICHESS_CONNECT_PENDING_KEY = 'lichess_connect_pending';
+
 const SettingsPage: React.FC = () => {
     // Draft state (local to form, not applied until Save)
     const [contextDepth, setContextDepth] = useState<number>(() => TrainingEngine.getContextDepth());
@@ -55,7 +59,7 @@ const SettingsPage: React.FC = () => {
 
     // Lichess integration (separate, not part of Save/Discard)
     const [lichessLoading, setLichessLoading] = useState(false);
-    const { connected, login, logout } = useLichessAuth();
+    const { connected, ready: lichessReady, login, logout } = useLichessAuth();
     // For a Lichess-login session the OAuth connection *is* the sign-in, so the
     // separate connect/disconnect section is redundant and hidden.
     const isLichessLogin = useMemo(() => isLichessSession(), []);
@@ -328,13 +332,33 @@ const SettingsPage: React.FC = () => {
 
     const handleLichessConnect = async () => {
         setLichessLoading(true);
+        // Mark the intent before redirecting so the post-redirect mount can
+        // distinguish a fresh connect from merely opening Settings while
+        // already connected.
+        localStorage.setItem(LICHESS_CONNECT_PENDING_KEY, '1');
         try { await login(); } finally { setLichessLoading(false); }
     };
 
     const handleLichessDisconnect = async () => {
         setLichessLoading(true);
-        try { await logout(); } finally { setLichessLoading(false); }
+        try {
+            await logout();
+            trackEvent('LichessDisconnected');
+        } finally {
+            setLichessLoading(false);
+        }
     };
+
+    // After returning from the Lichess OAuth redirect, emit LichessConnected for
+    // a connect this page initiated. The intent flag distinguishes a fresh
+    // connect from a revisit while already connected; a denied auth returns
+    // not-connected, so the flag is cleared without emitting.
+    useEffect(() => {
+        if (!lichessReady) return;
+        if (localStorage.getItem(LICHESS_CONNECT_PENDING_KEY) !== '1') return;
+        localStorage.removeItem(LICHESS_CONNECT_PENDING_KEY);
+        if (connected) trackEvent('LichessConnected');
+    }, [lichessReady, connected]);
 
     // ── Import / Export ────────────────────────────────────────────────
     //
@@ -377,6 +401,7 @@ const SettingsPage: React.FC = () => {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
+            trackEvent('BackupExport');
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             setErrorMessage(`Failed to export: ${msg}`);
@@ -482,6 +507,7 @@ const SettingsPage: React.FC = () => {
             RepertoireDataUtils.normalize(parsed);
             const blobForSave = RepertoireDataUtils.prepareDataForSave(parsed);
             await store.importBlob(blobForSave);
+            trackEvent('BackupImport');
             // Full reload so all pages re-fetch the new repertoire.
             window.location.reload();
         } catch (ex: unknown) {
