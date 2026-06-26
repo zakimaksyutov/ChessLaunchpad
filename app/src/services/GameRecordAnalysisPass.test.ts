@@ -752,4 +752,99 @@ describe('analyzeOneGame — cloud-eval gap fill', () => {
         // The cloud hit for the opponent's after-position (ply 5) was recorded.
         expect(outcome.evUpdate?.get(5)).toBe(60);
     });
+
+    it('defers a game when the Lichess cloud-eval API throttles (429) instead of freezing a less-informed verdict', async () => {
+        // The opponent leaves the repertoire at ply 5; resolving that boundary
+        // needs a cloud eval, but Lichess rate-limits us (429). The throttle must
+        // NOT be mistaken for a "no eval" miss (which would end theory and freeze
+        // the game) — instead the game is deferred so a later pass retries.
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const fens = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']);
+        const evals = ExplorerEvals.fromRecord({
+            [compact(fens[5])]: [30], // after Bb5 (before the opponent's a6)
+            // fens[6] (after a6) is a cloud gap that Lichess rate-limits.
+        });
+        const calls = { cloud: 0, masters: 0 };
+        const fn = vi.fn(async (url: string) => {
+            if (url.includes('cloud-eval')) {
+                calls.cloud++;
+                return { ok: false, status: 429 };
+            }
+            if (url.includes('masters')) {
+                calls.masters++;
+                return { ok: true, json: async () => ({ moves: [] }) };
+            }
+            throw new Error(`unexpected url: ${url}`);
+        }) as unknown as typeof fetch;
+        const job: AnalysisJob = {
+            record: rec({ id: 'ct1', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 a6' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+        };
+        // A token is connected — this is the cloud-throttle path, not the
+        // no-token masters-defer path.
+        const outcome = await runAnalysis(job, evals, fn, 'tok');
+        expect(outcome.skipped).toBe(true);
+        expect(outcome.awaitingCloudEval).toBe(true);
+        expect(outcome.awaitingMasters).toBeUndefined();
+        expect(outcome.fan).toBeUndefined();
+        expect(calls.cloud).toBe(1);   // throttled on the boundary gap
+        expect(calls.masters).toBe(0); // throttle threw before the masters check
+        // The pass still hands back the (empty) cloud-eval sink to persist.
+        expect(outcome.evUpdate).toBeInstanceOf(Map);
+    });
+
+    it('latches the whole pass after the first 429 — later cloud-needing games defer without re-hitting the API', async () => {
+        // Two games in one pass both reach a boundary that needs a cloud eval,
+        // at *distinct* FENs (after a6 vs after Nf6) so the per-FEN memo can't
+        // dedup them. The first 429 latches the shared throttle, so the second
+        // game must defer WITHOUT making its own cloud request.
+        const whiteFens = whiteFensFor('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+        const afterBb5 = replayFens(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5'])[5];
+        const evals = ExplorerEvals.fromRecord({
+            [compact(afterBb5)]: [30], // before each opponent's book-leaving move
+        });
+        const calls = { cloud: 0, masters: 0 };
+        const fn = vi.fn(async (url: string) => {
+            if (url.includes('cloud-eval')) {
+                calls.cloud++;
+                return { ok: false, status: 429 };
+            }
+            if (url.includes('masters')) {
+                calls.masters++;
+                return { ok: true, json: async () => ({ moves: [] }) };
+            }
+            throw new Error(`unexpected url: ${url}`);
+        }) as unknown as typeof fetch;
+
+        const memo = new Map();
+        const cloudMemo = new Map();
+        const throttle = { throttled: false };
+
+        const job1: AnalysisJob = {
+            record: rec({ id: 'g1', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 a6' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+        };
+        const job2: AnalysisJob = {
+            record: rec({ id: 'g2', t: BASE_DATE, m: 'e4 e5 Nf3 Nc6 Bb5 Nf6' }),
+            userLower: 'me',
+            repertoireFens: whiteFens,
+        };
+
+        const p1 = analyzeOneGame(job1, 'tok', memo, cloudMemo, evals, undefined, fn, throttle);
+        await vi.runAllTimersAsync();
+        const o1 = await p1;
+
+        const p2 = analyzeOneGame(job2, 'tok', memo, cloudMemo, evals, undefined, fn, throttle);
+        await vi.runAllTimersAsync();
+        const o2 = await p2;
+
+        expect(o1.awaitingCloudEval).toBe(true);
+        expect(o2.awaitingCloudEval).toBe(true);
+        expect(throttle.throttled).toBe(true);
+        // Exactly one cloud request total: the second game short-circuited on the
+        // latch instead of re-hitting the rate-limited API.
+        expect(calls.cloud).toBe(1);
+    });
 });

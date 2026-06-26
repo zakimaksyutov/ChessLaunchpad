@@ -20,7 +20,7 @@ function getRedirectUrl(): string {
 class LichessAuthServiceImpl {
     private oauth: OAuth2AuthCodePKCE;
     private accessContext: AccessContext | null = null;
-    private initialized = false;
+    private initPromise: Promise<void> | null = null;
     private listeners: Set<AuthChangeListener> = new Set();
 
     constructor() {
@@ -46,43 +46,71 @@ class LichessAuthServiceImpl {
     /**
      * Must be called once on app startup. Detects if we're returning from
      * Lichess OAuth and exchanges the authorization code for a token.
+     *
+     * Memoized so concurrent callers (and {@link ready}) await the same run
+     * rather than racing — important because a Lichess session's data-layer
+     * 401 re-exchange must not read the token before init has restored it.
      */
-    async init(): Promise<void> {
-        if (this.initialized) return;
-        this.initialized = true;
+    init(): Promise<void> {
+        if (!this.initPromise) {
+            this.initPromise = this.doInit();
+        }
+        return this.initPromise;
+    }
 
+    /** Resolves once {@link init} has completed (token restored / callback handled). */
+    ready(): Promise<void> {
+        return this.init();
+    }
+
+    private async doInit(): Promise<void> {
+        // Process an OAuth callback BEFORE restoring any previously-stored
+        // token. A fresh login must win over a stale token (which could belong
+        // to a different/old account), and a denied/failed return must NOT
+        // silently fall back to a stale token.
+        let isReturn = false;
         try {
-            // Try to restore a previously acquired token
+            isReturn = await this.oauth.isReturningFromAuthServer();
+        } catch (err) {
+            // Error param present (e.g. the user denied access) — a failed
+            // auth return. Leave the connection unauthenticated.
+            console.warn('Lichess OAuth callback failed:', err);
+            this.accessContext = null;
+            this.notifyListeners();
+            this.restoreReturnRoute();
+            return;
+        }
+
+        if (isReturn) {
+            try {
+                this.accessContext = await this.oauth.getAccessToken();
+                this.notifyListeners();
+            } catch (err) {
+                console.warn('Lichess OAuth token exchange failed:', err);
+                this.accessContext = null;
+                this.notifyListeners();
+            }
+            this.restoreReturnRoute();
+            return;
+        }
+
+        // Normal load — restore a previously stored token if present.
+        try {
             const existing = await this.oauth.getAccessToken();
             if (existing?.token?.value) {
                 this.accessContext = existing;
                 this.notifyListeners();
-                return;
             }
         } catch {
-            // No stored token — that's fine
+            // No stored token — that's fine.
         }
+    }
 
-        try {
-            const hasAuthCode = await this.oauth.isReturningFromAuthServer();
-            if (hasAuthCode) {
-                this.accessContext = await this.oauth.getAccessToken();
-                this.notifyListeners();
-
-                // Clean query params but preserve the hash route
-                const savedHash = localStorage.getItem(RETURN_HASH_KEY) || '';
-                localStorage.removeItem(RETURN_HASH_KEY);
-                window.history.replaceState(
-                    {},
-                    '',
-                    location.pathname + savedHash
-                );
-            }
-        } catch (err) {
-            console.warn('Lichess OAuth callback failed:', err);
-            this.accessContext = null;
-            this.notifyListeners();
-        }
+    /** Clean query params but preserve the hash route saved before redirect. */
+    private restoreReturnRoute(): void {
+        const savedHash = localStorage.getItem(RETURN_HASH_KEY) || '';
+        localStorage.removeItem(RETURN_HASH_KEY);
+        window.history.replaceState({}, '', location.pathname + savedHash);
     }
 
     /** Redirect to Lichess for authorization. */

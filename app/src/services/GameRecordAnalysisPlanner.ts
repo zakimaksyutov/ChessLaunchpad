@@ -9,7 +9,20 @@ import {
     fetchMastersOutcome,
     toMastersCacheKey,
 } from './MastersExplorerService';
-import { fetchCloudCp } from './LichessCloudEvalService';
+import { fetchCloudCp, CloudEvalThrottledError } from './LichessCloudEvalService';
+
+/**
+ * Pass-level latch tracking whether the Lichess cloud-eval API has 429'd during
+ * the current analysis pass. Created once per pass and shared (like the memos)
+ * across every game's provider: once Lichess rate-limits us, there's no point
+ * hammering it again for the rest of the pass — every subsequent cloud-needing
+ * game short-circuits straight to a `CloudEvalThrottledError` (and defers) so
+ * the whole pass backs off together. A fresh pass starts with `throttled: false`
+ * and retries the cloud.
+ */
+export interface CloudEvalThrottleState {
+    throttled: boolean;
+}
 
 /**
  * Thrown by the on-demand cloud/masters providers when the analysis pass must
@@ -124,17 +137,33 @@ export async function fetchCloudWithMemo(
  * `AnalysisSkipError` so the pass abandons the game rather than freezing a
  * partial annotation; `fetchCloudWithMemo` itself returns `null` on abort, so
  * the post-await guard is what distinguishes "aborted" from "genuine miss".
+ *
+ * `throttle` (when supplied) latches the pass: the moment the cloud API 429's,
+ * every later call across the whole pass short-circuits to a
+ * `CloudEvalThrottledError` without touching the network, so all cloud-needing
+ * games defer together instead of each re-hitting the rate-limited API.
  */
 export function makeCloudEvalProvider(
     cloudMemo: Map<string, number | null>,
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch,
+    throttle?: CloudEvalThrottleState,
 ): CloudEvalProvider {
     return async (fen: string): Promise<number[] | null> => {
         if (signal?.aborted) throw new AnalysisSkipError();
-        const cp = await fetchCloudWithMemo(fen, cloudMemo, signal, fetchFn);
-        if (signal?.aborted) throw new AnalysisSkipError();
-        return cp === null ? null : [cp];
+        // Already throttled this pass — don't bother the rate-limited API again.
+        if (throttle?.throttled) throw new CloudEvalThrottledError();
+        try {
+            const cp = await fetchCloudWithMemo(fen, cloudMemo, signal, fetchFn);
+            if (signal?.aborted) throw new AnalysisSkipError();
+            return cp === null ? null : [cp];
+        } catch (e) {
+            // First 429 of the pass: latch so the rest of the pass backs off.
+            if (e instanceof CloudEvalThrottledError && throttle) {
+                throttle.throttled = true;
+            }
+            throw e;
+        }
     };
 }
 

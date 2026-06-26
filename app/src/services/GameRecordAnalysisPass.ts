@@ -12,6 +12,7 @@ import { findRecord, purgeRecordsFromTimestamp } from './GameRecordStore';
 import { annotationToFrozen } from './GameAnnotationService';
 import { getRecordUserColor } from './GameRecordBuilder';
 import { annotateRecord } from './RecordAnnotation';
+import { CloudEvalThrottledError } from './LichessCloudEvalService';
 import {
     makeCloudEvalProvider,
     OnDemandMastersLookup,
@@ -19,6 +20,7 @@ import {
     AnalysisSkipError,
     AwaitingMastersError,
     MastersMemoEntry,
+    CloudEvalThrottleState,
 } from './GameRecordAnalysisPlanner';
 
 const ANALYSIS_FLUSH_BATCH = 5;
@@ -67,10 +69,19 @@ export interface AnalyzedGameOutcome {
      */
     awaitingMasters?: boolean;
     /**
+     * `true` when the game couldn't be frozen because the Lichess cloud-eval API
+     * rate-limited us (HTTP 429) mid-walk. Unlike `awaitingMasters` this needs no
+     * user action — it's transient, so the deferred game re-queues on a later pass
+     * and counts toward a distinct "Lichess is rate-limiting" banner. `evUpdate`
+     * carries the cloud evals gathered before the throttle so the re-run resolves
+     * those plies offline.
+     */
+    awaitingCloudEval?: boolean;
+    /**
      * Cloud-eval back-fill gathered during the walk, keyed by ply index (aligns
      * 1:1 with `record.ev`). Persisted additively so a deferred game's re-run
      * resolves those plies from `ev` instead of re-hitting the rate-limited
-     * cloud API. Only set on the `awaitingMasters` path.
+     * cloud API. Set on the `awaitingMasters` and `awaitingCloudEval` paths.
      */
     evUpdate?: Map<number, number>;
 }
@@ -179,9 +190,12 @@ export function buildAnalysisPlan(
  *   - `AwaitingMastersError` — additionally sets `awaitingMasters` and
  *     `evUpdate` so the page can count the game toward the banner and persist
  *     the cloud evals gathered so far.
+ *   - `CloudEvalThrottledError` — the Lichess cloud-eval API rate-limited us
+ *     (429) mid-walk. Sets `awaitingCloudEval` and `evUpdate`; the game re-queues
+ *     on a later pass (transient — needs no user action).
  *
- * A cloud-eval *miss* is not an error — it leaves the position with no eval,
- * exactly as today, and the game is still frozen.
+ * A cloud-eval *miss* (404 / no PV) is not an error — it leaves the position
+ * with no eval, exactly as today, and the game is still frozen.
  */
 export async function analyzeOneGame(
     job: AnalysisJob,
@@ -191,12 +205,15 @@ export async function analyzeOneGame(
     explorerEvals: ExplorerEvals | null,
     signal?: AbortSignal,
     fetchFn: typeof fetch = fetch,
+    cloudThrottle?: CloudEvalThrottleState,
 ): Promise<AnalyzedGameOutcome> {
     const { record, userLower, repertoireFens, debug } = job;
     if (signal?.aborted) return { record, skipped: true };
 
     // Cloud evals back-fill missing eval-drop sides on demand (both platforms).
-    const cloudEval = makeCloudEvalProvider(cloudMemo, signal, fetchFn);
+    // The shared `cloudThrottle` latch makes a 429 abort cloud lookups for the
+    // rest of the pass, so every cloud-needing game defers together.
+    const cloudEval = makeCloudEvalProvider(cloudMemo, signal, fetchFn, cloudThrottle);
     // Cloud hits collected by ply so a deferred game can persist them into `ev`.
     const cloudEvalSink = new Map<number, number>();
     // Masters verdicts for ambiguous-zone opponent moves. With a token, resolve
@@ -228,6 +245,12 @@ export async function analyzeOneGame(
         if (e instanceof AwaitingMastersError) {
             return { record, skipped: true, awaitingMasters: true, evUpdate: cloudEvalSink };
         }
+        // Lichess rate-limited the cloud-eval API (429) mid-walk: defer the game
+        // (it's transient — a later pass retries) and hand back the cloud evals
+        // gathered before the throttle so the re-run resolves them offline.
+        if (e instanceof CloudEvalThrottledError) {
+            return { record, skipped: true, awaitingCloudEval: true, evUpdate: cloudEvalSink };
+        }
         // A provider abandoned the game (masters error or aborted signal): don't
         // freeze a partial/optimistic verdict — re-queue on the next pass.
         if (e instanceof AnalysisSkipError) return { record, skipped: true };
@@ -237,9 +260,9 @@ export async function analyzeOneGame(
 
 /**
  * Flush a batch of analysis outcomes back to the blob via the DAL. Each outcome
- * writes either a frozen `fan` (a fully-analyzed game) or, for a deferred
- * `awaitingMasters` game, an additive `ev` cloud back-fill so its re-run after a
- * Lichess connect resolves those plies offline.
+ * writes either a frozen `fan` (a fully-analyzed game) or, for a deferred game
+ * (awaiting masters, or cloud-eval throttled), an additive `ev` cloud back-fill
+ * so its re-run resolves those plies offline.
  *
  * Single-attempt: GET fresh blob → merge in pending updates by record
  * `(p, id)` → drop merges for records that no longer exist → PUT once.
@@ -299,11 +322,12 @@ export async function flushFanUpdates(
             continue;
         }
 
-        // Deferred (awaiting-masters) game: additively back-fill the cloud evals
-        // it gathered into `ev` so its re-run resolves those plies offline. Never
-        // overwrites an existing eval — only fills `null`/absent slots. Only
-        // persists when a slot actually changes, so a re-pass over an
-        // already-cached deferred game doesn't trigger a redundant PUT.
+        // Deferred game (awaiting masters, or cloud-eval throttled): additively
+        // back-fill the cloud evals it gathered into `ev` so its re-run resolves
+        // those plies offline. Never overwrites an existing eval — only fills
+        // `null`/absent slots. Only persists when a slot actually changes, so a
+        // re-pass over an already-cached deferred game doesn't trigger a
+        // redundant PUT.
         if (upd.evUpdate && upd.evUpdate.size > 0) {
             const ev = found.record.ev ? found.record.ev.slice() : [];
             let changed = false;

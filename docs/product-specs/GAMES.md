@@ -56,6 +56,8 @@ for each game, sequentially (cloud-eval + masters caches shared across the pass)
    │      ├─ completed              → write `fan`, hydrate the row, flush in batches
    │      ├─ reached masters-needing → defer: count toward "connect Lichess" banner;
    │      │   position, no token        persist cloud evals gathered so far into `ev`
+   │      ├─ cloud-eval throttled    → defer: count toward "Lichess rate-limited" banner;
+   │      │   (HTTP 429) mid-walk        persist cloud evals gathered so far; retries later
    │      └─ transient failure /     → skip without freezing; re-queues next pass
    │          abort
    ▼
@@ -124,6 +126,8 @@ Computing `fan` can require the masters opening explorer (`explorer.lichess.org/
 
 Transient masters failures (network / HTTP) also leave the game without a `fan` — it re-queues on the next pass; a separate banner counts those for the current session.
 
+**Cloud-eval throttling.** A Lichess cloud-eval **429 (rate limit)** is a transient deferral, *not* a "no eval" miss: the game stays unfrozen (re-queues on a later pass, no user action), its gathered evals persist into `record.ev`, and it counts toward a distinct "Lichess rate-limited" banner. Mistaking it for a 404 would end theory early and freeze a less-informed verdict; a real 404 (position too rare to be in book) is still a miss that ends theory. The first 429 also **latches the whole pass**: every subsequent cloud-needing game defers immediately without re-hitting the rate-limited API, so they all back off together. A fresh pass clears the latch and retries.
+
 ## Re-annotate
 
 Per-row **Re-annotate** (overflow menu) clears `fan` and `op` for that record and triggers a fresh analysis pass that re-queries masters, reads the *current* repertoire and evals, and freezes a new annotation. While the new annotation is pending, the row stays visible with its **prior `fan`** so it doesn't disappear; on failure the prior annotation is restored.
@@ -156,7 +160,7 @@ Eval drops use the same thresholds as the Repertoire page (inaccuracy ≥ 30 cp,
 
 1. **`ExplorerEvals`** — pre-computed static evals for repertoire positions (no network).
 2. **Embedded per-ply evals** (`record.ev`). Originally Lichess-only (absent for Chess.com), but a deferred game's persisted cloud back-fill (see "Masters theory") also lands here, so a Chess.com record may carry a sparse `ev`.
-3. **Lichess cloud-eval API** (`lichess.org/api/cloud-eval`, public — no OAuth, so it covers Chess.com too) — consulted only for the **gaps** the first two sources miss, resolved on demand as the engine walks the game. Sources may mix per move (e.g. an explorer "before" with a cloud "after"). Throttled and deduped per-pass. Not cached across passes for a frozen game (its verdict is in `fan`); for a *deferred* game the gathered evals are persisted into `record.ev` so its re-run needn't refetch.
+3. **Lichess cloud-eval API** (`lichess.org/api/cloud-eval`, public — no OAuth, so it covers Chess.com too) — consulted only for the **gaps** the first two sources miss, resolved on demand as the engine walks the game. Sources may mix per move (e.g. an explorer "before" with a cloud "after"). Throttled (1 req/sec) and deduped per-pass; a **429** defers the game (see "Masters theory") rather than counting as a miss. Not cached across passes for a frozen game (its verdict is in `fan`); for a *deferred* game the gathered evals are persisted into `record.ev` so its re-run needn't refetch.
 
 When no source has eval data for an **opponent** move that left the repertoire, the engine treats it as **out of theory** and stops. With cloud-eval as the final source, a total miss means a Lichess cloud-eval 404 — the position is so rare nobody on Lichess has analysed it — which is itself strong evidence the game has left book. (This replaces the older optimistic in-theory default, which made sense when the only eval source was the small static `ExplorerEvals` set.) A miss while grading a **user** move is different: that move simply can't be scored, so it stays an uncolored post-theory move and the walk continues. Render itself reads none of this — it replays `m` and paints the frozen `hl` codes.
 
