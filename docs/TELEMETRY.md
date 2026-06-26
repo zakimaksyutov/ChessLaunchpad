@@ -17,3 +17,12 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `LichessDisconnected` | User unlinks their Lichess account on the Settings page. |
 | `BackupExport` | User exports a repertoire backup file. |
 | `BackupImport` | User imports a repertoire backup file. |
+| `MistakeReviewed` | User marks a game as reviewed on the Games page. |
+| `MistakeUnreviewed` | User clears the reviewed flag on a game on the Games page. |
+| `MistakeOpenInExplorer` | User opens an in-repertoire move from a game in the Explorer. |
+| `OpponentAnalysisStart` | Opponent analysis run begins for a deviation. |
+| `OpponentAnalysisComplete` | Opponent analysis run finishes successfully. |
+| `FixSuggested` | A suggested fix line is produced for a deviation. |
+| `SuggestedLineAdded` | User clicks "Add to repertoire" on a suggested fix. |
+
+`OpponentAnalysisStart` and `OpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).
