@@ -58,12 +58,22 @@ A reverse-chronological timeline grouped by date (inspired by Lichess profile ac
 - "Played" line appears when `games.ingested > 0`. It renders **independently** of the training counters — a day whose only activity is game-ingest still shows a date header and the Played line. Shows how many games were ingested from linked accounts and the review/mistake counts those games contributed (see [`GAME-INGEST.md`](./GAME-INGEST.md) for the ingest pipeline).
 - Time is shown as human-friendly duration (e.g., "12 min", "1 hr 5 min").
 
-### 1.5 Call to Action
+### 1.5 Actions Tile
 
-> **Superseded.** The standalone "Start Training" button has been replaced by
-> the context-aware Actions tile — see
-> [`DASHBOARD-ACTIONS.md`](./DASHBOARD-ACTIONS.md). Start Training remains the
-> primary action within that tile when cards are due.
+A context-aware tile at the top of the dashboard (replacing the old standalone
+"Start Training" button). It surfaces a short list of clickable **action rows**
+derived from the user's current state; rows appear and disappear automatically
+(not dismissible). Start Training stays the primary action when cards are due.
+
+- **Start Training** — surfaces the due count. → `/training`.
+- **Review games** — "Analyze N new games" and/or "Review K opening mistakes". → `/games`.
+- **Onboarding** — e.g. link a chess account when none is linked.
+- An action may carry an opt-in **"Why this action?"** explainer for users who
+  may not yet understand its value.
+- **Import repertoire (PGN)** — a low-priority affordance at the bottom of the
+  tile to import a `.pgn` repertoire for a color whose repertoire is still empty.
+- **Empty state** — "You're all caught up" when no actions apply and there is
+  nothing to import.
 
 ---
 

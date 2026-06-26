@@ -6,7 +6,7 @@ import { frozenAnnotationHasIssue } from './GameAnnotationService';
 /**
  * Identifiers for the dashboard Actions tile. The list is intentionally
  * small and grows by adding entries here + a branch in
- * `buildDashboardActions`. See `docs/product-specs/DASHBOARD-ACTIONS.md`.
+ * `buildDashboardActions`. See `docs/product-specs/DASHBOARD.md` §1.5.
  */
 export type DashboardActionId =
     | 'start-training'
