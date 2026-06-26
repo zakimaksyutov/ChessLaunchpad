@@ -69,6 +69,7 @@ yarn dev
 - `docs/` — Technical specifications
   - `BACKEND_API_CONTRACT.md` — Backend REST API contract (copy from backend repo; do not edit here)
   - `REPERTOIRE-STORAGE.md` — Position-centric repertoire data model and v3 wire format reference
+  - `TELEMETRY.md` — Application Insights telemetry and events reference
   - `product-specs/FSRS.md` — FSRS training system specification
   - `product-specs/GAMES.md` — Games page product specification
   - `product-specs/GAME-INGEST.md` — Game ingestion pipeline specification
