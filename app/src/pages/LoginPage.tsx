@@ -215,6 +215,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
     };
 
+    // While a Lichess sign-in is mid-flight (redirecting out, or resuming the
+    // token exchange on return), replace the whole form with a single, obvious
+    // "signing in" view so it's clear the app is working — not idle.
+    if (lichessBusy) {
+        return (
+            <div className="login-page">
+                <div className="login-card login-card--busy">
+                    <div className="login-spinner" aria-hidden="true" />
+                    <h2 className="login-busy-title">Signing you in with Lichess…</h2>
+                    <p className="login-busy-text">
+                        Hold on while we finish connecting your account.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="login-page">
             <div className="login-card">
