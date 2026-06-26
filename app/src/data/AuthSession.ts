@@ -167,6 +167,16 @@ export function isLichessSession(): boolean {
     return loadSession()?.mode === 'lichess';
 }
 
+/**
+ * Tag a backend user id with its auth provider for telemetry so the two
+ * account kinds are distinguishable, e.g. `native:alice` / `lichess:alice`.
+ * The backend user id is identical across modes, so the prefix is the only
+ * thing that separates a password account from a Lichess login.
+ */
+export function telemetryUserId(mode: AuthMode, userId: string): string {
+    return `${mode === 'lichess' ? 'lichess' : 'native'}:${userId}`;
+}
+
 /** Persist a username/password session, clearing any prior Lichess keys. */
 export function persistPasswordSession(userId: string, hashedPassword: string): void {
     localStorage.setItem(LS_USERNAME, userId);

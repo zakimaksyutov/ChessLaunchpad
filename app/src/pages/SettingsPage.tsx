@@ -20,10 +20,15 @@ import { RepertoireData } from '../models/RepertoireData';
 import { getSessionStore, clearSessionStore } from '../data/SessionStore';
 import { isLichessSession, loadSession } from '../data/AuthSession';
 import { clearClientSessionKeys } from '../services/SessionTeardown';
+import { trackEvent } from '../AppInsights';
 import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { encodePersistedBlob, decodePersistedBlob } from '../utils/BlobCodec';
 import './SettingsPage.css';
+
+// Survives the Lichess OAuth full-page redirect so the post-redirect mount can
+// attribute the established connection to a Settings-initiated "Connect".
+const LICHESS_CONNECT_PENDING_KEY = 'lichess_connect_pending';
 
 const SettingsPage: React.FC = () => {
     // Draft state (local to form, not applied until Save)
@@ -54,7 +59,7 @@ const SettingsPage: React.FC = () => {
 
     // Lichess integration (separate, not part of Save/Discard)
     const [lichessLoading, setLichessLoading] = useState(false);
-    const { connected, login, logout } = useLichessAuth();
+    const { connected, ready: lichessReady, login, logout } = useLichessAuth();
     // For a Lichess-login session the OAuth connection *is* the sign-in, so the
     // separate connect/disconnect section is redundant and hidden.
     const isLichessLogin = useMemo(() => isLichessSession(), []);
@@ -158,6 +163,7 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleReset = () => {
+        trackEvent('SettingsReset');
         setContextDepth(2);
         setPresetId(DEFAULT_RETENTION_PRESET);
         setLinkedAccountsDraft([]);
@@ -218,6 +224,47 @@ const SettingsPage: React.FC = () => {
             const blobForSave = RepertoireDataUtils.prepareDataForSave(current);
 
             await dal.storeRepertoireData(blobForSave);
+
+            // Telemetry: report only the settings that actually changed in this
+            // save. Account deltas are a net diff of committed vs draft, so an
+            // add-then-remove of the same account within one unsaved session
+            // reports nothing. Read the committed values here, before the
+            // in-memory mutations below overwrite them.
+            const settingsSavedProps: Record<string, string | number> = {};
+            if (contextDepth !== TrainingEngine.getContextDepth()) {
+                settingsSavedProps.ContextDepth = contextDepth;
+            }
+            if (presetId !== committedPresetId) {
+                settingsSavedProps.ReviewIntensity = presetId;
+            }
+            const committedAccountKeys = new Set(
+                getLinkedAccounts().map(a => getAccountKey(a.platform, a.username)),
+            );
+            const draftAccountKeys = new Set(
+                linkedAccounts.map(a => getAccountKey(a.platform, a.username)),
+            );
+            const addedAccounts = linkedAccounts.filter(
+                a => !committedAccountKeys.has(getAccountKey(a.platform, a.username)),
+            );
+            const removedAccounts = getLinkedAccounts().filter(
+                a => !draftAccountKeys.has(getAccountKey(a.platform, a.username)),
+            );
+            const countByPlatform = (accounts: LinkedAccount[], platform: Platform) =>
+                accounts.filter(a => a.platform === platform).length;
+            if (countByPlatform(addedAccounts, 'lichess')) {
+                settingsSavedProps.AddedLichess = countByPlatform(addedAccounts, 'lichess');
+            }
+            if (countByPlatform(addedAccounts, 'chess.com')) {
+                settingsSavedProps.AddedChessCom = countByPlatform(addedAccounts, 'chess.com');
+            }
+            if (countByPlatform(removedAccounts, 'lichess')) {
+                settingsSavedProps.RemovedLichess = countByPlatform(removedAccounts, 'lichess');
+            }
+            if (countByPlatform(removedAccounts, 'chess.com')) {
+                settingsSavedProps.RemovedChessCom = countByPlatform(removedAccounts, 'chess.com');
+            }
+            settingsSavedProps.TotalLinked = linkedAccounts.length;
+            trackEvent('SettingsSaved', settingsSavedProps);
 
             // Apply draft to in-memory services only after save succeeds
             TrainingEngine.setContextDepth(contextDepth);
@@ -285,13 +332,33 @@ const SettingsPage: React.FC = () => {
 
     const handleLichessConnect = async () => {
         setLichessLoading(true);
+        // Mark the intent before redirecting so the post-redirect mount can
+        // distinguish a fresh connect from merely opening Settings while
+        // already connected.
+        localStorage.setItem(LICHESS_CONNECT_PENDING_KEY, '1');
         try { await login(); } finally { setLichessLoading(false); }
     };
 
     const handleLichessDisconnect = async () => {
         setLichessLoading(true);
-        try { await logout(); } finally { setLichessLoading(false); }
+        try {
+            await logout();
+            trackEvent('LichessDisconnected');
+        } finally {
+            setLichessLoading(false);
+        }
     };
+
+    // After returning from the Lichess OAuth redirect, emit LichessConnected for
+    // a connect this page initiated. The intent flag distinguishes a fresh
+    // connect from a revisit while already connected; a denied auth returns
+    // not-connected, so the flag is cleared without emitting.
+    useEffect(() => {
+        if (!lichessReady) return;
+        if (localStorage.getItem(LICHESS_CONNECT_PENDING_KEY) !== '1') return;
+        localStorage.removeItem(LICHESS_CONNECT_PENDING_KEY);
+        if (connected) trackEvent('LichessConnected');
+    }, [lichessReady, connected]);
 
     // ── Import / Export ────────────────────────────────────────────────
     //
@@ -334,6 +401,7 @@ const SettingsPage: React.FC = () => {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
+            trackEvent('BackupExport');
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             setErrorMessage(`Failed to export: ${msg}`);
@@ -354,6 +422,8 @@ const SettingsPage: React.FC = () => {
             setDeleting(false);
             return;
         }
+
+        trackEvent("UserDelete");
 
         // Account is gone on the backend — tear down the client session and
         // send the user back to the landing page, fully logged out. We have no
@@ -437,6 +507,7 @@ const SettingsPage: React.FC = () => {
             RepertoireDataUtils.normalize(parsed);
             const blobForSave = RepertoireDataUtils.prepareDataForSave(parsed);
             await store.importBlob(blobForSave);
+            trackEvent('BackupImport');
             // Full reload so all pages re-fetch the new repertoire.
             window.location.reload();
         } catch (ex: unknown) {

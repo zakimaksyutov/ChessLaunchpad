@@ -15,7 +15,7 @@ import { LichessAuthProvider } from './LichessAuthContext';
 import './App.css';
 import { trackEvent, setAuthenticatedUserContext, clearAuthenticatedUserContext } from './AppInsights';
 import { createSessionStore, clearSessionStore, tryGetSessionStore } from './data/SessionStore';
-import { loadSession, loadCredentialFromStorage, clearStoredSession, isLichessLoginPending } from './data/AuthSession';
+import { loadSession, loadCredentialFromStorage, clearStoredSession, isLichessLoginPending, telemetryUserId } from './data/AuthSession';
 import { setSessionExpiredListener } from './data/SessionExpiredNotifier';
 import { setLinkedAccounts } from './services/LinkedAccountsService';
 
@@ -105,9 +105,9 @@ const App: React.FC = () => {
     }
     didInit.current = true;
 
-    const storedName = localStorage.getItem('username');
-    if (storedName) {
-      setAuthenticatedUserContext(storedName);
+    const session = loadSession();
+    if (session) {
+      setAuthenticatedUserContext(telemetryUserId(session.mode, session.userId));
     }
 
     trackEvent("AppLoad");

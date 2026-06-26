@@ -17,7 +17,6 @@ import { OpponentAnalysisResult } from '../models/OpponentAnalysis';
 import { buildRepertoireFenSets, RepertoireFenSets } from '../models/RepertoireFenSet';
 import { getExplorerEvals, ExplorerEvals } from '../models/ExplorerEvals';
 import { EvalDropCategory } from '../services/EvalDropService';
-import { getMeasurePerf } from '../utils/PerfUtils';
 import { useLichessAuth } from '../LichessAuthContext';
 import {
     AnnotatedMove,
@@ -77,6 +76,7 @@ import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
 import { selectRenderableRows } from '../services/GameRowSelection';
 import { fetchLichessGameExport } from '../services/LichessGameExportService';
 import { composeSignals } from '../utils/composeSignals';
+import { trackEvent } from '../AppInsights';
 import './GamesPage.css';
 
 function formatSyncTime(d: Date): string {
@@ -431,7 +431,7 @@ const SuggestionDisplay: React.FC<{
                         ✓ Already exists in the repertoire
                     </span>
                 ) : (
-                    <Link className="suggest-fix-action" to={addUrl}>
+                    <Link className="suggest-fix-action" to={addUrl} onClick={() => trackEvent('SuggestedLineAdded')}>
                         Add to repertoire
                     </Link>
                 )}
@@ -701,6 +701,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                                     className={`${getMoveClassName(move)} move-link`}
                                                     to={{ pathname: '/explorer', search: explorerLink }}
                                                     title="Open in Explorer"
+                                                    onClick={() => trackEvent('MistakeOpenInExplorer')}
                                                 >
                                                     {move.san}
                                                 </Link>
@@ -924,9 +925,6 @@ const GamesPage: React.FC = () => {
         localStorage.setItem(filterKey, next);
     }, [filterKey]);
 
-    const measurePerf = useMemo(() => getMeasurePerf(), []);
-    const perfT0Ref = useRef(measurePerf ? performance.now() : 0);
-
     const { ready: lichessAuthReady, connected: lichessConnected, token: lichessToken } = useLichessAuth();
     const [linkedAccounts, setLinkedAccountsState] = useState<LinkedAccount[]>(() => getLinkedAccounts());
 
@@ -947,7 +945,6 @@ const GamesPage: React.FC = () => {
                 const repertoireData = await dal.retrieveRepertoireData();
                 if (cancelled) return;
                 const sets = buildRepertoireFenSets(repertoireData.repertoires ?? []);
-                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: 'fenSets-ready', totalMs: Math.round(performance.now() - perfT0Ref.current), whiteFens: sets.whiteFens.size, blackFens: sets.blackFens.size })}`);
                 setData(repertoireData);
                 setFenSets(sets);
                 setLinkedAccountsState(getLinkedAccounts());
@@ -964,7 +961,6 @@ const GamesPage: React.FC = () => {
     useEffect(() => {
         getExplorerEvals()
             .then(ev => {
-                if (measurePerf) console.log(`[Perf] ${JSON.stringify({ step: 'explorerEvals-ready', totalMs: Math.round(performance.now() - perfT0Ref.current) })}`);
                 setExplorerEvals(ev);
             })
             .catch(err => console.warn('Failed to load explorer evals:', err));
@@ -1663,6 +1659,11 @@ const GamesPage: React.FC = () => {
         setAnalyzingRecordKey(key);
         setAnalyzeProgress({ gamesDownloaded: 0, phase: 'downloading' });
 
+        // Correlation id so OpponentAnalysisComplete can be linked back to its
+        // Start; a Start with no matching Complete is an aborted/failed run.
+        const analysisId = crypto.randomUUID();
+        trackEvent('OpponentAnalysisStart', { AnalysisId: analysisId });
+
         try {
             const result = await analyzeOpponentGames(
                 {
@@ -1682,6 +1683,7 @@ const GamesPage: React.FC = () => {
             const op: OpponentAnalysisRecord = toPersistedOp(result);
             const fresh = await persistOpponentAnalysis(dal, record.id, record.p, op, signal);
             setData(fresh);
+            trackEvent('OpponentAnalysisComplete', { AnalysisId: analysisId });
         } catch (err) {
             if ((err as Error).name !== 'AbortError') {
                 console.error('Opponent analysis failed:', err);
@@ -1767,6 +1769,7 @@ const GamesPage: React.FC = () => {
             // result — same no-412-retry posture as Analyze opponent. Anchored
             // on the EOT user ply so a later repertoire change can stale it.
             if (result.plies.length > 0) {
+                trackEvent('FixSuggested');
                 const ann = annotationByKey.get(key);
                 const eot = ann ? deriveRecordEotPositions(record, ann) : null;
                 if (eot) {
@@ -1827,6 +1830,7 @@ const GamesPage: React.FC = () => {
             await persistGameReviewed(
                 dal, record.id, record.p, nextReviewed, pageAbortRef.current?.signal,
             );
+            trackEvent(nextReviewed ? 'MistakeReviewed' : 'MistakeUnreviewed');
         } catch (e) {
             // Abort = navigation away; 412 = the app-root <ConflictModal>
             // owns recovery. Neither is a real failure to surface here.

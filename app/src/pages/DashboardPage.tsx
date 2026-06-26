@@ -10,6 +10,8 @@ import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTo
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
 import { runIngest, IngestProgress } from '../services/GameIngestService';
 import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
+import { buildDashboardViewProps } from '../services/DashboardTelemetry';
+import { trackEvent } from '../AppInsights';
 import { buildDashboardActions, countNewGames, countMistakeGames, getEmptyRepertoireColors, DashboardAction } from '../services/DashboardActions';
 import { PendingEditModel } from '../services/PendingEditModel';
 import { decodeRepertoirePgn } from '../utils/RepertoirePgn';
@@ -100,6 +102,9 @@ const DashboardPage: React.FC = () => {
 
     // Lock against overlapping sync cycles (auto + manual button + double-click).
     const syncInFlightRef = useRef(false);
+
+    // Emit DashboardView once per visit (StrictMode-safe via the ref).
+    const didTrackViewRef = useRef(false);
 
     // Page-scoped AbortController for `runIngest` so navigation away
     // from /dashboard cancels its in-flight HTTP fetches and skips
@@ -277,6 +282,12 @@ const DashboardPage: React.FC = () => {
                 ensureActivity(data);
                 setRepertoireData(data);
                 setLoading(false);
+
+                // Snapshot the figures the user lands on (pre-sync) exactly once.
+                if (!didTrackViewRef.current) {
+                    didTrackViewRef.current = true;
+                    trackEvent('DashboardView', buildDashboardViewProps(data));
+                }
 
                 // Chain ingest after the initial load resolves. Sequencing here
                 // serves two purposes:

@@ -13,9 +13,6 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
 
-    env:
-      VITE_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }} 
-
     steps:
       - name: Set build env vars
         run: |
@@ -61,6 +58,10 @@ jobs:
         working-directory: app
         env:
           VITE_BUILD_VERSION: ${{ env.VITE_BUILD_VERSION }}
+          # Real connection string is supplied only to the production build that
+          # deploys to GitHub Pages — never to the e2e step, whose dev server
+          # uses a sentinel endpoint (see app/playwright.config.ts).
+          VITE_APPINSIGHTS_CONNECTION_STRING: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
 
       - name: Configure git user
         # This ensures gh-pages can commit with a known identity

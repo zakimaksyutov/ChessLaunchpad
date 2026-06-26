@@ -28,6 +28,7 @@ import {
     updateStoredLichessJwt,
     clearStoredSession,
     loadCredentialFromStorage,
+    telemetryUserId,
 } from './AuthSession';
 import { lichessAuth } from '../services/LichessAuthService';
 import { exchangeLichessToken, LichessLoginError } from '../services/LichessAccountAuth';
@@ -51,6 +52,13 @@ describe('AuthSession', () => {
         });
         it('never renews', async () => {
             await expect(new PasswordCredential('pw').onUnauthorized()).resolves.toBe(false);
+        });
+    });
+
+    describe('telemetryUserId', () => {
+        it('tags password accounts as native and Lichess accounts as lichess', () => {
+            expect(telemetryUserId('password', 'alice')).toBe('native:alice');
+            expect(telemetryUserId('lichess', 'alice')).toBe('lichess:alice');
         });
     });
 
