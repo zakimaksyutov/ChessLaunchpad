@@ -12,14 +12,3 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `UserLogout` | `App.tsx` | User logs out. |
 
 None of these events carry custom properties.
-
-## Global enrichment
-
-Every event is enriched by the SDK with:
-
-- **`application.ver`** — the build version (`VITE_BUILD_VERSION`).
-- **Authenticated user context** — set via `setAuthenticatedUserContext` on login/load and cleared via `clearAuthenticatedUserContext` on logout.
-
-## Configuration
-
-The connection string comes from `VITE_APPINSIGHTS_CONNECTION_STRING`. If the SDK fails to load, `trackEvent` becomes a no-op.

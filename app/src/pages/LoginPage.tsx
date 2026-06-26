@@ -11,6 +11,7 @@ import {
     isLichessLoginPending,
     setLichessLoginPending,
     clearLichessLoginPending,
+    telemetryUserId,
 } from '../data/AuthSession';
 import {
     exchangeLichessToken,
@@ -102,7 +103,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             createSessionStore(username, derivedPassword);
 
             // Set authenticated context and track event to App Insights
-            setAuthenticatedUserContext(username);
+            setAuthenticatedUserContext(telemetryUserId('password', username));
             trackEvent(isSignUp ? "UserSignUp" : "UserLogin");
 
             // Call the parent component's callback to update the username
@@ -162,7 +163,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
             // Commit the session now that everything has succeeded.
             persistLichessSession(userId, displayName, jwt);
-            setAuthenticatedUserContext(userId);
+            setAuthenticatedUserContext(telemetryUserId('lichess', userId));
             trackEvent(created ? 'UserSignUp' : 'UserLogin');
 
             clearLichessLoginPending();
