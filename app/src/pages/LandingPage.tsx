@@ -1,34 +1,101 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useLichessAuth } from '../LichessAuthContext';
+import { setLichessLoginPending, clearLichessLoginPending } from '../data/AuthSession';
+import { trackEvent } from '../AppInsights';
+import './LandingPage.css';
 
 const LandingPage: React.FC = () => {
     const version = import.meta.env.VITE_BUILD_VERSION;
+    const navigate = useNavigate();
+    const { login: lichessLogin } = useLichessAuth();
+    const [redirecting, setRedirecting] = useState(false);
+
+    // Kick off Lichess OAuth straight from the landing page — the lowest-
+    // friction entry for our (Lichess-using) audience. Mirrors LoginPage's
+    // initiation: record the pending intent so it survives the full-page
+    // redirect; on return PendingLichessLoginRedirect routes to /login where
+    // the token exchange resumes. If the redirect can't even start, fall back
+    // to /login so the user can retry there.
+    const handleLichessSignIn = async () => {
+        trackEvent('LandingCtaLichess');
+        setRedirecting(true);
+        setLichessLoginPending();
+        try {
+            await lichessLogin();
+        } catch (err) {
+            console.error('Lichess redirect failed from landing:', err);
+            clearLichessLoginPending();
+            setRedirecting(false);
+            navigate('/login');
+        }
+    };
+
+    const handleEmailSignUp = () => {
+        trackEvent('LandingCtaSignup');
+        navigate('/login');
+    };
 
     return (
-        <div style={{ 
-            padding: '1rem',
-            minHeight: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between'
-        }}>
-            <div>
-                <h2>🔥 Memorize Chess Openings, Scientifically</h2>
-                
-                <p>Chess Launchpad offers a streamlined method to master chess openings through adaptive repetition and real-time feedback. Experience interactive play guided by weighted probabilities tailored to your specific memorization needs, instantly identifying and correcting mistakes. Clear progress indicators and motivational badges keep you engaged and focused.</p>
-                
-                <p>Turn chess openings from daunting to effortless. With Chess Launchpad's scientifically-backed approach, every move reinforces your memory, ensuring you never forget a critical move order again.</p>
-            </div>
-            
+        <div className="landing">
+            <section className="landing-hero">
+                <span className="landing-eyebrow">🔥 Spaced-repetition openings trainer</span>
+                <h1 className="landing-title">Memorize chess openings — and never forget them</h1>
+                <p className="landing-subtitle">
+                    Chess Launchpad drills your opening repertoire with adaptive repetition —
+                    surfacing each move right before you'd forget it and correcting mistakes the
+                    instant you make them.
+                </p>
+
+                <div className="landing-cta">
+                    <button
+                        type="button"
+                        className="landing-cta-primary"
+                        onClick={handleLichessSignIn}
+                        disabled={redirecting}
+                    >
+                        {redirecting ? 'Redirecting…' : '♞ Get started with Lichess'}
+                    </button>
+                    <button
+                        type="button"
+                        className="landing-cta-secondary"
+                        onClick={handleEmailSignUp}
+                        disabled={redirecting}
+                    >
+                        or sign up with a username &amp; password
+                    </button>
+                </div>
+            </section>
+
+            <ul className="landing-features">
+                <li className="landing-feature">
+                    <div className="landing-feature-icon" aria-hidden="true">🧠</div>
+                    <h2 className="landing-feature-title">Adaptive repetition</h2>
+                    <p className="landing-feature-text">
+                        An FSRS schedule reviews every position at the perfect moment, so each rep
+                        cements the move order in long-term memory.
+                    </p>
+                </li>
+                <li className="landing-feature">
+                    <div className="landing-feature-icon" aria-hidden="true">⚡</div>
+                    <h2 className="landing-feature-title">Instant feedback</h2>
+                    <p className="landing-feature-text">
+                        Play your lines on a live board and get mistakes flagged and corrected the
+                        moment they happen.
+                    </p>
+                </li>
+                <li className="landing-feature">
+                    <div className="landing-feature-icon" aria-hidden="true">📈</div>
+                    <h2 className="landing-feature-title">Track your progress</h2>
+                    <p className="landing-feature-text">
+                        Clear progress indicators and motivational badges keep you engaged and
+                        coming back for the next session.
+                    </p>
+                </li>
+            </ul>
+
             {version && (
-              <div style={{ 
-                fontSize: '0.7rem', 
-                color: '#666', 
-                fontStyle: 'italic',
-                textAlign: 'center',
-                paddingBottom: '0.5rem'
-              }}>
-                Build version: {version}
-              </div>
+                <div className="landing-version">Build version: {version}</div>
             )}
         </div>
     );
