@@ -136,8 +136,6 @@ const DashboardPage: React.FC = () => {
         e.target.value = '';
         const color = importColorRef.current;
         const colorLabel = color === 'white' ? 'White' : 'Black';
-        const current = repertoireData;
-        if (!current) return;
 
         setImporting(color);
         setImportToast(null);
@@ -150,6 +148,16 @@ const DashboardPage: React.FC = () => {
                     `That file is a ${fileColor} repertoire, but you chose to import ${colorLabel}.`,
                 );
             }
+
+            // Import on its OWN proxy — not the shared `dal` that auto-sync
+            // uses — and read the current blob through it, so the data and the
+            // If-Match etag are taken together from one proxy. Sharing the sync
+            // proxy let its post-save etag bump mask a concurrent import as a
+            // successful write (silent lost update); an independent proxy keeps
+            // its own locked etag, so a collision with an in-flight sync
+            // surfaces as a 412 → ConflictModal → reload instead.
+            const importDal = getSessionStore().createDataAccessProxyLayer();
+            const current = await importDal.retrieveRepertoireData();
 
             const model = new PendingEditModel(current.repertoires ?? [], current.fsrsCards ?? {});
             const result = model.applyImportedPgn(decoded.orientation, decoded.edges, decoded.annotationsByFen);
@@ -166,9 +174,9 @@ const DashboardPage: React.FC = () => {
                 audit: current.audit,
             };
             const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
-            await dal.storeRepertoireData(wire);
+            await importDal.storeRepertoireData(wire);
 
-            const refreshed = await dal.retrieveRepertoireData();
+            const refreshed = await importDal.retrieveRepertoireData();
             if (!mountedRef.current) return;
             ensureActivity(refreshed);
             setRepertoireData(refreshed);
@@ -187,7 +195,7 @@ const DashboardPage: React.FC = () => {
         } finally {
             if (mountedRef.current) setImporting(null);
         }
-    }, [dal, repertoireData]);
+    }, []);
 
     // Auto-dismiss the success toast; errors stay until the next attempt.
     useEffect(() => {
