@@ -216,6 +216,15 @@
     color: #8a1c1c;
 }
 
+.game-row-flash {
+    animation: game-row-flash 1.6s ease-out;
+}
+
+@keyframes game-row-flash {
+    0% { box-shadow: 0 0 0 2px rgba(46, 160, 67, 0.85); }
+    100% { box-shadow: 0 0 0 2px rgba(46, 160, 67, 0); }
+}
+
 .games-empty {
     width: 100%;
     text-align: center;
@@ -773,6 +782,13 @@
 
 .suggest-fix-action:hover {
     text-decoration: underline;
+}
+
+.suggest-fix-added {
+    color: #1f6b34;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 /* Mobile responsive */

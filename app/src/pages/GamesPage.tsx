@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { getSessionStore } from '../data/SessionStore';
@@ -352,7 +352,9 @@ function suggestionMoveClass(ply: SuggestionPly): string {
 const SuggestionDisplay: React.FC<{
     state: SuggestionState;
     orientation: 'white' | 'black';
-}> = ({ state, orientation }) => {
+    rowKey: string;
+    applied: boolean;
+}> = ({ state, orientation, rowKey, applied }) => {
     if (state.status === 'loading') {
         return (
             <div className="suggest-fix-result suggest-fix-loading" role="status" aria-live="polite">
@@ -386,7 +388,7 @@ const SuggestionDisplay: React.FC<{
         );
     }
     const lichessUrl = buildLichessAnalysisUrl(result.explorerPgn, orientation);
-    const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}`;
+    const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}&from=games&row=${encodeURIComponent(rowKey)}`;
     // The first diverging ply (the corrected move) carries the "instead of X" note.
     const firstNewIdx = result.plies.findIndex(p => p.isNew);
     return (
@@ -415,9 +417,15 @@ const SuggestionDisplay: React.FC<{
                 >
                     Open in Lichess Opening Explorer
                 </a>
-                <Link className="suggest-fix-action" to={addUrl}>
-                    Add to repertoire
-                </Link>
+                {applied ? (
+                    <span className="suggest-fix-added" title="This line is already in your repertoire">
+                        ✓ Added to repertoire
+                    </span>
+                ) : (
+                    <Link className="suggest-fix-action" to={addUrl}>
+                        Add to repertoire
+                    </Link>
+                )}
             </div>
         </div>
     );
@@ -458,6 +466,8 @@ interface GameRowProps {
     onDeleteFromHere: (record: GameRecord) => void;
     /** Current "Suggest a fix" state for this row (null when not yet requested). */
     suggestion: SuggestionState | null;
+    /** True once the user has added this suggestion to their repertoire. */
+    suggestionApplied: boolean;
     /** Compute (or recompute) a repertoire-fix suggestion for this row. */
     onSuggestFix: (record: GameRecord, userLower: string) => void;
 }
@@ -478,6 +488,7 @@ const GameRow: React.FC<GameRowProps> = ({
     onToggleReviewed,
     onDeleteFromHere,
     suggestion,
+    suggestionApplied,
     onSuggestFix,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
@@ -571,6 +582,7 @@ const GameRow: React.FC<GameRowProps> = ({
 
     return (
         <div
+            id={`game-row-${record.p}:${record.id}`}
             className={`game-row${tileClass}${pending ? ' game-row-pending' : ''}`}
             aria-busy={pending || undefined}
         >
@@ -743,7 +755,7 @@ const GameRow: React.FC<GameRowProps> = ({
                         )}
 
                         {eotSummary && !hasDeviation && suggestion && (
-                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} />
+                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} />
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (
@@ -789,6 +801,51 @@ const GamesPage: React.FC = () => {
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
     const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
+    // Post-"Add to repertoire" return handoff. When the Explorer sends the user
+    // back here after Save/Discard (`?row=&added=`), scroll the originating row
+    // into view; on a successful Save (`added=1`) also flash it. The persistent
+    // "Added to repertoire" confirmation itself is driven by `record.sg.ap`.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const suggestReturnHandledRef = useRef(false);
+    const suggestScrollRef = useRef<{ row: string; flash: boolean } | null>(null);
+    useEffect(() => {
+        if (suggestReturnHandledRef.current) return;
+        const row = searchParams.get('row');
+        if (!row) return;
+        const flash = searchParams.get('added') === '1';
+        suggestReturnHandledRef.current = true;
+        const next = new URLSearchParams(searchParams);
+        next.delete('row');
+        next.delete('added');
+        setSearchParams(next, { replace: true });
+        suggestScrollRef.current = { row, flash };
+    }, [searchParams, setSearchParams]);
+    useEffect(() => {
+        const target = suggestScrollRef.current;
+        if (!target) return;
+        // Rows hydrate asynchronously (data fetch + progressive annotation), so
+        // poll for the target element before scrolling. Bounded so a filtered-
+        // out / missing row simply gives up.
+        let attempts = 0;
+        let timer = 0;
+        let cancelled = false;
+        const tryScroll = () => {
+            if (cancelled) return;
+            const el = document.getElementById(`game-row-${target.row}`);
+            if (el) {
+                suggestScrollRef.current = null;
+                el.scrollIntoView({ block: 'center' });
+                if (target.flash) {
+                    el.classList.add('game-row-flash');
+                    window.setTimeout(() => el.classList.remove('game-row-flash'), 1600);
+                }
+                return;
+            }
+            if (++attempts < 50) timer = window.setTimeout(tryScroll, 100);
+        };
+        tryScroll();
+        return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
+    }, []);
     /**
      * Per-row "Suggest a fix" state, keyed by `${p}:${id}`. Recomputed on each
      * click (not persisted). Entries live for the page visit and are released
@@ -1065,7 +1122,7 @@ const GamesPage: React.FC = () => {
     // stale once its anchored EOT ply no longer matches the live deviation
     // (repertoire changed since the suggestion was computed).
     const sgByKey = useMemo(() => {
-        const map = new Map<string, { live: SuggestionResult; stale: boolean }>();
+        const map = new Map<string, { live: SuggestionResult; stale: boolean; applied: boolean }>();
         for (const { record, userLower, pending } of orderedRows) {
             if (pending) continue;
             if (!record.sg) continue;
@@ -1079,7 +1136,7 @@ const GamesPage: React.FC = () => {
                 const eot = deriveRecordEotPositions(record, ann);
                 if (eot && eot.targetPly === record.sg.ply) stale = false;
             }
-            map.set(key, { live, stale });
+            map.set(key, { live, stale, applied: record.sg.ap === 1 });
         }
         return map;
     }, [orderedRows, annotationByKey]);
@@ -1938,9 +1995,10 @@ const GamesPage: React.FC = () => {
                         // Transient (in-flight / just-computed) state wins; else
                         // fall back to the hydrated, non-stale saved suggestion.
                         const sg = sgByKey.get(key);
+                        const suggestionApplied = sg?.applied ?? false;
                         const suggestionState: SuggestionState | null =
                             suggestionByKey.get(key)
-                            ?? (sg && !sg.stale ? { status: 'ready', result: sg.live } : null);
+                            ?? (sg && (!sg.stale || sg.applied) ? { status: 'ready', result: sg.live } : null);
                         return (
                             <GameRow
                                 key={key}
@@ -1959,6 +2017,7 @@ const GamesPage: React.FC = () => {
                                 onToggleReviewed={handleToggleReviewed}
                                 onDeleteFromHere={handleDeleteFromHere}
                                 suggestion={suggestionState}
+                                suggestionApplied={suggestionApplied}
                                 onSuggestFix={handleSuggestFix}
                             />
                         );

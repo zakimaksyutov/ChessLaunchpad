@@ -6,6 +6,7 @@ import ReviewView from '../components/ReviewView';
 import { DataAccessError } from '../data/DataAccessLayer';
 import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData } from '../models/RepertoireData';
+import { findRecord } from '../services/GameRecordStore';
 import {
     ExplorerService,
     Orientation,
@@ -854,6 +855,10 @@ const ExplorerPage: React.FC = () => {
     // Save so they can commit (or discard) the proposed line. Handled once per
     // distinct PGN value.
     const addPgnHandledRef = useRef<string | null>(null);
+    // When the addpgn deep-link came from /games (the "Add to repertoire"
+    // suggestion action), remember the originating row so Save/Discard can
+    // send the user back to /games instead of stranding them on Explorer.
+    const suggestReturnRef = useRef<{ row: string | null } | null>(null);
     useEffect(() => {
         if (!data) return;
         const addPgn = searchParams.get('addpgn');
@@ -869,6 +874,8 @@ const ExplorerPage: React.FC = () => {
         const next = new URLSearchParams(searchParams);
         next.delete('addpgn');
         next.delete('fen');
+        next.delete('from');
+        next.delete('row');
 
         try {
             const decoded = decodeRepertoirePgn(addPgn, { defaultOrientation: orientation });
@@ -901,6 +908,9 @@ const ExplorerPage: React.FC = () => {
                     ? `Staged ${result.addedEdges} new move${result.addedEdges === 1 ? '' : 's'} from the suggested line — Review & Save to add ${result.addedEdges === 1 ? 'it' : 'them'}.`
                     : 'The suggested line is already in your repertoire.',
             });
+            if (searchParams.get('from') === 'games') {
+                suggestReturnRef.current = { row: searchParams.get('row') };
+            }
             next.set('o', decoded.orientation);
             next.set('review', '1');
         } catch {
@@ -1274,6 +1284,25 @@ const ExplorerPage: React.FC = () => {
         setEditPromptToast({ kind: 'annotation' });
     }, []);
 
+    /**
+     * If the current edit session was entered via the /games "Add to
+     * repertoire" suggestion, navigate back to /games (carrying the row key so
+     * the page can scroll to it, and an `added` flag for the success toast).
+     * Returns true when it handled navigation so callers can skip their normal
+     * stay-on-Explorer cleanup.
+     */
+    const returnToGamesAfterSuggest = useCallback((added: boolean): boolean => {
+        const ret = suggestReturnRef.current;
+        if (!ret) return false;
+        suggestReturnRef.current = null;
+        const params = new URLSearchParams();
+        if (ret.row) params.set('row', ret.row);
+        if (added) params.set('added', '1');
+        const search = params.toString();
+        navigate({ pathname: '/games', search: search ? `?${search}` : '' }, { replace: true });
+        return true;
+    }, [navigate]);
+
     /** Sticky-bar Save handler. */
     const handleSave = useCallback(async () => {
         if (!pendingModel || !data) return;
@@ -1289,6 +1318,21 @@ const ExplorerPage: React.FC = () => {
             // dropped by `projectFsrsCardsIntoRepertoires` (which only
             // re-emits cards backed by an existing edge in `repertoires`).
             const liveCards = extractFsrsCardsFromRepertoires(pendingModel.currentRepertoires);
+
+            // When this Save commits a /games "Add to repertoire" suggestion,
+            // stamp the originating game record so /games can show a persistent
+            // "Added to repertoire" confirmation (the frozen annotation keeps
+            // offering "Add to repertoire" until the next Re-annotate).
+            const ret = suggestReturnRef.current;
+            if (ret?.row && data.activity) {
+                const sep = ret.row.indexOf(':');
+                if (sep > 0) {
+                    const platform = ret.row.slice(0, sep) as 'l' | 'c';
+                    const id = ret.row.slice(sep + 1);
+                    const found = findRecord(data.activity, id, platform);
+                    if (found?.record.sg) found.record.sg.ap = 1;
+                }
+            }
 
             const blobInMemory: RepertoireData = {
                 repertoires: pendingModel.currentRepertoires,
@@ -1309,6 +1353,7 @@ const ExplorerPage: React.FC = () => {
             dataRef.current = null;
             setPendingModel(null);
             setMode('read');
+            if (returnToGamesAfterSuggest(true)) return;
             stripReviewParam();
             await fetchAll(true);
         } catch (err: unknown) {
@@ -1325,7 +1370,7 @@ const ExplorerPage: React.FC = () => {
         } finally {
             setSaveInFlight(false);
         }
-    }, [pendingModel, data, dal, fetchAll, stripReviewParam]);
+    }, [pendingModel, data, dal, fetchAll, stripReviewParam, returnToGamesAfterSuggest]);
 
     /** Sticky-bar Discard handler (always prompts when delta non-empty). */
     const requestDiscard = useCallback(() => {
@@ -1333,18 +1378,20 @@ const ExplorerPage: React.FC = () => {
             // Trivial discard: nothing to confirm.
             setPendingModel(null);
             setMode('read');
+            if (returnToGamesAfterSuggest(false)) return;
             stripReviewParam();
             return;
         }
         setDiscardPrompt(true);
-    }, [pendingModel, stripReviewParam]);
+    }, [pendingModel, stripReviewParam, returnToGamesAfterSuggest]);
 
     const confirmDiscard = useCallback(() => {
         setDiscardPrompt(false);
         setPendingModel(null);
         setMode('read');
+        if (returnToGamesAfterSuggest(false)) return;
         stripReviewParam();
-    }, [stripReviewParam]);
+    }, [stripReviewParam, returnToGamesAfterSuggest]);
 
     // ── PGN export ─────────────────────────────────────────────────
 

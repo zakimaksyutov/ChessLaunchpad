@@ -36,13 +36,21 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
   - **Open in Lichess Opening Explorer** — link to study the line further; the
     replaced move `X` is appended as a one-ply `(…)` variation so both can be
     compared.
-  - **Add to repertoire** — link to add the suggested line to the repertoire
-    (the corrected line only, without the `X` variation).
+  - **Add to repertoire** — deep-links into the Explorer Review & Save flow to
+    add the corrected line (without the `X` variation). **Save** or **Discard**
+    returns the user to `/games`, scrolled to the row (highlighted on Save).
+    Once added, the action is replaced by a persistent **"Added to repertoire"**
+    confirmation (see below).
 - One suggestion per row. **Persisted to the game record** (`GameRecord.sg`,
   anchored on the EOT user ply like the saved `op`) so it survives reloads and
   the link can hide on return visits. Re-annotate clears it; a repertoire change
   that moves the anchored deviation marks the saved suggestion stale and
   re-offers the action (recompute on the next click).
+  - **"Added to repertoire" confirmation.** Committing the suggestion stamps
+    `GameRecord.sg.ap = 1`. The row annotation is **frozen** (`fan`) and keeps
+    offering "Add to repertoire" until the next Re-annotate, so this sticky flag
+    is what flips the label. It rides along in the activity blob (no backend
+    change).
 
 ## 2. Suggestion algorithm
 

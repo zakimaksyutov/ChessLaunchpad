@@ -199,6 +199,17 @@ export interface SuggestionRecord {
     rep?: string;
     /** Suggested at — ms epoch. */
     at: number;
+    /**
+     * Set to `1` once the user has added this suggested line to their
+     * repertoire via the /games → Explorer "Add to repertoire" Save flow.
+     * Drives the persistent "Added to repertoire" confirmation that replaces
+     * the "Add to repertoire" action on the row. Needed because the row's
+     * annotation is frozen (`fan`) and keeps showing the original
+     * out-of-repertoire state — hence the "Add to repertoire" action — until
+     * the next Re-annotate, so the add can't be inferred from the annotation
+     * alone. Sticky: not cleared if the line is later removed.
+     */
+    ap?: 1;
 }
 
 interface SuggestionRecordPly {
