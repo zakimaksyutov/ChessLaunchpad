@@ -7,8 +7,7 @@
 // Top-5 and either accepts a good user move (staying on the real game) or
 // substitutes a better one and closes the line out at depth 1.
 //
-// See docs/product-specs/GAMES-SUGGESTION.md for the full specification and
-// tools/analyze-position/suggest-score.cjs for the reference move scorer.
+// See docs/product-specs/GAMES-SUGGESTION.md for the full specification.
 // ---------------------------------------------------------------------------
 
 import { Chess } from 'chess.js';
