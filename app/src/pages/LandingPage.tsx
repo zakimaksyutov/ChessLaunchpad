@@ -92,6 +92,14 @@ const LandingPage: React.FC = () => {
                         coming back for the next session.
                     </p>
                 </li>
+                <li className="landing-feature">
+                    <div className="landing-feature-icon" aria-hidden="true">🔎</div>
+                    <h2 className="landing-feature-title">Learn from your games</h2>
+                    <p className="landing-feature-text">
+                        Import your Lichess and Chess.com games to see where you left your prep
+                        and slipped, then add the suggested fix straight to your repertoire.
+                    </p>
+                </li>
             </ul>
 
             {version && (
