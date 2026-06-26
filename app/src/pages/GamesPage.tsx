@@ -735,7 +735,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                     <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
                                     <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                                 </svg>
-                                Out of repertoire – you played <strong>{eotSummary.userSan}</strong> ({eotSummary.category})
+                                Out of repertoire – you played <strong>{eotSummary.userSan}</strong> (<strong className="eot-category" style={{ color: EOT_ICON_COLORS[eotSummary.category] }}>{eotSummary.category}</strong>)
                                 {allowAnalyzeAction && !analyzeProgress && (
                                     <a
                                         className="analyze-opponent-link"

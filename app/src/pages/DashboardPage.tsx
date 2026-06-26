@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { State } from 'ts-fsrs';
 import { getSessionStore } from '../data/SessionStore';
 import { DataAccessError } from '../data/DataAccessLayer';
@@ -72,9 +72,13 @@ type ImportToast = { kind: 'success' | 'error'; text: string };
 
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    // One-time nudge shown when /training redirects here because the user has
+    // no repertoire to train yet (the router state carries `trainingRedirect`).
+    const [redirectNotice, setRedirectNotice] = useState<string | null>(null);
     // Lower-priority "Import repertoire as PGN" onboarding row. `importing`
     // names the color whose import is in flight (null = idle); the file picker
     // is shared, so `importColorRef` remembers which button opened it.
@@ -208,6 +212,26 @@ const DashboardPage: React.FC = () => {
         const id = window.setTimeout(() => setImportToast(null), 4500);
         return () => window.clearTimeout(id);
     }, [importToast]);
+
+    // Pick up a /training → dashboard redirect (no repertoire to train yet) and
+    // surface the nudge. Consume the router state immediately via a replace so a
+    // refresh or back-nav doesn't replay the toast.
+    useEffect(() => {
+        const navState = location.state as { trainingRedirect?: boolean } | null;
+        if (navState?.trainingRedirect) {
+            setRedirectNotice('Build a repertoire first — training has no positions to review yet.');
+            navigate('/', { replace: true, state: null });
+        }
+        // Runs once on entry; the redirect flag only rides the initial navigation.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Auto-dismiss the redirect nudge.
+    useEffect(() => {
+        if (!redirectNotice) return;
+        const id = window.setTimeout(() => setRedirectNotice(null), 6000);
+        return () => window.clearTimeout(id);
+    }, [redirectNotice]);
 
     const runSyncCycle = useCallback(async (force = false) => {
         if (!mountedRef.current) return;
@@ -351,6 +375,9 @@ const DashboardPage: React.FC = () => {
     return (
         <div className="dashboard">
             <div>
+                {redirectNotice && (
+                    <p className="dashboard-redirect-notice" role="status">{redirectNotice}</p>
+                )}
                 {/* Actions — the dashboard's "what to do next" surface. */}
                 <ActionsTile
                     actions={actions}

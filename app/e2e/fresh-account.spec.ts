@@ -88,7 +88,7 @@ async function setupFreshAccount(page: Page, username = 'freshuser') {
 }
 
 test.describe('Fresh account (backend returns `{}`)', () => {
-    test('Training page loads without a decode error and shows the empty state', async ({ page }) => {
+    test('Training page redirects to the dashboard with a build-repertoire nudge', async ({ page }) => {
         const mock = await setupFreshAccount(page);
 
         // Capture any decode/loader errors that the page surfaces as text or
@@ -103,9 +103,12 @@ test.describe('Fresh account (backend returns `{}`)', () => {
 
         await page.goto('/#/training');
 
-        // Empty-state message rendered when no repertoire has positions yet —
-        // exactly what normalize() seeds for a fresh account.
-        await expect(page.getByText('No variants available.')).toBeVisible();
+        // /training decodes the fresh-account `{}` blob (the regression under
+        // test), finds no positions to train, and hands off to the dashboard
+        // with a one-time nudge. Seeing the nudge proves both the decode and
+        // the redirect worked.
+        await expect(page.getByText(/Build a repertoire first/i)).toBeVisible();
+        await expect(page).toHaveURL(/#\/$/);
 
         // The page must NOT render the previous failure mode
         // ("Error: Failed to load variants: BlobCodec.decode: unsupported

@@ -19,6 +19,17 @@
     color: #d32f2f;
 }
 
+/* One-time nudge shown when /training redirects here (no repertoire yet). */
+.dashboard-redirect-notice {
+    margin: 0 0 1rem;
+    padding: 0.65rem 0.9rem;
+    border: 1px solid #bbdefb;
+    border-radius: 8px;
+    background: #e3f2fd;
+    color: #0d47a1;
+    font-size: 0.9rem;
+}
+
 /* Actions tile — full-width "what to do next" surface above the grid. */
 .dashboard-actions {
     background: #f9f9f9;
