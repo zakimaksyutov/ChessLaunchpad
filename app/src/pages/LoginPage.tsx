@@ -49,7 +49,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         // Don't auto-redirect while a Lichess sign-in is mid-flight: the
         // session is not established until the exchange resumes below.
         if (storedUser && !isLichessLoginPending()) {
-            navigate(`/training`);
+            navigate(`/`);
         }
     }, [navigate]);
 
@@ -108,8 +108,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
             // Call the parent component's callback to update the username
             onLogin(username);
 
-            // Navigate to the page with main content
-            navigate(`/training`);
+            // Navigate to the dashboard (main content)
+            navigate(`/`);
         } catch (error) {
             console.error(error);
 
@@ -167,7 +167,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
             clearLichessLoginPending();
             onLogin(userId);
-            navigate('/training');
+            navigate('/');
         } catch (err) {
             console.error('Lichess sign-in failed:', err);
             // Clear the pending intent and tear down the in-memory store. No
