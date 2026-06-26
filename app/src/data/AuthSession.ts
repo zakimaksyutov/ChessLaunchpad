@@ -10,7 +10,7 @@
  * identical in both modes; a Lichess session additionally records its mode,
  * the cased display name, and the backend JWT.
  *
- * See `docs/product-specs/LICHESS-LOGIN.md`.
+ * See the "Lichess Integration" section of `ARCHITECTURE.md`.
  */
 
 import { lichessAuth } from '../services/LichessAuthService';

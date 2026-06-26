@@ -9,7 +9,7 @@
  *      An "already exists" (409) is treated as a normal sign-in.
  *   3. Read the user's properly-cased Lichess username for display.
  *
- * See `docs/product-specs/LICHESS-LOGIN.md` and
+ * See the "Lichess Integration" section of `ARCHITECTURE.md` and
  * `docs/BACKEND_API_CONTRACT.md`.
  */
 
