@@ -34,4 +34,18 @@ describe('Suggest-a-Fix contract — chosen move is pinned', () => {
         const top = rankMoveStats(stats)[0];
         expect(moves[top.index]).toBe('Nf3');
     });
+
+    it('Example 2 (user = black): chooses Bxd4 in the Italian (5. d4)', () => {
+        // 1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O Nf6 5. d4 — Black to move.
+        // Raw rows are in Black's orientation (margin/eval as the user sees them).
+        const moves = ['Bxd4', 'exd4', 'Nxd4'];
+        const stats: MoveStat[] = [
+            { games: 348, margin: 0.118, evalCp: 1 },    // Bxd4
+            { games: 88, margin: -0.148, evalCp: -21 },  // exd4
+            { games: 7, margin: -0.286, evalCp: -86 },   // Nxd4
+        ];
+
+        const top = rankMoveStats(stats)[0];
+        expect(moves[top.index]).toBe('Bxd4');
+    });
 });
