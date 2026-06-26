@@ -6,6 +6,7 @@ import { composeSignals } from "../utils/composeSignals";
 import { DataAccessError } from "./DataAccessLayer";
 import { DataAccessProxyLayer } from "./DataAccessProxyLayer";
 import { notifyConflict } from "./ConflictNotifier";
+import { notifySessionExpired } from "./SessionExpiredNotifier";
 import {
     AuthCredential,
     PasswordCredential,
@@ -344,6 +345,18 @@ export class SessionStore {
         );
         if (!response.ok) {
             const msg = await response.text();
+            // A 404 here means the backend account no longer exists — it was
+            // deleted (on this device or from another browser/session). The
+            // session can't recover and there's nothing to load, so treat it
+            // exactly like an expired session: fire the global notifier and the
+            // app shell clears the stored session + SessionStore and routes to
+            // /login. Guard on `disposed` so a late 404 from a logged-out store
+            // can't drop the next user's session. We still throw so the awaiting
+            // `ready()`/`getSnapshot()` rejects; the redirect unmounts
+            // ProtectedRoute before its error UI can surface.
+            if (response.status === 404 && !this.disposed) {
+                notifySessionExpired();
+            }
             throw new DataAccessError(msg, response.status);
         }
         const etagHeader = response.headers.get("ETag");

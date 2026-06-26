@@ -21,6 +21,13 @@
   color: #1a1a1a;
 }
 
+.login-subtitle {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  text-align: center;
+  color: #1a1a1a;
+}
+
 .login-form {
   display: flex;
   flex-direction: column;
@@ -150,5 +157,46 @@
 
   .login-card {
     padding: 1.5rem;
+  }
+}
+
+.login-card--busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.5rem 2rem;
+}
+
+.login-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #e0e0e0;
+  border-top-color: var(--cta-green);
+  border-radius: 50%;
+  animation: login-spin 0.8s linear infinite;
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.login-busy-title {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.25rem;
+  color: #1a1a1a;
+}
+
+.login-busy-text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-spinner {
+    animation-duration: 2s;
   }
 }
