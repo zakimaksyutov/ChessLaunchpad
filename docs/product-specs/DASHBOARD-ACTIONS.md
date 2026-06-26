@@ -47,6 +47,29 @@ More actions are added incrementally. The first set:
 - **Onboarding** actions for new users (e.g. link an account when none
   is linked) — added incrementally.
 
+### Import repertoire (PGN)
+
+A lower-priority onboarding affordance rendered at the **bottom** of the
+tile, below the action rows: a single row of compact, de-emphasized
+buttons that import a repertoire from a `.pgn` file.
+
+- A color's button (**"Import White PGN"** / **"Import Black PGN"**) is
+  shown **only while that color's repertoire is empty**. Once a color has
+  any positions, its button drops away — so a user who has built White is
+  invited to import Black only, and a user with both built sees no import
+  row.
+- Because the import targets an empty color it is purely additive: the
+  PGN is decoded and saved through the same pipeline as the Explorer
+  Edit-mode import, then the dashboard re-fetches so the new cards (and
+  the now-non-empty color) are reflected immediately.
+- Picking a file whose `[Repertoire]` header disagrees with the chosen
+  color is rejected with an inline error; success shows a brief
+  confirmation.
+- The import row also keeps the tile useful for a brand-new user who has
+  nothing due and no repertoire — it shows in place of the "all caught
+  up" empty state, which only appears when there is **nothing to do and
+  nothing to import**.
+
 ## Deferred
 
 - **Ordering and any cap** on how many actions show. For now show all

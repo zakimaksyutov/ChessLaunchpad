@@ -3,10 +3,12 @@ import {
     buildDashboardActions,
     countNewGames,
     countMistakeGames,
+    getEmptyRepertoireColors,
     DashboardActionInput,
 } from './DashboardActions';
 import { appendGameRecord } from './GameRecordStore';
 import { Activity, GameRecord, FrozenAnnotation } from '../models/RepertoireData';
+import { RepertoireEntry, createEmptyRepertoires } from '../models/Repertoires';
 
 function input(overrides: Partial<DashboardActionInput> = {}): DashboardActionInput {
     return {
@@ -139,5 +141,33 @@ describe('countMistakeGames', () => {
         const activity = emptyActivity();
         appendGameRecord(activity, makeRecord('clean', 1000, { fan: fanWith(0, 0, 7) }));
         expect(countMistakeGames(activity)).toBe(0);
+    });
+});
+
+function withMove(rep: RepertoireEntry): RepertoireEntry {
+    return {
+        ...rep,
+        positions: { 'fen-root': { moves: { e4: {} } } },
+    };
+}
+
+describe('getEmptyRepertoireColors', () => {
+    it('treats a brand-new (both-empty) repertoire as both colors importable', () => {
+        expect(getEmptyRepertoireColors(createEmptyRepertoires())).toEqual(['white', 'black']);
+    });
+
+    it('treats missing repertoires (undefined) as both colors importable', () => {
+        expect(getEmptyRepertoireColors(undefined)).toEqual(['white', 'black']);
+    });
+
+    it('offers only the empty color once the other has positions', () => {
+        const [white, black] = createEmptyRepertoires();
+        expect(getEmptyRepertoireColors([withMove(white), black])).toEqual(['black']);
+        expect(getEmptyRepertoireColors([white, withMove(black)])).toEqual(['white']);
+    });
+
+    it('offers nothing once both colors have positions', () => {
+        const [white, black] = createEmptyRepertoires();
+        expect(getEmptyRepertoireColors([withMove(white), withMove(black)])).toEqual([]);
     });
 });

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom';
 import { State } from 'ts-fsrs';
 import { getSessionStore } from '../data/SessionStore';
+import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireData, PracticeLogEntry, Activity } from '../models/RepertoireData';
 import { FSRSCardData } from '../models/FSRSCardData';
 import { FSRSService, RETENTION_PRESETS } from '../services/FSRSService';
@@ -9,7 +10,11 @@ import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTo
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
 import { runIngest, IngestProgress } from '../services/GameIngestService';
 import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
-import { buildDashboardActions, countNewGames, countMistakeGames, DashboardAction } from '../services/DashboardActions';
+import { buildDashboardActions, countNewGames, countMistakeGames, getEmptyRepertoireColors, DashboardAction } from '../services/DashboardActions';
+import { PendingEditModel } from '../services/PendingEditModel';
+import { decodeRepertoirePgn } from '../utils/RepertoirePgn';
+import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -61,11 +66,20 @@ type SyncState =
     | { phase: 'syncing' }
     | { phase: 'synced'; at: Date };
 
+type ImportToast = { kind: 'success' | 'error'; text: string };
+
 const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
     const [repertoireData, setRepertoireData] = useState<RepertoireData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    // Lower-priority "Import repertoire as PGN" onboarding row. `importing`
+    // names the color whose import is in flight (null = idle); the file picker
+    // is shared, so `importColorRef` remembers which button opened it.
+    const [importing, setImporting] = useState<'white' | 'black' | null>(null);
+    const [importToast, setImportToast] = useState<ImportToast | null>(null);
+    const importFileInputRef = useRef<HTMLInputElement | null>(null);
+    const importColorRef = useRef<'white' | 'black'>('white');
     const [syncStatus, setSyncStatus] = useState<SyncState | null>(() => {
         // Seed from the shared last-sync time so a throttled first paint shows
         // the real "Synced @ HH:MM" instead of nothing while we decide whether
@@ -98,6 +112,89 @@ const DashboardPage: React.FC = () => {
     const pendingAbortTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const dal = useMemo(() => getSessionStore().createDataAccessProxyLayer(), []);
+
+    // ── Import repertoire as PGN (onboarding) ───────────────────────────
+    //
+    // Offered only for an empty color, so the import is purely additive: the
+    // decoded edges stage into a fresh PendingEditModel (reusing the same
+    // decode + apply + save pipeline as the Explorer Edit-mode import) and the
+    // resulting blob is persisted, then re-fetched so the dashboard reflects
+    // the new cards and the button for that color drops away.
+
+    const handleRequestImport = useCallback((color: 'white' | 'black') => {
+        if (importing) return;
+        importColorRef.current = color;
+        setImportToast(null);
+        importFileInputRef.current?.click();
+    }, [importing]);
+
+    const handleImportFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        // Reset the input so re-selecting the same file fires onChange again.
+        e.target.value = '';
+        const color = importColorRef.current;
+        const colorLabel = color === 'white' ? 'White' : 'Black';
+        const current = repertoireData;
+        if (!current) return;
+
+        setImporting(color);
+        setImportToast(null);
+        try {
+            const text = await file.text();
+            const decoded = decodeRepertoirePgn(text, { defaultOrientation: color });
+            if (decoded.orientation !== color) {
+                const fileColor = decoded.orientation === 'white' ? 'White' : 'Black';
+                throw new Error(
+                    `That file is a ${fileColor} repertoire, but you chose to import ${colorLabel}.`,
+                );
+            }
+
+            const model = new PendingEditModel(current.repertoires ?? [], current.fsrsCards ?? {});
+            const result = model.applyImportedPgn(decoded.orientation, decoded.edges, decoded.annotationsByFen);
+            if (result.addedEdges === 0) {
+                throw new Error('That PGN contained no moves to import.');
+            }
+
+            const blobInMemory: RepertoireData = {
+                repertoires: model.currentRepertoires,
+                fsrsCards: extractFsrsCardsFromRepertoires(model.currentRepertoires),
+                settings: current.settings,
+                activity: current.activity,
+                games: current.games,
+                audit: current.audit,
+            };
+            const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
+            await dal.storeRepertoireData(wire);
+
+            const refreshed = await dal.retrieveRepertoireData();
+            if (!mountedRef.current) return;
+            ensureActivity(refreshed);
+            setRepertoireData(refreshed);
+            setImportToast({
+                kind: 'success',
+                text: `Imported ${result.addedEdges} ${colorLabel} move${result.addedEdges === 1 ? '' : 's'}.`,
+            });
+        } catch (err: unknown) {
+            if (err instanceof DataAccessError && err.statusCode === 412) {
+                // The app-root <ConflictModal> owns the reload prompt for a
+                // version conflict; a duplicate toast here would just add noise.
+            } else if (mountedRef.current) {
+                const msg = err instanceof Error ? err.message : String(err);
+                setImportToast({ kind: 'error', text: `Import failed: ${msg}` });
+            }
+        } finally {
+            if (mountedRef.current) setImporting(null);
+        }
+    }, [dal, repertoireData]);
+
+    // Auto-dismiss the success toast; errors stay until the next attempt.
+    useEffect(() => {
+        if (!importToast || importToast.kind !== 'success') return;
+        const id = window.setTimeout(() => setImportToast(null), 4500);
+        return () => window.clearTimeout(id);
+    }, [importToast]);
 
     const runSyncCycle = useCallback(async (force = false) => {
         if (!mountedRef.current) return;
@@ -230,11 +327,27 @@ const DashboardPage: React.FC = () => {
         linkedAccountsCount: repertoireData.settings?.linkedAccounts?.length ?? 0,
     });
 
+    const emptyImportColors = getEmptyRepertoireColors(repertoireData.repertoires);
+
     return (
         <div className="dashboard">
             <div>
                 {/* Actions — the dashboard's "what to do next" surface. */}
-                <ActionsTile actions={actions} onSelect={route => navigate(route)} />
+                <ActionsTile
+                    actions={actions}
+                    importColors={emptyImportColors}
+                    importing={importing}
+                    importToast={importToast}
+                    onSelect={route => navigate(route)}
+                    onImport={handleRequestImport}
+                />
+                <input
+                    type="file"
+                    ref={importFileInputRef}
+                    style={{ display: 'none' }}
+                    accept=".pgn,application/x-chess-pgn,text/plain"
+                    onChange={handleImportFileSelected}
+                />
 
                 <div className="dashboard-grid">
                     {/* Today's Session */}
@@ -338,9 +451,18 @@ const DashboardPage: React.FC = () => {
 
 const ActionsTile: React.FC<{
     actions: DashboardAction[];
+    importColors: ('white' | 'black')[];
+    importing: 'white' | 'black' | null;
+    importToast: ImportToast | null;
     onSelect: (route: string) => void;
-}> = ({ actions, onSelect }) => {
-    if (actions.length === 0) {
+    onImport: (color: 'white' | 'black') => void;
+}> = ({ actions, importColors, importing, importToast, onSelect, onImport }) => {
+    const hasImport = importColors.length > 0;
+
+    // Nothing to do AND nothing to import (both repertoires built) → the
+    // positive empty state. The import row keeps the tile useful for a
+    // brand-new user who'd otherwise see "all caught up" with no repertoire.
+    if (actions.length === 0 && !hasImport) {
         return (
             <div className="dashboard-actions">
                 <p className="actions-empty">✅ You're all caught up!</p>
@@ -352,13 +474,15 @@ const ActionsTile: React.FC<{
 
     return (
         <div className="dashboard-actions">
-            <button
-                type="button"
-                className="action-primary"
-                onClick={() => onSelect(primary.route)}
-            >
-                {primary.label}
-            </button>
+            {primary && (
+                <button
+                    type="button"
+                    className="action-primary"
+                    onClick={() => onSelect(primary.route)}
+                >
+                    {primary.label}
+                </button>
+            )}
             {rest.length > 0 && (
                 <div className="actions-list">
                     {rest.map(action => (
@@ -374,6 +498,37 @@ const ActionsTile: React.FC<{
                         </button>
                     ))}
                 </div>
+            )}
+            {hasImport && (
+                <div className="actions-import" role="group" aria-label="Import a repertoire from PGN">
+                    {importColors.map(color => {
+                        const label = color === 'white' ? 'White' : 'Black';
+                        const busy = importing === color;
+                        return (
+                            <button
+                                key={color}
+                                type="button"
+                                className="action-import"
+                                onClick={() => onImport(color)}
+                                disabled={importing !== null}
+                                title={`Import a ${label} repertoire from a PGN file`}
+                            >
+                                <span className="action-import-icon" aria-hidden="true">
+                                    {color === 'white' ? '♙' : '♟'}
+                                </span>
+                                <span>{busy ? `Importing ${label}…` : `Import ${label} PGN`}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+            {importToast && (
+                <p
+                    className={`actions-import-toast actions-import-toast--${importToast.kind}`}
+                    role={importToast.kind === 'error' ? 'alert' : 'status'}
+                >
+                    {importToast.text}
+                </p>
             )}
         </div>
     );

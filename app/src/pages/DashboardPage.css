@@ -102,6 +102,65 @@
     font-weight: 600;
 }
 
+/*
+ * Import-repertoire row — a lower-priority onboarding affordance shown only
+ * while a color's repertoire is empty. Kept to a single row of compact,
+ * de-emphasized (dashed, muted) buttons so it reads as secondary to the
+ * action rows above it.
+ */
+.actions-import {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.action-import {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.45rem 0.75rem;
+    font-size: 0.85rem;
+    color: #666;
+    background: #fff;
+    border: 1px dashed #ccc;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.action-import:hover:not(:disabled) {
+    background: #f0f0f0;
+    border-color: #aaa;
+    color: #333;
+}
+
+.action-import:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.action-import-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.actions-import-toast {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.actions-import-toast--success {
+    color: #2e7d32;
+}
+
+.actions-import-toast--error {
+    color: #c62828;
+}
+
 /* Widget Grid */
 .dashboard-grid {
     display: grid;
