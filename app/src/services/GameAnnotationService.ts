@@ -984,23 +984,6 @@ interface EotPositions {
 }
 
 /**
- * Whether an annotated game contains a reviewable issue: a user deviation
- * from the repertoire, or an out-of-repertoire response that lost material
- * (a non-`ok` eval drop). Out-of-theory moves with no eval drop don't count.
- * Shared by the /games filter counts and the dashboard "mistakes to review"
- * telemetry so both agree on what a "mistake" is.
- */
-export function gameAnnotationHasIssue(annotation: GameAnnotation): boolean {
-    if (annotation.deviation != null) return true;
-    for (const m of annotation.moves) {
-        if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
  * Derive the critical FENs for the first out-of-repertoire eval-drop move.
  *
  * This is used by the opponent analysis feature: it replays the game PGN
@@ -1114,6 +1097,17 @@ function codeToHighlight(code: number): { highlight: MoveHighlight; evalDrop?: E
         default:
             return { highlight: 'out-of-theory' };
     }
+}
+
+/**
+ * True when a frozen annotation carries a repertoire deviation or an EOT
+ * eval-drop issue — i.e. the game is a "mistake" game. This is the pure-`fan`
+ * equivalent of the Games page's `gameRowHasIssue`, derived directly from the
+ * stored `hl` codes: 1 deviation, 3 inaccuracy, 4 mistake, 5 blunder (see
+ * `codeToHighlight`). Codes 0/2/7 are not issues.
+ */
+export function frozenAnnotationHasIssue(fan: FrozenAnnotation): boolean {
+    return fan.hl.some(code => code === 1 || code === 3 || code === 4 || code === 5);
 }
 
 /**

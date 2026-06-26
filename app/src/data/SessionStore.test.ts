@@ -8,6 +8,7 @@ import {
 } from "./SessionStore";
 import { DataAccessError } from "./DataAccessLayer";
 import { setConflictListener, __clearConflictListener } from "./ConflictNotifier";
+import { setSessionExpiredListener, __clearSessionExpiredListener } from "./SessionExpiredNotifier";
 import { RepertoireData } from "../models/RepertoireData";
 import { RepertoireDataUtils } from "../utils/RepertoireDataUtils";
 import { encodePersistedBlob } from "../utils/BlobCodec";
@@ -122,6 +123,53 @@ describe("SessionStore", () => {
             await expect(store.getSnapshot()).rejects.toThrow(DataAccessError);
         } finally {
             warn.mockRestore();
+        }
+    });
+
+    it("treats a 404 GET (deleted account) as an expired session and still rejects", async () => {
+        // Eager fetch 404s; on-demand retry also 404s (account is gone).
+        fetchMock
+            .mockResolvedValueOnce(errorResponse(404, "User 'alice' does not exist."))
+            .mockResolvedValueOnce(errorResponse(404, "User 'alice' does not exist."));
+
+        const expired = vi.fn();
+        const unregister = setSessionExpiredListener(expired);
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const store = new SessionStore("alice", "pw");
+            await expect(store.getSnapshot()).rejects.toMatchObject({
+                name: "DataAccessError",
+                statusCode: 404,
+            });
+            // Session-expired notifier fired so the app shell can clear the
+            // dead session and route to /login.
+            expect(expired).toHaveBeenCalled();
+        } finally {
+            warn.mockRestore();
+            unregister();
+            __clearSessionExpiredListener();
+        }
+    });
+
+    it("does NOT fire the session-expired notifier on a non-404 GET error", async () => {
+        fetchMock
+            .mockResolvedValueOnce(errorResponse(500, "oops"))
+            .mockResolvedValueOnce(errorResponse(500, "oops"));
+
+        const expired = vi.fn();
+        const unregister = setSessionExpiredListener(expired);
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+            const store = new SessionStore("alice", "pw");
+            await expect(store.getSnapshot()).rejects.toMatchObject({
+                name: "DataAccessError",
+                statusCode: 500,
+            });
+            expect(expired).not.toHaveBeenCalled();
+        } finally {
+            warn.mockRestore();
+            unregister();
+            __clearSessionExpiredListener();
         }
     });
 

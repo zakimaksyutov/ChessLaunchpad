@@ -1,9 +1,6 @@
 import { RepertoireData, Activity } from '../models/RepertoireData';
 import { RepertoireEntry, findRepertoire } from '../models/Repertoires';
-import { LinkedAccount } from './LinkedAccountsService';
-import { getAllRecordsNewestFirst } from './GameRecordStore';
-import { annotateRecordFromFrozen } from './RecordAnnotation';
-import { gameAnnotationHasIssue } from './GameAnnotationService';
+import { countMistakeGames, countNewGames } from './DashboardActions';
 import {
     findEntryByDate,
     getBestStreak,
@@ -29,55 +26,14 @@ function countCards(entry: RepertoireEntry | undefined): number {
 }
 
 /**
- * Count games still awaiting analysis and unreviewed mistakes, mirroring the
- * /games filter bar. Only games owned by a linked account are considered;
- * `!fan` is the "needs analysis" signal, and a mistake is an analyzed game
- * with a reviewable issue that the user hasn't marked reviewed (`rv !== 1`).
- */
-function countGameReview(
-    data: RepertoireData,
-    linkedAccounts: LinkedAccount[],
-): { gamesToAnalyze: number; mistakesToReview: number } {
-    const activity = data.activity;
-    if (!activity) return { gamesToAnalyze: 0, mistakesToReview: 0 };
-
-    const namesByPlatform = new Map<LinkedAccount['platform'], Set<string>>();
-    for (const account of data.settings?.linkedAccounts ?? linkedAccounts) {
-        const names = namesByPlatform.get(account.platform) ?? new Set<string>();
-        names.add(account.username.toLowerCase());
-        namesByPlatform.set(account.platform, names);
-    }
-
-    let gamesToAnalyze = 0;
-    let mistakesToReview = 0;
-    for (const record of getAllRecordsNewestFirst(activity)) {
-        const platform = record.p === 'c' ? 'chess.com' : 'lichess';
-        const names = namesByPlatform.get(platform);
-        if (!names) continue;
-        const white = record.wa.toLowerCase();
-        const black = record.ba.toLowerCase();
-        const userLower = names.has(white) ? white : names.has(black) ? black : null;
-        if (!userLower) continue;
-
-        if (!record.fan) { gamesToAnalyze++; continue; }
-        const annotation = annotateRecordFromFrozen(record, userLower);
-        if (!annotation) continue;
-        if (record.rv !== 1 && gameAnnotationHasIssue(annotation)) mistakesToReview++;
-    }
-    return { gamesToAnalyze, mistakesToReview };
-}
-
-/**
  * Snapshot of dashboard figures emitted as `DashboardView` custom properties
  * so engagement (training cadence, streaks, backlog) can be analyzed over time.
+ * Game-backlog counts reuse the shared dashboard helpers so this telemetry
+ * agrees with the Actions tile.
  */
-export function buildDashboardViewProps(
-    data: RepertoireData,
-    linkedAccounts: LinkedAccount[],
-): Record<string, number> {
+export function buildDashboardViewProps(data: RepertoireData): Record<string, number> {
     const activity = data.activity ?? EMPTY_ACTIVITY;
     const today = findEntryByDate(activity, getTodayDateString());
-    const { gamesToAnalyze, mistakesToReview } = countGameReview(data, linkedAccounts);
 
     return {
         RepertoireTotalWhite: countCards(findRepertoire(data.repertoires, 'white')),
@@ -89,7 +45,7 @@ export function buildDashboardViewProps(
         LifetimeTimeInMinutes: Math.round(activity.lifetime.timeSeconds / 60),
         CurrentStreak: getCurrentStreak(activity),
         BestStreak: getBestStreak(activity),
-        GamesToAnalyze: gamesToAnalyze,
-        MistakesToReview: mistakesToReview,
+        GamesToAnalyze: countNewGames(activity),
+        MistakesToReview: countMistakeGames(activity),
     };
 }

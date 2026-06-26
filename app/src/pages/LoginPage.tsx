@@ -216,10 +216,27 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
         }
     };
 
+    // While a Lichess sign-in is mid-flight (redirecting out, or resuming the
+    // token exchange on return), replace the whole form with a single, obvious
+    // "signing in" view so it's clear the app is working — not idle.
+    if (lichessBusy) {
+        return (
+            <div className="login-page">
+                <div className="login-card login-card--busy">
+                    <div className="login-spinner" aria-hidden="true" />
+                    <h2 className="login-busy-title">Signing you in with Lichess…</h2>
+                    <p className="login-busy-text">
+                        Hold on while we finish connecting your account.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="login-page">
             <div className="login-card">
-                <h2 className="login-title">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
+                <h2 className="login-title">Sign in using a provider</h2>
 
                 <button
                     type="button"
@@ -232,6 +249,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
                 <div className="login-divider"><span>or</span></div>
 
+                <h3 className="login-subtitle">{isSignUp ? 'Create your account' : 'Welcome back'}</h3>
+
                 <form onSubmit={handleLogin} className="login-form">
                     <label className="login-label" htmlFor="username">Username</label>
                     <input
@@ -240,7 +259,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
-                        autoFocus
                     />
 
                     <label className="login-label" htmlFor="password">Password</label>
