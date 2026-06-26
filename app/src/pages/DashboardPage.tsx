@@ -9,7 +9,7 @@ import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTo
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
 import { runIngest, IngestProgress } from '../services/GameIngestService';
 import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
-import { buildDashboardActions, countUnanalyzedGames, DashboardAction } from '../services/DashboardActions';
+import { buildDashboardActions, countNewGames, countMistakeGames, DashboardAction } from '../services/DashboardActions';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -225,7 +225,8 @@ const DashboardPage: React.FC = () => {
 
     const actions = buildDashboardActions({
         dueNow: cards.dueNow,
-        unanalyzedGames: countUnanalyzedGames(activity),
+        newGames: countNewGames(activity),
+        mistakeGames: countMistakeGames(activity),
         linkedAccountsCount: repertoireData.settings?.linkedAccounts?.length ?? 0,
     });
 

@@ -37,8 +37,13 @@ More actions are added incrementally. The first set:
 
 - **Start Training** — leads to training; surfaces the due count. →
   `/training`.
-- **Review games** — shown when there are un-analyzed games (records
-  without a frozen annotation); label shows the count. → `/games`.
+- **Review games** — a single `/games` action covering the two game
+  states (both land on `/games`, which handles analyze-then-review):
+  ingested-but-unanalyzed games (**"Analyze N new games"**) and
+  analyzed games with an unreviewed opening mistake — a deviation or
+  end-of-theory eval-drop, not yet marked reviewed
+  (**"Review K opening mistakes"**). When both apply the label
+  surfaces both, joined by "·". → `/games`.
 - **Onboarding** actions for new users (e.g. link an account when none
   is linked) — added incrementally.
 
