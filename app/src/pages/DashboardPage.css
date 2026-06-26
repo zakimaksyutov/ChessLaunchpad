@@ -62,23 +62,38 @@
 
 .action-row {
     display: flex;
-    align-items: center;
-    gap: 0.6rem;
+    align-items: stretch;
     width: 100%;
-    padding: 0.6rem 0.85rem;
-    font-size: 0.95rem;
-    color: #333;
     background: #fff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    cursor: pointer;
-    text-align: left;
-    transition: background 0.15s, border-color 0.15s;
+    overflow: hidden;
+    transition: border-color 0.15s;
 }
 
 .action-row:hover {
-    background: #f0f0f0;
     border-color: #bbb;
+}
+
+/* Main (navigating) part of a row — fills the row left of any "?" segment. */
+.action-row-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.95rem;
+    color: #333;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+
+.action-row-main:hover {
+    background: #f0f0f0;
 }
 
 .action-label {
@@ -93,6 +108,92 @@
 .action-icon {
     font-size: 1.1rem;
     line-height: 1;
+}
+
+/*
+ * "Why this action?" — an opt-in onboarding rationale. The trigger is a "?"
+ * segment fused onto the right edge of the action (a sibling button, so the two
+ * click targets stay valid HTML); clicking it expands the explanation below.
+ */
+.action-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+/* Primary CTA split into a label part + "?" segment. */
+.action-primary--split {
+    padding: 0;
+    gap: 0;
+    justify-content: flex-start;
+    align-items: stretch;
+    overflow: hidden;
+}
+
+/* Hover lives on the inner segments, not the whole green container. */
+.action-primary--split:hover {
+    background: var(--cta-green);
+}
+
+.action-primary-main {
+    flex: 1;
+    padding: 0.85rem 1.5rem;
+    font-size: 1.1rem;
+    font-weight: var(--cta-font-weight);
+    color: #fff;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.action-primary-main:hover {
+    background: rgba(0, 0, 0, 0.10);
+}
+
+.action-why-btn {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.85rem;
+    color: #888;
+    background: transparent;
+    border: none;
+    border-left: 1px solid #e0e0e0;
+    line-height: 0;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.action-why-btn:hover,
+.action-why-btn[aria-expanded='true'] {
+    background: #f0f0f0;
+    color: #444;
+}
+
+.action-why-btn--ondark {
+    color: #fff;
+    border-left: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.action-why-btn--ondark:hover,
+.action-why-btn--ondark[aria-expanded='true'] {
+    background: rgba(0, 0, 0, 0.26);
+    color: #fff;
+}
+
+.action-why-icon-svg {
+    display: block;
+}
+
+.action-why-text {
+    margin: 0;
+    padding: 0 0.2rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #555;
 }
 
 .actions-empty {

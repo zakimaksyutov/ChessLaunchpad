@@ -449,6 +449,102 @@ const DashboardPage: React.FC = () => {
 
 // ── Sub-components ──────────────────────────────────────────────────
 
+// An action's optional "why" rationale, integrated as a 💡 segment button on
+// the action itself. The action is split into a main (navigating) button and a
+// sibling lightbulb button so the two targets stay valid (no nested <button>),
+// while CSS fuses them into one control. The explanation expands below on demand.
+
+// Monochrome lightbulb (Lucide). Inherits `currentColor` so the segment can
+// render it white on the green CTA and muted-gray on the light rows.
+const LightbulbIcon: React.FC = () => (
+    <svg
+        className="action-why-icon-svg"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        focusable="false"
+    >
+        <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+        <path d="M9 18h6" />
+        <path d="M10 22h4" />
+    </svg>
+);
+
+const PrimaryAction: React.FC<{
+    action: DashboardAction;
+    onSelect: (route: string) => void;
+}> = ({ action, onSelect }) => {
+    const [open, setOpen] = useState(false);
+    if (!action.why) {
+        return (
+            <button type="button" className="action-primary" onClick={() => onSelect(action.route)}>
+                {action.label}
+            </button>
+        );
+    }
+    const panelId = `action-why-${action.id}`;
+    return (
+        <div className="action-group">
+            <div className="action-primary action-primary--split">
+                <button type="button" className="action-primary-main" onClick={() => onSelect(action.route)}>
+                    {action.label}
+                </button>
+                <button
+                    type="button"
+                    className="action-why-btn action-why-btn--ondark"
+                    aria-expanded={open}
+                    aria-controls={panelId}
+                    aria-label={open ? 'Hide explanation' : 'Why this action?'}
+                    title={open ? 'Hide explanation' : 'Why this action?'}
+                    onClick={() => setOpen(o => !o)}
+                >
+                    <LightbulbIcon />
+                </button>
+            </div>
+            {open && <p id={panelId} className="action-why-text">{action.why}</p>}
+        </div>
+    );
+};
+
+const SecondaryAction: React.FC<{
+    action: DashboardAction;
+    onSelect: (route: string) => void;
+}> = ({ action, onSelect }) => {
+    const [open, setOpen] = useState(false);
+    const panelId = `action-why-${action.id}`;
+    return (
+        <div className="action-group">
+            <div className={`action-row${action.why ? ' action-row--split' : ''}`}>
+                <button type="button" className="action-row-main" onClick={() => onSelect(action.route)}>
+                    <span className="action-icon" aria-hidden="true">{action.icon}</span>
+                    <span className="action-label">{action.label}</span>
+                    {!action.why && <span className="action-arrow" aria-hidden="true">→</span>}
+                </button>
+                {action.why && (
+                    <button
+                        type="button"
+                        className="action-why-btn"
+                        aria-expanded={open}
+                        aria-controls={panelId}
+                        aria-label={open ? 'Hide explanation' : 'Why this action?'}
+                        title={open ? 'Hide explanation' : 'Why this action?'}
+                        onClick={() => setOpen(o => !o)}
+                    >
+                        <LightbulbIcon />
+                    </button>
+                )}
+            </div>
+            {open && <p id={panelId} className="action-why-text">{action.why}</p>}
+        </div>
+    );
+};
+
 const ActionsTile: React.FC<{
     actions: DashboardAction[];
     importColors: ('white' | 'black')[];
@@ -474,28 +570,11 @@ const ActionsTile: React.FC<{
 
     return (
         <div className="dashboard-actions">
-            {primary && (
-                <button
-                    type="button"
-                    className="action-primary"
-                    onClick={() => onSelect(primary.route)}
-                >
-                    {primary.label}
-                </button>
-            )}
+            {primary && <PrimaryAction action={primary} onSelect={onSelect} />}
             {rest.length > 0 && (
                 <div className="actions-list">
                     {rest.map(action => (
-                        <button
-                            key={action.id}
-                            type="button"
-                            className="action-row"
-                            onClick={() => onSelect(action.route)}
-                        >
-                            <span className="action-icon" aria-hidden="true">{action.icon}</span>
-                            <span className="action-label">{action.label}</span>
-                            <span className="action-arrow" aria-hidden="true">→</span>
-                        </button>
+                        <SecondaryAction key={action.id} action={action} onSelect={onSelect} />
                     ))}
                 </div>
             )}

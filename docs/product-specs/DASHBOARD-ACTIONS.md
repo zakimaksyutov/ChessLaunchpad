@@ -28,6 +28,16 @@ replaces the standalone "Start Training" button.
   (N due)").
 - Actions are **not dismissible** for now — they appear and disappear
   purely from current state.
+- **"Why this action?" explainers** — an action may carry an opt-in
+  rationale, triggered by a small **💡** segment fused onto the right
+  edge of the action button (a sibling control, so expanding it never
+  navigates). It targets users who may not yet understand the action's
+  value and disappears once they do:
+    - **Link a chess account** — always, while shown.
+    - **Analyze N new games** — only when it *leads* (nothing due) and
+      there are no surfaced mistakes yet — i.e. a freshly-synced new
+      account. Once a mistake exists, "Review opening mistakes" speaks for
+      itself and the explainer is dropped.
 - **Empty state** — when no actions apply, show a positive "You're all
   caught up" message instead of an empty tile.
 

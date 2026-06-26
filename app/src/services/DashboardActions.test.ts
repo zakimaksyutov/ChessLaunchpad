@@ -84,6 +84,30 @@ describe('buildDashboardActions', () => {
         const actions = buildDashboardActions(input({ linkedAccountsCount: 2 }));
         expect(actions.find(a => a.id === 'link-account')).toBeUndefined();
     });
+
+    it('attaches a "why" rationale to Link a chess account', () => {
+        const link = buildDashboardActions(input({ linkedAccountsCount: 0 }))
+            .find(a => a.id === 'link-account');
+        expect(link?.why).toBeTruthy();
+    });
+
+    it('explains Analyze when it leads for a new user with no mistakes', () => {
+        const review = buildDashboardActions(input({ dueNow: 0, newGames: 3, mistakeGames: 0 }))
+            .find(a => a.id === 'review-games');
+        expect(review?.why).toBeTruthy();
+    });
+
+    it('omits the Analyze "why" once there is a mistake to review', () => {
+        const review = buildDashboardActions(input({ dueNow: 0, newGames: 3, mistakeGames: 2 }))
+            .find(a => a.id === 'review-games');
+        expect(review?.why).toBeUndefined();
+    });
+
+    it('omits the Analyze "why" when it is not the leading action', () => {
+        const review = buildDashboardActions(input({ dueNow: 4, newGames: 3, mistakeGames: 0 }))
+            .find(a => a.id === 'review-games');
+        expect(review?.why).toBeUndefined();
+    });
 });
 
 function emptyActivity(): Activity {

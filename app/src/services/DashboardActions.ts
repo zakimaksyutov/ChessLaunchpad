@@ -21,6 +21,14 @@ export interface DashboardAction {
     icon: string;
     /** SPA route the action navigates to. */
     route: string;
+    /**
+     * Optional onboarding rationale surfaced behind a "(why?)" toggle.
+     * Present only when the action benefits from a "what does this buy me?"
+     * nudge — currently `link-account` (always) and `review-games` when it
+     * leads for a user with no known mistakes yet (a freshly-synced new
+     * account). Established users, who already know the value, never see it.
+     */
+    why?: string;
 }
 
 export interface DashboardActionInput {
@@ -74,12 +82,21 @@ export function buildDashboardActions(input: DashboardActionInput): DashboardAct
         if (input.mistakeGames > 0) {
             parts.push(`Review ${input.mistakeGames} opening mistake${input.mistakeGames !== 1 ? 's' : ''}`);
         }
-        actions.push({
+        const reviewGames: DashboardAction = {
             id: 'review-games',
             label: parts.join(' · '),
             icon: '⚔️',
             route: '/games',
-        });
+        };
+        // Explain the value of analysis when it *leads* (nothing due) for a
+        // user who has no surfaced mistakes yet — typically a new account that
+        // just synced games and may not know what "Analyze" actually does.
+        // Once a mistake exists, "Review opening mistakes" is self-explanatory.
+        if (input.dueNow === 0 && input.mistakeGames === 0) {
+            reviewGames.why =
+                'We replay each game against your repertoire to find where you left your prep — the opening mistakes worth drilling.';
+        }
+        actions.push(reviewGames);
     }
 
     if (input.linkedAccountsCount === 0) {
@@ -88,6 +105,7 @@ export function buildDashboardActions(input: DashboardActionInput): DashboardAct
             label: 'Link a chess account',
             icon: '🔗',
             route: '/settings',
+            why: 'Linking Lichess or Chess.com lets us download your games automatically and check them for opening mistakes — no manual entry.',
         });
     }
 
