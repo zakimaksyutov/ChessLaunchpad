@@ -21,6 +21,13 @@
   color: #1a1a1a;
 }
 
+.login-subtitle {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  text-align: center;
+  color: #1a1a1a;
+}
+
 .login-form {
   display: flex;
   flex-direction: column;

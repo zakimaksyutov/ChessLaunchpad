@@ -218,7 +218,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     return (
         <div className="login-page">
             <div className="login-card">
-                <h2 className="login-title">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
+                <h2 className="login-title">Sign in using a provider</h2>
 
                 <button
                     type="button"
@@ -231,6 +231,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
                 <div className="login-divider"><span>or</span></div>
 
+                <h3 className="login-subtitle">{isSignUp ? 'Create your account' : 'Welcome back'}</h3>
+
                 <form onSubmit={handleLogin} className="login-form">
                     <label className="login-label" htmlFor="username">Username</label>
                     <input
@@ -239,7 +241,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
-                        autoFocus
                     />
 
                     <label className="login-label" htmlFor="password">Password</label>
