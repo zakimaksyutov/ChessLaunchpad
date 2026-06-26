@@ -193,6 +193,20 @@ export function fromPersistedSuggestion(
     };
 }
 
+/**
+ * True when every ply of the suggested line is already in the user's
+ * repertoire — i.e. the whole line exists and there is nothing left to add
+ * (e.g. the user added an identical suggestion from an earlier game with the
+ * same opening). Drives the persistent "Already exists in the repertoire"
+ * confirmation on /games in place of the "Add to repertoire" action. Derived,
+ * so it works on both freshly-computed results and ones hydrated from
+ * `GameRecord.sg` (per-ply `inRepertoire` is restored from the persisted `r`
+ * flags, which ride along to the backend in the activity blob).
+ */
+export function isSuggestionFullyInRepertoire(result: SuggestionResult): boolean {
+    return result.plies.length > 0 && result.plies.every(p => p.inRepertoire);
+}
+
 // ---------------------------------------------------------------------------
 // Move scoring
 // ---------------------------------------------------------------------------

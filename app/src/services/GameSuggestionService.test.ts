@@ -5,6 +5,7 @@ import {
     scoreMastersMoves,
     toPersistedSuggestion,
     fromPersistedSuggestion,
+    isSuggestionFullyInRepertoire,
     GOOD_SCORE_THRESHOLD,
     MastersProvider,
     CloudEvalCpProvider,
@@ -465,5 +466,91 @@ describe('toPersistedSuggestion / fromPersistedSuggestion', () => {
         const hydrated = fromPersistedSuggestion(sg, 'white');
         expect(hydrated.explorerPgn).toBe('1. e4 e5');
         expect(hydrated.replacedUserSan).toBeUndefined();
+    });
+});
+
+describe('isSuggestionFullyInRepertoire', () => {
+    const mkPly = (san: string, inRepertoire: boolean) => ({
+        san, isWhiteMove: true, isUserMove: true, inRepertoire, isNew: false,
+    });
+
+    it('is true only when every ply is in the repertoire', () => {
+        const base = { pgn: '', explorerPgn: '', orientation: 'white' as const };
+        expect(isSuggestionFullyInRepertoire({
+            ...base, plies: [mkPly('e4', true), mkPly('e5', true)],
+        })).toBe(true);
+        expect(isSuggestionFullyInRepertoire({
+            ...base, plies: [mkPly('e4', true), mkPly('e5', false)],
+        })).toBe(false);
+    });
+
+    it('is false for an empty line', () => {
+        expect(isSuggestionFullyInRepertoire({
+            plies: [], pgn: '', explorerPgn: '', orientation: 'white',
+        })).toBe(false);
+    });
+
+    it('detects an already-added fix on a later game with the same opening', async () => {
+        // The corrected line 1.d4 d5 2.Nf3 Nf6 3.c4 e6 was added from an earlier
+        // game; replaying a second game that again deviates with 2...Nc6 should
+        // reproduce that exact line — now every ply is already in the repertoire.
+        const repFens = buildRepFens([
+            ['d4'], ['d4', 'd5'], ['d4', 'd5', 'Nf3'],
+            ['d4', 'd5', 'Nf3', 'Nf6'],
+            ['d4', 'd5', 'Nf3', 'Nf6', 'c4'],
+            ['d4', 'd5', 'Nf3', 'Nf6', 'c4', 'e6'],
+        ]);
+        const sans = ['d4', 'd5', 'Nf3', 'Nc6'];
+        const map = new Map<string, MastersPositionResult | null>();
+        // 2...Nc6 is absent from the masters Top-5 → branch (a) substitutes Nf6.
+        map.set(fenAfter(['d4', 'd5', 'Nf3']), mkMasters([
+            // From Black's POV Nf6 is both the most-played and the best-scoring
+            // move, so branch (a) substitutes it for the off-book 2...Nc6.
+            ['Nf6', 1500, 6000, 2500],
+            ['e6', 2500, 500, 500],
+            ['c5', 2000, 400, 300],
+        ]));
+        map.set(fenAfter(['d4', 'd5', 'Nf3', 'Nf6']), mkMasters([['c4', 4000, 2000, 1000]]));
+        map.set(fenAfter(['d4', 'd5', 'Nf3', 'Nf6', 'c4']), mkMasters([['e6', 3000, 1500, 1000]]));
+
+        const result = await computeSuggestion({
+            sans, userColor: 'black', repertoireFens: repFens,
+            explorerEvals: null, masters: mastersFromMap(map), cloudEvalCp: noCloud,
+        });
+
+        expect(result.plies.map(p => p.san)).toEqual(['d4', 'd5', 'Nf3', 'Nf6', 'c4', 'e6']);
+        expect(result.replacedUserSan).toBe('Nc6');
+        expect(isSuggestionFullyInRepertoire(result)).toBe(true);
+
+        // The "already exists" state survives a persist round-trip (the per-ply
+        // in-repertoire flags ride along in `sg.pl[].r`).
+        const sg = toPersistedSuggestion(result, 4);
+        expect(sg.pl.every(p => p.r === 1)).toBe(true);
+        expect(isSuggestionFullyInRepertoire(fromPersistedSuggestion(sg, 'black'))).toBe(true);
+    });
+
+    it('is false for a fresh fix whose corrected continuation is not yet in the repertoire', async () => {
+        // Same deviation, but the repertoire does NOT contain the Nf6 line yet —
+        // the substituted moves are new, so the line is not fully in-repertoire.
+        const repFens = buildRepFens([['d4'], ['d4', 'd5'], ['d4', 'd5', 'Nf3']]);
+        const sans = ['d4', 'd5', 'Nf3', 'Nc6'];
+        const map = new Map<string, MastersPositionResult | null>();
+        map.set(fenAfter(['d4', 'd5', 'Nf3']), mkMasters([
+            // From Black's POV Nf6 is both the most-played and the best-scoring
+            // move, so branch (a) substitutes it for the off-book 2...Nc6.
+            ['Nf6', 1500, 6000, 2500],
+            ['e6', 2500, 500, 500],
+            ['c5', 2000, 400, 300],
+        ]));
+        map.set(fenAfter(['d4', 'd5', 'Nf3', 'Nf6']), mkMasters([['c4', 4000, 2000, 1000]]));
+        map.set(fenAfter(['d4', 'd5', 'Nf3', 'Nf6', 'c4']), mkMasters([['e6', 3000, 1500, 1000]]));
+
+        const result = await computeSuggestion({
+            sans, userColor: 'black', repertoireFens: repFens,
+            explorerEvals: null, masters: mastersFromMap(map), cloudEvalCp: noCloud,
+        });
+
+        expect(result.plies.map(p => p.san)).toEqual(['d4', 'd5', 'Nf3', 'Nf6', 'c4', 'e6']);
+        expect(isSuggestionFullyInRepertoire(result)).toBe(false);
     });
 });

@@ -62,6 +62,7 @@ import {
     computeSuggestion,
     toPersistedSuggestion,
     fromPersistedSuggestion,
+    isSuggestionFullyInRepertoire,
     SuggestionResult,
     SuggestionPly,
     MastersProvider,
@@ -389,6 +390,10 @@ const SuggestionDisplay: React.FC<{
     }
     const lichessUrl = buildLichessAnalysisUrl(result.explorerPgn, orientation);
     const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}&from=games&row=${encodeURIComponent(rowKey)}`;
+    // Every ply already in the repertoire ⇒ the line exists; there is nothing
+    // to add (the user added an identical fix from an earlier same-opening
+    // game). Show a confirmation instead of the "Add to repertoire" action.
+    const fullyInRepertoire = isSuggestionFullyInRepertoire(result);
     // The first diverging ply (the corrected move) carries the "instead of X" note.
     const firstNewIdx = result.plies.findIndex(p => p.isNew);
     return (
@@ -420,6 +425,10 @@ const SuggestionDisplay: React.FC<{
                 {applied ? (
                     <span className="suggest-fix-added" title="This line is already in your repertoire">
                         ✓ Added to repertoire
+                    </span>
+                ) : fullyInRepertoire ? (
+                    <span className="suggest-fix-added" title="Every move in the suggested line is already in your repertoire">
+                        ✓ Already exists in the repertoire
                     </span>
                 ) : (
                     <Link className="suggest-fix-action" to={addUrl}>

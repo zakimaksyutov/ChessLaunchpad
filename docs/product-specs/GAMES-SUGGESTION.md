@@ -41,6 +41,13 @@ ready next time. See [`GAMES.md`](./GAMES.md) for the tile and error model
     returns the user to `/games`, scrolled to the row (highlighted on Save).
     Once added, the action is replaced by a persistent **"Added to repertoire"**
     confirmation (see below).
+    - **"Already exists in the repertoire".** When **every** ply of the
+      suggested line is already in the repertoire there is nothing to add (e.g.
+      the user added the identical fix from an earlier game with the same
+      opening), so the "Add to repertoire" action is replaced by an
+      **"Already exists in the repertoire"** confirmation. Derived live from the
+      line's per-ply in-repertoire flags (`GameRecord.sg.pl[].r`), which are
+      persisted with the suggestion, so it survives reloads with no extra flag.
 - One suggestion per row. **Persisted to the game record** (`GameRecord.sg`,
   anchored on the EOT user ply like the saved `op`) so it survives reloads and
   the link can hide on return visits. Re-annotate clears it; a repertoire change
