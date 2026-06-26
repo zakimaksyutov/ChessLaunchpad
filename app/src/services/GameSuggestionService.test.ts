@@ -98,6 +98,19 @@ describe('scoreMastersMoves', () => {
         expect(scored.map(s => s.san)).toEqual(['e4']);
         expect(scored[0].score).toBeCloseTo(1, 6);
     });
+
+    it('shrinks a tiny-sample win-margin so a popular mainline still wins', async () => {
+        // d4: 154 games, modest +0.20 margin. h3: 3 games, a noisy 100% margin.
+        // Without shrinkage the squared dWin lets h3's 3/3 fluke dominate; with
+        // shrinkage its margin collapses toward the average and popularity wins.
+        const masters = mkMasters([
+            ['d4', 50, 84, 20],   // total 154, margin ≈ +0.195
+            ['h3', 3, 0, 0],      // total 3, margin = +1.0
+        ]);
+        const scored = await scoreMastersMoves(startFen, masters, true, async () => null);
+        expect(scored[0].san).toBe('d4');
+        expect(scored.find(s => s.san === 'h3')!.score).toBeLessThan(0.1);
+    });
 });
 
 // ---------------------------------------------------------------------------
