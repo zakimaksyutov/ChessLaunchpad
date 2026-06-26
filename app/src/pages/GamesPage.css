@@ -575,6 +575,11 @@
     margin-top: 0.15rem;
 }
 
+.eot-category {
+    text-transform: capitalize;
+    font-weight: 700;
+}
+
 /* Opponent analysis */
 .opponent-analysis-progress {
     font-size: 0.8rem;
