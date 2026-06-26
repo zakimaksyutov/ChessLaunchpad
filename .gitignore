@@ -24,3 +24,6 @@ app/package-lock.json
 # Playwright test artifacts
 app/test-results/
 app/playwright-report/
+
+# Local scratch / experiments (gitignored)
+tools/scratch/

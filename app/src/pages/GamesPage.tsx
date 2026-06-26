@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ChessBoard } from 'chess-control';
 import type { Annotation as ChessControlAnnotation, Square } from 'chess-control';
 import { getSessionStore } from '../data/SessionStore';
@@ -40,6 +40,7 @@ import {
     analyzeOneGame,
     flushFanUpdates,
     persistOpponentAnalysis,
+    persistSuggestion,
     persistGameReviewed,
     persistReannotateClear,
     persistReannotateRefresh,
@@ -57,6 +58,19 @@ import {
     fromPersistedOp,
 } from '../services/OpponentAnalysisService';
 import { getRecordUserColor, buildGameRecord } from '../services/GameRecordBuilder';
+import {
+    computeSuggestion,
+    toPersistedSuggestion,
+    fromPersistedSuggestion,
+    isSuggestionFullyInRepertoire,
+    SuggestionResult,
+    SuggestionPly,
+    MastersProvider,
+    CloudEvalCpProvider,
+} from '../services/GameSuggestionService';
+import { fetchMastersOutcome } from '../services/MastersExplorerService';
+import { fetchCloudCpOutcome } from '../services/LichessCloudEvalService';
+import { buildLichessAnalysisUrl } from '../utils/LichessUrl';
 import { runIngest } from '../services/GameIngestService';
 import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
 import { orderRowsSticky, OrderableRow } from '../services/GameRowOrdering';
@@ -313,6 +327,119 @@ const OpponentAnalysisDisplay: React.FC<{ analysis: OpponentAnalysisResult }> = 
     );
 };
 
+/**
+ * Per-row state for the "Suggest a fix" feature. Recomputed on each click,
+ * not persisted. `need-lichess` is shown when the user clicks with no Lichess
+ * token (the masters explorer the algorithm depends on requires OAuth).
+ */
+type SuggestionState =
+    | { status: 'loading' }
+    | { status: 'need-lichess' }
+    | { status: 'error' }
+    | { status: 'ready'; result: SuggestionResult };
+
+function suggestionMoveClass(ply: SuggestionPly): string {
+    // Match the main game tile PGN (`getMoveClassName`): opponent plies are
+    // always greyed, and only the user's own in-repertoire plies get the
+    // green background — repertoire membership of opponent plies is not shown.
+    const base = !ply.isUserMove
+        ? 'move-token move-opponent'
+        : ply.inRepertoire
+            ? 'move-token move-in-repertoire'
+            : 'move-token';
+    return ply.isNew ? `${base} suggest-fix-new` : base;
+}
+
+const SuggestionDisplay: React.FC<{
+    state: SuggestionState;
+    orientation: 'white' | 'black';
+    rowKey: string;
+    applied: boolean;
+}> = ({ state, orientation, rowKey, applied }) => {
+    if (state.status === 'loading') {
+        return (
+            <div className="suggest-fix-result suggest-fix-loading" role="status" aria-live="polite">
+                <span className="games-sync-spinner" aria-hidden="true" />
+                <span>Finding a line to add…</span>
+            </div>
+        );
+    }
+    if (state.status === 'need-lichess') {
+        return (
+            <div className="suggest-fix-result suggest-fix-connect">
+                Suggesting a fix needs the masters opening explorer.{' '}
+                <Link to="/settings">Connect Lichess</Link> to enable it.
+            </div>
+        );
+    }
+    if (state.status === 'error') {
+        return (
+            <div className="suggest-fix-result suggest-fix-error">
+                Couldn&apos;t build a suggestion right now — please try again.
+            </div>
+        );
+    }
+
+    const { result } = state;
+    if (result.plies.length === 0) {
+        return (
+            <div className="suggest-fix-result suggest-fix-error">
+                No suggestion available for this position.
+            </div>
+        );
+    }
+    const lichessUrl = buildLichessAnalysisUrl(result.explorerPgn, orientation);
+    const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}&from=games&row=${encodeURIComponent(rowKey)}`;
+    // Every ply already in the repertoire ⇒ the line exists; there is nothing
+    // to add (the user added an identical fix from an earlier same-opening
+    // game). Show a confirmation instead of the "Add to repertoire" action.
+    const fullyInRepertoire = isSuggestionFullyInRepertoire(result);
+    // The first diverging ply (the corrected move) carries the "instead of X" note.
+    const firstNewIdx = result.plies.findIndex(p => p.isNew);
+    return (
+        <div className="suggest-fix-result suggest-fix-ready">
+            <div className="suggest-fix-label">Suggested line</div>
+            <div className="game-pgn suggest-fix-pgn">
+                {result.plies.map((ply, idx) => (
+                    <React.Fragment key={idx}>
+                        {ply.moveNumber !== undefined && (
+                            <span className="move-number">{ply.moveNumber}.&nbsp;</span>
+                        )}
+                        <span className={suggestionMoveClass(ply)}>{ply.san}</span>
+                        {idx === firstNewIdx && result.replacedUserSan && (
+                            <span className="suggest-fix-instead">&nbsp;(instead of {result.replacedUserSan})</span>
+                        )}
+                        {' '}
+                    </React.Fragment>
+                ))}
+            </div>
+            <div className="suggest-fix-actions">
+                <a
+                    className="suggest-fix-action"
+                    href={lichessUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Open in Lichess Opening Explorer
+                </a>
+                {applied ? (
+                    <span className="suggest-fix-added" title="This line is already in your repertoire">
+                        ✓ Added to repertoire
+                    </span>
+                ) : fullyInRepertoire ? (
+                    <span className="suggest-fix-added" title="Every move in the suggested line is already in your repertoire">
+                        ✓ Already exists in the repertoire
+                    </span>
+                ) : (
+                    <Link className="suggest-fix-action" to={addUrl}>
+                        Add to repertoire
+                    </Link>
+                )}
+            </div>
+        </div>
+    );
+};
+
 interface GameRowProps {
     record: GameRecord;
     userLower: string;
@@ -346,6 +473,12 @@ interface GameRowProps {
     onToggleReviewed: (record: GameRecord) => void;
     /** DEBUG / TEMP — delete this record and every newer one. */
     onDeleteFromHere: (record: GameRecord) => void;
+    /** Current "Suggest a fix" state for this row (null when not yet requested). */
+    suggestion: SuggestionState | null;
+    /** True once the user has added this suggestion to their repertoire. */
+    suggestionApplied: boolean;
+    /** Compute (or recompute) a repertoire-fix suggestion for this row. */
+    onSuggestFix: (record: GameRecord, userLower: string) => void;
 }
 
 const GameRow: React.FC<GameRowProps> = ({
@@ -363,6 +496,9 @@ const GameRow: React.FC<GameRowProps> = ({
     onAnalyzeOpponent,
     onToggleReviewed,
     onDeleteFromHere,
+    suggestion,
+    suggestionApplied,
+    onSuggestFix,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -448,9 +584,14 @@ const GameRow: React.FC<GameRowProps> = ({
     const showOpponentAnalysis = opponentAnalysis !== null && !opIsStale;
     // Allow Analyze when: no saved op OR saved op is stale; and the row has an EOT eligible.
     const allowAnalyzeAction = eotSummary !== null && (opponentAnalysis === null || opIsStale);
+    // A real fix is already in hand (just computed or hydrated from `record.sg`).
+    // Like Analyze opponent, the "Suggest a fix" link hides once one exists;
+    // error / connect states keep the link so the user can retry.
+    const hasSuggestion = suggestion?.status === 'ready' && suggestion.result.plies.length > 0;
 
     return (
         <div
+            id={`game-row-${record.p}:${record.id}`}
             className={`game-row${tileClass}${pending ? ' game-row-pending' : ''}`}
             aria-busy={pending || undefined}
         >
@@ -604,7 +745,26 @@ const GameRow: React.FC<GameRowProps> = ({
                                         Analyze opponent
                                     </a>
                                 )}
+                                {suggestion?.status !== 'loading' && !hasSuggestion && !hasDeviation && (
+                                    <>
+                                        {allowAnalyzeAction && !analyzeProgress && (
+                                            <span className="game-action-sep" aria-hidden="true">|</span>
+                                        )}
+                                        <a
+                                            className="analyze-opponent-link suggest-fix-link"
+                                            role="button"
+                                            onClick={() => onSuggestFix(record, userLower)}
+                                            title="Propose a line to add to your repertoire"
+                                        >
+                                            Suggest a fix
+                                        </a>
+                                    </>
+                                )}
                             </div>
+                        )}
+
+                        {eotSummary && !hasDeviation && suggestion && (
+                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} />
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (
@@ -651,6 +811,59 @@ const GamesPage: React.FC = () => {
     const [pendingNetworkRetry, setPendingNetworkRetry] = useState(0);
     const [analyzingRecordKey, setAnalyzingRecordKey] = useState<string | null>(null);
     const [analyzeProgress, setAnalyzeProgress] = useState<OpponentAnalysisProgress | null>(null);
+    // Post-"Add to repertoire" return handoff. When the Explorer sends the user
+    // back here after Save/Discard (`?row=&added=`), scroll the originating row
+    // into view; on a successful Save (`added=1`) also flash it. The persistent
+    // "Added to repertoire" confirmation itself is driven by `record.sg.ap`.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const suggestReturnHandledRef = useRef(false);
+    const suggestScrollRef = useRef<{ row: string; flash: boolean } | null>(null);
+    useEffect(() => {
+        if (suggestReturnHandledRef.current) return;
+        const row = searchParams.get('row');
+        if (!row) return;
+        const flash = searchParams.get('added') === '1';
+        suggestReturnHandledRef.current = true;
+        const next = new URLSearchParams(searchParams);
+        next.delete('row');
+        next.delete('added');
+        setSearchParams(next, { replace: true });
+        suggestScrollRef.current = { row, flash };
+    }, [searchParams, setSearchParams]);
+    useEffect(() => {
+        const target = suggestScrollRef.current;
+        if (!target) return;
+        // Rows hydrate asynchronously (data fetch + progressive annotation), so
+        // poll for the target element before scrolling. Bounded so a filtered-
+        // out / missing row simply gives up.
+        let attempts = 0;
+        let timer = 0;
+        let cancelled = false;
+        const tryScroll = () => {
+            if (cancelled) return;
+            const el = document.getElementById(`game-row-${target.row}`);
+            if (el) {
+                suggestScrollRef.current = null;
+                el.scrollIntoView({ block: 'center' });
+                if (target.flash) {
+                    el.classList.add('game-row-flash');
+                    window.setTimeout(() => el.classList.remove('game-row-flash'), 1600);
+                }
+                return;
+            }
+            if (++attempts < 50) timer = window.setTimeout(tryScroll, 100);
+        };
+        tryScroll();
+        return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
+    }, []);
+    /**
+     * Per-row "Suggest a fix" state, keyed by `${p}:${id}`. Recomputed on each
+     * click (not persisted). Entries live for the page visit and are released
+     * on unmount; growth is bounded by the number of distinct rows clicked.
+     */
+    const [suggestionByKey, setSuggestionByKey] = useState<Map<string, SuggestionState>>(new Map());
+    /** Per-row abort controllers for in-flight suggestion computations. */
+    const suggestAbortByKeyRef = useRef<Map<string, AbortController>>(new Map());
     /**
      * Records currently being re-annotated. We keep them visible in the
      * list during the re-run by holding their prior `fan` in
@@ -910,6 +1123,30 @@ const GamesPage: React.FC = () => {
                 if (eot && eot.targetPly === record.op.ply) stale = false;
             }
             map.set(key, { live, stale });
+        }
+        return map;
+    }, [orderedRows, annotationByKey]);
+
+    // Suggest-a-fix live state per record: hydrated from record.sg + the same
+    // ply-anchored "stale?" check as `opByKey`. A row's saved suggestion is
+    // stale once its anchored EOT ply no longer matches the live deviation
+    // (repertoire changed since the suggestion was computed).
+    const sgByKey = useMemo(() => {
+        const map = new Map<string, { live: SuggestionResult; stale: boolean; applied: boolean }>();
+        for (const { record, userLower, pending } of orderedRows) {
+            if (pending) continue;
+            if (!record.sg) continue;
+            const userColor = getRecordUserColor(record, userLower);
+            if (!userColor) continue;
+            const key = `${record.p}:${record.id}`;
+            const ann = annotationByKey.get(key);
+            const live = fromPersistedSuggestion(record.sg, userColor);
+            let stale = true;
+            if (ann) {
+                const eot = deriveRecordEotPositions(record, ann);
+                if (eot && eot.targetPly === record.sg.ply) stale = false;
+            }
+            map.set(key, { live, stale, applied: record.sg.ap === 1 });
         }
         return map;
     }, [orderedRows, annotationByKey]);
@@ -1287,6 +1524,18 @@ const GamesPage: React.FC = () => {
         // against the cleared record (consumed in `runAnalysisPass`).
         debugRecordKeysRef.current.add(key);
 
+        // Drop any in-flight / shown "Suggest a fix" state for this row — the
+        // persisted `sg` is cleared below and the new annotation may move or
+        // remove the deviation the suggestion was anchored on.
+        suggestAbortByKeyRef.current.get(key)?.abort();
+        suggestAbortByKeyRef.current.delete(key);
+        setSuggestionByKey(prev => {
+            if (!prev.has(key)) return prev;
+            const next = new Map(prev);
+            next.delete(key);
+            return next;
+        });
+
         // Abort any in-flight pass and wait for it to actually finish
         // (the abort doesn't propagate into the masters fetcher or the
         // 1 req/sec rate-limit delay, so we have to wait for the pass's
@@ -1444,6 +1693,110 @@ const GamesPage: React.FC = () => {
             abort.abort();
         }
     }, [dal, analyzingRecordKey, orderedRows, annotationByKey]);
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Suggest a fix
+    // ─────────────────────────────────────────────────────────────────────
+
+    const handleSuggestFix = useCallback(async (record: GameRecord, userLower: string) => {
+        const key = `${record.p}:${record.id}`;
+
+        // The suggestion algorithm depends on the masters explorer (OAuth-gated);
+        // with no token, prompt to connect instead of computing.
+        if (!lichessToken) {
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'need-lichess' }));
+            return;
+        }
+        const userColor = getRecordUserColor(record, userLower);
+        // `fenSets` can still be loading on a very early click; `userColor` should
+        // never be null for a rendered row. Either way, surface feedback rather
+        // than swallowing the click silently.
+        if (!fenSets || !userColor) {
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'error' }));
+            return;
+        }
+
+        // Abort any prior in-flight computation for this row (re-click recomputes).
+        suggestAbortByKeyRef.current.get(key)?.abort();
+        const abort = new AbortController();
+        suggestAbortByKeyRef.current.set(key, abort);
+        const signal = composeSignals(abort.signal, pageAbortRef.current?.signal);
+
+        setSuggestionByKey(prev => new Map(prev).set(key, { status: 'loading' }));
+
+        const token = lichessToken;
+        const masters: MastersProvider = async (fen) => {
+            const outcome = await fetchMastersOutcome(fen, token);
+            // Transient masters failure (429 / network / non-2xx): abort the
+            // suggestion rather than emit a truncated "no master games" line.
+            if (outcome.kind === 'error') throw new Error('masters explorer unavailable');
+            return outcome.result;
+        };
+        const cloudEvalCp: CloudEvalCpProvider = async (fen) => {
+            const outcome = await fetchCloudCpOutcome(fen);
+            if (outcome.kind === 'ok') return outcome.cp;
+            if (outcome.kind === 'no_eval') return null; // genuine 404 → eval-missing fallback
+            throw new Error('cloud-eval unavailable');   // transient → abort the suggestion
+        };
+
+        const repertoireFens = userColor === 'white' ? fenSets.whiteFens : fenSets.blackFens;
+        const sans = record.m.split(/\s+/).filter(Boolean);
+
+        // Grouped, one-shot console trace of every masters / cloud-eval request
+        // and the move-scoring values behind this suggestion (mirrors the
+        // Re-annotate debug log). The group is owned here so it always closes.
+        console.groupCollapsed(`[suggest-fix] ${record.p}/${record.id} — ${userColor}`);
+        try {
+            const result = await computeSuggestion({
+                sans,
+                userColor,
+                repertoireFens,
+                explorerEvals,
+                embeddedEvals: record.ev,
+                masters,
+                cloudEvalCp,
+                signal,
+                debug: true,
+            });
+            if (signal.aborted) return;
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'ready', result }));
+
+            // Persist so the suggestion survives reloads and the "Suggest a
+            // fix" link can hide on return visits (mirrors the saved `op`).
+            // Best-effort: a persist failure never downgrades the already-shown
+            // result — same no-412-retry posture as Analyze opponent. Anchored
+            // on the EOT user ply so a later repertoire change can stale it.
+            if (result.plies.length > 0) {
+                const ann = annotationByKey.get(key);
+                const eot = ann ? deriveRecordEotPositions(record, ann) : null;
+                if (eot) {
+                    try {
+                        const sg = toPersistedSuggestion(result, eot.targetPly);
+                        const fresh = await persistSuggestion(dal, record.id, record.p, sg, signal);
+                        if (!signal.aborted) setData(fresh);
+                    } catch (perr) {
+                        if ((perr as Error).name !== 'AbortError' && !signal.aborted) {
+                            console.warn('Persisting suggestion failed:', perr);
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            if ((err as Error).name === 'AbortError' || signal.aborted) return;
+            console.error('Suggest a fix failed:', err);
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'error' }));
+        } finally {
+            if (suggestAbortByKeyRef.current.get(key) === abort) {
+                suggestAbortByKeyRef.current.delete(key);
+            }
+            console.groupEnd();
+            // Abort the per-click controller so composeSignals removes the
+            // listener it attached to the long-lived pageAbortRef signal —
+            // otherwise dead listeners accumulate across successful clicks
+            // (mirrors runAnalysisPass's finally).
+            abort.abort();
+        }
+    }, [lichessToken, fenSets, explorerEvals, dal, annotationByKey]);
 
     // ─────────────────────────────────────────────────────────────────────
     // Mark reviewed
@@ -1674,6 +2027,13 @@ const GamesPage: React.FC = () => {
                         const key = `${record.p}:${record.id}`;
                         const annotation = annotationByKey.get(key) ?? null;
                         const op = opByKey.get(key);
+                        // Transient (in-flight / just-computed) state wins; else
+                        // fall back to the hydrated, non-stale saved suggestion.
+                        const sg = sgByKey.get(key);
+                        const suggestionApplied = sg?.applied ?? false;
+                        const suggestionState: SuggestionState | null =
+                            suggestionByKey.get(key)
+                            ?? (sg && (!sg.stale || sg.applied) ? { status: 'ready', result: sg.live } : null);
                         return (
                             <GameRow
                                 key={key}
@@ -1691,6 +2051,9 @@ const GamesPage: React.FC = () => {
                                 onAnalyzeOpponent={handleAnalyzeOpponent}
                                 onToggleReviewed={handleToggleReviewed}
                                 onDeleteFromHere={handleDeleteFromHere}
+                                suggestion={suggestionState}
+                                suggestionApplied={suggestionApplied}
+                                onSuggestFix={handleSuggestFix}
                             />
                         );
                     })}

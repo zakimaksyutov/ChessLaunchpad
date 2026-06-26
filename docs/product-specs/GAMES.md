@@ -203,6 +203,19 @@ The result is persisted on the record as `op`:
 
 A **threat-level** label is derived from `nb` (`0–2` low, `3–9` moderate, `10–24` high, `25+` very high), with up to 5 recent game links.
 
+## Repertoire Suggestion (`sg`)
+
+On **EOT** rows, a **"Suggest a fix"** link (beside "Analyze opponent") proposes a concrete line to add so the user is ready next time. It is **not** shown on deviation rows — the user's own repertoire already holds the intended move. Like masters verdicts it **requires a connected Lichess account** (the masters explorer needs OAuth); without a token the result area shows a connect-Lichess prompt instead.
+
+The algorithm (see `GameSuggestionService`) walks the game from the start and, at the first out-of-repertoire user move, either keeps a sufficiently sound user move or substitutes a stronger masters move, closing the corrected line out shortly after. The result is a suggested **PGN** rendered below the tile:
+
+- In-repertoire user plies keep the **greenish** in-repertoire styling; opponent plies are greyed (matching the main tile).
+- Moves that **differ from the played game** are **bold**; the first carries a muted **"(instead of X)"** note naming the replaced user move.
+- **Open in Lichess Opening Explorer** links to the line (with the replaced move appended as a one-ply variation for comparison).
+- **Add to repertoire** deep-links into the Explorer Review & Save flow; Save/Discard returns to `/games` at the row. When every ply is already in the repertoire there is nothing to add, so the action becomes an **"Already exists in the repertoire"** confirmation.
+
+One suggestion per row, persisted as `sg` on the record (anchored on the EOT user ply like `op`, so it survives reloads and the link hides on return). Re-annotate clears it; a repertoire change that moves the anchored deviation marks it stale and re-offers the action. Committing the suggestion sets `sg.ap`, freezing the annotation and flipping the action to a persistent **"Added to repertoire"** confirmation.
+
 ## Retention
 
 The total number of `GameRecord` entries across every day is capped at **100**. When ingest exceeds the cap, it evicts the **oldest day's records as a whole**, repeating oldest-first until total ≤ 100. Eviction:
