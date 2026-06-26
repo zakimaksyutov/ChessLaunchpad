@@ -23,6 +23,15 @@ import { MastersPositionResult } from './MastersExplorerService';
 /** dWin softmax temperature over win-margin (win% − loss%, user orientation). */
 export const WIN_TAU = 0.25;
 
+/**
+ * Win-margin shrinkage pseudo-count (phantom games played at the prior margin).
+ * Before the dWin softmax, each move's raw win-margin is pulled toward the
+ * games-weighted population mean by this many phantom games, so a tiny-sample
+ * 100% can't dominate a popular mainline. Large samples are essentially
+ * unaffected — the weight on the raw margin is games/(games + K).
+ */
+export const WIN_MARGIN_SHRINKAGE_K = 50;
+
 /** Per-dimension weights (exponents) for dGames¹ · dWin² · dEval². */
 export const SCORE_WEIGHTS = { games: 1, win: 2, eval: 2 } as const;
 
@@ -220,8 +229,84 @@ export interface ScoredMove {
     san: string;
     /** from+to(+promotion) key for robust identity matching. */
     uci: string;
-    /** Normalized combined score (the five sum to 1). */
+    /** Normalized combined score (the returned scores sum to 1). */
     score: number;
+}
+
+// ---------------------------------------------------------------------------
+// Pure scoring core (no chess.js / FEN / eval I/O) — unit-tested directly.
+// ---------------------------------------------------------------------------
+
+/** Raw per-move statistics in the user's orientation — the scorer's input. */
+export interface MoveStat {
+    /** Total master games for this move. */
+    games: number;
+    /** Win-margin (userWins − oppWins) / games, user orientation, in [-1, 1]. */
+    margin: number;
+    /** Eval-after in centipawns (user orientation); null → eval-missing fallback. */
+    evalCp: number | null;
+}
+
+/** A scored move with its intermediate dimensions exposed for diagnostics. */
+export interface ScoredStat {
+    /** Index into the input array (callers map this back to san/uci). */
+    index: number;
+    /** Shrunk win-margin actually fed to the dWin softmax. */
+    shrunkMargin: number;
+    /** Normalized dimensions (each sums to 1 across the input). */
+    dGames: number;
+    dWin: number;
+    dEval: number;
+    /** Normalized combined score (sums to 1 across the input). */
+    score: number;
+}
+
+/**
+ * Pure numeric core of the suggestion scorer. Ranks moves by
+ * `dGames¹ · dWin² · dEval²`, applying Bayesian shrinkage to each win-margin
+ * (toward the games-weighted mean by `WIN_MARGIN_SHRINKAGE_K` phantom games) so
+ * a noisy tiny-sample margin can't out-softmax a popular mainline. Returned
+ * best-first; scores sum to 1 (empty in → empty out). Shared by
+ * `scoreMastersMoves` and exercised directly by the scoring unit tests.
+ */
+export function rankMoveStats(stats: MoveStat[]): ScoredStat[] {
+    if (stats.length === 0) return [];
+
+    const evES = stats.map(s =>
+        expectedScore(s.evalCp === null ? EVAL_MISSING_PAWNS : s.evalCp / 100));
+
+    const sumGames = stats.reduce((a, s) => a + s.games, 0);
+    // Bayesian shrinkage: pull each move's win-margin toward the games-weighted
+    // population mean by K phantom games, so a noisy tiny-sample margin (e.g. a
+    // 3-game 100%) collapses toward the average and can't out-softmax a popular
+    // mainline. Large samples barely move (weight on raw margin = games/(games+K)).
+    const priorMargin = stats.reduce((a, s) => a + s.games * s.margin, 0) / (sumGames || 1);
+    const shrunkMargin = stats.map(
+        s => (s.games * s.margin + WIN_MARGIN_SHRINKAGE_K * priorMargin) / (s.games + WIN_MARGIN_SHRINKAGE_K));
+    const maxMargin = Math.max(...shrunkMargin);
+    const winExp = shrunkMargin.map(m => Math.exp((m - maxMargin) / WIN_TAU));
+    const sumWin = winExp.reduce((a, b) => a + b, 0) || 1;
+    const sumEvES = evES.reduce((a, b) => a + b, 0) || 1;
+
+    const dims = stats.map((s, i) => ({
+        dG: s.games / sumGames,
+        dW: winExp[i] / sumWin,
+        dE: evES[i] / sumEvES,
+    }));
+    const raws = dims.map(d =>
+        Math.pow(d.dG, SCORE_WEIGHTS.games) * Math.pow(d.dW, SCORE_WEIGHTS.win) * Math.pow(d.dE, SCORE_WEIGHTS.eval));
+    const sumRaw = raws.reduce((a, b) => a + b, 0) || 1;
+
+    return stats
+        .map((_, i) => ({
+            index: i,
+            shrunkMargin: shrunkMargin[i],
+            dGames: dims[i].dG,
+            dWin: dims[i].dW,
+            dEval: dims[i].dE,
+            score: raws[i] / sumRaw,
+        }))
+        .sort((a, b) => b.score - a.score);
 }
 
 /**
@@ -238,15 +323,12 @@ export async function scoreMastersMoves(
 ): Promise<ScoredMove[]> {
     const top5 = masters.moves.slice(0, 5);
 
-    interface Row {
+    interface Built {
         san: string;
         uci: string;
-        games: number;
-        margin: number;
-        evalCp: number | null;
-        evES: number;
+        stat: MoveStat;
     }
-    const rows: Row[] = [];
+    const built: Built[] = [];
 
     for (const mv of top5) {
         const probe = new Chess(fenBefore);
@@ -264,57 +346,40 @@ export async function scoreMastersMoves(
         const oppWins = userWhite ? mv.black : mv.white;
         const margin = (userWins - oppWins) / games;
 
-        const cp = await resolveEvalAfterCp(normalizeFenResetHalfmoveClock(probe.fen()));
-        const pawns = cp === null ? EVAL_MISSING_PAWNS : (userWhite ? cp : -cp) / 100;
+        const cpWhite = await resolveEvalAfterCp(normalizeFenResetHalfmoveClock(probe.fen()));
+        const evalCp = cpWhite === null ? null : (userWhite ? cpWhite : -cpWhite);
 
-        rows.push({
+        built.push({
             san: played.san,
             uci: played.from + played.to + (played.promotion ?? ''),
-            games,
-            margin,
-            evalCp: cp,
-            evES: expectedScore(pawns),
+            stat: { games, margin, evalCp },
         });
     }
 
-    if (rows.length === 0) return [];
-
-    const sumGames = rows.reduce((a, r) => a + r.games, 0);
-    const maxMargin = Math.max(...rows.map(r => r.margin));
-    const winExp = rows.map(r => Math.exp((r.margin - maxMargin) / WIN_TAU));
-    const sumWin = winExp.reduce((a, b) => a + b, 0) || 1;
-    const sumEvES = rows.reduce((a, r) => a + r.evES, 0) || 1;
-
-    const dims = rows.map((r, i) => ({
-        dG: r.games / sumGames,
-        dW: winExp[i] / sumWin,
-        dE: r.evES / sumEvES,
-    }));
-    const raws = dims.map(d =>
-        Math.pow(d.dG, SCORE_WEIGHTS.games) * Math.pow(d.dW, SCORE_WEIGHTS.win) * Math.pow(d.dE, SCORE_WEIGHTS.eval));
-    const sumRaw = raws.reduce((a, b) => a + b, 0) || 1;
+    const ranked = rankMoveStats(built.map(b => b.stat));
+    if (ranked.length === 0) return [];
 
     if (debug) {
-        const table = rows
-            .map((r, i) => ({
-                move: r.san,
-                games: r.games,
-                'margin%': +(r.margin * 100).toFixed(1),
-                evalCp: r.evalCp,
-                dGames: +dims[i].dG.toFixed(3),
-                dWin: +dims[i].dW.toFixed(3),
-                dEval: +dims[i].dE.toFixed(3),
-                'score%': +((raws[i] / sumRaw) * 100).toFixed(1),
-            }))
-            .sort((a, b) => b['score%'] - a['score%']);
+        const table = ranked.map(r => {
+            const b = built[r.index];
+            return {
+                move: b.san,
+                games: b.stat.games,
+                'margin%': +(b.stat.margin * 100).toFixed(1),
+                'shrunk%': +(r.shrunkMargin * 100).toFixed(1),
+                evalCp: b.stat.evalCp,
+                dGames: +r.dGames.toFixed(3),
+                dWin: +r.dWin.toFixed(3),
+                dEval: +r.dEval.toFixed(3),
+                'score%': +(r.score * 100).toFixed(1),
+            };
+        });
         console.groupCollapsed(`[score]   ${fenBefore.split(' ').slice(0, 2).join(' ')} (user=${userWhite ? 'white' : 'black'})`);
         console.table(table);
         console.groupEnd();
     }
 
-    return rows
-        .map((r, i) => ({ san: r.san, uci: r.uci, score: raws[i] / sumRaw }))
-        .sort((a, b) => b.score - a.score);
+    return ranked.map(r => ({ san: built[r.index].san, uci: built[r.index].uci, score: r.score }));
 }
 
 // ---------------------------------------------------------------------------
