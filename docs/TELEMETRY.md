@@ -4,11 +4,11 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 
 ## Events
 
-| Event | Emitted from | Trigger |
-|-------|--------------|---------|
-| `AppLoad` | `App.tsx` | App mounts (initial load). |
-| `UserLogin` | `pages/LoginPage.tsx` | Successful sign-in to an existing account (password or Lichess). |
-| `UserSignUp` | `pages/LoginPage.tsx` | Successful account creation (password or Lichess). |
-| `UserLogout` | `App.tsx` | User logs out. |
+| Event | Trigger |
+|-------|---------|
+| `AppLoad` | App mounts (initial load). |
+| `UserLogin` | Successful sign-in to an existing account (password or Lichess). |
+| `UserSignUp` | Successful account creation (password or Lichess). |
+| `UserLogout` | User logs out. |
 
 None of these events carry custom properties.
