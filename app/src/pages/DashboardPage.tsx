@@ -9,6 +9,7 @@ import { ensureActivity, computeAccuracy, getCurrentStreak, getBestStreak, getTo
 import { formatDuration, formatDateHeader, formatAccuracy, formatTimeUntil } from '../utils/FormatUtils';
 import { runIngest, IngestProgress } from '../services/GameIngestService';
 import { isSyncThrottled, markSyncedNow, getLastSyncAt } from '../services/SyncThrottle';
+import { buildDashboardActions, countUnanalyzedGames, DashboardAction } from '../services/DashboardActions';
 import './DashboardPage.css';
 
 function computeCardBreakdown(fsrsCards: Record<string, FSRSCardData>): {
@@ -222,20 +223,17 @@ const DashboardPage: React.FC = () => {
 
     const version = import.meta.env.VITE_BUILD_VERSION;
 
+    const actions = buildDashboardActions({
+        dueNow: cards.dueNow,
+        unanalyzedGames: countUnanalyzedGames(activity),
+        linkedAccountsCount: repertoireData.settings?.linkedAccounts?.length ?? 0,
+    });
+
     return (
         <div className="dashboard">
             <div>
-                {/* Call to Action */}
-                <div className="dashboard-cta">
-                    <button
-                        className="dashboard-cta-button"
-                        onClick={() => navigate('/training')}
-                    >
-                        {cards.dueNow > 0
-                            ? `Start Training (${cards.dueNow} due)`
-                            : 'Start Training'}
-                    </button>
-                </div>
+                {/* Actions — the dashboard's "what to do next" surface. */}
+                <ActionsTile actions={actions} onSelect={route => navigate(route)} />
 
                 <div className="dashboard-grid">
                     {/* Today's Session */}
@@ -336,6 +334,50 @@ const DashboardPage: React.FC = () => {
 };
 
 // ── Sub-components ──────────────────────────────────────────────────
+
+const ActionsTile: React.FC<{
+    actions: DashboardAction[];
+    onSelect: (route: string) => void;
+}> = ({ actions, onSelect }) => {
+    if (actions.length === 0) {
+        return (
+            <div className="dashboard-actions">
+                <p className="actions-empty">✅ You're all caught up!</p>
+            </div>
+        );
+    }
+
+    const [primary, ...rest] = actions;
+
+    return (
+        <div className="dashboard-actions">
+            <button
+                type="button"
+                className="action-primary"
+                onClick={() => onSelect(primary.route)}
+            >
+                <span className="action-icon" aria-hidden="true">{primary.icon}</span>
+                <span>{primary.label}</span>
+            </button>
+            {rest.length > 0 && (
+                <div className="actions-list">
+                    {rest.map(action => (
+                        <button
+                            key={action.id}
+                            type="button"
+                            className="action-row"
+                            onClick={() => onSelect(action.route)}
+                        >
+                            <span className="action-icon" aria-hidden="true">{action.icon}</span>
+                            <span className="action-label">{action.label}</span>
+                            <span className="action-arrow" aria-hidden="true">→</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const SyncStatusIndicator: React.FC<{ status: SyncState }> = ({ status }) => {
     if (status.phase === 'syncing') {

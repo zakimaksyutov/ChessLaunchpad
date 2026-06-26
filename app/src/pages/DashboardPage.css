@@ -19,14 +19,26 @@
     color: #d32f2f;
 }
 
-/* Call to Action */
-.dashboard-cta {
-    text-align: center;
+/* Actions tile — full-width "what to do next" surface above the grid. */
+.dashboard-actions {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
     margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
-.dashboard-cta-button {
-    padding: 0.75rem 2rem;
+/* Primary action — the most prominent, clickable CTA (e.g. Start Training). */
+.action-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.85rem 1.5rem;
     font-size: 1.1rem;
     font-weight: var(--cta-font-weight);
     color: #fff;
@@ -37,8 +49,57 @@
     transition: background 0.2s;
 }
 
-.dashboard-cta-button:hover {
+.action-primary:hover {
     background: var(--cta-green-hover);
+}
+
+/* Secondary actions — clickable rows below the primary CTA. */
+.actions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.action-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.95rem;
+    color: #333;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.action-row:hover {
+    background: #f0f0f0;
+    border-color: #bbb;
+}
+
+.action-label {
+    flex: 1;
+}
+
+.action-arrow {
+    color: #888;
+    font-size: 1rem;
+}
+
+.action-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.actions-empty {
+    margin: 0;
+    text-align: center;
+    color: #4caf50;
+    font-weight: 600;
 }
 
 /* Widget Grid */
