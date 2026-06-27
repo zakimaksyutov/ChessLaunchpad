@@ -78,7 +78,7 @@ Wrong moves are rejected with an error sound. The user keeps trying until they p
 
 ## Ahead-of-Schedule Mode
 
-When the queue is empty, the system practices cards with the lowest retrievability (weakest memories that aren't yet due) using the same path-planning flow. The UI signals the transition.
+When the queue is empty, a session-complete panel offers to practice the lowest-retrievability cards ahead of schedule. If none are eligible, the same panel acknowledges "all caught up" without that option.
 
 ## Progress Display
 
