@@ -33,8 +33,6 @@ export interface AddedLineFrames {
      * ply that led to `frames[i]`.
      */
     arrows: (Annotation | null)[];
-    /** SAN of the move that produced each frame (`sans[0]` is ''). */
-    sans: string[];
 }
 
 /**
@@ -66,7 +64,6 @@ export function buildAddedLineFrames(chain: EditChain): AddedLineFrames | null {
 
     const frames: string[] = [chess.fen()];
     const arrows: (Annotation | null)[] = [null];
-    const sanSeq: string[] = [''];
 
     for (const san of sans) {
         let move;
@@ -78,8 +75,7 @@ export function buildAddedLineFrames(chain: EditChain): AddedLineFrames | null {
         if (!move) return null;
         frames.push(chess.fen());
         arrows.push({ brush: 'G', orig: move.from, dest: move.to });
-        sanSeq.push(san);
     }
 
-    return { frames, arrows, sans: sanSeq };
+    return { frames, arrows };
 }

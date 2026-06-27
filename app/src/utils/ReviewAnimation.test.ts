@@ -92,7 +92,6 @@ describe('buildAddedLineFrames', () => {
         // anchor + 3 plies
         expect(res!.frames).toHaveLength(4);
         expect(res!.arrows).toHaveLength(4);
-        expect(res!.sans).toHaveLength(4);
         // Anchor frame matches the parent position (after 1.e4 c5).
         const anchor = new Chess();
         anchor.move('e4');
@@ -100,7 +99,6 @@ describe('buildAddedLineFrames', () => {
         expect(res!.frames[0]).toBe(anchor.fen());
         // Anchor has no incoming move.
         expect(res!.arrows[0]).toBeNull();
-        expect(res!.sans[0]).toBe('');
     });
 
     it('produces consecutive frames exactly one legal move apart', () => {
