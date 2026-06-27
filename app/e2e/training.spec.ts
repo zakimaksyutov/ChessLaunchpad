@@ -248,10 +248,11 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
 
     // ── After recall: cards are not immediately due ────────────────
     // After recall, cards are rated "Again" and enter Learning state
-    // (state=1) with a short relearning interval (~1 min). The engine
-    // correctly reports "No cards to train" until they become due.
-    const noCardsMsg = page.getByText('No cards to train.');
-    await expect(noCardsMsg).toBeVisible({ timeout: 5_000 });
+    // (state=1) with a short relearning interval (~1 min). With nothing
+    // trainable right now, the session-complete panel is shown until they
+    // become due.
+    const caughtUpMsg = page.getByText('All due cards reviewed!');
+    await expect(caughtUpMsg).toBeVisible({ timeout: 5_000 });
 
     // ── Fast-forward time and re-enter training ─────────────────────
     await advanceTime(page, 2);
@@ -301,8 +302,8 @@ test.describe('Training page — one white variant (1. e4 e5 2. Nf3)', () => {
     expect(saved2.fsrsCards[e4Key].learningSteps).toBe(1);
     expect(saved2.fsrsCards[nf3Key].learningSteps).toBe(1);
 
-    // Cards are not due yet (~10 min learning step) — should see empty state again
-    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+    // Cards are not due yet (~10 min learning step) — session-complete panel again
+    await expect(page.getByText('All due cards reviewed!')).toBeVisible({ timeout: 5_000 });
   });
 
 });
@@ -415,8 +416,8 @@ test.describe('Training page — one black variant (1. e4 e5)', () => {
     expect(e5Due - now).toBeLessThan(twoMinMs);
 
     // ── After recall: card is not immediately due ────────────────────
-    const noCardsMsg = page.getByText('No cards to train.');
-    await expect(noCardsMsg).toBeVisible({ timeout: 5_000 });
+    const caughtUpMsg = page.getByText('All due cards reviewed!');
+    await expect(caughtUpMsg).toBeVisible({ timeout: 5_000 });
 
     // ── Fast-forward time and re-enter training ─────────────────────
     await advanceTime(page, 2);
@@ -452,8 +453,8 @@ test.describe('Training page — one black variant (1. e4 e5)', () => {
     expect(e5Due2 - now2).toBeLessThan(oneHourMs);
     expect(saved2.fsrsCards[e5Key].learningSteps).toBe(1);
 
-    // Card is not due yet — should see empty state again
-    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+    // Card is not due yet — session-complete panel again
+    await expect(page.getByText('All due cards reviewed!')).toBeVisible({ timeout: 5_000 });
   });
 
 });
@@ -536,8 +537,8 @@ test.describe('Training page — shared edge from both colors', () => {
     expect(saved2.fsrsCards[e5Key]).toBeDefined();
     expect(saved2.fsrsCards[e5Key].state).toBeGreaterThan(0);
 
-    // Both cards trained — no more cards to train
-    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+    // Both cards trained — nothing more to train right now
+    await expect(page.getByText('All due cards reviewed!')).toBeVisible({ timeout: 5_000 });
 
     // ── Fast-forward and review both ─────────────────────────────────
     await advanceTime(page, 2);
@@ -571,7 +572,7 @@ test.describe('Training page — shared edge from both colors', () => {
     expect(saved4.fsrsCards[e4Key].learningSteps).toBe(1);
     expect(saved4.fsrsCards[e5Key].learningSteps).toBe(1);
 
-    await expect(page.getByText('No cards to train.')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('All due cards reviewed!')).toBeVisible({ timeout: 5_000 });
   });
 
 });

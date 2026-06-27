@@ -144,7 +144,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             setPhase('empty');
             setIsTeaching(false);
             setIsRecalling(false);
-            setStatusMessage('No cards to train.');
             return;
         }
 
@@ -155,7 +154,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         onQueueStatsRef.current(eng.getQueueStats());
 
         if (status.phase === 'empty') {
-            setStatusMessage('No cards to train.');
             return;
         }
 
@@ -235,7 +233,6 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         }
 
         if (status.phase === 'empty') {
-            setStatusMessage('No cards to train.');
             return;
         }
 
@@ -557,7 +554,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                     🔁 Recall pass — try to remember the moves
                 </div>
             )}
-            {phase === 'ahead_of_schedule_pending' && (
+            {(phase === 'ahead_of_schedule_pending' || phase === 'empty') && (
                 <div className="session-complete-panel">
                     <h3 className="session-complete-title">✅ All due cards reviewed!</h3>
                     <p className="session-complete-stats">
@@ -566,7 +563,9 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                             : `${reviewedToday} cards reviewed today`}
                     </p>
                     <p className="session-complete-prompt">
-                        You can stop here or keep practicing your weakest cards ahead of schedule.
+                        {phase === 'ahead_of_schedule_pending'
+                            ? 'You can stop here or keep practicing your weakest cards ahead of schedule.'
+                            : 'You\'re all caught up — check back later when more cards are due.'}
                     </p>
                     <div className="session-complete-actions">
                         <button
@@ -576,13 +575,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                         >
                             Done for today
                         </button>
-                        <button
-                            type="button"
-                            className="session-complete-secondary"
-                            onClick={acceptAhead}
-                        >
-                            Practice ahead of schedule
-                        </button>
+                        {phase === 'ahead_of_schedule_pending' && (
+                            <button
+                                type="button"
+                                className="session-complete-secondary"
+                                onClick={acceptAhead}
+                            >
+                                Practice ahead of schedule
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
@@ -591,7 +592,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
                     ✅ All due cards reviewed — practicing ahead of schedule
                 </div>
             )}
-            {statusMessage && phase !== 'ahead_of_schedule' && (
+            {statusMessage && phase !== 'ahead_of_schedule' && phase !== 'empty' && (
                 <div className="status-bar status-bar-info">
                     {statusMessage}
                 </div>
