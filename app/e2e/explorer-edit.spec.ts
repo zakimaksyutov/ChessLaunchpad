@@ -77,7 +77,11 @@ test.describe('Explorer page — Edit mode', () => {
         // Review page is visible.
         const review = page.locator('.explorer-review');
         await expect(review).toBeVisible();
-        await expect(review.getByRole('heading', { name: /Added \(1\)/ })).toBeVisible();
+        // A single added line renders the animated preview (not a chain tile);
+        // the line's PGN caption confirms what will be added.
+        await expect(review.locator('.explorer-review-anim-section')).toBeVisible();
+        await expect(review.locator('.explorer-review-anim-caption .explorer-review-chain-pgn'))
+            .toContainText('e4 e5');
 
         // Save commits the change.
         await review.getByRole('button', { name: 'Save', exact: true }).click();
@@ -265,7 +269,9 @@ test.describe('Explorer page — Edit mode', () => {
         const review = page.locator('.explorer-review');
         await expect(review).toBeVisible();
 
-        // The Added tile exposes an "Open in Explorer" deep link.
+        // A single added line uses the animated preview; the per-position
+        // "Open in Explorer" deep links live in the collapsed details list.
+        await review.getByRole('button', { name: /See details/ }).click();
         const openLink = review.getByRole('link', { name: 'Open in Explorer ↗' }).first();
         await expect(openLink).toBeVisible();
         await openLink.click();
@@ -707,8 +713,13 @@ test.describe('Explorer page — Import PGN', () => {
         await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('2 added');
 
         await saveBar.getByRole('button', { name: 'Review & Save' }).click();
-        await expect(page.locator('.explorer-review').getByRole('heading', { name: /Added \(2\)/ })).toBeVisible();
-        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        // The two new edges form one co-linear chain → animated single-line
+        // preview; its PGN caption shows the merged line.
+        const review = page.locator('.explorer-review');
+        await expect(review.locator('.explorer-review-anim-section')).toBeVisible();
+        await expect(review.locator('.explorer-review-anim-caption .explorer-review-chain-pgn'))
+            .toContainText('e4 e6');
+        await review.getByRole('button', { name: 'Save', exact: true }).click();
         await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
         const body = saves[0].body as Record<string, unknown>;

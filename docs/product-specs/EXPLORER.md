@@ -93,6 +93,15 @@ and Edited tiles carry an **Open in Explorer** link that jumps to
 that position in the main Edit view (the pending delta is preserved);
 Removed tiles omit it since the position no longer exists.
 
+When the pending edit is exactly one added line (nothing removed or
+edited), Review & Save replaces the chain tile with a single centered
+preview: the line's PGN, any "joins existing subtree" note, and a
+looping animated board that walks the added moves forward from the
+position already in the repertoire. Play/Pause and step controls let
+the user pause or scrub the animation (and reduced-motion users get a
+static final position they can step through), and a collapsed **See
+details** disclosure lists each added position for closer inspection.
+
 **Save** writes the new blob (refusing on a concurrent-edit
 conflict, prompting the user to refresh and lose local edits).
 **Discard** drops the delta after confirmation. **Cancel** / Back
