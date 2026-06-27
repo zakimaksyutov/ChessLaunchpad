@@ -90,7 +90,9 @@ Output: a proposed set of positions/moves per color, ready as new FSRS cards.
 
 ## 4. Flow: progress → review → save
 
-Runs on its own full-page route, cancelable, with live progress. Phases:
+One dedicated full-page route with two consecutive states on the same page:
+
+**State A — Progress** (cancelable, live counters). Phases:
 
 1. **Downloading your last games** — `x / up to 2,000`. The only network-bound,
    genuinely slow phase.
@@ -100,16 +102,22 @@ Runs on its own full-page route, cancelable, with live progress. Phases:
    animating and the page responsive instead of freezing.
 3. **Discovering sound lines** — short finishing step.
 
-Make the wait productive and trust-building: **stream qualifying lines into the
-preview as they're found** (e.g. "1.e4 c5 2.Nf3 … — played in 9 of your last 9
-games"), so progress doubles as proof of the §1 promise.
+Optional flourish during the wait (not a separate surface): let discovered lines
+visibly accumulate (e.g. "1.e4 c5 2.Nf3 … — played in 9 of your last 9 games"), so
+the progress time doubles as proof of the §1 promise.
 
-The page then settles into a **read-only preview of the resulting repertoire**
-(reuse the board + line/tree view), grouped by color, and terminates in the
-existing **Discard / Save** flow (the same pending-edit / approval mechanism used
-elsewhere; it already groups and labels chains by orientation). Save commits the
-additions to the blob and syncs; Discard keeps the repertoire empty. Nothing
-persists until Save.
+**State B — Review & save.** On completion the page **automatically transitions**
+(no extra click) to the review surface: emit the algorithm's output as a
+**`PendingDelta`** and reuse the **existing `ReviewView`** — the same screen the
+Discard/Save flow already uses, listing the proposed lines as PGN rows
+grouped/labeled by orientation (with board preview). **Save** commits the additions
+to the blob and syncs; **Discard** keeps the repertoire empty. Nothing persists
+until Save.
+
+There is no separate repertoire tree/graph view to reuse (the prototype's graph was
+never ported); `ReviewView`'s added-lines list is the visualization. A richer
+tree/board view would be net-new and is out of scope unless the agent finds the line
+list inadequate for a large batch.
 
 ---
 
@@ -131,4 +139,4 @@ Bulk export pipeline (`GameIngestService` / Lichess export); `ExplorerEvals` (ou
 precomputed artifact) + `EvalDropService` for soundness; per-game Lichess evals
 from the export; position-centric v3 repertoire (`Repertoires`, `BlobCodec`);
 Dashboard Actions (`DashboardActions`, `getEmptyRepertoireColors`); the existing
-pending-edit Save/Discard flow.
+pending-edit Save/Discard flow (`PendingEditModel` → `ReviewView`).
