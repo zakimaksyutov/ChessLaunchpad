@@ -1073,29 +1073,12 @@
 
 /* ===== Single added-line animated view ===== */
 .explorer-review-anim-section {
-  align-items: center;
   gap: 0.75rem;
-}
-
-.explorer-review-anim-caption {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  align-items: center;
-  text-align: center;
-  width: 100%;
-  max-width: 420px;
-}
-
-.explorer-review-anim-caption .explorer-review-chain-pgn {
-  font-size: 1.02rem;
 }
 
 .explorer-review-anim {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
   width: 100%;
 }
 
@@ -1109,55 +1092,9 @@
   margin: 0 auto;
 }
 
-.explorer-review-anim-ply {
-  font-size: 0.9rem;
-  color: #4a505a;
-  min-height: 1.2em;
-}
-
-.explorer-review-anim-ply-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #8a929c;
-  margin-right: 0.25rem;
-}
-
-.explorer-review-anim-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.explorer-review-anim-btn {
-  background: #fff;
-  border: 1px solid #b0d4ee;
-  color: rgb(0, 130, 210);
-  border-radius: 999px;
-  min-width: 2rem;
-  padding: 0.25rem 0.7rem;
-  font-size: 0.85rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.explorer-review-anim-btn--play {
-  font-weight: 600;
-  min-width: 5.5rem;
-}
-
-.explorer-review-anim-btn:hover:not(:disabled) {
-  background: #e3edf8;
-}
-
-.explorer-review-anim-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
+/* Details list matches the standard review tiles: full width, left-aligned. */
 .explorer-review-anim-details {
   width: 100%;
-  max-width: 560px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

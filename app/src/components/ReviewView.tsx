@@ -153,29 +153,16 @@ export default ReviewView;
 // ── Single added-line animated view ──────────────────────────────────
 
 /**
- * The optimized layout for "added exactly one line": a PGN caption + any
- * transposition hint, a looping big animated board, and a collapsed
- * "See details" disclosure that reveals the same per-position rows used by
- * the standard chain tail. No "Added (1)" title (the header already says so)
- * and no per-board Open-in-Explorer link.
+ * The optimized layout for "added exactly one line": a looping big animated
+ * board and a collapsed "See details" disclosure that reveals the same
+ * per-position rows used by the standard chain tail. No title, caption, or
+ * controls — the animation is the whole story.
  */
 const AddedLineAnimatedSection: React.FC<{
     chain: EditChain;
     frames: AddedLineFrames;
 }> = ({ chain, frames }) => (
     <section className="explorer-review-section explorer-review-anim-section">
-        <div className="explorer-review-anim-caption">
-            <div className="explorer-review-chain-orientation">
-                {chain.orientation === 'white' ? 'White' : 'Black'} repertoire
-            </div>
-            <div className="explorer-review-chain-pgn">{chain.chainPgn || '(start)'}</div>
-            {chain.tailHint?.kind === 'joins-existing' && (
-                <div className="explorer-review-chain-hint">
-                    ↪ joins existing subtree — {chain.tailHint.movesBelow}{' '}
-                    move{chain.tailHint.movesBelow === 1 ? '' : 's'} below.
-                </div>
-            )}
-        </div>
         <AnimatedAddedLine chain={chain} frames={frames} />
         <AddedLineDetails chain={chain} />
     </section>

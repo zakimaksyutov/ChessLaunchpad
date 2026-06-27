@@ -78,10 +78,9 @@ test.describe('Explorer page — Edit mode', () => {
         const review = page.locator('.explorer-review');
         await expect(review).toBeVisible();
         // A single added line renders the animated preview (not a chain tile);
-        // the line's PGN caption confirms what will be added.
+        // the board's accessible label names the line being added.
         await expect(review.locator('.explorer-review-anim-section')).toBeVisible();
-        await expect(review.locator('.explorer-review-anim-caption .explorer-review-chain-pgn'))
-            .toContainText('e4 e5');
+        await expect(review.getByRole('img', { name: /e4 e5/ })).toBeVisible();
 
         // Save commits the change.
         await review.getByRole('button', { name: 'Save', exact: true }).click();
@@ -714,11 +713,10 @@ test.describe('Explorer page — Import PGN', () => {
 
         await saveBar.getByRole('button', { name: 'Review & Save' }).click();
         // The two new edges form one co-linear chain → animated single-line
-        // preview; its PGN caption shows the merged line.
+        // preview; the board's accessible label names the merged line.
         const review = page.locator('.explorer-review');
         await expect(review.locator('.explorer-review-anim-section')).toBeVisible();
-        await expect(review.locator('.explorer-review-anim-caption .explorer-review-chain-pgn'))
-            .toContainText('e4 e6');
+        await expect(review.getByRole('img', { name: /e4 e6/ })).toBeVisible();
         await review.getByRole('button', { name: 'Save', exact: true }).click();
         await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
