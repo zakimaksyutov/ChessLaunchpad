@@ -20,6 +20,7 @@ import { RepertoireData } from '../models/RepertoireData';
 import { getSessionStore, clearSessionStore } from '../data/SessionStore';
 import { isLichessSession, loadSession } from '../data/AuthSession';
 import { clearClientSessionKeys } from '../services/SessionTeardown';
+import { clearSyncThrottle } from '../services/SyncThrottle';
 import { trackEvent } from '../AppInsights';
 import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
@@ -272,6 +273,18 @@ const SettingsPage: React.FC = () => {
             FSRSService.setMaxInterval(presetCfg.maxInterval);
             setLinkedAccounts(linkedAccounts);
             setCommittedPresetId(presetId);
+
+            // Newly linked accounts have no games downloaded yet, so the
+            // Dashboard's actions list stays empty until the next provider
+            // sync. The auto-sync that runs on Dashboard mount is gated by the
+            // 5-minute throttle (services/SyncThrottle.ts), which an earlier
+            // zero-account visit may already have stamped. Forget that stamp so
+            // returning to the Dashboard syncs the just-linked account right
+            // away instead of waiting out the cooldown. (Removals don't need a
+            // re-download, so only clear when accounts were actually added.)
+            if (addedAccounts.length > 0) {
+                clearSyncThrottle();
+            }
 
             removedAccountsRef.current = [];
 
