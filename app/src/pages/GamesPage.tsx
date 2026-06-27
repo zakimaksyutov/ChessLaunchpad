@@ -431,7 +431,7 @@ const SuggestionDisplay: React.FC<{
                         ✓ Already exists in the repertoire
                     </span>
                 ) : (
-                    <Link className="suggest-fix-action" to={addUrl} onClick={() => trackEvent('SuggestedLineAdded')}>
+                    <Link className="suggest-fix-action" to={addUrl} onClick={() => trackEvent('GamesSuggestedLineAdded')}>
                         Add to repertoire
                     </Link>
                 )}
@@ -701,7 +701,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                                     className={`${getMoveClassName(move)} move-link`}
                                                     to={{ pathname: '/explorer', search: explorerLink }}
                                                     title="Open in Explorer"
-                                                    onClick={() => trackEvent('MistakeOpenInExplorer')}
+                                                    onClick={() => trackEvent('GamesOpenInExplorer', { IsGameWithMistake: isMistake })}
                                                 >
                                                     {move.san}
                                                 </Link>
@@ -1659,10 +1659,10 @@ const GamesPage: React.FC = () => {
         setAnalyzingRecordKey(key);
         setAnalyzeProgress({ gamesDownloaded: 0, phase: 'downloading' });
 
-        // Correlation id so OpponentAnalysisComplete can be linked back to its
+        // Correlation id so GamesOpponentAnalysisComplete can be linked back to its
         // Start; a Start with no matching Complete is an aborted/failed run.
         const analysisId = crypto.randomUUID();
-        trackEvent('OpponentAnalysisStart', { AnalysisId: analysisId });
+        trackEvent('GamesOpponentAnalysisStart', { AnalysisId: analysisId });
 
         try {
             const result = await analyzeOpponentGames(
@@ -1683,7 +1683,7 @@ const GamesPage: React.FC = () => {
             const op: OpponentAnalysisRecord = toPersistedOp(result);
             const fresh = await persistOpponentAnalysis(dal, record.id, record.p, op, signal);
             setData(fresh);
-            trackEvent('OpponentAnalysisComplete', { AnalysisId: analysisId });
+            trackEvent('GamesOpponentAnalysisComplete', { AnalysisId: analysisId });
         } catch (err) {
             if ((err as Error).name !== 'AbortError') {
                 console.error('Opponent analysis failed:', err);
@@ -1777,7 +1777,7 @@ const GamesPage: React.FC = () => {
             // result — same no-412-retry posture as Analyze opponent. Anchored
             // on the EOT user ply so a later repertoire change can stale it.
             if (result.plies.length > 0) {
-                trackEvent('FixSuggested');
+                trackEvent('GamesFixSuggested');
                 if (eot) {
                     try {
                         const sg = toPersistedSuggestion(result, eot.targetPly);
@@ -1836,7 +1836,7 @@ const GamesPage: React.FC = () => {
             await persistGameReviewed(
                 dal, record.id, record.p, nextReviewed, pageAbortRef.current?.signal,
             );
-            trackEvent(nextReviewed ? 'MistakeReviewed' : 'MistakeUnreviewed');
+            trackEvent(nextReviewed ? 'GamesMistakeReviewed' : 'GamesMistakeUnreviewed');
         } catch (e) {
             // Abort = navigation away; 412 = the app-root <ConflictModal>
             // owns recovery. Neither is a real failure to surface here.

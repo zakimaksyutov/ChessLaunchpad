@@ -356,13 +356,13 @@ const SettingsPage: React.FC = () => {
         setLichessLoading(true);
         try {
             await logout();
-            trackEvent('LichessDisconnected');
+            trackEvent('SettingsLichessDisconnected');
         } finally {
             setLichessLoading(false);
         }
     };
 
-    // After returning from the Lichess OAuth redirect, emit LichessConnected for
+    // After returning from the Lichess OAuth redirect, emit SettingsLichessConnected for
     // a connect this page initiated. The intent flag distinguishes a fresh
     // connect from a revisit while already connected; a denied auth returns
     // not-connected, so the flag is cleared without emitting.
@@ -370,7 +370,7 @@ const SettingsPage: React.FC = () => {
         if (!lichessReady) return;
         if (localStorage.getItem(LICHESS_CONNECT_PENDING_KEY) !== '1') return;
         localStorage.removeItem(LICHESS_CONNECT_PENDING_KEY);
-        if (connected) trackEvent('LichessConnected');
+        if (connected) trackEvent('SettingsLichessConnected');
     }, [lichessReady, connected]);
 
     // ── Import / Export ────────────────────────────────────────────────
@@ -414,7 +414,7 @@ const SettingsPage: React.FC = () => {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-            trackEvent('BackupExport');
+            trackEvent('SettingsBackupExport');
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
             setErrorMessage(`Failed to export: ${msg}`);
@@ -520,7 +520,7 @@ const SettingsPage: React.FC = () => {
             RepertoireDataUtils.normalize(parsed);
             const blobForSave = RepertoireDataUtils.prepareDataForSave(parsed);
             await store.importBlob(blobForSave);
-            trackEvent('BackupImport');
+            trackEvent('SettingsBackupImport');
             // Full reload so all pages re-fetch the new repertoire.
             window.location.reload();
         } catch (ex: unknown) {

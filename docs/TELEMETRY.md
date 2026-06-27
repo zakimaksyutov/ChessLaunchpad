@@ -13,17 +13,17 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `UserDelete` | User permanently deletes their account. |
 | `SettingsReset` | User clicks "Reset to Defaults" on the Settings page. |
 | `SettingsSaved` | User saves changes on the Settings page. |
-| `LichessConnected` | User links a Lichess account on the Settings page (OAuth connect completes). |
-| `LichessDisconnected` | User unlinks their Lichess account on the Settings page. |
-| `BackupExport` | User exports a repertoire backup file. |
-| `BackupImport` | User imports a repertoire backup file. |
-| `MistakeReviewed` | User marks a game as reviewed on the Games page. |
-| `MistakeUnreviewed` | User clears the reviewed flag on a game on the Games page. |
-| `MistakeOpenInExplorer` | User opens an in-repertoire move from a game in the Explorer. |
-| `OpponentAnalysisStart` | Opponent analysis run begins for a deviation. |
-| `OpponentAnalysisComplete` | Opponent analysis run finishes successfully. |
-| `FixSuggested` | A suggested fix line is produced for a deviation. |
-| `SuggestedLineAdded` | User clicks "Add to repertoire" on a suggested fix. |
+| `SettingsLichessConnected` | User links a Lichess account on the Settings page (OAuth connect completes). |
+| `SettingsLichessDisconnected` | User unlinks their Lichess account on the Settings page. |
+| `SettingsBackupExport` | User exports a repertoire backup file. |
+| `SettingsBackupImport` | User imports a repertoire backup file. |
+| `GamesMistakeReviewed` | User marks a game as reviewed on the Games page. |
+| `GamesMistakeUnreviewed` | User clears the reviewed flag on a game on the Games page. |
+| `GamesOpenInExplorer` | User opens an in-repertoire move from a game in the Explorer. |
+| `GamesOpponentAnalysisStart` | Opponent analysis run begins for a deviation. |
+| `GamesOpponentAnalysisComplete` | Opponent analysis run finishes successfully. |
+| `GamesFixSuggested` | A suggested fix line is produced for a deviation. |
+| `GamesSuggestedLineAdded` | User clicks "Add to repertoire" on a suggested fix. |
 | `DashboardView` | Dashboard page loads (logged-in home). |
 
-`OpponentAnalysisStart` and `OpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).
+`GamesOpponentAnalysisStart` and `GamesOpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).
