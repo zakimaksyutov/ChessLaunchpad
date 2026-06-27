@@ -19,14 +19,16 @@ A new Actions-tile row on `/dashboard`:
 - **Opens a dedicated full-page flow** (its own route) rather than running inline
   — see §4. It's a one-time, multi-second operation that ends in a focused review.
 - **Explainer:** an always-shown "Why this?" section, like other top-priority
-  rows, whose job is to earn trust. Emphasize:
-  - Built only from *your own recent games* — your real openings, not a generic book.
-  - Keeps only moves you play **consistently** (the same move in every one of your
-    last several games at that position).
-  - Every move is checked against a strong engine — unsound moves are dropped.
-  - **Conservative by design:** when in doubt, a line is left out, so you start
-    from a clean base you can rely on.
-  - Nothing is saved until you review and approve it.
+  rows, whose job is to earn trust. **Format it as a short, scannable list — each
+  point its own line with a lead-in label/icon, not one block of prose.** The points:
+  - **From your own games** — built from your real recent openings, not a generic book.
+  - **Only what you actually play** — the same move in every one of your last several
+    games at that position.
+  - **Engine-checked** — every move is verified against a strong engine; unsound moves
+    are dropped.
+  - **Conservative by design** — when in doubt, a line is left out, so you start from
+    a clean base you can rely on.
+  - **You approve it** — nothing is saved until you review the result.
 
 ---
 
