@@ -38,8 +38,10 @@ A new Actions-tile row on `/dashboard`:
 
 - One-time **bulk** fetch of the user's recent rated blitz/rapid games (target
   up to ~2,000, bounded by availability and a hard cap), per linked account.
-  This is a dedicated historical pull, separate from steady-state ingest, reusing
-  the existing Lichess/Chess.com export pipeline.
+  This is a dedicated historical pull, separate from steady-state ingest. Reuse is
+  at the **HTTP fetch/parse layer only** (transport + Chess.com archive fetch); the
+  bulk pull and its pagination are **net-new** and do **not** go through `runIngest`
+  or its first-run caps (`FIRST_RUN_LICHESS_MAX=100` / `FIRST_RUN_MAX_ARCHIVES=6`).
 - **Normalize every source into one Lichess-export NDJSON shape** before enrichment,
   so §3 sees a homogeneous list. Chess.com games arrive as PGN — convert them
   (reuse `parseChesscomMoves` / the existing builder machinery): derive `moves`,
@@ -149,7 +151,7 @@ repertoire — every result is fully replayable and analyzable offline.
 
 ## Building blocks to reuse
 
-Bulk export pipeline (`GameIngestService` / Lichess export); Chess.com PGN→SAN
+Bulk export pipeline (`GameIngestService` fetch/parse layer only, not `runIngest`); Chess.com PGN→SAN
 conversion (`parseChesscomMoves` / `GameRecordBuilder`) to normalize into the
 NDJSON shape; `ExplorerEvals` (our precomputed artifact, consulted only at §2
 enrichment to fill `analysis[].eval`); `EvalDropService` drop/threshold helpers
