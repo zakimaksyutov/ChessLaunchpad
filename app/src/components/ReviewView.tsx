@@ -32,6 +32,13 @@ interface ReviewViewProps {
     onSave: () => void | Promise<void>;
     onDiscard: () => void;
     saveInFlight: boolean;
+    /**
+     * True when the Review pane was reached via the /games "Add to repertoire"
+     * deep-link. In that flow Cancel keeps the user in the Explorer Edit view
+     * (it does not return to /games — that's Discard's job), so the back
+     * control is relabelled to "Continue editing" to match.
+     */
+    fromGames?: boolean;
 }
 
 /**
@@ -42,7 +49,7 @@ interface ReviewViewProps {
  * intact; Save commits and clears the delta; Discard prompts confirmation
  * (handled by the parent).
  */
-const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSave, onDiscard, saveInFlight }) => {
+const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSave, onDiscard, saveInFlight, fromGames }) => {
     const totalCount = delta.counts.added + delta.counts.removed + delta.counts.changed;
     const empty = totalCount === 0;
 
@@ -64,9 +71,11 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                     type="button"
                     className="explorer-btn explorer-btn--xs explorer-btn--neutral-ghost"
                     onClick={onCancel}
-                    aria-label="Cancel review and return to Edit"
+                    aria-label={fromGames
+                        ? 'Return to Explorer to continue editing'
+                        : 'Cancel review and return to Edit'}
                 >
-                    ← Back to edit
+                    {fromGames ? '← Continue editing' : '← Back to edit'}
                 </button>
                 <div className="explorer-review-counts">
                     Review pending edits:&nbsp;

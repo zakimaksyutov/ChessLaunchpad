@@ -255,6 +255,89 @@ test.describe('Games — Suggest a fix', () => {
     expect(decodeURIComponent(hash)).toContain('Ba4');
   });
 
+  /**
+   * The /games "Add to repertoire" deep-link reaches the Review pane via a URL
+   * *replace* (no Explorer main-Edit history entry sits beneath it). The back
+   * control must therefore NOT call history.back() (that would overshoot to
+   * /games and drop the staged line); instead it relabels to "Continue
+   * editing" and drops the user onto the Explorer Edit board at the parent of
+   * the first added position, with the staged line intact. Discard stays the
+   * explicit path back to /games (covered by the next test).
+   */
+  test('Review "Continue editing" stays on Explorer (does not bounce to /games) with edits intact', async ({ page }) => {
+    const sg = {
+      ply: 6,
+      pl: [
+        { s: 'e4', r: 1 as const }, { s: 'e5' }, { s: 'Nf3', r: 1 as const }, { s: 'Nc6' },
+        { s: 'Bb5', r: 1 as const }, { s: 'a6' },
+        { s: 'Ba4', n: 1 as const }, { s: 'Nf6', n: 1 as const }, { s: 'O-O', n: 1 as const },
+      ],
+      pgn: SUGGESTED_PGN,
+      epgn: '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 (4. Bxc6) Nf6 5. O-O',
+      rep: 'Bxc6',
+      at: Date.now(),
+    };
+    await setupMockEnvironment(page, fixtureWith([eotRecord('eot1', sg)]), USERNAME);
+    await setupMockLichess(page, USERNAME);
+    await openGames(page);
+
+    await eotRow(page).locator('.suggest-fix-ready')
+      .getByRole('link', { name: 'Add to repertoire' }).click();
+
+    // The deep-link lands on the Explorer Review pane.
+    const review = page.locator('.explorer-review');
+    await expect(review).toBeVisible();
+    // The back control is relabelled for the games flow.
+    const back = review.getByRole('button', { name: /continue editing/i });
+    await expect(back).toBeVisible();
+    await back.click();
+
+    // Stays on /explorer (NOT /games), drops the review flag, and jumps the
+    // board to the parent of the first added position (the repertoire tip).
+    await expect(page).toHaveURL(/#\/explorer\?/);
+    const hash = decodeURIComponent(new URL(page.url()).hash);
+    expect(hash).not.toContain('review=1');
+    const parent = new Chess();
+    ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5'].forEach(m => parent.move(m));
+    expect(hash).toContain(parent.fen().split(' ')[0]);
+
+    // Still in Edit mode with the staged line intact.
+    const saveBar = page.locator('.explorer-save-bar');
+    await expect(saveBar).toBeVisible();
+    await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('added');
+  });
+
+  test('Review "Discard" from the /games flow returns to /games', async ({ page }) => {
+    const sg = {
+      ply: 6,
+      pl: [
+        { s: 'e4', r: 1 as const }, { s: 'e5' }, { s: 'Nf3', r: 1 as const }, { s: 'Nc6' },
+        { s: 'Bb5', r: 1 as const }, { s: 'a6' },
+        { s: 'Ba4', n: 1 as const }, { s: 'Nf6', n: 1 as const }, { s: 'O-O', n: 1 as const },
+      ],
+      pgn: SUGGESTED_PGN,
+      epgn: '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 (4. Bxc6) Nf6 5. O-O',
+      rep: 'Bxc6',
+      at: Date.now(),
+    };
+    await setupMockEnvironment(page, fixtureWith([eotRecord('eot1', sg)]), USERNAME);
+    await setupMockLichess(page, USERNAME);
+    await openGames(page);
+
+    await eotRow(page).locator('.suggest-fix-ready')
+      .getByRole('link', { name: 'Add to repertoire' }).click();
+
+    const review = page.locator('.explorer-review');
+    await expect(review).toBeVisible();
+    await review.getByRole('button', { name: 'Discard', exact: true }).click();
+
+    // Non-empty delta ⇒ confirmation prompt; confirming returns to /games.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Discard', exact: true }).click();
+    await expect(page).toHaveURL(/#\/games/);
+  });
+
   test('renders the "already exists" and "added" confirmations from persisted flags', async ({ page }) => {
     // Whole suggested line already in the repertoire (every ply flagged `r`) →
     // nothing to add.
