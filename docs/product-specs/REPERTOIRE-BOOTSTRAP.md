@@ -19,9 +19,9 @@ A new Actions-tile row on `/dashboard`:
 - **Explainer:** an always-shown "Why this?" section, like other top-priority
   rows, whose job is to earn trust. Emphasize:
   - Built only from *your own recent games* — your real openings, not a generic book.
-  - Keeps only moves you play **consistently and quickly** (ones you clearly know).
-  - Every move is checked against a strong engine and master games — unsound
-    moves are dropped.
+  - Keeps only moves you play **consistently** (the same move in every one of your
+    last several games at that position).
+  - Every move is checked against a strong engine — unsound moves are dropped.
   - **Conservative by design:** when in doubt, a line is left out, so you start
     from a clean base you can rely on.
   - Nothing is saved until you review and approve it.
@@ -34,9 +34,9 @@ A new Actions-tile row on `/dashboard`:
   up to ~2,000, bounded by availability and a hard cap), per linked account.
   This is a dedicated historical pull, separate from steady-state ingest, reusing
   the existing Lichess/Chess.com export pipeline.
-- Enrich each position with an engine eval using the existing precomputed eval DB
-  + cloud-eval fallback (same source the Games page already uses). Masters
-  frequencies come from the existing masters explorer.
+- Enrich each position with an engine eval from our precomputed eval artifact,
+  plus the per-game eval Lichess provides when a game was analyzed. No cloud-eval
+  calls and no masters lookups.
 - All work is client-side and progress-reported; results feed Section 3 in memory.
 
 ---
@@ -52,19 +52,23 @@ do not guess past a point of doubt).
 **At a user-move position**, include the move only if all hold:
 - **Recency** — judged on the user's recent games only (current repertoire, not
   abandoned old lines).
-- **Sample** — reached by enough games / a meaningful share (drop one-off noise).
-- **Consistency** — one dominant move with a high share (stricter than the
-  prototype; near-unanimous). A split position is not seeded.
-- **Soundness** — engine eval drop in the clean band (no inaccuracy/mistake/
-  blunder) and/or corroborated by masters. Anything worse is dropped, not flagged.
-- **Confidence** — time spent is not an outlier (the user knew it, didn't tank).
+- **Consistency** — the user's **last up-to-5 games** through this position must
+  **all** play the same move, with a floor of **3 games**: if ≥5 games, the last 5
+  must agree; if 3–4 games, all of them must agree; if ≤2 games, the branch stops.
+  This is the sample floor and the consistency rule in one — anything short of
+  unanimous over that window is not seeded.
+- **Soundness** — engine eval drop under **0.3 pawns (30 cp)** — the existing
+  `ok` band, below an inaccuracy — using our precomputed artifact and the per-game
+  Lichess eval when present. A position with no eval data is treated as unknown,
+  not assumed sound. Anything worse is dropped, not flagged.
 
 **At an opponent-move position**, branch only into replies that are both common
-enough to actually face and not engine-dubious; prune rare/bad lines and cap
-branching so the tree stays small.
+enough to actually face (by the user's own game frequencies) and not engine-dubious;
+prune rare/bad lines and cap branching so the tree stays small.
 
-**Stop conditions:** sample falls below threshold, any gate fails, or a depth cap
-(early-opening only). Bias toward *fewer, rock-solid* lines over coverage.
+**Stop conditions:** fewer than 3 games at a position, the consistency window is
+not unanimous, soundness fails, or a depth cap (early-opening only). Bias toward
+*fewer, rock-solid* lines over coverage.
 
 Output: a proposed set of positions/moves per color, ready as new FSRS cards.
 
@@ -83,8 +87,8 @@ Output: a proposed set of positions/moves per color, ready as new FSRS cards.
 
 ## Building blocks to reuse
 
-Bulk export pipeline (`GameIngestService` / Lichess export); `ExplorerEvals` +
-`LichessCloudEvalService` + `EvalDropService` for soundness; `MastersExplorerService`
-for popularity; position-centric v3 repertoire (`Repertoires`, `BlobCodec`);
+Bulk export pipeline (`GameIngestService` / Lichess export); `ExplorerEvals` (our
+precomputed artifact) + `EvalDropService` for soundness; per-game Lichess evals
+from the export; position-centric v3 repertoire (`Repertoires`, `BlobCodec`);
 Dashboard Actions (`DashboardActions`, `getEmptyRepertoireColors`); the existing
 pending-edit Save/Discard flow.
