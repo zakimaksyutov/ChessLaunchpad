@@ -133,7 +133,13 @@ test.describe('Explorer page — Edit mode', () => {
 
         // Save and assert the PUT body is missing the deleted positions.
         await saveBar.getByRole('button', { name: 'Review & Save' }).click();
-        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        // A removal (not a single added line) renders the standard chain-tile
+        // list — the "Removed (N)" section — not the animated preview.
+        const review = page.locator('.explorer-review');
+        await expect(review.getByRole('heading', { name: /Removed \(3\)/ })).toBeVisible();
+        await expect(review.locator('.explorer-review-chain-removed')).toBeVisible();
+        await expect(review.locator('.explorer-review-anim-section')).toHaveCount(0);
+        await review.getByRole('button', { name: 'Save', exact: true }).click();
 
         await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
         const body = saves[0].body as Record<string, unknown>;
@@ -743,5 +749,32 @@ test.describe('Explorer page — Import PGN', () => {
         // The new d4 continuation lives on the after-e6 FEN.
         const afterE6 = Object.values(white.positions).find(p => 'd4' in p.moves);
         expect(afterE6).toBeDefined();
+    });
+
+    test('a branching add (multiple chains) shows the standard Added list, not the animation', async ({ page }) => {
+        // Empty repertoire so every imported edge is genuinely new.
+        const fixture = buildRepertoireData([]);
+        await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer?o=white');
+        await enterEditMode(page);
+
+        // Branch at White's 2nd move: after 1.e4 e5, both Nf3 and Bc4 are
+        // added. The added edges decompose into multiple chains (e4–e5, Nf3,
+        // Bc4), so the delta is NOT a single added line and must fall back to
+        // the standard chain-tile list rather than the animated preview.
+        await pasteAndImport(page, '1. e4 e5 2. Nf3 (2. Bc4) *');
+
+        const saveBar = page.locator('.explorer-save-bar');
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('4 added');
+
+        await saveBar.getByRole('button', { name: 'Review & Save' }).click();
+        const review = page.locator('.explorer-review');
+        // Standard "Added (N)" list renders; the animated single-line preview
+        // is absent because there is more than one added chain.
+        await expect(review.getByRole('heading', { name: /Added \(4\)/ })).toBeVisible();
+        await expect(review.locator('.explorer-review-anim-section')).toHaveCount(0);
+        // The three added chains each render their own collapsible tile.
+        await expect(review.locator('.explorer-review-chain-added')).toHaveCount(3);
     });
 });
