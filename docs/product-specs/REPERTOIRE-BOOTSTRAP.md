@@ -40,10 +40,11 @@ A new Actions-tile row on `/dashboard`:
   up to ~2,000, bounded by availability and a hard cap), per linked account.
   This is a dedicated historical pull, separate from steady-state ingest, reusing
   the existing Lichess/Chess.com export pipeline.
-- Enrich each position with an engine eval from our precomputed eval artifact,
-  plus the per-game eval Lichess provides when a game was analyzed. No cloud-eval
-  calls and no masters lookups. Enriched evals are written back into each game's
-  Lichess `analysis[].eval` field.
+- Enrich each position with an engine eval and write it into the game's Lichess
+  `analysis[].eval` field: keep the per-game eval Lichess already provides when the
+  game was analyzed, and fill the rest from our precomputed eval artifact. **The
+  artifact is consulted only here, at enrichment time** — no cloud-eval calls, no
+  masters lookups. Everything downstream reads evals only from `analysis[].eval`.
 - Output (and the **§3 input contract**): a **list of NDJSON games** in Lichess's
   export shape, evals populated in place. This list is produced by a **single
   function** — the one and only seam between collection/enrichment and selection.
@@ -72,9 +73,12 @@ move is either trusted-in or absent, and **the first failing gate ends that bran
   This is the sample floor and the consistency rule in one — anything short of
   unanimous over that window is not seeded.
 - **Soundness** — engine eval drop under **0.3 pawns (30 cp)** — the existing
-  `ok` band, below an inaccuracy — using our precomputed artifact and the per-game
-  Lichess eval when present. A position with no eval data is treated as unknown,
-  not assumed sound. Anything worse is dropped, not flagged.
+  `ok` band, below an inaccuracy. Eval values come **only from the game's
+  `analysis[].eval`** (before = the prior ply's eval, after = this move's eval);
+  reuse `EvalDropService`'s source-agnostic helpers `computeConservativeDrop` +
+  `categorizeEvalDrop`, **not** `computeEvalDrops` (which reads the FEN-keyed
+  artifact, bypassing the enriched evals). A position missing either eval is
+  treated as unknown, not assumed sound. Anything worse is dropped, not flagged.
 
 **At an opponent-move position**, branch only into replies that are both common
 enough to actually face (by the user's own game frequencies) and not engine-dubious;
@@ -136,7 +140,9 @@ repertoire — every result is fully replayable and analyzable offline.
 ## Building blocks to reuse
 
 Bulk export pipeline (`GameIngestService` / Lichess export); `ExplorerEvals` (our
-precomputed artifact) + `EvalDropService` for soundness; per-game Lichess evals
-from the export; position-centric v3 repertoire (`Repertoires`, `BlobCodec`);
-Dashboard Actions (`DashboardActions`, `getEmptyRepertoireColors`); the existing
-pending-edit Save/Discard flow (`PendingEditModel` → `ReviewView`).
+precomputed artifact, consulted only at §2 enrichment to fill `analysis[].eval`);
+`EvalDropService` drop/threshold helpers (`computeConservativeDrop`,
+`categorizeEvalDrop`) — **not** `computeEvalDrops`, which reads the artifact by FEN;
+position-centric v3 repertoire (`Repertoires`, `BlobCodec`); Dashboard Actions
+(`DashboardActions`, `getEmptyRepertoireColors`); the existing pending-edit
+Save/Discard flow (`PendingEditModel` → `ReviewView`).
