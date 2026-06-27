@@ -77,7 +77,10 @@ test.describe('Explorer page — Edit mode', () => {
         // Review page is visible.
         const review = page.locator('.explorer-review');
         await expect(review).toBeVisible();
-        await expect(review.getByRole('heading', { name: /Added \(1\)/ })).toBeVisible();
+        // A single added line renders the animated preview (not a chain tile);
+        // the board's accessible label names the line being added.
+        await expect(review.locator('.explorer-review-anim-section')).toBeVisible();
+        await expect(review.getByRole('img', { name: /e4 e5/ })).toBeVisible();
 
         // Save commits the change.
         await review.getByRole('button', { name: 'Save', exact: true }).click();
@@ -130,7 +133,13 @@ test.describe('Explorer page — Edit mode', () => {
 
         // Save and assert the PUT body is missing the deleted positions.
         await saveBar.getByRole('button', { name: 'Review & Save' }).click();
-        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        // A removal (not a single added line) renders the standard chain-tile
+        // list — the "Removed (N)" section — not the animated preview.
+        const review = page.locator('.explorer-review');
+        await expect(review.getByRole('heading', { name: /Removed \(3\)/ })).toBeVisible();
+        await expect(review.locator('.explorer-review-chain-removed')).toBeVisible();
+        await expect(review.locator('.explorer-review-anim-section')).toHaveCount(0);
+        await review.getByRole('button', { name: 'Save', exact: true }).click();
 
         await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
         const body = saves[0].body as Record<string, unknown>;
@@ -265,7 +274,9 @@ test.describe('Explorer page — Edit mode', () => {
         const review = page.locator('.explorer-review');
         await expect(review).toBeVisible();
 
-        // The Added tile exposes an "Open in Explorer" deep link.
+        // A single added line uses the animated preview; the per-position
+        // "Open in Explorer" deep links live in the collapsed details list.
+        await review.getByRole('button', { name: /See details/ }).click();
         const openLink = review.getByRole('link', { name: 'Open in Explorer ↗' }).first();
         await expect(openLink).toBeVisible();
         await openLink.click();
@@ -707,8 +718,12 @@ test.describe('Explorer page — Import PGN', () => {
         await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('2 added');
 
         await saveBar.getByRole('button', { name: 'Review & Save' }).click();
-        await expect(page.locator('.explorer-review').getByRole('heading', { name: /Added \(2\)/ })).toBeVisible();
-        await page.locator('.explorer-review').getByRole('button', { name: 'Save', exact: true }).click();
+        // The two new edges form one co-linear chain → animated single-line
+        // preview; the board's accessible label names the merged line.
+        const review = page.locator('.explorer-review');
+        await expect(review.locator('.explorer-review-anim-section')).toBeVisible();
+        await expect(review.getByRole('img', { name: /e4 e6/ })).toBeVisible();
+        await review.getByRole('button', { name: 'Save', exact: true }).click();
         await expect.poll(() => saves.length, { timeout: 5_000 }).toBe(1);
 
         const body = saves[0].body as Record<string, unknown>;
@@ -734,5 +749,32 @@ test.describe('Explorer page — Import PGN', () => {
         // The new d4 continuation lives on the after-e6 FEN.
         const afterE6 = Object.values(white.positions).find(p => 'd4' in p.moves);
         expect(afterE6).toBeDefined();
+    });
+
+    test('a branching add (multiple chains) shows the standard Added list, not the animation', async ({ page }) => {
+        // Empty repertoire so every imported edge is genuinely new.
+        const fixture = buildRepertoireData([]);
+        await setupMockEnvironment(page, fixture);
+
+        await page.goto('/#/explorer?o=white');
+        await enterEditMode(page);
+
+        // Branch at White's 2nd move: after 1.e4 e5, both Nf3 and Bc4 are
+        // added. The added edges decompose into multiple chains (e4–e5, Nf3,
+        // Bc4), so the delta is NOT a single added line and must fall back to
+        // the standard chain-tile list rather than the animated preview.
+        await pasteAndImport(page, '1. e4 e5 2. Nf3 (2. Bc4) *');
+
+        const saveBar = page.locator('.explorer-save-bar');
+        await expect(saveBar.locator('.explorer-save-bar-counts')).toContainText('4 added');
+
+        await saveBar.getByRole('button', { name: 'Review & Save' }).click();
+        const review = page.locator('.explorer-review');
+        // Standard "Added (N)" list renders; the animated single-line preview
+        // is absent because there is more than one added chain.
+        await expect(review.getByRole('heading', { name: /Added \(4\)/ })).toBeVisible();
+        await expect(review.locator('.explorer-review-anim-section')).toHaveCount(0);
+        // The three added chains each render their own collapsible tile.
+        await expect(review.locator('.explorer-review-chain-added')).toHaveCount(3);
     });
 });

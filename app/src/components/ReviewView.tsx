@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import ChessboardControl from './ChessboardControl';
+import AnimatedAddedLine from './AnimatedAddedLine';
 import { PendingDelta, EditChain, AnnotationDiff, EditedEdge, Orientation } from '../services/PendingEditModel';
+import { isSingleAddedLine, buildAddedLineFrames, AddedLineFrames } from '../utils/ReviewAnimation';
 import { Annotation } from '../models/Annotation';
 
 /**
@@ -43,6 +45,17 @@ interface ReviewViewProps {
 const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSave, onDiscard, saveInFlight }) => {
     const totalCount = delta.counts.added + delta.counts.removed + delta.counts.changed;
     const empty = totalCount === 0;
+
+    // The common "added a single line" case (one added chain, nothing removed
+    // or edited) gets a friendlier animated big-board preview instead of the
+    // collapsible chain tile. Falls back to the standard layout if the line's
+    // frames can't be reconstructed.
+    const singleLine = isSingleAddedLine(delta);
+    const animFrames = useMemo(
+        () => (singleLine ? buildAddedLineFrames(delta.addedChains[0]) : null),
+        [singleLine, delta],
+    );
+    const useAnimated = singleLine && animFrames !== null;
 
     return (
         <div className="explorer-review">
@@ -89,7 +102,11 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                 </div>
             )}
 
-            {delta.addedChains.length > 0 && (
+            {!empty && useAnimated && (
+                <AddedLineAnimatedSection chain={delta.addedChains[0]} frames={animFrames!} />
+            )}
+
+            {!empty && !useAnimated && delta.addedChains.length > 0 && (
                 <section className="explorer-review-section">
                     <h2 className="explorer-review-section-title">Added ({delta.counts.added})</h2>
                     <ul className="explorer-review-list">
@@ -102,7 +119,7 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                 </section>
             )}
 
-            {delta.removedChains.length > 0 && (
+            {!empty && !useAnimated && delta.removedChains.length > 0 && (
                 <section className="explorer-review-section">
                     <h2 className="explorer-review-section-title">Removed ({delta.counts.removed})</h2>
                     <ul className="explorer-review-list">
@@ -115,7 +132,7 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                 </section>
             )}
 
-            {delta.editedAnnotations.length > 0 && (
+            {!empty && !useAnimated && delta.editedAnnotations.length > 0 && (
                 <section className="explorer-review-section">
                     <h2 className="explorer-review-section-title">Edited ({delta.counts.changed})</h2>
                     <ul className="explorer-review-list">
@@ -132,6 +149,61 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
 };
 
 export default ReviewView;
+
+// ── Single added-line animated view ──────────────────────────────────
+
+/**
+ * The optimized layout for "added exactly one line": a looping big animated
+ * board and a collapsed "See details" disclosure that reveals the same
+ * per-position rows used by the standard chain tail. No title, caption, or
+ * controls — the animation is the whole story.
+ */
+const AddedLineAnimatedSection: React.FC<{
+    chain: EditChain;
+    frames: AddedLineFrames;
+}> = ({ chain, frames }) => (
+    <section className="explorer-review-section explorer-review-anim-section">
+        <AnimatedAddedLine chain={chain} frames={frames} />
+        <AddedLineDetails chain={chain} />
+    </section>
+);
+
+/**
+ * Collapsed-by-default disclosure listing every added position (head + tail)
+ * as a flat plain list. Reuses `TailEdgeRow` so the rows behave exactly like
+ * the existing expanded-chain rows.
+ */
+const AddedLineDetails: React.FC<{ chain: EditChain }> = ({ chain }) => {
+    const [open, setOpen] = useState(false);
+    const parentSans = chain.parentPgn ? sansFromPgn(chain.parentPgn) : [];
+    const edges = [chain.head, ...chain.tail];
+    return (
+        <div className="explorer-review-anim-details">
+            <button
+                type="button"
+                className="explorer-review-chain-expand"
+                onClick={() => setOpen(v => !v)}
+                aria-expanded={open}
+                aria-controls={open ? 'explorer-review-anim-detail-list' : undefined}
+            >
+                {open ? 'Hide details' : `See details (${edges.length} position${edges.length === 1 ? '' : 's'})`}
+            </button>
+            {open && (
+                <ul id="explorer-review-anim-detail-list" className="explorer-review-list explorer-review-anim-detail-list">
+                    {edges.map((edge, i) => (
+                        <li key={i}>
+                            <TailEdgeRow
+                                parentSans={[...parentSans, ...edges.slice(0, i).map(e => e.san)]}
+                                edge={edge}
+                                side="added"
+                            />
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+};
 
 // ── Chain row ─────────────────────────────────────────────────────────
 

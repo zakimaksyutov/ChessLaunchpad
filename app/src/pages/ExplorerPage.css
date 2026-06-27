@@ -1071,6 +1071,44 @@
   max-width: 168px !important;
 }
 
+/* ===== Single added-line animated view ===== */
+.explorer-review-anim-section {
+  gap: 0.75rem;
+}
+
+.explorer-review-anim {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.explorer-review-anim-board {
+  width: 100%;
+  max-width: 384px;
+}
+
+.explorer-review-anim-board .chessboard-container {
+  max-width: 384px !important;
+  margin: 0 auto;
+}
+
+/* Details list matches the standard review tiles: full width, left-aligned. */
+.explorer-review-anim-details {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.explorer-review-anim-details .explorer-review-chain-expand {
+  align-self: center;
+}
+
+.explorer-review-anim-detail-list {
+  border-top: 1px dashed #eef0f3;
+  padding-top: 0.55rem;
+}
+
 /* ===== Mobile review reflow ===== */
 @media (max-width: 800px) {
   .explorer-review-chain-head {
@@ -1092,6 +1130,12 @@
   }
   .explorer-review-header {
     padding: 0.5rem 0.3rem;
+  }
+  .explorer-review-anim-board {
+    max-width: 340px;
+  }
+  .explorer-review-anim-board .chessboard-container {
+    max-width: 340px !important;
   }
 }
 
