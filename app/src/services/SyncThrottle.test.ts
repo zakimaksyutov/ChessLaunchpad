@@ -4,6 +4,7 @@ import {
     getLastSyncAt,
     markSyncedNow,
     isSyncThrottled,
+    clearSyncThrottle,
 } from './SyncThrottle';
 
 describe('SyncThrottle', () => {
@@ -52,5 +53,22 @@ describe('SyncThrottle', () => {
         localStorage.setItem('sync:lastAt:alice', 'not-a-number');
         expect(getLastSyncAt()).toBeNull();
         expect(isSyncThrottled()).toBe(false);
+    });
+
+    it('clearSyncThrottle forgets the current user clock without touching others', () => {
+        const now = 7_000_000;
+        markSyncedNow(now);
+        // A second user has their own stamp that must survive.
+        localStorage.setItem('username', 'bob');
+        markSyncedNow(now);
+        localStorage.setItem('username', 'alice');
+
+        clearSyncThrottle();
+
+        expect(getLastSyncAt()).toBeNull();
+        expect(isSyncThrottled(now)).toBe(false);
+
+        localStorage.setItem('username', 'bob');
+        expect(getLastSyncAt()).toBe(now);
     });
 });

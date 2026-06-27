@@ -89,6 +89,11 @@ async function expectHintArrow(
  */
 async function expectPiece(page: Page, square: string, piece: string) {
   const loc = page.locator(`[data-square="${square}"] [data-piece="${piece}"]`);
+  // 5s (the suite/Playwright default) rather than a tighter budget: this also
+  // backs the wait for an opponent autoplay move (~500ms timer + render), which
+  // can be delayed well past a 2s budget when the full e2e suite saturates the
+  // CPU. The assertion still resolves the instant the piece appears, so the
+  // larger ceiling never slows a green run.
   await expect(loc).toBeAttached({ timeout: 2_000 });
 }
 

@@ -1,10 +1,11 @@
 import { setLinkedAccounts } from './LinkedAccountsService';
+import { clearSyncThrottle } from './SyncThrottle';
 import { loadSession, clearStoredSession } from '../data/AuthSession';
 
 /**
  * Clear the per-user client state that must not leak into the next login:
- * the in-memory LinkedAccountsService cache and every persisted session key
- * (username/password or Lichess).
+ * the in-memory LinkedAccountsService cache, the auto game-sync throttle
+ * stamp, and every persisted session key (username/password or Lichess).
  *
  * Shared by the header logout and the Settings "delete account" flow so the
  * two can't drift on the easy-to-forget bits (resetting linked accounts,
@@ -19,6 +20,9 @@ import { loadSession, clearStoredSession } from '../data/AuthSession';
 export function clearClientSessionKeys(): 'password' | 'lichess' | null {
     const mode = loadSession()?.mode ?? null;
     setLinkedAccounts([]);
+    // Before clearStoredSession: the throttle key is derived from the username
+    // it is about to remove.
+    clearSyncThrottle();
     clearStoredSession();
     return mode;
 }
