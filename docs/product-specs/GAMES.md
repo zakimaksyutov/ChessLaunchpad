@@ -207,7 +207,7 @@ A **threat-level** label is derived from `nb` (`0–2` low, `3–9` moderate, `1
 
 On **EOT** rows, a **"Suggest a fix"** link (beside "Analyze opponent") proposes a concrete line to add so the user is ready next time. It is **not** shown on deviation rows — the user's own repertoire already holds the intended move. Like masters verdicts it **requires a connected Lichess account** (the masters explorer needs OAuth); without a token the result area shows a connect-Lichess prompt instead.
 
-The algorithm (see `GameSuggestionService`) walks the game from the start and, at the first out-of-repertoire user move, either keeps a sufficiently sound user move or substitutes a stronger masters move, closing the corrected line out shortly after. The result is a suggested **PGN** rendered below the tile:
+The algorithm (see `GameSuggestionService`) walks the game from the start and, at the first out-of-repertoire user move, either keeps a sufficiently sound user move or substitutes a stronger masters move, closing the corrected line out shortly after. At the annotation-flagged inaccuracy ply, a kept user move must be the masters favorite — otherwise it is substituted, so the fix never re-proposes the badged move. The result is a suggested **PGN** rendered below the tile:
 
 - In-repertoire user plies keep the **greenish** in-repertoire styling; opponent plies are greyed (matching the main tile).
 - Moves that **differ from the played game** are **bold**; the first carries a muted **"(instead of X)"** note naming the replaced user move.
