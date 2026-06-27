@@ -40,6 +40,12 @@ A new Actions-tile row on `/dashboard`:
   up to ~2,000, bounded by availability and a hard cap), per linked account.
   This is a dedicated historical pull, separate from steady-state ingest, reusing
   the existing Lichess/Chess.com export pipeline.
+- **Normalize every source into one Lichess-export NDJSON shape** before enrichment,
+  so §3 sees a homogeneous list. Chess.com games arrive as PGN — convert them
+  (reuse `parseChesscomMoves` / the existing builder machinery): derive `moves`,
+  the identifiers (id/platform, color, timestamp), and an `analysis` array. Chess.com
+  carries **no** per-game engine evals, so those positions are eval-filled entirely
+  from the artifact at the next step.
 - Enrich each position with an engine eval and write it into the game's Lichess
   `analysis[].eval` field: keep the per-game eval Lichess already provides when the
   game was analyzed, and fill the rest from our precomputed eval artifact. **The
@@ -139,10 +145,11 @@ repertoire — every result is fully replayable and analyzable offline.
 
 ## Building blocks to reuse
 
-Bulk export pipeline (`GameIngestService` / Lichess export); `ExplorerEvals` (our
-precomputed artifact, consulted only at §2 enrichment to fill `analysis[].eval`);
-`EvalDropService` drop/threshold helpers (`computeConservativeDrop`,
-`categorizeEvalDrop`) — **not** `computeEvalDrops`, which reads the artifact by FEN;
-position-centric v3 repertoire (`Repertoires`, `BlobCodec`); Dashboard Actions
-(`DashboardActions`, `getEmptyRepertoireColors`); the existing pending-edit
-Save/Discard flow (`PendingEditModel` → `ReviewView`).
+Bulk export pipeline (`GameIngestService` / Lichess export); Chess.com PGN→SAN
+conversion (`parseChesscomMoves` / `GameRecordBuilder`) to normalize into the
+NDJSON shape; `ExplorerEvals` (our precomputed artifact, consulted only at §2
+enrichment to fill `analysis[].eval`); `EvalDropService` drop/threshold helpers
+(`computeConservativeDrop`, `categorizeEvalDrop`) — **not** `computeEvalDrops`,
+which reads the artifact by FEN; position-centric v3 repertoire (`Repertoires`,
+`BlobCodec`); Dashboard Actions (`DashboardActions`, `getEmptyRepertoireColors`);
+the existing pending-edit Save/Discard flow (`PendingEditModel` → `ReviewView`).
