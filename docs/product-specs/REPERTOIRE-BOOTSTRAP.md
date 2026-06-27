@@ -101,6 +101,20 @@ persists until Save.
 
 ---
 
+## 5. Debuggability
+
+Offer a **"Download raw input"** option (behind a **"…"** overflow menu on the
+bootstrap page) that saves the exact dataset the algorithm consumed — the canonical
+way to replay and analyze a run offline.
+
+Save it in **Lichess's own game-export format** (the same NDJSON the ingest pipeline
+already consumes), so it's standard and re-loadable. Evals live in that format's
+existing field (`analysis[].eval`); populate it in-place — embedded where Lichess
+provided analysis, artifact-filled otherwise — so the file is self-contained and is
+the complete input to §3.
+
+---
+
 ## Building blocks to reuse
 
 Bulk export pipeline (`GameIngestService` / Lichess export); `ExplorerEvals` (our
