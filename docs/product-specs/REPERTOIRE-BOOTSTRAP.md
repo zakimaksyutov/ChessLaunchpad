@@ -124,6 +124,10 @@ grouped/labeled by orientation (with board preview). **Save** commits the additi
 to the blob and syncs; **Discard** keeps the repertoire empty. Nothing persists
 until Save.
 
+**Zero lines** is a valid conservative outcome: skip `ReviewView` (it disables both
+buttons on an empty delta) and show a brief empty state with a Back-to-dashboard
+exit; the §1 action stays available to retry later.
+
 There is no separate repertoire tree/graph view to reuse (the prototype's graph was
 never ported); `ReviewView`'s added-lines list is the visualization. A richer
 tree/board view would be net-new and is out of scope unless the agent finds the line
