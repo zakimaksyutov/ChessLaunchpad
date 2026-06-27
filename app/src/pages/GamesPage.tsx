@@ -1744,6 +1744,13 @@ const GamesPage: React.FC = () => {
         const repertoireFens = userColor === 'white' ? fenSets.whiteFens : fenSets.blackFens;
         const sans = record.m.split(/\s+/).filter(Boolean);
 
+        // The annotation's flagged EOT user move (inaccuracy+). Passed into the
+        // walk so a flagged move that merely clears the relative "good" bar is
+        // substituted rather than re-proposed, and reused below as the `sg`
+        // persistence anchor.
+        const ann = annotationByKey.get(key);
+        const eot = ann ? deriveRecordEotPositions(record, ann) : null;
+
         // Grouped, one-shot console trace of every masters / cloud-eval request
         // and the move-scoring values behind this suggestion (mirrors the
         // Re-annotate debug log). The group is owned here so it always closes.
@@ -1755,6 +1762,7 @@ const GamesPage: React.FC = () => {
                 repertoireFens,
                 explorerEvals,
                 embeddedEvals: record.ev,
+                flaggedPlyIndex: eot?.targetPly,
                 masters,
                 cloudEvalCp,
                 signal,
@@ -1770,8 +1778,6 @@ const GamesPage: React.FC = () => {
             // on the EOT user ply so a later repertoire change can stale it.
             if (result.plies.length > 0) {
                 trackEvent('FixSuggested');
-                const ann = annotationByKey.get(key);
-                const eot = ann ? deriveRecordEotPositions(record, ann) : null;
                 if (eot) {
                     try {
                         const sg = toPersistedSuggestion(result, eot.targetPly);

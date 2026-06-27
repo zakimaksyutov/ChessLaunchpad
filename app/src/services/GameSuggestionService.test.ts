@@ -286,6 +286,130 @@ describe('computeSuggestion — branch (b) user move in Top-5', () => {
 });
 
 // ---------------------------------------------------------------------------
+// computeSuggestion — flagged inaccuracy ply (annotation reconciliation)
+// ---------------------------------------------------------------------------
+
+describe('computeSuggestion — flagged inaccuracy ply', () => {
+    // Shared setup: user plays g3 at the EOT user ply (index 4). g3 is in the
+    // masters Top-5 and clears the 10% relative "good" bar, but is NOT the
+    // masters favorite (d4) — mirrors the Na6 case where the annotation badges
+    // the move an inaccuracy yet the lenient bar would otherwise keep it.
+    const repFens = buildRepFens([['e4'], ['e4', 'e5'], ['e4', 'e5', 'Nf3']]);
+    const userFen = fenAfter(['e4', 'e5', 'Nf3', 'd6']);
+
+    const buildMap = () => {
+        const map = new Map<string, MastersPositionResult | null>();
+        map.set(userFen, mkMasters([
+            ['d4', 2000, 1000, 500],
+            ['Bc4', 1500, 1000, 500],
+            ['g3', 800, 500, 300],
+        ]));
+        // Close-out masters from the substituted favorite d4.
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'd4']), mkMasters([
+            ['exd4', 4000, 1000, 1000],
+        ]));
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'd4', 'exd4']), mkMasters([
+            ['Nxd4', 3000, 1500, 1000],
+        ]));
+        return map;
+    };
+
+    it('premise: g3 clears the good bar yet is not the masters favorite', async () => {
+        const scored = await scoreMastersMoves(userFen, buildMap().get(userFen)!, true, noCloud);
+        expect(scored[0].san).toBe('d4');
+        expect(scored.find(s => s.san === 'g3')!.score).toBeGreaterThanOrEqual(GOOD_SCORE_THRESHOLD);
+    });
+
+    it('substitutes the favorite at the flagged ply even though the user move clears the good bar', async () => {
+        const result = await computeSuggestion({
+            sans: ['e4', 'e5', 'Nf3', 'd6', 'g3'],
+            userColor: 'white',
+            repertoireFens: repFens,
+            explorerEvals: null,
+            masters: mastersFromMap(buildMap()),
+            cloudEvalCp: noCloud,
+            flaggedPlyIndex: 4,
+        });
+
+        // g3 replaced by the favorite d4 and closed out at depth 1.
+        expect(result.plies.map(p => p.san)).toEqual(['e4', 'e5', 'Nf3', 'd6', 'd4', 'exd4', 'Nxd4']);
+        expect(result.replacedUserSan).toBe('g3');
+    });
+
+    it('keeps the same user move when the ply is not flagged (lenient bar applies)', async () => {
+        const result = await computeSuggestion({
+            sans: ['e4', 'e5', 'Nf3', 'd6', 'g3'],
+            userColor: 'white',
+            repertoireFens: repFens,
+            explorerEvals: null,
+            masters: mastersFromMap(buildMap()),
+            cloudEvalCp: noCloud,
+            // No flaggedPlyIndex → g3 is kept (current behavior).
+        });
+
+        expect(result.plies.map(p => p.san)).toEqual(['e4', 'e5', 'Nf3', 'd6', 'g3']);
+        expect(result.replacedUserSan).toBeUndefined();
+    });
+
+    it('keeps the flagged user move when it is the masters favorite (suggests the same line)', async () => {
+        const map = new Map<string, MastersPositionResult | null>();
+        // d4 is the dominant favorite — kept even though this ply is flagged.
+        map.set(userFen, mkMasters([
+            ['d4', 2000, 1000, 500],
+            ['Bc4', 100, 80, 60],
+        ]));
+
+        const scored = await scoreMastersMoves(userFen, map.get(userFen)!, true, noCloud);
+        expect(scored[0].san).toBe('d4');
+
+        const result = await computeSuggestion({
+            sans: ['e4', 'e5', 'Nf3', 'd6', 'd4'],
+            userColor: 'white',
+            repertoireFens: repFens,
+            explorerEvals: null,
+            masters: mastersFromMap(map),
+            cloudEvalCp: noCloud,
+            flaggedPlyIndex: 4,
+        });
+
+        expect(result.plies.map(p => p.san)).toEqual(['e4', 'e5', 'Nf3', 'd6', 'd4']);
+        expect(result.replacedUserSan).toBeUndefined();
+    });
+
+    it('bypasses the popularity short-circuit at the flagged ply (>5k-game non-favorite is substituted)', async () => {
+        // g3 has > 5k games (would normally short-circuit as "trusted"), but it
+        // is not the favorite, so at the flagged ply it is still substituted.
+        const map = new Map<string, MastersPositionResult | null>();
+        map.set(userFen, mkMasters([
+            ['d4', 9000, 4000, 2000],
+            ['g3', 6000, 3000, 4000],   // > 5k games, weaker margin → not favorite
+        ]));
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'd4']), mkMasters([
+            ['exd4', 4000, 1000, 1000],
+        ]));
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'd4', 'exd4']), mkMasters([
+            ['Nxd4', 3000, 1500, 1000],
+        ]));
+
+        const scored = await scoreMastersMoves(userFen, map.get(userFen)!, true, noCloud);
+        expect(scored[0].san).toBe('d4');
+
+        const result = await computeSuggestion({
+            sans: ['e4', 'e5', 'Nf3', 'd6', 'g3'],
+            userColor: 'white',
+            repertoireFens: repFens,
+            explorerEvals: null,
+            masters: mastersFromMap(map),
+            cloudEvalCp: noCloud,
+            flaggedPlyIndex: 4,
+        });
+
+        expect(result.plies.map(p => p.san)).toEqual(['e4', 'e5', 'Nf3', 'd6', 'd4', 'exd4', 'Nxd4']);
+        expect(result.replacedUserSan).toBe('g3');
+    });
+});
+
+// ---------------------------------------------------------------------------
 // computeSuggestion — edge cases
 // ---------------------------------------------------------------------------
 

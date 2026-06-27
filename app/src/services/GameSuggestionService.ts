@@ -90,6 +90,19 @@ export interface SuggestionInput {
     explorerEvals: ExplorerEvals | null;
     /** Per-ply embedded evals (`record.ev`), aligned 1:1 with `sans`. */
     embeddedEvals?: (number | null)[];
+    /**
+     * 0-based ply index (into `sans`) of the user move the game annotation
+     * flagged as an inaccuracy/mistake/blunder — the EOT move the "Suggest a
+     * fix" link is offered on — or `undefined` when none.
+     *
+     * At this single ply the walk applies a stricter rule than the lenient
+     * relative "good" bar: the user's move is kept only when it is the masters
+     * favorite (`scored[0]`); otherwise it is substituted and the line closed
+     * out. This reconciles the suggestion with the annotation badge — a move can
+     * clear the 10% relative bar yet still be an absolute eval inaccuracy, in
+     * which case re-proposing it as the "fix" would be useless.
+     */
+    flaggedPlyIndex?: number;
     masters: MastersProvider;
     cloudEvalCp: CloudEvalCpProvider;
     signal?: AbortSignal;
@@ -431,9 +444,14 @@ function buildExplorerMovetext(
  * reply. From the first out-of-repertoire user move the walk scores the masters
  * Top-5 and either keeps a good user move (staying on the real game) or
  * substitutes a better one and closes out at depth 1.
+ *
+ * At the annotation-flagged inaccuracy ply (`flaggedPlyIndex`) the keep rule is
+ * tightened: the user's move survives only if it is the masters favorite,
+ * otherwise it is substituted — so the suggestion never just re-proposes a
+ * move the annotation already badged as an eval inaccuracy.
  */
 export async function computeSuggestion(input: SuggestionInput): Promise<SuggestionResult> {
-    const { sans, userColor, repertoireFens, signal, debug } = input;
+    const { sans, userColor, repertoireFens, flaggedPlyIndex, signal, debug } = input;
     const userWhite = userColor === 'white';
 
     const shortFen = (f: string) => f.split(' ').slice(0, 2).join(' ');
@@ -600,13 +618,20 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
 
         const userUci = uciOf(fenBefore, sans[i]);
 
+        // The annotation flagged this exact ply as an eval inaccuracy+. Here the
+        // user's move must be the masters favorite to be kept; otherwise it is
+        // substituted regardless of the relative "good" bar (see below). This
+        // also bypasses the popularity short-circuit so we always score and can
+        // compare the move to `scored[0]`.
+        const isFlaggedPly = flaggedPlyIndex !== undefined && i === flaggedPlyIndex;
+
         // Popularity short-circuit: a Top-5 masters move played more than
         // ACCEPT_GAMES_THRESHOLD times is trusted as-is — accept it and keep
         // walking the real game without querying evals or computing a score.
         const userTop5 = userUci
             ? mastersData.moves.slice(0, 5).find(m => uciOf(fenBefore, m.san) === userUci)
             : undefined;
-        if (userTop5 && userTop5.total > ACCEPT_GAMES_THRESHOLD) {
+        if (!isFlaggedPly && userTop5 && userTop5.total > ACCEPT_GAMES_THRESHOLD) {
             if (debug) console.log(`[walk] user ply ${i} "${sans[i]}": Top-5 with ${userTop5.total} master games (> ${ACCEPT_GAMES_THRESHOLD}) → accept without scoring`);
             if (!appendMove(sans[i])) return finalize();
             i++;
@@ -634,6 +659,18 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         if (!userScored) {
             // (a) User's move is not in masters Top-5 — substitute + close out.
             if (debug) console.log(`[walk] → (a) off-book: substitute ${scored[0].san}, close out at depth 1`);
+            replacedUserSan = sans[i];
+            correctionPlyIndex = plies.length;
+            await closeOutLine(scored[0].san);
+            break;
+        }
+
+        if (isFlaggedPly && userScored.uci !== scored[0].uci) {
+            // Flagged inaccuracy ply: the user's move clears the relative "good"
+            // bar but is not the masters favorite. Substitute the favorite and
+            // close out so the fix proposes a genuinely better book move rather
+            // than re-suggesting the move the annotation badged as inaccuracy.
+            if (debug) console.log(`[walk] → flagged-inaccuracy ply: ${sans[i]} is not the masters favorite (${scored[0].san}); substitute and close out`);
             replacedUserSan = sans[i];
             correctionPlyIndex = plies.length;
             await closeOutLine(scored[0].san);
