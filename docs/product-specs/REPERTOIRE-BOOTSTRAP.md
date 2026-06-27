@@ -20,7 +20,9 @@ A new Actions-tile row on `/dashboard`:
   — see §4. It's a one-time, multi-second operation that ends in a focused review.
 - **Explainer:** an always-shown "Why this?" section, like other top-priority
   rows, whose job is to earn trust. **Format it as a short, scannable list — each
-  point its own line with a lead-in label/icon, not one block of prose.** The points:
+  point its own line with a lead-in label/icon, not one block of prose.** The points
+  below are an illustrative starting idea; the implementing agent decides the final
+  list and wording:
   - **From your own games** — built from your real recent openings, not a generic book.
   - **Only what you actually play** — the same move in every one of your last several
     games at that position.
