@@ -38,18 +38,26 @@ A new Actions-tile row on `/dashboard`:
   the existing Lichess/Chess.com export pipeline.
 - Enrich each position with an engine eval from our precomputed eval artifact,
   plus the per-game eval Lichess provides when a game was analyzed. No cloud-eval
-  calls and no masters lookups.
-- All work is client-side and progress-reported; results feed Section 3 in memory.
+  calls and no masters lookups. Enriched evals are written back into each game's
+  Lichess `analysis[].eval` field.
+- Output (and the **§3 input contract**): a **list of NDJSON games** in Lichess's
+  export shape, evals populated in place. This list is produced by a **single
+  function** — the one and only seam between collection/enrichment and selection.
+  Both the run and the §5 download go through that same function: the run feeds its
+  output to §3; the download serializes the same output (ideally the very bytes the
+  run used). The two therefore can never diverge. All work is client-side and
+  progress-reported.
 
 ---
 
 ## 3. Selection algorithm — what we keep
 
 Walk games into a position-keyed tree (normalized FEN, transpositions merged),
-then keep a move **only when every gate passes**. The defining rule vs. the
-exploratory prototype: we never include a flagged/uncertain move — a move is
-either trusted-in or absent, and **the first failing gate ends that branch** (we
-do not guess past a point of doubt).
+then keep a move **only when every gate passes**. Selection is a **pure function of
+the §2 NDJSON list** — same input always yields the same repertoire. The defining
+rule vs. the exploratory prototype: we never include a flagged/uncertain move — a
+move is either trusted-in or absent, and **the first failing gate ends that branch**
+(we do not guess past a point of doubt).
 
 **At a user-move position**, include the move only if all hold:
 - **Recency** — judged on the user's recent games only (current repertoire, not
@@ -104,14 +112,12 @@ persists until Save.
 ## 5. Debuggability
 
 Offer a **"Download raw input"** option (behind a **"…"** overflow menu on the
-bootstrap page) that saves the exact dataset the algorithm consumed — the canonical
-way to replay and analyze a run offline.
+bootstrap page) that saves the output of the **same producer function** the run
+feeds to §3 (see §2) — the list of NDJSON games with evals in `analysis[].eval`.
 
-Save it in **Lichess's own game-export format** (the same NDJSON the ingest pipeline
-already consumes), so it's standard and re-loadable. Evals live in that format's
-existing field (`analysis[].eval`); populate it in-place — embedded where Lichess
-provided analysis, artifact-filled otherwise — so the file is self-contained and is
-the complete input to §3.
+Because §3 is a pure function of that list and both paths share one producer,
+re-running the algorithm on the downloaded file reproduces the exact same
+repertoire — every result is fully replayable and analyzable offline.
 
 ---
 
