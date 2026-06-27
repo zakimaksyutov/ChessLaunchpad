@@ -858,7 +858,14 @@ const ExplorerPage: React.FC = () => {
     // When the addpgn deep-link came from /games (the "Add to repertoire"
     // suggestion action), remember the originating row so Save/Discard can
     // send the user back to /games instead of stranding them on Explorer.
-    const suggestReturnRef = useRef<{ row: string | null } | null>(null);
+    // `parentFen`/`parentOrientation` capture the position just above the
+    // first added move so "Continue editing" (Back from Review) can drop the
+    // user onto the Explorer Edit board there instead of bouncing to /games.
+    const suggestReturnRef = useRef<{
+        row: string | null;
+        parentFen: string | null;
+        parentOrientation: Orientation | null;
+    } | null>(null);
     useEffect(() => {
         if (!data) return;
         const addPgn = searchParams.get('addpgn');
@@ -909,7 +916,16 @@ const ExplorerPage: React.FC = () => {
                     : 'The suggested line is already in your repertoire.',
             });
             if (searchParams.get('from') === 'games') {
-                suggestReturnRef.current = { row: searchParams.get('row') };
+                // Capture the parent of the first staged (added) position so
+                // "Continue editing" can land the board there. computeDelta()
+                // is the same call the Review pane makes; paying it once here
+                // keeps the parent lookup in lock-step with what's reviewed.
+                const firstChain = model.computeDelta().addedChains[0];
+                suggestReturnRef.current = {
+                    row: searchParams.get('row'),
+                    parentFen: firstChain?.head.from ?? null,
+                    parentOrientation: firstChain?.orientation ?? null,
+                };
             }
             next.set('o', decoded.orientation);
             next.set('review', '1');
@@ -1045,14 +1061,31 @@ const ExplorerPage: React.FC = () => {
 
     /** Cancel/back from Review explicitly — go through the same back-stack pop. */
     const exitReviewView = useCallback(() => {
-        if (searchParams.get('review') === '1') {
-            // Walk history one step back so browser Back and the Cancel
-            // button produce the same URL trail. If for some reason that
-            // overshoots (rare — would mean the user manually deep-linked
-            // to ?review=1), fall back to stripping the param.
-            window.history.back();
+        if (searchParams.get('review') !== '1') return;
+        const ret = suggestReturnRef.current;
+        if (ret) {
+            // Games "Add to repertoire" flow: the Review pane was reached via
+            // a URL *replace* (see the addpgn effect), so there is no Explorer
+            // main-Edit history entry beneath it — window.history.back() would
+            // overshoot all the way to /games and unmount the page, silently
+            // dropping the staged line. Instead stay on /explorer, leave the
+            // Review pane, and land the board on the parent of the first added
+            // position so the user can keep editing. Discard remains the
+            // explicit path back to /games.
+            const next = new URLSearchParams(searchParams);
+            next.delete('review');
+            if (ret.parentOrientation) next.set('o', ret.parentOrientation);
+            if (ret.parentFen) next.set('fen', ret.parentFen);
+            else next.delete('fen');
+            setSearchParams(next, { replace: true });
+            return;
         }
-    }, [searchParams]);
+        // Normal in-Explorer flow: the main Edit view sits beneath in history,
+        // so walk one step back and browser Back / this button stay in sync.
+        // If for some reason that overshoots (rare — would mean the user
+        // manually deep-linked to ?review=1), fall back to stripping the param.
+        window.history.back();
+    }, [searchParams, setSearchParams]);
 
     const enterEditMode = useCallback(() => {
         if (!data) return;
@@ -1993,6 +2026,7 @@ const ExplorerPage: React.FC = () => {
                         onSave={handleSave}
                         onDiscard={requestDiscard}
                         saveInFlight={saveInFlight}
+                        fromGames={!!suggestReturnRef.current}
                     />
                 )}
 
