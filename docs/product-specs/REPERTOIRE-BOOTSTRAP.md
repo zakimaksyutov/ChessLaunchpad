@@ -16,6 +16,8 @@ A new Actions-tile row on `/dashboard`:
   empty color(s). Hidden once both colors have positions.
 - **Priority:** top of the tile when available (a user with no repertoire has
   nothing else to do) — outranks Start Training, Review games, etc.
+- **Opens a dedicated full-page flow** (its own route) rather than running inline
+  — see §4. It's a one-time, multi-second operation that ends in a focused review.
 - **Explainer:** an always-shown "Why this?" section, like other top-priority
   rows, whose job is to earn trust. Emphasize:
   - Built only from *your own recent games* — your real openings, not a generic book.
@@ -74,14 +76,28 @@ Output: a proposed set of positions/moves per color, ready as new FSRS cards.
 
 ---
 
-## 4. Review & save
+## 4. Flow: progress → review → save
 
-- Present the proposal as a **read-only preview of the resulting repertoire**
-  (reuse the existing board + line/tree view), grouped by color, so the user sees
-  exactly the lines that will be added.
-- Terminate in the existing **Discard / Save** flow (the same pending-edit /
-  approval mechanism used elsewhere) — Save commits the additions to the blob and
-  syncs; Discard keeps the repertoire empty. Nothing persists until Save.
+Runs on its own full-page route, cancelable, with live progress. Phases:
+
+1. **Downloading your last games** — `x / up to 2,000`. The only network-bound,
+   genuinely slow phase.
+2. **Analyzing games** — `x / N`. Parse + replay, eval lookup, and the §3 gates.
+   Local-only (static eval artifact + evals already in the downloaded games — no
+   per-position network), so chunk the work (or use a worker) to keep the counter
+   animating and the page responsive instead of freezing.
+3. **Discovering sound lines** — short finishing step.
+
+Make the wait productive and trust-building: **stream qualifying lines into the
+preview as they're found** (e.g. "1.e4 c5 2.Nf3 … — played in 9 of your last 9
+games"), so progress doubles as proof of the §1 promise.
+
+The page then settles into a **read-only preview of the resulting repertoire**
+(reuse the board + line/tree view), grouped by color, and terminates in the
+existing **Discard / Save** flow (the same pending-edit / approval mechanism used
+elsewhere; it already groups and labels chains by orientation). Save commits the
+additions to the blob and syncs; Discard keeps the repertoire empty. Nothing
+persists until Save.
 
 ---
 
