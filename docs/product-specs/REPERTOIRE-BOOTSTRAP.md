@@ -53,6 +53,9 @@ A new Actions-tile row on `/dashboard`:
   game was analyzed, and fill the rest from our precomputed eval artifact. **The
   artifact is consulted only here, at enrichment time** — no cloud-eval calls, no
   masters lookups. Everything downstream reads evals only from `analysis[].eval`.
+  Per-position precedence: **Lichess eval wins, artifact fills only gaps; exactly one
+  value per position (no blending)** — so §3's conservative-array path reduces to a
+  single before−after pairing.
 - Output (and the **§3 input contract**): a **list of NDJSON games** in Lichess's
   export shape, evals populated in place. This list is produced by a **single
   function** — the one and only seam between collection/enrichment and selection.
