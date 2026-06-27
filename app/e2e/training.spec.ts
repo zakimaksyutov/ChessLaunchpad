@@ -94,7 +94,7 @@ async function expectPiece(page: Page, square: string, piece: string) {
   // can be delayed well past a 2s budget when the full e2e suite saturates the
   // CPU. The assertion still resolves the instant the piece appears, so the
   // larger ceiling never slows a green run.
-  await expect(loc).toBeAttached({ timeout: 2_000 });
+  await expect(loc).toBeAttached({ timeout: 5_000 });
 }
 
 /** Assert that a square has no piece on it. */
