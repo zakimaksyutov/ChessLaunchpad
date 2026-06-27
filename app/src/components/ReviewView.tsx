@@ -184,7 +184,7 @@ const AddedLineDetails: React.FC<{ chain: EditChain }> = ({ chain }) => {
                 className="explorer-review-chain-expand"
                 onClick={() => setOpen(v => !v)}
                 aria-expanded={open}
-                aria-controls="explorer-review-anim-detail-list"
+                aria-controls={open ? 'explorer-review-anim-detail-list' : undefined}
             >
                 {open ? 'Hide details' : `See details (${edges.length} position${edges.length === 1 ? '' : 's'})`}
             </button>
