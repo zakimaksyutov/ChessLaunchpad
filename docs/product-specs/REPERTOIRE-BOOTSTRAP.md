@@ -36,28 +36,39 @@ A new Actions-tile row on `/dashboard`:
 
 ## 2. Game collection & eval enrichment
 
-- One-time **bulk** fetch of the user's recent rated blitz/rapid games (target
-  up to ~2,000, bounded by availability and a hard cap), per linked account.
+- One-time **bulk** fetch of the user's recent rated blitz/rapid games (up to
+  ~2,000 per linked account, bounded by availability and a hard cap). Across
+  multiple accounts the union is then sorted by recency and trimmed to the
+  **most-recent ~2,000 games globally**, so the analyzed set (and the §5 download)
+  stays bounded regardless of account count.
   This is a dedicated historical pull, separate from steady-state ingest. Reuse is
   at the **HTTP fetch/parse layer only** (transport + Chess.com archive fetch); the
   bulk pull and its pagination are **net-new** and do **not** go through `runIngest`
   or its first-run caps (`FIRST_RUN_LICHESS_MAX=100` / `FIRST_RUN_MAX_ARCHIVES=6`).
-- **Normalize every source into one Lichess-export NDJSON shape** before enrichment,
+- **Normalize every source into one homogeneous NDJSON shape** before enrichment,
   so §3 sees a homogeneous list. Chess.com games arrive as PGN — convert them
   (reuse `parseChesscomMoves` / the existing builder machinery): derive `moves`,
   the identifiers (id/platform, color, timestamp), and an `analysis` array. Chess.com
   carries **no** per-game engine evals, so those positions are eval-filled entirely
   from the artifact at the next step.
-- Enrich each position with an engine eval and write it into the game's Lichess
+  - *As built:* the normalized shape (`BootstrapGame`) keeps the Lichess-export
+    fields §3 needs (`id`, `platform`, `color`, `createdAt`, `moves`) and a
+    **position-indexed** `analysis` array where `analysis[k]` is the eval of the
+    position after `k` plies, so `analysis[0]` is the start position (length =
+    plies + 1). This intentionally prepends the start to Lichess's native
+    per-move array so the **"before" eval of the very first move (ply 0, White)
+    exists** — otherwise White's opening move could never be seeded.
+- **Enrich each position** with an engine eval and write it into the game's
   `analysis[].eval` field: keep the per-game eval Lichess already provides when the
   game was analyzed, and fill the rest from our precomputed eval artifact. **The
   artifact is consulted only here, at enrichment time** — no cloud-eval calls, no
   masters lookups. Everything downstream reads evals only from `analysis[].eval`.
   Per-position precedence: **Lichess eval wins, artifact fills only gaps; exactly one
-  value per position (no blending)** — so §3's conservative-array path reduces to a
-  single before−after pairing.
-- Output (and the **§3 input contract**): a **list of NDJSON games** in Lichess's
-  export shape, evals populated in place. This list is produced by a **single
+  value per position (no blending)** — so §3's soundness check is a single
+  before−after pairing **within one game** (never one game's "before" paired with
+  another game's "after").
+- Output (and the **§3 input contract**): a **list of NDJSON games** with evals
+  populated in place. This list is produced by a **single
   function** — the one and only seam between collection/enrichment and selection.
   Both the run and the §5 download go through that same function: the run feeds its
   output to §3; the download serializes the same output (ideally the very bytes the
@@ -109,13 +120,15 @@ One dedicated full-page route with two consecutive states on the same page:
 
 **State A — Progress** (cancelable, live counters). Phases:
 
-1. **Downloading your last games** — `x / up to 2,000`. The only network-bound,
+1. **Downloading your last games** — `x / up to 2,000` per linked account (so the
+   denominator scales with the number of linked accounts). The only network-bound,
    genuinely slow phase.
-2. **Analyzing games** — `x / N`. Parse + replay, eval lookup, and the §3 gates.
-   Local-only (static eval artifact + evals already in the downloaded games — no
-   per-position network), so chunk the work (or use a worker) to keep the counter
-   animating and the page responsive instead of freezing.
-3. **Discovering sound lines** — short finishing step.
+2. **Analyzing games** — `x / N`, where `N` is the most-recent ~2,000 games kept
+   across all accounts. Parse + replay and eval lookup (the §3 gates run in the
+   short finishing step below). Local-only (static eval artifact + evals already in
+   the downloaded games — no per-position network), so chunk the work (or use a
+   worker) to keep the counter animating and the page responsive instead of freezing.
+3. **Discovering sound lines** — short finishing step (the §3 selection walk).
 
 Optional flourish during the wait (not a separate surface): let discovered lines
 visibly accumulate (e.g. "1.e4 c5 2.Nf3 … — played in 9 of your last 9 games"), so

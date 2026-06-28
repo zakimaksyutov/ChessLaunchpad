@@ -9,6 +9,7 @@ import SettingsPage from './pages/SettingsPage';
 import GamesPage from './pages/GamesPage';
 import ExplorerPage from './pages/ExplorerPage';
 import FsrsCardListPage from './pages/FsrsCardListPage';
+import BootstrapPage from './pages/BootstrapPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import ConflictModal from './components/ConflictModal';
 import { LichessAuthProvider } from './LichessAuthContext';
@@ -172,6 +173,7 @@ const App: React.FC = () => {
               <Route path="/fsrs" element={<ProtectedRoute isLoggedIn={!!username}><FsrsCardListPage /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute isLoggedIn={!!username}><SettingsPage /></ProtectedRoute>} />
               <Route path="/games" element={<ProtectedRoute isLoggedIn={!!username}><GamesPage /></ProtectedRoute>} />
+              <Route path="/bootstrap" element={<ProtectedRoute isLoggedIn={!!username}><BootstrapPage /></ProtectedRoute>} />
             </Routes>
           </main>
         </Router>

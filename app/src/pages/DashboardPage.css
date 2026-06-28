@@ -208,6 +208,57 @@
     color: #555;
 }
 
+/* Leading emoji on the bootstrap CTA. */
+.action-primary-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+/*
+ * Always-shown "Why this?" trust list (e.g. the repertoire-bootstrap row).
+ * A short, scannable list — each point its own line with a bold lead-in label.
+ */
+.action-why-points {
+    list-style: none;
+    margin: 0;
+    padding: 0.1rem 0.2rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.action-why-point {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #555;
+}
+
+.action-why-point::before {
+    content: '✓';
+    color: var(--cta-green);
+    font-weight: 700;
+    flex: 0 0 auto;
+}
+
+.action-why-point-label {
+    font-weight: 600;
+    color: #333;
+}
+
+.action-why-point-label::after {
+    content: ' —';
+    color: #999;
+    font-weight: 400;
+}
+
+.action-why-point-text {
+    flex: 1;
+    min-width: 12rem;
+}
+
 .actions-empty {
     margin: 0;
     text-align: center;

@@ -9,9 +9,17 @@ import { frozenAnnotationHasIssue } from './GameAnnotationService';
  * `buildDashboardActions`. See `docs/product-specs/DASHBOARD.md` §1.5.
  */
 export type DashboardActionId =
+    | 'bootstrap-repertoire'
     | 'start-training'
     | 'review-games'
     | 'link-account';
+
+/** One line of an always-shown "Why this?" trust list (lead-in label + detail). */
+export interface WhyPoint {
+    /** Short lead-in label/icon shown in bold at the start of the line. */
+    label: string;
+    text: string;
+}
 
 export interface DashboardAction {
     id: DashboardActionId;
@@ -29,7 +37,23 @@ export interface DashboardAction {
      * account). Established users, who already know the value, never see it.
      */
     why?: string;
+    /**
+     * Optional always-shown "Why this?" trust list, rendered as a short
+     * scannable list (one point per line). Used by top-priority onboarding rows
+     * whose job is to earn trust before a multi-second, one-time operation —
+     * currently `bootstrap-repertoire`.
+     */
+    whyPoints?: WhyPoint[];
 }
+
+/** The always-shown trust list for the repertoire-bootstrap action (§1). */
+const BOOTSTRAP_WHY_POINTS: WhyPoint[] = [
+    { label: 'From your own games', text: 'Built from your real recent openings, not a generic book.' },
+    { label: 'Only what you actually play', text: 'The same move in every one of your last several games at that position.' },
+    { label: 'Engine-checked', text: 'Every move is verified against a strong engine; unsound moves are dropped.' },
+    { label: 'Conservative by design', text: 'When in doubt, a line is left out, so you start from a clean base you can rely on.' },
+    { label: 'You approve it', text: 'Nothing is saved until you review the result.' },
+];
 
 export interface DashboardActionInput {
     /** Cards due for review right now (new + due learning/review). */
@@ -40,6 +64,11 @@ export interface DashboardActionInput {
     mistakeGames: number;
     /** Number of linked Lichess / Chess.com accounts. */
     linkedAccountsCount: number;
+    /**
+     * Colors whose repertoire is still empty. Drives the top-priority
+     * "Build your starter repertoire from your games" row. Defaults to none.
+     */
+    emptyRepertoireColors?: ('white' | 'black')[];
 }
 
 /**
@@ -64,6 +93,24 @@ export interface DashboardActionInput {
  */
 export function buildDashboardActions(input: DashboardActionInput): DashboardAction[] {
     const actions: DashboardAction[] = [];
+
+    // Top priority: a user with an empty repertoire has nothing else to do, and
+    // building a trusted starter from their own games outranks everything. Gated
+    // on having a linked account (the source of the games) — without one the
+    // "Link a chess account" row below leads instead. Targets the empty color(s);
+    // the bootstrap page re-derives which. See REPERTOIRE-BOOTSTRAP.md §1.
+    const emptyColors = input.emptyRepertoireColors ?? [];
+    if (emptyColors.length > 0 && input.linkedAccountsCount > 0) {
+        const onlyColor = emptyColors.length === 1 ? emptyColors[0] : null;
+        const colorLabel = onlyColor === 'white' ? 'White ' : onlyColor === 'black' ? 'Black ' : '';
+        actions.push({
+            id: 'bootstrap-repertoire',
+            label: `Build your ${colorLabel}starter repertoire from your games`,
+            icon: '🌱',
+            route: '/bootstrap',
+            whyPoints: BOOTSTRAP_WHY_POINTS,
+        });
+    }
 
     if (input.dueNow > 0) {
         actions.push({

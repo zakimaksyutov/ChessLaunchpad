@@ -363,14 +363,15 @@ const DashboardPage: React.FC = () => {
 
     const version = import.meta.env.VITE_BUILD_VERSION;
 
+    const emptyImportColors = getEmptyRepertoireColors(repertoireData.repertoires);
+
     const actions = buildDashboardActions({
         dueNow: cards.dueNow,
         newGames: countNewGames(activity),
         mistakeGames: countMistakeGames(activity),
         linkedAccountsCount: repertoireData.settings?.linkedAccounts?.length ?? 0,
+        emptyRepertoireColors: emptyImportColors,
     });
-
-    const emptyImportColors = getEmptyRepertoireColors(repertoireData.repertoires);
 
     return (
         <div className="dashboard">
@@ -527,6 +528,27 @@ const PrimaryAction: React.FC<{
     onSelect: (route: string) => void;
 }> = ({ action, onSelect }) => {
     const [open, setOpen] = useState(false);
+    // An always-shown trust list (e.g. the repertoire-bootstrap row) takes
+    // precedence over the collapsible lightbulb "why": the points are the whole
+    // point of the row, so they render inline below the CTA, no toggle.
+    if (action.whyPoints && action.whyPoints.length > 0) {
+        return (
+            <div className="action-group">
+                <button type="button" className="action-primary" onClick={() => onSelect(action.route)}>
+                    <span className="action-primary-icon" aria-hidden="true">{action.icon}</span>
+                    {action.label}
+                </button>
+                <ul className="action-why-points">
+                    {action.whyPoints.map((p, i) => (
+                        <li key={i} className="action-why-point">
+                            <span className="action-why-point-label">{p.label}</span>
+                            <span className="action-why-point-text">{p.text}</span>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        );
+    }
     if (!action.why) {
         return (
             <button type="button" className="action-primary" onClick={() => onSelect(action.route)}>
