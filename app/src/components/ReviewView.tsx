@@ -39,13 +39,6 @@ interface ReviewViewProps {
      * control is relabelled to "Continue editing" to match.
      */
     fromGames?: boolean;
-    /**
-     * Overrides the back control's label/aria-label. Used by surfaces that reuse
-     * ReviewView outside the Explorer Edit flow (e.g. the repertoire-bootstrap
-     * page, whose back control returns to the dashboard rather than an edit view).
-     */
-    backLabel?: string;
-    backAriaLabel?: string;
 }
 
 /**
@@ -56,7 +49,7 @@ interface ReviewViewProps {
  * intact; Save commits and clears the delta; Discard prompts confirmation
  * (handled by the parent).
  */
-const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSave, onDiscard, saveInFlight, fromGames, backLabel, backAriaLabel }) => {
+const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSave, onDiscard, saveInFlight, fromGames }) => {
     const totalCount = delta.counts.added + delta.counts.removed + delta.counts.changed;
     const empty = totalCount === 0;
 
@@ -78,11 +71,11 @@ const ReviewView: React.FC<ReviewViewProps> = ({ delta, rootFen, onCancel, onSav
                     type="button"
                     className="explorer-btn explorer-btn--xs explorer-btn--neutral-ghost"
                     onClick={onCancel}
-                    aria-label={backAriaLabel ?? (fromGames
+                    aria-label={fromGames
                         ? 'Return to Explorer to continue editing'
-                        : 'Cancel review and return to Edit')}
+                        : 'Cancel review and return to Edit'}
                 >
-                    {backLabel ?? (fromGames ? '← Continue editing' : '← Back to edit')}
+                    {fromGames ? '← Continue editing' : '← Back to edit'}
                 </button>
                 <div className="explorer-review-counts">
                     Review pending edits:&nbsp;
