@@ -27,8 +27,6 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `DashboardView` | Dashboard page loads (logged-in home). |
 | `BootstrapStarted` | Repertoire-bootstrap page begins collecting games. |
 | `BootstrapCompleted` | Bootstrap selection finishes (`gamesAnalyzed`, `linesProposed`). |
-| `BootstrapReviewOpened` | User clicks "Proceed to review" on the post-analysis summary (`gamesAnalyzed`, `linesProposed`). |
-| `BootstrapSaved` | User saves the proposed starter repertoire (`linesSaved`). |
-| `BootstrapDiscarded` | User discards/leaves the bootstrap result (`linesProposed`). |
+| `BootstrapReviewOpened` | User clicks "Proceed to review" on the post-analysis summary; hands the proposed lines to Explorer's Review & Save view (`gamesAnalyzed`, `linesProposed`). |
 
 `GamesOpponentAnalysisStart` and `GamesOpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).

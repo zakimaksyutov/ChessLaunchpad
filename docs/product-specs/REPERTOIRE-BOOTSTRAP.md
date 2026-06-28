@@ -114,9 +114,10 @@ Output: a proposed set of positions/moves per color, ready as new FSRS cards.
 
 ---
 
-## 4. Flow: progress → summary → review → save
+## 4. Flow: progress → summary → review (handed to Explorer) → save
 
-One dedicated full-page route with three consecutive states on the same page:
+The bootstrap route owns two consecutive on-page states (Progress, Summary); the
+third (Review & Save) is handed off to Explorer:
 
 **State A — Progress** (cancelable, live counters). Phases:
 
@@ -140,22 +141,30 @@ into the review. A single **Proceed to review** button advances to State C; this
 gives the user a moment to absorb the outcome and makes opening the change list a
 deliberate action. (Zero lines short-circuits to the empty state below instead.)
 
-**State C — Review & save.** Reached from the summary's **Proceed to review** button:
-emit the algorithm's output as a **`PendingDelta`** and render the **canonical
-Explorer review surface verbatim** — the same page shell (`.explorer-page` /
-`.explorer-card`) and the same `ReviewView` the repertoire-edit Discard/Save flow
-uses, so it is visually identical (the bootstrap chrome — back link and overflow
-menu — is intentionally dropped here). It lists the proposed lines as PGN rows
-grouped/labeled by orientation (with board preview). **Save** commits the additions
-to the blob and syncs; **Discard** keeps the repertoire empty. Nothing persists
-until Save.
+**State C — Review & save (in Explorer).** The summary's **Proceed to review** button
+does not render a review on the bootstrap page. Instead it **stages the proposed
+selection into an in-memory handoff and navigates to `/explorer?o=<side>`**.
+Explorer adopts the selection into its own `PendingEditModel` (built from its freshly
+loaded blob, preserving its retrieve/etag save concurrency), enters Edit mode, and
+opens its **canonical Review & Save view** by pushing `?review=1` — the exact same
+screen the repertoire-edit and `/games` "Add to repertoire" flows use. Because the
+review entry is pushed *above* the staged Edit view, **Back-to-edit** lands the user
+in Explorer's Edit view (to tweak the lines before accepting) rather than bouncing
+back to /bootstrap. **Save**, **Discard**, and **"Open in Explorer"** likewise all
+work through the existing Explorer flow, with no bootstrap-side duplication of the
+shell, `ReviewView`, or save routine.
 
-**Zero lines** is a valid conservative outcome: skip the summary and `ReviewView`
-and show a brief empty state with a Back-to-dashboard exit; the §1 action stays
-available to retry later.
+The handoff is in memory rather than the URL because the selection spans **both
+colors** and can hold **many lines** — it fits neither a URL nor the single-orientation
+`?addpgn=` PGN contract that `/games` uses for its one suggested line. The handoff is
+ephemeral (a hard reload clears it; unsaved edits are ephemeral anyway).
+
+**Zero lines** is a valid conservative outcome: skip the summary and the handoff and
+show a brief empty state with a Back-to-dashboard exit; the §1 action stays available
+to retry later.
 
 There is no separate repertoire tree/graph view to reuse (the prototype's graph was
-never ported); `ReviewView`'s added-lines list is the visualization. A richer
+never ported); Explorer's `ReviewView` added-lines list is the visualization. A richer
 tree/board view would be net-new and is out of scope unless the agent finds the line
 list inadequate for a large batch.
 
@@ -182,4 +191,5 @@ enrichment to fill `analysis[].eval`); `EvalDropService` drop/threshold helpers
 (`computeConservativeDrop`, `categorizeEvalDrop`) — **not** `computeEvalDrops`,
 which reads the artifact by FEN; position-centric v3 repertoire (`Repertoires`,
 `BlobCodec`); Dashboard Actions (`DashboardActions`, `getEmptyRepertoireColors`);
-the existing pending-edit Save/Discard flow (`PendingEditModel` → `ReviewView`).
+the existing pending-edit Save/Discard flow (`PendingEditModel` → `ReviewView`),
+reached by handing the selection to Explorer in memory (`BootstrapHandoff`).

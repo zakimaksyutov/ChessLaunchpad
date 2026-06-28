@@ -7,6 +7,7 @@ import { DataAccessError } from '../data/DataAccessLayer';
 import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData } from '../models/RepertoireData';
 import { findRecord } from '../services/GameRecordStore';
+import { takeBootstrapHandoff } from '../services/BootstrapHandoff';
 import {
     ExplorerService,
     Orientation,
@@ -936,6 +937,47 @@ const ExplorerPage: React.FC = () => {
         setSearchParams(next, { replace: true });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data, searchParams, resolvedOrientation, explicitOrientationParam]);
+
+    // ── Repertoire-bootstrap handoff ─────────────────────────────────
+    // The /bootstrap page stages its proposed starter lines into an in-memory
+    // handoff (no URL payload — the selection spans both colors and many lines,
+    // so it fits neither a URL nor the single-orientation `?addpgn=` contract)
+    // and navigates here with `?o=<side>`. Adopt the selection into a fresh
+    // PendingEditModel built from *our* loaded blob — so Save keeps Explorer's
+    // own retrieve/etag concurrency — enter Edit mode, and open Review & Save by
+    // *pushing* `?review=1` (mirroring enterReviewView) so the staged main Edit
+    // view sits beneath in history. From there Save/Discard, "Open in Explorer",
+    // and Back-to-edit (window.history.back lands on the staged Edit view, not
+    // /bootstrap — so the user can tweak before accepting) all work through the
+    // existing Explorer flow. Consumed once; the handoff clears itself on read.
+    const bootstrapHandledRef = useRef(false);
+    useEffect(() => {
+        if (!data || bootstrapHandledRef.current) return;
+        const selection = takeBootstrapHandoff();
+        if (!selection) return;
+        bootstrapHandledRef.current = true;
+
+        const reps = data.repertoires ?? [];
+        const cards = data.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
+        const model = new PendingEditModel(reps, cards);
+        // Edges arrive in BFS, parent-first order, so applying them in sequence
+        // never references a not-yet-created parent.
+        for (const orientation of ['white', 'black'] as Orientation[]) {
+            for (const edge of selection[orientation]) {
+                model.addEdge(edge.from, edge.san, edge.orientation);
+            }
+        }
+        setPendingModel(model);
+        setMode('edit');
+        bumpPending();
+
+        if (searchParams.get('review') !== '1') {
+            const next = new URLSearchParams(searchParams);
+            next.set('review', '1');
+            setSearchParams(next); // push, so Back from Review returns to the staged Edit view
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data]);
 
     const jumpTo = useCallback((fen: string, orientation?: Orientation, push = true) => {
         const next = new URLSearchParams(searchParams);

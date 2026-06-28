@@ -1,14 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { getSessionStore } from '../data/SessionStore';
-import { DataAccessError } from '../data/DataAccessLayer';
-import { RepertoireData } from '../models/RepertoireData';
 import { getExplorerEvals } from '../models/ExplorerEvals';
 import { getEmptyRepertoireColors } from '../services/DashboardActions';
-import { PendingEditModel, PendingDelta } from '../services/PendingEditModel';
 import {
     BootstrapAccount,
-    BootstrapColor,
     BootstrapGame,
     BootstrapSelection,
     collectBootstrapGames,
@@ -16,22 +12,13 @@ import {
     serializeBootstrapGames,
     BOOTSTRAP_TARGET_GAMES,
 } from '../services/RepertoireBootstrapService';
-import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
-import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
-import ReviewView from '../components/ReviewView';
+import { setBootstrapHandoff } from '../services/BootstrapHandoff';
 import { trackEvent } from '../AppInsights';
 import './BootstrapPage.css';
-// The bootstrap review/discard-save phase renders the canonical Explorer
-// review surface verbatim (same shell, ReviewView, and styles). Pull in the
-// Explorer stylesheet so that surface is pixel-identical even when /bootstrap
-// is opened without having visited /explorer. The file is fully class-scoped
-// (no element/global selectors), so it cannot affect the other bootstrap stages.
-import './ExplorerPage.css';
 
 type Stage =
     | 'running'
     | 'summary'
-    | 'review'
     | 'empty'
     | 'no-accounts'
     | 'nothing-empty'
@@ -43,15 +30,6 @@ type RunProgress =
     | { phase: 'discovering' };
 
 const PHASE_ORDER: RunProgress['phase'][] = ['downloading', 'analyzing', 'discovering'];
-
-/** Apply a selection's edges to a model in the order produced (BFS, parent-first). */
-function applySelection(model: PendingEditModel, selection: BootstrapSelection): void {
-    for (const color of ['white', 'black'] as BootstrapColor[]) {
-        for (const edge of selection[color]) {
-            model.addEdge(edge.from, edge.san, edge.orientation);
-        }
-    }
-}
 
 function yieldToPaint(): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, 0));
@@ -67,11 +45,7 @@ const BootstrapPage: React.FC = () => {
 
     const [games, setGames] = useState<BootstrapGame[] | null>(null);
     const [selection, setSelection] = useState<BootstrapSelection | null>(null);
-    const [delta, setDelta] = useState<PendingDelta | null>(null);
-    const [reviewModel, setReviewModel] = useState<PendingEditModel | null>(null);
 
-    const [saveInFlight, setSaveInFlight] = useState(false);
-    const [saveError, setSaveError] = useState<string | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
 
     // StrictMode-safe single run (see DashboardPage's deferred-abort note).
@@ -131,14 +105,11 @@ const BootstrapPage: React.FC = () => {
                 return;
             }
 
-            const model = new PendingEditModel(data.repertoires ?? [], data.fsrsCards ?? {});
-            applySelection(model, sel);
             if (!mountedRef.current) return;
             setSelection(sel);
-            setReviewModel(model);
-            setDelta(model.computeDelta());
-            // Stop on a stats summary first; the user opens ReviewView
-            // explicitly via "Proceed to review" (see handleProceedToReview).
+            // Stop on a stats summary first; the user hands the selection off
+            // to Explorer's Review & Save view via "Proceed to review"
+            // (see handleProceedToReview).
             setStage('summary');
         } catch (err: unknown) {
             if (ctrl.signal.aborted || !mountedRef.current) return;
@@ -188,91 +159,22 @@ const BootstrapPage: React.FC = () => {
         URL.revokeObjectURL(url);
     }, [games]);
 
-    const handleSave = useCallback(async () => {
-        if (!selection) return;
-        setSaveInFlight(true);
-        setSaveError(null);
-        try {
-            // Own proxy + fresh retrieve so the data and If-Match etag are taken
-            // together (mirrors the Dashboard import flow's concurrency safety).
-            const saveDal = getSessionStore().createDataAccessProxyLayer();
-            const current = await saveDal.retrieveRepertoireData();
-            const model = new PendingEditModel(current.repertoires ?? [], current.fsrsCards ?? {});
-            applySelection(model, selection);
-
-            const blob: RepertoireData = {
-                repertoires: model.currentRepertoires,
-                fsrsCards: extractFsrsCardsFromRepertoires(model.currentRepertoires),
-                settings: current.settings,
-                activity: current.activity,
-                games: current.games,
-                audit: current.audit,
-            };
-            await saveDal.storeRepertoireData(RepertoireDataUtils.prepareDataForSave(blob));
-            trackEvent('BootstrapSaved', { linesSaved: proposedCount });
-            navigate('/');
-        } catch (err: unknown) {
-            if (err instanceof DataAccessError && err.statusCode === 412) {
-                // The app-root <ConflictModal> owns the reload prompt on a 412.
-            } else if (mountedRef.current) {
-                const msg = err instanceof Error ? err.message : String(err);
-                setSaveError(`Save failed: ${msg}`);
-            }
-        } finally {
-            if (mountedRef.current) setSaveInFlight(false);
-        }
-    }, [selection, proposedCount, navigate]);
-
     const handleProceedToReview = useCallback(() => {
+        if (!selection) return;
         trackEvent('BootstrapReviewOpened', {
             gamesAnalyzed: games?.length ?? 0,
             linesProposed: proposedCount,
         });
-        setStage('review');
-    }, [games, proposedCount]);
-
-    const handleDiscard = useCallback(() => {
-        trackEvent('BootstrapDiscarded', { linesProposed: proposedCount });
-        navigate('/');
-    }, [navigate, proposedCount]);
-
-    // Review/discard-save phase: reuse the canonical Explorer review surface
-    // unchanged — same page shell (`.explorer-page`/`.explorer-card`), same
-    // `ReviewView`, same styles — so it is identical to the repertoire-edit
-    // review. The bootstrap chrome (topbar, "…" menu, narrow `.bootstrap-page`
-    // width) is intentionally absent here. Rendered via an early return after
-    // all hooks have run.
-    if (stage === 'review' && delta && reviewModel) {
-        return (
-            <div className="explorer-page">
-                <div className="explorer-card">
-                    <ReviewView
-                        delta={delta}
-                        rootFen={reviewModel.root}
-                        onCancel={handleDiscard}
-                        onSave={handleSave}
-                        onDiscard={handleDiscard}
-                        saveInFlight={saveInFlight}
-                        backLabel="← Back to dashboard"
-                        backAriaLabel="Discard and return to the dashboard"
-                    />
-                    {saveError && (
-                        <div className="explorer-error explorer-save-error" role="alert">
-                            {saveError}
-                            <button
-                                type="button"
-                                className="explorer-toast-dismiss"
-                                aria-label="Dismiss"
-                                onClick={() => setSaveError(null)}
-                            >
-                                ×
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
+        // Hand the proposed lines to Explorer in memory and open its canonical
+        // Review & Save view. Explorer adopts the selection into its own
+        // PendingEditModel, so Save/Discard, "Open in Explorer", and even
+        // editing the lines before accepting all work through the existing
+        // Explorer flow. `o` just picks the side Explorer's board shows if the
+        // user steps back into Edit; the review itself spans both colors.
+        setBootstrapHandoff(selection);
+        const o = selection.white.length > 0 ? 'white' : 'black';
+        navigate(`/explorer?o=${o}`);
+    }, [selection, games, proposedCount, navigate]);
 
     return (
         <div className="bootstrap-page">
