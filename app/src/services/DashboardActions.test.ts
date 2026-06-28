@@ -108,6 +108,50 @@ describe('buildDashboardActions', () => {
             .find(a => a.id === 'review-games');
         expect(review?.why).toBeUndefined();
     });
+
+    // ── Bootstrap repertoire (DASHBOARD.md §1.5) ─────────────
+
+    it('offers the bootstrap action when a color is empty and an account is linked', () => {
+        const actions = buildDashboardActions(input({ emptyRepertoireColors: ['white', 'black'] }));
+        expect(actions[0]).toMatchObject({ id: 'bootstrap-repertoire', route: '/bootstrap' });
+    });
+
+    it('makes the bootstrap action the primary, outranking Start Training', () => {
+        const actions = buildDashboardActions(input({
+            dueNow: 5,
+            emptyRepertoireColors: ['black'],
+        }));
+        expect(actions[0].id).toBe('bootstrap-repertoire');
+        expect(actions.find(a => a.id === 'start-training')).toBeDefined();
+    });
+
+    it('hides the bootstrap action once both colors have positions', () => {
+        const actions = buildDashboardActions(input({ emptyRepertoireColors: [] }));
+        expect(actions.find(a => a.id === 'bootstrap-repertoire')).toBeUndefined();
+    });
+
+    it('hides the bootstrap action when no account is linked', () => {
+        const actions = buildDashboardActions(input({
+            emptyRepertoireColors: ['white', 'black'],
+            linkedAccountsCount: 0,
+        }));
+        expect(actions.find(a => a.id === 'bootstrap-repertoire')).toBeUndefined();
+    });
+
+    it('names the single empty color in the bootstrap label', () => {
+        expect(buildDashboardActions(input({ emptyRepertoireColors: ['black'] }))[0].label)
+            .toBe('Build your Black starter repertoire from your games');
+        expect(buildDashboardActions(input({ emptyRepertoireColors: ['white', 'black'] }))[0].label)
+            .toBe('Build your starter repertoire from your games');
+    });
+
+    it('attaches an always-shown trust list to the bootstrap action', () => {
+        const action = buildDashboardActions(input({ emptyRepertoireColors: ['white'] }))[0];
+        expect(action.whyPoints).toBeTruthy();
+        expect(action.whyPoints!.length).toBeGreaterThanOrEqual(3);
+        expect(action.whyPoints![0]).toHaveProperty('label');
+        expect(action.whyPoints![0]).toHaveProperty('text');
+    });
 });
 
 function emptyActivity(): Activity {
@@ -193,5 +237,16 @@ describe('getEmptyRepertoireColors', () => {
     it('offers nothing once both colors have positions', () => {
         const [white, black] = createEmptyRepertoires();
         expect(getEmptyRepertoireColors([withMove(white), withMove(black)])).toEqual([]);
+    });
+
+    it('treats a repertoire with only a residual moves-less root as empty', () => {
+        // Deleting every move in Edit mode keeps the root (deleteEdge never
+        // prunes it), so positions is { root: { moves: {} } } — still empty.
+        const [white, black] = createEmptyRepertoires();
+        const onlyRoot = (rep: RepertoireEntry): RepertoireEntry => ({
+            ...rep,
+            positions: { 'fen-root': { moves: {} } },
+        });
+        expect(getEmptyRepertoireColors([onlyRoot(white), onlyRoot(black)])).toEqual(['white', 'black']);
     });
 });

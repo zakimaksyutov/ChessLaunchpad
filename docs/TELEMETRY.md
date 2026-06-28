@@ -25,5 +25,8 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `GamesFixSuggested` | A suggested fix line is produced for a deviation. |
 | `GamesSuggestedLineAdded` | User clicks "Add to repertoire" on a suggested fix. |
 | `DashboardView` | Dashboard page loads (logged-in home). |
+| `BootstrapStarted` | Repertoire-bootstrap page begins collecting games. |
+| `BootstrapCompleted` | Bootstrap selection finishes (`gamesAnalyzed`, `linesProposed`). |
+| `BootstrapReviewOpened` | User clicks "Proceed to review" on the post-analysis summary; hands the proposed lines to Explorer's Review & Save view (`gamesAnalyzed`, `linesProposed`). |
 
 `GamesOpponentAnalysisStart` and `GamesOpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).

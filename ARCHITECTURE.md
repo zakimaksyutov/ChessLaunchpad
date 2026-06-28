@@ -54,6 +54,7 @@ See `docs/product-specs/FSRS.md` for the full behavioral specification.
 | ------------------- | ----------------------------------------------- |
 | `/`                 | Dashboard (logged-in) / Landing page (anonymous) |
 | `/login`            | Authentication                                  |
+| `/bootstrap`        | One-time starter-repertoire builder (seeds a trusted repertoire from the user's own games; reached from the Dashboard Actions tile when a color is empty) |
 | `/training`         | Interactive board training (FSRS-driven)        |
 | `/explorer`         | Browse the repertoire as positions (read-only navigation, FSRS status per move) |
 | `/games`            | Annotated game history from linked Lichess and Chess.com accounts |

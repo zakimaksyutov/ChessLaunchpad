@@ -329,7 +329,7 @@ function resolveChesscomResult(
     return 'loss';
 }
 
-function parseChesscomMoves(pgn: string | undefined): string[] | null {
+export function parseChesscomMoves(pgn: string | undefined): string[] | null {
     if (!pgn) return null;
     let chess = new Chess();
     try {

@@ -65,6 +65,13 @@ A context-aware tile at the top of the dashboard (replacing the old standalone
 derived from the user's current state; rows appear and disappear automatically
 (not dismissible). Start Training stays the primary action when cards are due.
 
+- **Build starter repertoire** — for a brand-new user, seeds a small,
+  trusted repertoire from their own recent games (conservative: only
+  confident, engine-checked lines they consistently play). Shown only while
+  a color's repertoire is empty and an account is linked; tops the tile when
+  present. Carries an always-shown "Why this?" trust explainer. The proposed
+  lines are handed to Explorer's Review & Save to approve before anything is
+  saved. → `/bootstrap`.
 - **Start Training** — surfaces the due count. → `/training`.
 - **Review games** — "Analyze N new games" and/or "Review K opening mistakes". → `/games`.
 - **Onboarding** — e.g. link a chess account when none is linked.

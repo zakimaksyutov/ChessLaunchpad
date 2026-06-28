@@ -102,3 +102,8 @@ already in the repertoire.
 conflict, prompting the user to refresh and lose local edits).
 **Discard** drops the delta after confirmation. **Cancel** / Back
 from Review returns to Edit mode with the delta intact.
+
+This is also the approval surface for the starter-repertoire builder
+(`/bootstrap`, reached from the Dashboard Actions tile): it stages its
+proposed lines into a pending delta and opens Review & Save directly,
+so seeded lines are saved through the same flow as manual edits.
