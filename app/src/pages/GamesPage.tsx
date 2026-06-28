@@ -568,7 +568,9 @@ const GameRow: React.FC<GameRowProps> = ({
         ? ' game-row-deviation'
         : eotSummary
             ? ` game-row-eot-${eotSummary.category}`
-            : '';
+            : pending
+                ? ''
+                : ' game-row-clean';
 
     useEffect(() => {
         if (!menuOpen) return;
