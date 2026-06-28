@@ -181,6 +181,82 @@
     border-color: #bbb;
 }
 
+/* ── Summary (post-analysis stats) ──────────────────────────────── */
+
+.bootstrap-summary {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 2rem 1.5rem;
+    text-align: center;
+}
+
+.bootstrap-summary-emoji {
+    font-size: 2.5rem;
+    line-height: 1;
+    margin-bottom: 0.75rem;
+}
+
+.bootstrap-summary h1 {
+    margin: 0 0 0.6rem;
+    font-size: 1.4rem;
+}
+
+.bootstrap-summary-sub {
+    margin: 0 auto 1.5rem;
+    max-width: 30rem;
+    color: #555;
+    line-height: 1.55;
+    font-size: 0.95rem;
+}
+
+.bootstrap-summary-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 0 auto 1.75rem;
+    max-width: 26rem;
+}
+
+.bootstrap-summary-stat {
+    background: #fff;
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    padding: 0.9rem 0.75rem;
+}
+
+.bootstrap-summary-stat dt {
+    margin: 0 0 0.25rem;
+    font-size: 0.8rem;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.bootstrap-summary-stat dd {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #222;
+    font-variant-numeric: tabular-nums;
+}
+
+.bootstrap-proceed {
+    display: inline-block;
+    padding: 0.7rem 1.6rem;
+    background: var(--cta-green, #2e7d32);
+    color: #fff;
+    border: none;
+    border-radius: var(--cta-radius, 8px);
+    font-weight: var(--cta-font-weight, 600);
+    font-size: 0.95rem;
+    cursor: pointer;
+}
+
+.bootstrap-proceed:hover {
+    background: var(--cta-green-hover, #276b2b);
+}
+
 /* ── Messages (empty / error / no-accounts) ─────────────────────── */
 
 .bootstrap-message {
@@ -239,11 +315,13 @@
     }
 
     .bootstrap-progress,
+    .bootstrap-summary,
     .bootstrap-message {
         padding: 1.1rem;
     }
 
     .bootstrap-progress h1,
+    .bootstrap-summary h1,
     .bootstrap-message h1 {
         font-size: 1.2rem;
     }

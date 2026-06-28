@@ -114,9 +114,9 @@ Output: a proposed set of positions/moves per color, ready as new FSRS cards.
 
 ---
 
-## 4. Flow: progress → review → save
+## 4. Flow: progress → summary → review → save
 
-One dedicated full-page route with two consecutive states on the same page:
+One dedicated full-page route with three consecutive states on the same page:
 
 **State A — Progress** (cancelable, live counters). Phases:
 
@@ -134,17 +134,22 @@ Optional flourish during the wait (not a separate surface): let discovered lines
 visibly accumulate (e.g. "1.e4 c5 2.Nf3 … — played in 9 of your last 9 games"), so
 the progress time doubles as proof of the §1 promise.
 
-**State B — Review & save.** On completion the page **automatically transitions**
-(no extra click) to the review surface: emit the algorithm's output as a
-**`PendingDelta`** and reuse the **existing `ReviewView`** — the same screen the
-Discard/Save flow already uses, listing the proposed lines as PGN rows
-grouped/labeled by orientation (with board preview). **Save** commits the additions
-to the blob and syncs; **Discard** keeps the repertoire empty. Nothing persists
-until Save.
+**State B — Summary.** On completion the page stops on a brief stats summary
+(games analyzed, lines proposed, white/black split) rather than dropping straight
+into the review. A single **Proceed to review** button advances to State C; this
+gives the user a moment to absorb the outcome and makes opening the change list a
+deliberate action. (Zero lines short-circuits to the empty state below instead.)
 
-**Zero lines** is a valid conservative outcome: skip `ReviewView` (it disables both
-buttons on an empty delta) and show a brief empty state with a Back-to-dashboard
-exit; the §1 action stays available to retry later.
+**State C — Review & save.** Reached from the summary's **Proceed to review** button:
+emit the algorithm's output as a **`PendingDelta`** and reuse the **existing
+`ReviewView`** — the same screen the Discard/Save flow already uses, listing the
+proposed lines as PGN rows grouped/labeled by orientation (with board preview).
+**Save** commits the additions to the blob and syncs; **Discard** keeps the
+repertoire empty. Nothing persists until Save.
+
+**Zero lines** is a valid conservative outcome: skip the summary and `ReviewView`
+and show a brief empty state with a Back-to-dashboard exit; the §1 action stays
+available to retry later.
 
 There is no separate repertoire tree/graph view to reuse (the prototype's graph was
 never ported); `ReviewView`'s added-lines list is the visualization. A richer

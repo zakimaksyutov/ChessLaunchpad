@@ -24,6 +24,7 @@ import './BootstrapPage.css';
 
 type Stage =
     | 'running'
+    | 'summary'
     | 'review'
     | 'empty'
     | 'no-accounts'
@@ -130,7 +131,9 @@ const BootstrapPage: React.FC = () => {
             setSelection(sel);
             setReviewModel(model);
             setDelta(model.computeDelta());
-            setStage('review');
+            // Stop on a stats summary first; the user opens ReviewView
+            // explicitly via "Proceed to review" (see handleProceedToReview).
+            setStage('summary');
         } catch (err: unknown) {
             if (ctrl.signal.aborted || !mountedRef.current) return;
             const msg = err instanceof Error ? err.message : String(err);
@@ -214,6 +217,14 @@ const BootstrapPage: React.FC = () => {
         }
     }, [selection, proposedCount, navigate]);
 
+    const handleProceedToReview = useCallback(() => {
+        trackEvent('BootstrapReviewOpened', {
+            gamesAnalyzed: games?.length ?? 0,
+            linesProposed: proposedCount,
+        });
+        setStage('review');
+    }, [games, proposedCount]);
+
     const handleDiscard = useCallback(() => {
         trackEvent('BootstrapDiscarded', { linesProposed: proposedCount });
         navigate('/');
@@ -251,6 +262,15 @@ const BootstrapPage: React.FC = () => {
 
             {stage === 'running' && (
                 <ProgressPanel progress={progress} onCancel={handleCancel} />
+            )}
+
+            {stage === 'summary' && selection && (
+                <SummaryPanel
+                    gamesAnalyzed={games?.length ?? 0}
+                    whiteCount={selection.white.length}
+                    blackCount={selection.black.length}
+                    onProceed={handleProceedToReview}
+                />
             )}
 
             {stage === 'review' && delta && reviewModel && (
@@ -317,6 +337,48 @@ const BootstrapPage: React.FC = () => {
 };
 
 export default BootstrapPage;
+
+// ── Summary panel (post-analysis stats) ──────────────────────────────
+
+const SummaryPanel: React.FC<{
+    gamesAnalyzed: number;
+    whiteCount: number;
+    blackCount: number;
+    onProceed: () => void;
+}> = ({ gamesAnalyzed, whiteCount, blackCount, onProceed }) => {
+    const total = whiteCount + blackCount;
+    return (
+        <div className="bootstrap-summary">
+            <div className="bootstrap-summary-emoji" aria-hidden="true">🎉</div>
+            <h1>Your starter lines are ready</h1>
+            <p className="bootstrap-summary-sub">
+                We checked your recent games against a strong engine and kept only the lines you
+                play consistently. Here&apos;s what we found.
+            </p>
+            <dl className="bootstrap-summary-stats">
+                <div className="bootstrap-summary-stat">
+                    <dt>Games analyzed</dt>
+                    <dd>{gamesAnalyzed}</dd>
+                </div>
+                <div className="bootstrap-summary-stat">
+                    <dt>Lines proposed</dt>
+                    <dd>{total}</dd>
+                </div>
+                <div className="bootstrap-summary-stat">
+                    <dt>White</dt>
+                    <dd>{whiteCount}</dd>
+                </div>
+                <div className="bootstrap-summary-stat">
+                    <dt>Black</dt>
+                    <dd>{blackCount}</dd>
+                </div>
+            </dl>
+            <button type="button" className="bootstrap-proceed" onClick={onProceed}>
+                Proceed to review →
+            </button>
+        </div>
+    );
+};
 
 // ── Progress panel ───────────────────────────────────────────────────
 
