@@ -8,6 +8,7 @@ import { getSessionStore } from '../data/SessionStore';
 import { RepertoireData } from '../models/RepertoireData';
 import { findRecord } from '../services/GameRecordStore';
 import { takeBootstrapHandoff } from '../services/BootstrapHandoff';
+import { BootstrapSelection } from '../services/RepertoireBootstrapService';
 import {
     ExplorerService,
     Orientation,
@@ -950,11 +951,21 @@ const ExplorerPage: React.FC = () => {
     // and Back-to-edit (window.history.back lands on the staged Edit view, not
     // /bootstrap — so the user can tweak before accepting) all work through the
     // existing Explorer flow. Consumed once; the handoff clears itself on read.
+    //
+    // The take is decoupled from the `data` gate: we drain the singleton on this
+    // Explorer's first effect run (held in a ref) regardless of whether `data`
+    // has loaded, then apply once it has. Otherwise a failed/aborted data load
+    // would leave the staged selection lingering in the module singleton for a
+    // later, unrelated /explorer visit to silently adopt. If data never loads,
+    // the ref is discarded on unmount and the singleton is already empty.
     const bootstrapHandledRef = useRef(false);
+    const stagedBootstrapRef = useRef<BootstrapSelection | null | undefined>(undefined);
     useEffect(() => {
-        if (!data || bootstrapHandledRef.current) return;
-        const selection = takeBootstrapHandoff();
-        if (!selection) return;
+        if (stagedBootstrapRef.current === undefined) {
+            stagedBootstrapRef.current = takeBootstrapHandoff();
+        }
+        const selection = stagedBootstrapRef.current;
+        if (!selection || !data || bootstrapHandledRef.current) return;
         bootstrapHandledRef.current = true;
 
         const reps = data.repertoires ?? [];
