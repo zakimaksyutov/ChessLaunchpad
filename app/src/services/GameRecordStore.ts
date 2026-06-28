@@ -168,39 +168,6 @@ export function purgeRecordsForAccounts(
 }
 
 /**
- * DEBUG / TEMP — Remove every record with `t >= fromT` from the activity
- * log. Used by the /games page's debug "Delete from here" menu to wipe
- * a record and every newer record in one shot. Per-day counters
- * (`ingested` / `reviewed` / `mistakes`) are left alone — this is a
- * debug-only purge, not a history rewrite.
- *
- * Returns the number of records purged. To be removed before the
- * containing branch merges.
- */
-export function purgeRecordsFromTimestamp(
-    activity: Activity,
-    fromT: number,
-): number {
-    let purged = 0;
-    for (const entry of activity.practiceLog) {
-        const records = entry.games?.records;
-        if (!records || records.length === 0) continue;
-        const kept: GameRecord[] = [];
-        for (const r of records) {
-            if (r.t >= fromT) {
-                purged++;
-            } else {
-                kept.push(r);
-            }
-        }
-        if (kept.length !== records.length) {
-            entry.games!.records = kept;
-        }
-    }
-    return purged;
-}
-
-/**
  * Find a stored record by provider `id` + platform `p`. Walks the log;
  * cheap on real-world data (≤100 records).
  */

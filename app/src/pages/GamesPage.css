@@ -480,16 +480,6 @@
     background: #f5f5f5;
 }
 
-/* DEBUG / TEMP — remove together with the "Delete from here" menu item. */
-.game-overflow-dropdown button.game-overflow-debug {
-    color: #c0392b;
-    border-top: 1px solid #eee;
-}
-
-.game-overflow-dropdown button.game-overflow-debug:hover {
-    background: #fdecea;
-}
-
 .game-opening {
     color: #555;
     font-size: 0.82rem;
