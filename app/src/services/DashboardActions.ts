@@ -46,7 +46,7 @@ export interface DashboardAction {
     whyPoints?: WhyPoint[];
 }
 
-/** The always-shown trust list for the repertoire-bootstrap action (§1). */
+/** The always-shown trust list for the repertoire-bootstrap action (DASHBOARD.md §1.5). */
 const BOOTSTRAP_WHY_POINTS: WhyPoint[] = [
     { label: 'From your own games', text: 'Built from your real recent openings, not a generic book.' },
     { label: 'Only what you actually play', text: 'The same move in every one of your last several games at that position.' },
@@ -98,7 +98,7 @@ export function buildDashboardActions(input: DashboardActionInput): DashboardAct
     // building a trusted starter from their own games outranks everything. Gated
     // on having a linked account (the source of the games) — without one the
     // "Link a chess account" row below leads instead. Targets the empty color(s);
-    // the bootstrap page re-derives which. See REPERTOIRE-BOOTSTRAP.md §1.
+    // the bootstrap page re-derives which. See DASHBOARD.md §1.5.
     const emptyColors = input.emptyRepertoireColors ?? [];
     if (emptyColors.length > 0 && input.linkedAccountsCount > 0) {
         const onlyColor = emptyColors.length === 1 ? emptyColors[0] : null;

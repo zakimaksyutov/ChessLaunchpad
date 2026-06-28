@@ -8,7 +8,8 @@ import { Platform } from './LinkedAccountsService';
 
 /**
  * RepertoireBootstrapService — seed a brand-new user's repertoire from the
- * openings they already play. See `docs/product-specs/REPERTOIRE-BOOTSTRAP.md`.
+ * openings they already play. See `docs/product-specs/DASHBOARD.md` §1.5
+ * (Actions Tile) for the high-level behavior.
  *
  * The module has three concerns, kept deliberately separate so the selection
  * algorithm is a *pure* function of a serializable input list:

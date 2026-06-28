@@ -109,7 +109,7 @@ describe('buildDashboardActions', () => {
         expect(review?.why).toBeUndefined();
     });
 
-    // ── Bootstrap repertoire (REPERTOIRE-BOOTSTRAP.md §1) ─────────────
+    // ── Bootstrap repertoire (DASHBOARD.md §1.5) ─────────────
 
     it('offers the bootstrap action when a color is empty and an account is linked', () => {
         const actions = buildDashboardActions(input({ emptyRepertoireColors: ['white', 'black'] }));
