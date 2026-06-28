@@ -43,7 +43,6 @@ import {
     persistGameReviewed,
     persistReannotateClear,
     persistReannotateRefresh,
-    persistDeleteRecordsFromTimestamp,
 } from '../services/GameRecordAnalysisPass';
 import {
     getAllRecordsNewestFirst,
@@ -471,8 +470,6 @@ interface GameRowProps {
     onAnalyzeOpponent: (record: GameRecord) => void;
     /** Toggle this game's reviewed flag. Only offered on mistake rows. */
     onToggleReviewed: (record: GameRecord) => void;
-    /** DEBUG / TEMP — delete this record and every newer one. */
-    onDeleteFromHere: (record: GameRecord) => void;
     /** Current "Suggest a fix" state for this row (null when not yet requested). */
     suggestion: SuggestionState | null;
     /** True once the user has added this suggestion to their repertoire. */
@@ -495,7 +492,6 @@ const GameRow: React.FC<GameRowProps> = ({
     onReannotate,
     onAnalyzeOpponent,
     onToggleReviewed,
-    onDeleteFromHere,
     suggestion,
     suggestionApplied,
     onSuggestFix,
@@ -640,13 +636,6 @@ const GameRow: React.FC<GameRowProps> = ({
                                                     Opponent analysis ✓
                                                 </button>
                                             )}
-                                            {/* DEBUG / TEMP — remove before merging. */}
-                                            <button
-                                                className="game-overflow-debug"
-                                                onClick={() => { setMenuOpen(false); onDeleteFromHere(record); }}
-                                            >
-                                                Delete from here (debug)
-                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -1239,8 +1228,8 @@ const GamesPage: React.FC = () => {
         passAbortRef.current = abort;
         // Combine the page-scoped abort signal with the local pass
         // controller so navigation away from /games (page abort) and
-        // explicit pass cancellation (handleReannotate, delete-from-here)
-        // both unwind the same pass.
+        // explicit pass cancellation (handleReannotate) both unwind the
+        // same pass.
         const signal = composeSignals(abort.signal, pageAbortRef.current?.signal);
 
         // Use a slot so the IIFE's `finally` can compare against the
@@ -1424,8 +1413,8 @@ const GamesPage: React.FC = () => {
                 setPendingNetworkRetry(networkRetryCount);
                 setAnalysisProgress({ phase: 'idle' });
             } catch (e: unknown) {
-                // Abort = user clicked Re-annotate / Delete-from-here
-                // or navigated away. Clean unwind, not a failure.
+                // Abort = user clicked Re-annotate or navigated away.
+                // Clean unwind, not a failure.
                 if (signal.aborted || (e as { name?: string })?.name === 'AbortError') {
                     setAnalysisProgress({ phase: 'idle' });
                     return;
@@ -1602,8 +1591,8 @@ const GamesPage: React.FC = () => {
                 });
             }
         } catch (e) {
-            // Abort = navigation away or new Re-annotate / Delete-from-here
-            // request. Not a "real" failure — don't log, don't reset the
+            // Abort = navigation away or new Re-annotate request. Not a
+            // "real" failure — don't log, don't reset the
             // re-annotate UI state (the component is unmounting or the
             // newer action will manage its own cleanup).
             if ((e as { name?: string })?.name === 'AbortError'
@@ -1851,46 +1840,6 @@ const GamesPage: React.FC = () => {
     }, [dal]);
 
     // ─────────────────────────────────────────────────────────────────────
-    // DEBUG / TEMP — "Delete from here" action (remove before merging)
-    // ─────────────────────────────────────────────────────────────────────
-
-    const handleDeleteFromHere = useCallback(async (record: GameRecord) => {
-        const confirmed = window.confirm(
-            `[DEBUG] Delete this game and every newer one?\n\nThis removes every record with t >= ${record.t} from the saved blob. There is no undo.`,
-        );
-        if (!confirmed) return;
-
-        // Abort any in-flight analysis pass and wait for it to unwind so
-        // it can't race-write `fan` against a record we're about to delete.
-        passAbortRef.current?.abort();
-        const inflight = passDonePromiseRef.current;
-        if (inflight) {
-            try { await inflight; } catch { /* swallowed by pass */ }
-        }
-
-        try {
-            const fresh = await persistDeleteRecordsFromTimestamp(dal, record.t, pageAbortRef.current?.signal);
-            setData(fresh);
-            // Re-run the pass so anything left without `fan` (shouldn't be
-            // many — eviction kept the older records intact) gets picked up.
-            await runAnalysisPass();
-        } catch (e) {
-            // Abort = navigation away. Not a real failure.
-            if ((e as { name?: string })?.name === 'AbortError'
-                || pageAbortRef.current?.signal.aborted) {
-                return;
-            }
-            // 412 = the app-root <ConflictModal> already fired and
-            // owns recovery. Skip the warn for log-noise consistency
-            // with the other 412 catches.
-            if (e instanceof DataAccessError && e.statusCode === 412) {
-                return;
-            }
-            console.warn('[DEBUG] Delete-from-here failed:', e);
-        }
-    }, [dal, runAnalysisPass]);
-
-    // ─────────────────────────────────────────────────────────────────────
     // Render
     // ─────────────────────────────────────────────────────────────────────
 
@@ -2060,7 +2009,6 @@ const GamesPage: React.FC = () => {
                                 onReannotate={handleReannotate}
                                 onAnalyzeOpponent={handleAnalyzeOpponent}
                                 onToggleReviewed={handleToggleReviewed}
-                                onDeleteFromHere={handleDeleteFromHere}
                                 suggestion={suggestionState}
                                 suggestionApplied={suggestionApplied}
                                 onSuggestFix={handleSuggestFix}

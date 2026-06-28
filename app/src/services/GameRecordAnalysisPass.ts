@@ -8,7 +8,7 @@ import { buildRepertoireFenSets } from '../models/RepertoireFenSet';
 import { IRepertoireDataStore } from '../data/DataAccessProxyLayer';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { getLinkedAccounts } from './LinkedAccountsService';
-import { findRecord, purgeRecordsFromTimestamp } from './GameRecordStore';
+import { findRecord } from './GameRecordStore';
 import { annotationToFrozen } from './GameAnnotationService';
 import { getRecordUserColor } from './GameRecordBuilder';
 import { annotateRecord } from './RecordAnnotation';
@@ -537,55 +537,3 @@ export async function persistReannotateRefresh(
 
 // Re-export for caller convenience.
 export { ANALYSIS_FLUSH_BATCH };
-
-/**
- * DEBUG / TEMP — Persist a bulk delete of every record with `t >= fromT`
- * back to the blob. Single-attempt (the app-root `<ConflictModal>` owns
- * 412 recovery). Also rewinds per-account ingest state (`watermarkMs`,
- * `recentIds`, chess.com `providerCursor`) so the next sync will re-fetch
- * and re-ingest the deleted games. Used by the /games page's debug
- * "Delete from here" menu. To be removed before the containing branch
- * merges.
- */
-export async function persistDeleteRecordsFromTimestamp(
-    dal: IRepertoireDataStore,
-    fromT: number,
-    signal?: AbortSignal,
-): Promise<RepertoireData> {
-    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-    const fresh = await dal.retrieveRepertoireData();
-    const activity = fresh.activity;
-    if (!activity) return fresh;
-    const purged = purgeRecordsFromTimestamp(activity, fromT);
-    // Rewind ingest state so the next sync re-fetches the deleted games:
-    //   - watermarkMs: clamp to `fromT - 1` so deleted games are eligible again
-    //   - recentIds:   drop any entry with ts >= fromT so dedup doesn't skip
-    //   - providerCursor (chess.com): clear so a fresh archive fetch runs
-    //                  (the etag would otherwise short-circuit on 304)
-    let rewound = false;
-    if (fresh.games) {
-        for (const key of Object.keys(fresh.games)) {
-            const state = fresh.games[key];
-            if (state.watermarkMs >= fromT) {
-                state.watermarkMs = fromT - 1;
-                rewound = true;
-            }
-            if (state.recentIds?.length) {
-                const kept = state.recentIds.filter(r => r.ts < fromT);
-                if (kept.length !== state.recentIds.length) {
-                    state.recentIds = kept;
-                    rewound = true;
-                }
-            }
-            if (state.providerCursor) {
-                delete state.providerCursor;
-                rewound = true;
-            }
-        }
-    }
-    if (purged === 0 && !rewound) return fresh;
-    if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-    const blob = RepertoireDataUtils.prepareDataForSave(fresh);
-    await dal.storeRepertoireData(blob, signal);
-    return fresh;
-}
