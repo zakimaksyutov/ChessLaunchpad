@@ -176,17 +176,23 @@ export function countMistakeGames(activity: Activity): number {
 }
 
 /**
- * Colors whose repertoire has no positions yet. Drives the dashboard's
+ * Colors whose repertoire has no moves yet. Drives the dashboard's
  * lower-priority "Import repertoire as PGN" onboarding row: a color is offered
  * for import only while its repertoire is empty, so a user who has already
  * built (say) White is invited to import Black only. A missing repertoire is
  * treated as empty (brand-new account before `normalize` seeds the entries).
+ *
+ * Emptiness is "no edges", not "no position objects": deleting every move in
+ * Edit mode leaves a residual moves-less root behind (`deleteEdge` never prunes
+ * the start position, and the codec round-trips it), so a positions-count check
+ * would wrongly treat a cleared repertoire as non-empty and suppress the
+ * bootstrap/import onboarding rows forever.
  */
 export function getEmptyRepertoireColors(
     repertoires: RepertoireEntry[] | undefined,
 ): ('white' | 'black')[] {
     return (['white', 'black'] as const).filter(color => {
         const rep = findRepertoire(repertoires, color);
-        return !rep || Object.keys(rep.positions).length === 0;
+        return !rep || Object.values(rep.positions).every(p => Object.keys(p.moves).length === 0);
     });
 }

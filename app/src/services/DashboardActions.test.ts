@@ -238,4 +238,15 @@ describe('getEmptyRepertoireColors', () => {
         const [white, black] = createEmptyRepertoires();
         expect(getEmptyRepertoireColors([withMove(white), withMove(black)])).toEqual([]);
     });
+
+    it('treats a repertoire with only a residual moves-less root as empty', () => {
+        // Deleting every move in Edit mode keeps the root (deleteEdge never
+        // prunes it), so positions is { root: { moves: {} } } — still empty.
+        const [white, black] = createEmptyRepertoires();
+        const onlyRoot = (rep: RepertoireEntry): RepertoireEntry => ({
+            ...rep,
+            positions: { 'fen-root': { moves: {} } },
+        });
+        expect(getEmptyRepertoireColors([onlyRoot(white), onlyRoot(black)])).toEqual(['white', 'black']);
+    });
 });
