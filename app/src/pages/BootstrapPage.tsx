@@ -21,6 +21,12 @@ import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import ReviewView from '../components/ReviewView';
 import { trackEvent } from '../AppInsights';
 import './BootstrapPage.css';
+// The bootstrap review/discard-save phase renders the canonical Explorer
+// review surface verbatim (same shell, ReviewView, and styles). Pull in the
+// Explorer stylesheet so that surface is pixel-identical even when /bootstrap
+// is opened without having visited /explorer. The file is fully class-scoped
+// (no element/global selectors), so it cannot affect the other bootstrap stages.
+import './ExplorerPage.css';
 
 type Stage =
     | 'running'
@@ -230,12 +236,48 @@ const BootstrapPage: React.FC = () => {
         navigate('/');
     }, [navigate, proposedCount]);
 
+    // Review/discard-save phase: reuse the canonical Explorer review surface
+    // unchanged — same page shell (`.explorer-page`/`.explorer-card`), same
+    // `ReviewView`, same styles — so it is identical to the repertoire-edit
+    // review. The bootstrap chrome (topbar, "…" menu, narrow `.bootstrap-page`
+    // width) is intentionally absent here. Rendered via an early return after
+    // all hooks have run.
+    if (stage === 'review' && delta && reviewModel) {
+        return (
+            <div className="explorer-page">
+                <div className="explorer-card">
+                    <ReviewView
+                        delta={delta}
+                        rootFen={reviewModel.root}
+                        onCancel={handleDiscard}
+                        onSave={handleSave}
+                        onDiscard={handleDiscard}
+                        saveInFlight={saveInFlight}
+                        backLabel="← Back to dashboard"
+                        backAriaLabel="Discard and return to the dashboard"
+                    />
+                    {saveError && (
+                        <div className="explorer-error explorer-save-error" role="alert">
+                            {saveError}
+                            <button
+                                type="button"
+                                className="explorer-toast-dismiss"
+                                aria-label="Dismiss"
+                                onClick={() => setSaveError(null)}
+                            >
+                                ×
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="bootstrap-page">
             <div className="bootstrap-topbar">
-                {stage !== 'review' && (
-                    <Link className="bootstrap-back-link" to="/">← Dashboard</Link>
-                )}
+                <Link className="bootstrap-back-link" to="/">← Dashboard</Link>
                 {games && (
                     <div className="bootstrap-menu">
                         <button
@@ -270,19 +312,6 @@ const BootstrapPage: React.FC = () => {
                     whiteCount={selection.white.length}
                     blackCount={selection.black.length}
                     onProceed={handleProceedToReview}
-                />
-            )}
-
-            {stage === 'review' && delta && reviewModel && (
-                <ReviewView
-                    delta={delta}
-                    rootFen={reviewModel.root}
-                    onCancel={handleDiscard}
-                    onSave={handleSave}
-                    onDiscard={handleDiscard}
-                    saveInFlight={saveInFlight}
-                    backLabel="← Back to dashboard"
-                    backAriaLabel="Discard and return to the dashboard"
                 />
             )}
 
@@ -327,10 +356,6 @@ const BootstrapPage: React.FC = () => {
                     <p>We couldn&apos;t build your starter repertoire{errorMsg ? `: ${errorMsg}` : ''}.</p>
                     <Link className="bootstrap-cta" to="/">Back to dashboard</Link>
                 </div>
-            )}
-
-            {saveError && (
-                <div className="bootstrap-save-error" role="alert">{saveError}</div>
             )}
         </div>
     );

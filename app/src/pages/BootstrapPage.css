@@ -299,16 +299,6 @@
     background: var(--cta-green-hover, #276b2b);
 }
 
-.bootstrap-save-error {
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    background: #fdecea;
-    border: 1px solid #f5c6cb;
-    border-radius: 6px;
-    color: #b71c1c;
-    font-size: 0.9rem;
-}
-
 @media (max-width: 600px) {
     .bootstrap-page {
         padding: 0.75rem;

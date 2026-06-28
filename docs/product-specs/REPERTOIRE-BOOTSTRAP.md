@@ -141,11 +141,14 @@ gives the user a moment to absorb the outcome and makes opening the change list 
 deliberate action. (Zero lines short-circuits to the empty state below instead.)
 
 **State C — Review & save.** Reached from the summary's **Proceed to review** button:
-emit the algorithm's output as a **`PendingDelta`** and reuse the **existing
-`ReviewView`** — the same screen the Discard/Save flow already uses, listing the
-proposed lines as PGN rows grouped/labeled by orientation (with board preview).
-**Save** commits the additions to the blob and syncs; **Discard** keeps the
-repertoire empty. Nothing persists until Save.
+emit the algorithm's output as a **`PendingDelta`** and render the **canonical
+Explorer review surface verbatim** — the same page shell (`.explorer-page` /
+`.explorer-card`) and the same `ReviewView` the repertoire-edit Discard/Save flow
+uses, so it is visually identical (the bootstrap chrome — back link and overflow
+menu — is intentionally dropped here). It lists the proposed lines as PGN rows
+grouped/labeled by orientation (with board preview). **Save** commits the additions
+to the blob and syncs; **Discard** keeps the repertoire empty. Nothing persists
+until Save.
 
 **Zero lines** is a valid conservative outcome: skip the summary and `ReviewView`
 and show a brief empty state with a Back-to-dashboard exit; the §1 action stays
