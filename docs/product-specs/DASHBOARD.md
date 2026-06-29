@@ -27,7 +27,7 @@ When a logged-in user lands on the home page, show a dashboard that surfaces pra
 
 ### 1.3 Repertoire Summary
 
-- Total cards in repertoire.
+- Total moves in repertoire.
 - Breakdown by FSRS state: new / learning / due review / mastered. Review-state cards are split into "due review" (due now) and "mastered" (not yet due).
 
 ### 1.4 Activity Feed
