@@ -13,6 +13,12 @@ import {
     BOOTSTRAP_TARGET_GAMES,
 } from '../services/RepertoireBootstrapService';
 import { setBootstrapHandoff } from '../services/BootstrapHandoff';
+import { PendingEditModel, Orientation, EditChain } from '../services/PendingEditModel';
+import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
+import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
+import { RepertoireData } from '../models/RepertoireData';
+import { DataAccessError } from '../data/DataAccessLayer';
+import { ChainRow } from '../components/ReviewView';
 import { trackEvent } from '../AppInsights';
 import './BootstrapPage.css';
 
@@ -60,8 +66,8 @@ const BootstrapPage: React.FC = () => {
 
     const [games, setGames] = useState<BootstrapGame[] | null>(null);
     const [selection, setSelection] = useState<BootstrapSelection | null>(null);
-
-    const [menuOpen, setMenuOpen] = useState(false);
+    const [repData, setRepData] = useState<RepertoireData | null>(null);
+    const [saveInFlight, setSaveInFlight] = useState(false);
 
     // StrictMode-safe single run (see DashboardPage's deferred-abort note).
     const startedRef = useRef(false);
@@ -71,12 +77,48 @@ const BootstrapPage: React.FC = () => {
 
     const proposedCount = selection ? selection.white.length + selection.black.length : 0;
 
+    // Build a PendingEditModel from the proposed selection so we can (a) render
+    // the proposed lines inline with the same ChainRow tiles the Explorer review
+    // uses, and (b) save them directly without the Explorer detour. Edges arrive
+    // BFS/parent-first, so applying them in order never references a missing
+    // parent. Recomputed only when the selection or base data changes.
+    const saveModel = useMemo(() => {
+        if (!selection || !repData) return null;
+        const reps = repData.repertoires ?? [];
+        const cards = repData.fsrsCards ?? extractFsrsCardsFromRepertoires(reps);
+        const model = new PendingEditModel(reps, cards);
+        for (const orientation of ['white', 'black'] as Orientation[]) {
+            for (const edge of selection[orientation]) {
+                model.addEdge(edge.from, edge.san, edge.orientation);
+            }
+        }
+        return model;
+    }, [selection, repData]);
+
+    const addedChains: EditChain[] = useMemo(
+        () => (saveModel ? saveModel.computeDelta().addedChains : []),
+        [saveModel],
+    );
+
+    // "Moves to learn" = your-move edges only (each gets an FSRS card); opponent
+    // replies aren't drilled, so they don't count. Surfaced instead of raw edge
+    // counts so the number matches the new cards the user sees in training.
+    const movesToLearn = useMemo(() => {
+        if (!saveModel) return { white: 0, black: 0 };
+        const count = (color: Orientation) => {
+            const rep = saveModel.currentRepertoires.find(r => r.orientation === color);
+            return rep ? Object.keys(extractFsrsCardsFromRepertoires([rep])).length : 0;
+        };
+        return { white: count('white'), black: count('black') };
+    }, [saveModel]);
+
     const run = useCallback(async () => {
         const ctrl = new AbortController();
         abortRef.current = ctrl;
         try {
             const data = await dal.retrieveRepertoireData();
             if (ctrl.signal.aborted || !mountedRef.current) return;
+            setRepData(data);
 
             const emptyColors = getEmptyRepertoireColors(data.repertoires);
 
@@ -141,9 +183,8 @@ const BootstrapPage: React.FC = () => {
 
             if (!mountedRef.current) return;
             setSelection(sel);
-            // Stop on a stats summary first; the user hands the selection off
-            // to Explorer's Review & Save view via "Proceed to review"
-            // (see handleProceedToReview).
+            // Stop on a stats summary: the user saves the lines and trains in
+            // one click, or expands them inline / opens Explorer to tweak.
             setStage('summary');
         } catch (err: unknown) {
             if (ctrl.signal.aborted || !mountedRef.current) return;
@@ -179,7 +220,6 @@ const BootstrapPage: React.FC = () => {
     }, [navigate]);
 
     const handleDownloadRaw = useCallback(() => {
-        setMenuOpen(false);
         if (!games) return;
         const ndjson = serializeBootstrapGames(games);
         const blob = new Blob([ndjson], { type: 'application/x-ndjson' });
@@ -192,6 +232,19 @@ const BootstrapPage: React.FC = () => {
         a.remove();
         URL.revokeObjectURL(url);
     }, [games]);
+
+    // Hidden debuggability hatch: Shift+Alt+D dumps the analyzed games as NDJSON.
+    // Intentionally undiscoverable — no UI affordance — so end users never see it.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.shiftKey && e.altKey && (e.key === 'd' || e.key === 'D')) {
+                e.preventDefault();
+                handleDownloadRaw();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [handleDownloadRaw]);
 
     const handleProceedToReview = useCallback(() => {
         if (!selection) return;
@@ -210,34 +263,45 @@ const BootstrapPage: React.FC = () => {
         navigate(`/explorer?o=${o}`);
     }, [selection, games, proposedCount, navigate]);
 
+    const handleSaveAndTrain = useCallback(async () => {
+        if (!saveModel || !repData) return;
+        setSaveInFlight(true);
+        const c = saveModel.computeCounts();
+        try {
+            const liveCards = extractFsrsCardsFromRepertoires(saveModel.currentRepertoires);
+            const blob: RepertoireData = {
+                repertoires: saveModel.currentRepertoires,
+                fsrsCards: liveCards,
+                settings: repData.settings,
+                activity: repData.activity,
+                games: repData.games,
+                audit: repData.audit,
+            };
+            await dal.storeRepertoireData(RepertoireDataUtils.prepareDataForSave(blob));
+            trackEvent('BootstrapSaved', {
+                gamesAnalyzed: games?.length ?? 0,
+                linesProposed: proposedCount,
+                added: c.added,
+            });
+            // Straight into the first session: the seeded lines are all new
+            // cards, so /training has a full due queue waiting.
+            navigate('/training');
+        } catch (err: unknown) {
+            // A 412 is a stale-blob conflict: the app-root ConflictModal already
+            // fired (via SessionStore.save's notifyConflict) and owns recovery,
+            // so don't surface a competing error page. Everything else lands on
+            // the error stage with a Back-to-dashboard escape.
+            if (err instanceof DataAccessError && err.statusCode === 412) return;
+            if (!mountedRef.current) return;
+            setErrorMsg(err instanceof Error ? err.message : String(err));
+            setStage('error');
+        } finally {
+            if (mountedRef.current) setSaveInFlight(false);
+        }
+    }, [saveModel, repData, games, proposedCount, dal, navigate]);
+
     return (
         <div className="bootstrap-page">
-            <div className="bootstrap-topbar">
-                <Link className="bootstrap-back-link" to="/">← Dashboard</Link>
-                {games && (
-                    <div className="bootstrap-menu">
-                        <button
-                            type="button"
-                            className="bootstrap-menu-btn"
-                            aria-haspopup="menu"
-                            aria-expanded={menuOpen}
-                            aria-label="More options"
-                            title="More options"
-                            onClick={() => setMenuOpen(o => !o)}
-                        >
-                            …
-                        </button>
-                        {menuOpen && (
-                            <div className="bootstrap-menu-popover" role="menu">
-                                <button type="button" role="menuitem" onClick={handleDownloadRaw}>
-                                    Download raw input
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
             {stage === 'running' && (
                 <ProgressPanel progress={progress} onCancel={handleCancel} />
             )}
@@ -245,9 +309,12 @@ const BootstrapPage: React.FC = () => {
             {stage === 'summary' && selection && (
                 <SummaryPanel
                     gamesAnalyzed={games?.length ?? 0}
-                    whiteCount={selection.white.length}
-                    blackCount={selection.black.length}
-                    onProceed={handleProceedToReview}
+                    whiteCount={movesToLearn.white}
+                    blackCount={movesToLearn.black}
+                    chains={addedChains}
+                    saveInFlight={saveInFlight}
+                    onSaveAndTrain={handleSaveAndTrain}
+                    onOpenInExplorer={handleProceedToReview}
                 />
             )}
 
@@ -305,9 +372,15 @@ const SummaryPanel: React.FC<{
     gamesAnalyzed: number;
     whiteCount: number;
     blackCount: number;
-    onProceed: () => void;
-}> = ({ gamesAnalyzed, whiteCount, blackCount, onProceed }) => {
+    chains: EditChain[];
+    saveInFlight: boolean;
+    onSaveAndTrain: () => void;
+    onOpenInExplorer: () => void;
+}> = ({ gamesAnalyzed, whiteCount, blackCount, chains, saveInFlight, onSaveAndTrain, onOpenInExplorer }) => {
     const total = whiteCount + blackCount;
+    const [showLines, setShowLines] = useState(false);
+    const whiteChains = chains.filter(c => c.orientation === 'white');
+    const blackChains = chains.filter(c => c.orientation === 'black');
     return (
         <div className="bootstrap-summary">
             <div className="bootstrap-summary-emoji" aria-hidden="true">🎉</div>
@@ -322,7 +395,7 @@ const SummaryPanel: React.FC<{
                     <dd>{gamesAnalyzed}</dd>
                 </div>
                 <div className="bootstrap-summary-stat">
-                    <dt>Lines proposed</dt>
+                    <dt>Moves to learn</dt>
                     <dd>{total}</dd>
                 </div>
                 <div className="bootstrap-summary-stat">
@@ -334,12 +407,62 @@ const SummaryPanel: React.FC<{
                     <dd>{blackCount}</dd>
                 </div>
             </dl>
-            <button type="button" className="bootstrap-proceed" onClick={onProceed}>
-                Proceed to review →
+
+            <div className="bootstrap-summary-actions">
+                <button
+                    type="button"
+                    className="bootstrap-proceed"
+                    onClick={onSaveAndTrain}
+                    disabled={saveInFlight}
+                    aria-busy={saveInFlight}
+                >
+                    {saveInFlight ? 'Saving…' : 'Save & start training'}
+                </button>
+                <button
+                    type="button"
+                    className="bootstrap-open-explorer"
+                    onClick={onOpenInExplorer}
+                    disabled={saveInFlight}
+                >
+                    Review &amp; edit lines first
+                </button>
+                <p className="bootstrap-summary-hint">You can edit your repertoire anytime in Explorer.</p>
+            </div>
+
+            <button
+                type="button"
+                className="bootstrap-show-lines"
+                aria-expanded={showLines}
+                aria-controls="bootstrap-lines"
+                disabled={saveInFlight}
+                onClick={() => setShowLines(v => !v)}
+            >
+                {showLines ? 'Hide repertoire' : `Show repertoire (${total} move${total === 1 ? '' : 's'})`}
             </button>
+            {showLines && (
+                <div className="bootstrap-lines" id="bootstrap-lines">
+                    {whiteChains.length > 0 && (
+                        <RepertoireLineGroup title="White" chains={whiteChains} />
+                    )}
+                    {blackChains.length > 0 && (
+                        <RepertoireLineGroup title="Black" chains={blackChains} />
+                    )}
+                </div>
+            )}
         </div>
     );
 };
+
+const RepertoireLineGroup: React.FC<{ title: string; chains: EditChain[] }> = ({ title, chains }) => (
+    <section className="bootstrap-lines-group">
+        <h2 className="bootstrap-lines-title">{title} ({chains.length})</h2>
+        <ul className="bootstrap-lines-list">
+            {chains.map((chain, i) => (
+                <li key={`${title}-${i}`}><ChainRow chain={chain} side="added" showOpenLink={false} /></li>
+            ))}
+        </ul>
+    </section>
+);
 
 // ── Progress panel ───────────────────────────────────────────────────
 

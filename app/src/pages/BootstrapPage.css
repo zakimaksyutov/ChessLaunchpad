@@ -4,76 +4,6 @@
     padding: 1rem;
 }
 
-.bootstrap-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 2rem;
-    margin-bottom: 0.5rem;
-}
-
-.bootstrap-back-link {
-    color: #666;
-    text-decoration: none;
-    font-size: 0.9rem;
-}
-
-.bootstrap-back-link:hover {
-    color: #333;
-    text-decoration: underline;
-}
-
-/* ── Overflow menu ──────────────────────────────────────────────── */
-
-.bootstrap-menu {
-    position: relative;
-    margin-left: auto;
-}
-
-.bootstrap-menu-btn {
-    border: 1px solid #ddd;
-    background: #fff;
-    border-radius: 6px;
-    width: 2rem;
-    height: 2rem;
-    font-size: 1.2rem;
-    line-height: 1;
-    color: #555;
-    cursor: pointer;
-}
-
-.bootstrap-menu-btn:hover {
-    background: #f0f0f0;
-}
-
-.bootstrap-menu-popover {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-    z-index: 10;
-    min-width: 12rem;
-}
-
-.bootstrap-menu-popover button {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 0.6rem 0.9rem;
-    background: transparent;
-    border: none;
-    font-size: 0.9rem;
-    color: #333;
-    cursor: pointer;
-}
-
-.bootstrap-menu-popover button:hover {
-    background: #f0f0f0;
-}
-
 /* ── Progress ───────────────────────────────────────────────────── */
 
 .bootstrap-progress {
@@ -242,7 +172,10 @@
 }
 
 .bootstrap-proceed {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
     padding: 0.7rem 1.6rem;
     background: var(--cta-green, #2e7d32);
     color: #fff;
@@ -254,7 +187,92 @@
 }
 
 .bootstrap-proceed:hover {
-    background: var(--cta-green-hover, #276b2b);
+    background: var(--cta-green-hover, #1b5e20);
+}
+
+.bootstrap-proceed:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.bootstrap-summary-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.bootstrap-summary-hint {
+    margin: 0.1rem 0 0;
+    color: #888;
+    font-size: 0.8rem;
+}
+
+.bootstrap-open-explorer {
+    background: transparent;
+    border: none;
+    color: #2e7d32;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.bootstrap-open-explorer:hover {
+    color: var(--cta-green-hover, #276b2b);
+}
+
+.bootstrap-open-explorer:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* ── Show-repertoire disclosure ─────────────────────────────────── */
+
+.bootstrap-show-lines {
+    background: transparent;
+    border: 1px solid #d6d6d6;
+    border-radius: var(--cta-radius, 8px);
+    padding: 0.5rem 1rem;
+    margin-bottom: 1.25rem;
+    color: #444;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.bootstrap-show-lines:hover {
+    background: #f0f0f0;
+}
+
+.bootstrap-show-lines:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.bootstrap-lines {
+    text-align: left;
+    margin: 0 0 1.5rem;
+}
+
+.bootstrap-lines-group {
+    margin-bottom: 1.25rem;
+}
+
+.bootstrap-lines-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #777;
+    margin: 0 0 0.6rem;
+}
+
+.bootstrap-lines-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
 /* ── Messages (empty / error / no-accounts) ─────────────────────── */
