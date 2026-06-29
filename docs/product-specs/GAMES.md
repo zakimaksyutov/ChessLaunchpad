@@ -141,7 +141,7 @@ Each row shows:
 - **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start. When the user deviated, **green arrows** mark the repertoire moves and a **red arrow** marks the move played.
 - **Players** — White / Black names with ratings; the user's side is visually emphasized.
 - **Right column** — Result · Rated/Casual · Speed · Time control · Date · "View on platform" link.
-- **Verdict bar** — leads the tile: a colored pill states the takeaway (*Mistake* / *Inaccuracy* / *Blunder* for EOT eval-drops, *Off your repertoire* for a deviation, *Followed your repertoire* when clean), with the row's actions (**Suggest a fix**, **Mark reviewed**) right-aligned beside it.
+- **Verdict bar** — leads the tile: a colored pill states the takeaway (*Mistake* / *Inaccuracy* / *Blunder* for EOT eval-drops, *Off your repertoire* for a deviation, *No opening mistakes* when clean), with the row's actions (**Suggest a fix**, **Mark reviewed**) right-aligned beside it.
 - **Opening name** (from `o`).
 - **Annotated PGN** with per-move highlighting (see below).
 - **Deviation summary** when the user deviated from repertoire — names the expected repertoire move(s) and the move actually played.
