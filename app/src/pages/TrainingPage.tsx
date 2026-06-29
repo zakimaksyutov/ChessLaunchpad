@@ -6,6 +6,7 @@ import { DataAccessError } from '../data/DataAccessLayer';
 import { RepertoireData } from '../models/RepertoireData';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
 import { recordTraversal, getTodayPlayCount, TraversalStats } from '../services/ActivityService';
+import { trackEvent } from '../AppInsights';
 import BadgeRow from '../components/BadgeRow';
 
 const TrainingPage: React.FC = () => {
@@ -90,6 +91,7 @@ const TrainingPage: React.FC = () => {
             console.log(`DAL: Saved. reviewed today: ${getTodayPlayCount(currentData)} (+${correctCardsRated})`);
         } catch (e: any) {
             if (e instanceof DataAccessError && e.statusCode === 412) {
+                trackEvent('TrainingSaveConflict');
                 // The app-root <ConflictModal> already fired (via
                 // SessionStore.save's notifyConflict) and is showing
                 // the Reload prompt. Don't duplicate the message with
@@ -97,6 +99,9 @@ const TrainingPage: React.FC = () => {
                 // and will hard-reload the page on confirm.
                 return;
             }
+            trackEvent('TrainingSaveFailed', {
+                statusCode: e instanceof DataAccessError ? e.statusCode : undefined,
+            });
             const msg = `Failed to store data: ${e.message || 'Unknown error'}`;
             console.error(msg, e);
             setError(msg);
@@ -111,6 +116,19 @@ const TrainingPage: React.FC = () => {
         setReviewedToday(prev => prev + 1);
         setAnimationTrigger(prev => prev + 1);
     }, []);
+
+    // Fire once when the load settles on an empty repertoire and we're about to
+    // bounce the user back to the Dashboard (the redirect below). Kept in an
+    // effect so it logs a single intent rather than once per render pass.
+    const emptyRedirectFiredRef = useRef(false);
+    useEffect(() => {
+        if (loading || error) return;
+        const hasPositions = (repertoireData?.repertoires ?? []).some(r => Object.keys(r.positions).length > 0);
+        if (!hasPositions && !emptyRedirectFiredRef.current) {
+            emptyRedirectFiredRef.current = true;
+            trackEvent('TrainingEmptyRedirect');
+        }
+    }, [loading, error, repertoireData]);
 
     if (loading) {
         return <div>Loading...</div>;

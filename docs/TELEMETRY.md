@@ -28,5 +28,26 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `BootstrapStarted` | Repertoire-bootstrap page begins collecting games. |
 | `BootstrapCompleted` | Bootstrap selection finishes (`gamesAnalyzed`, `linesProposed`). |
 | `BootstrapReviewOpened` | User clicks "Proceed to review" on the post-analysis summary; hands the proposed lines to Explorer's Review & Save view (`gamesAnalyzed`, `linesProposed`). |
+| `ExplorerEditStarted` | User enters Explorer Edit mode via the "Edit repertoire" button (manual edit session). |
+| `ExplorerReviewOpened` | User opens the Explorer "Review & Save" view from a manual edit (`source`, `added`, `removed`, `changed`). |
+| `ExplorerSaved` | A pending Explorer edit is persisted successfully (`source`, `added`, `removed`, `changed`). |
+| `ExplorerEditDiscarded` | User discards a pending Explorer edit (`source`, `added`, `removed`, `changed`; all-zero counts mean Edit mode was exited with no staged changes). |
+| `ExplorerSaveConflict` | An Explorer Save was rejected by a concurrent-edit conflict (HTTP 412); the app prompts the user to reload and lose local edits (`source`). |
+| `ExplorerSaveFailed` | An Explorer Save failed for a non-conflict reason (`source`, `statusCode`). |
+| `ExplorerImportPgn` | User stages a PGN into the pending Explorer edit via paste or file (`source`, `orientation`, `addedEdges`, `replacedAnnotations`). |
+| `ExplorerExportPgn` | User exports the current orientation's repertoire as a `.pgn` file from Explorer (`orientation`, `positionCount`). |
+| `ExplorerOpenInLichess` | User opens the displayed line on the Lichess analysis board from Explorer (`orientation`). |
+| `TrainingSessionStarted` | First live traversal of a `/training` visit begins (one per visit, fired only when there are cards to drill) (`dueCount`, `newCount`, `reviewCount`, `learningCount`, `totalCards`). |
+| `TrainingSessionCompleted` | The due queue drains after real training and the "All due cards reviewed" panel renders (`reviewedToday`). |
+| `TrainingKeepPracticing` | User clicks "Practice ahead of schedule" on the session-complete panel to keep drilling past the due queue. |
+| `TrainingSaveConflict` | A training traversal save was rejected by a concurrent-edit conflict (HTTP 412); the app prompts the user to reload. |
+| `TrainingSaveFailed` | A training traversal save failed for a non-conflict reason (`statusCode`). |
+| `TrainingEmptyRedirect` | User opens `/training` with no trainable positions and is redirected to the Dashboard. |
 
 `GamesOpponentAnalysisStart` and `GamesOpponentAnalysisComplete` share an `AnalysisId` property so a completion can be linked back to its start (a start with no matching completion is an aborted or failed run).
+
+The Explorer edit/save events carry a `source` property — `manual` (the "Edit repertoire" button), `bootstrap` (the `/bootstrap` starter-repertoire handoff), or `gamesSuggest` (the `/games` "Add to repertoire" suggestion) — identifying which funnel initiated the edit session. This lets `ExplorerSaved` close the funnels that previously ended at `BootstrapReviewOpened` and `GamesSuggestedLineAdded`/`GamesOpenInExplorer`. The `added`/`removed`/`changed` counts mirror the Review & Save bar; a delete that cascades through a branch counts every removed edge.
+
+The Training events are scoped to a single `/training` visit. `TrainingSessionStarted` and `TrainingSessionCompleted` each fire at most once per visit, and `TrainingSessionCompleted` only when real training preceded the drain (arriving already caught-up shows the same panel but stays silent). There is intentionally **no per-card or per-traversal event** — those would be far too high-volume for the single FSRS review loop; session-level aggregates are used instead.
+
+

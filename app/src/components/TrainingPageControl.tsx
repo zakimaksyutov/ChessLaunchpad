@@ -8,6 +8,7 @@ import { TraversalStep } from '../services/PathPlanner';
 import { Annotation } from '../models/Annotation';
 import { RepertoireEntry } from '../models/Repertoires';
 import { TraversalStats } from '../services/ActivityService';
+import { trackEvent } from '../AppInsights';
 import PgnControl from './PgnControl';
 import './TrainingPageControl.css';
 
@@ -83,6 +84,17 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const onQueueStatsRef = useRef(onQueueStats);
     const onCardRatedRef = useRef(onCardRated);
     const correctCardsCountRef = useRef(0);
+    // One-shot telemetry latches for the training-session lifecycle, scoped to
+    // this mount (one `/training` visit). `sessionStarted` flips on the first
+    // live traversal; `sessionCompleted` flips when the due queue first drains
+    // after real training, so neither event double-fires across the many
+    // traversals a session walks through.
+    const sessionStartedRef = useRef(false);
+    const sessionCompletedRef = useRef(false);
+    // Latest `reviewedToday` prop, mirrored into a ref so the session-complete
+    // event reads the current day total rather than the value captured when
+    // `startNewTraversal` was memoized.
+    const reviewedTodayRef = useRef(reviewedToday);
     // Tracks whether the current traversal has left the initial autoplay prefix
     // (i.e. the engine has surfaced a non-autoplay phase that expects user input).
     // Opponent moves during the prefix play fast; once the user has been
@@ -92,6 +104,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     useEffect(() => { onTraversalCompleteRef.current = onTraversalComplete; }, [onTraversalComplete]);
     useEffect(() => { onQueueStatsRef.current = onQueueStats; }, [onQueueStats]);
     useEffect(() => { onCardRatedRef.current = onCardRated; }, [onCardRated]);
+    useEffect(() => { reviewedTodayRef.current = reviewedToday; }, [reviewedToday]);
 
     // Build engine once on mount or when repertoires changes (not when fsrsCards changes from saves).
     // The fsrsCards ref pins the initial flat-map reference so FSRSService can
@@ -127,6 +140,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         setRoundId(Math.random().toString(36).substring(7));
     }, []);
 
+    // Emit `TrainingSessionCompleted` exactly once per visit, and only when a
+    // real session preceded the drain (so arriving already-caught-up — which
+    // shows the same panel without any training — stays silent).
+    const emitSessionCompletedOnce = useCallback(() => {
+        if (!sessionStartedRef.current || sessionCompletedRef.current) return;
+        sessionCompletedRef.current = true;
+        trackEvent('TrainingSessionCompleted', { reviewedToday: reviewedTodayRef.current });
+    }, []);
+
     // Start traversal on mount / engine change. Note: this function only ever
     // calls `eng.startTraversal()` (the default, no-confirm path). If all due
     // cards are reviewed the engine returns `'ahead_of_schedule_pending'` —
@@ -144,6 +166,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             setPhase('empty');
             setIsTeaching(false);
             setIsRecalling(false);
+            emitSessionCompletedOnce();
             return;
         }
 
@@ -154,6 +177,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
         onQueueStatsRef.current(eng.getQueueStats());
 
         if (status.phase === 'empty') {
+            emitSessionCompletedOnce();
             return;
         }
 
@@ -161,6 +185,7 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             // Render the session-complete panel and wait for user input.
             // Do NOT schedule any autoplay — the engine has not built a
             // live plan and getCurrentStep() returns null.
+            emitSessionCompletedOnce();
             return;
         }
 
@@ -168,8 +193,15 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
             setStatusMessage('All due cards reviewed — practicing ahead of schedule');
         }
 
+        // A live training plan is in hand — mark the session as started the
+        // first time we reach this point on a visit.
+        if (!sessionStartedRef.current) {
+            sessionStartedRef.current = true;
+            trackEvent('TrainingSessionStarted', eng.getQueueStats());
+        }
+
         scheduleNextAction(eng);
-    }, [resetTraversalUiState]);
+    }, [resetTraversalUiState, emitSessionCompletedOnce]);
 
     // User confirmed they want to keep training past their due queue.
     // Adopts the engine's pre-staged ahead-of-schedule plan and resumes
@@ -177,6 +209,8 @@ const TrainingPageControl: React.FC<TrainingPageControlProps> = ({
     const acceptAhead = useCallback(() => {
         const eng = engineRef.current;
         if (!eng) return;
+
+        trackEvent('TrainingKeepPracticing');
 
         resetTraversalUiState();
 
