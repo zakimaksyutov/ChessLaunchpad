@@ -6,6 +6,7 @@ import AnimatedAddedLine from './AnimatedAddedLine';
 import { PendingDelta, EditChain, AnnotationDiff, EditedEdge, Orientation } from '../services/PendingEditModel';
 import { isSingleAddedLine, buildAddedLineFrames, AddedLineFrames } from '../utils/ReviewAnimation';
 import { Annotation } from '../models/Annotation';
+import './ReviewView.css';
 
 /**
  * "Open in Explorer" deep-link for a reviewed position. Reuses the same
@@ -219,9 +220,13 @@ const AddedLineDetails: React.FC<{ chain: EditChain }> = ({ chain }) => {
 interface ChainRowProps {
     chain: EditChain;
     side: 'added' | 'removed';
+    /** Per-row "Open in Explorer ↗" deep-links. Suppressed by the bootstrap
+     *  summary preview, where they would re-create the navigation confusion the
+     *  one-click Save path removes. Defaults to on for the Explorer review. */
+    showOpenLink?: boolean;
 }
 
-const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
+export const ChainRow: React.FC<ChainRowProps> = ({ chain, side, showOpenLink = true }) => {
     const [expanded, setExpanded] = useState(false);
     const length = 1 + chain.tail.length;
     const isLong = length >= 2;
@@ -243,7 +248,7 @@ const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
                     </div>
                     <div className="explorer-review-chain-pgn">{headPgn || '(start)'}</div>
                     <div className="explorer-review-chain-fen">FEN: <code>{chain.head.to}</code></div>
-                    {side === 'added' && (
+                    {side === 'added' && showOpenLink && (
                         <OpenInExplorerLink fen={chain.head.to} orientation={chain.orientation} />
                     )}
                     {chain.tailHint && (
@@ -283,6 +288,7 @@ const ChainRow: React.FC<ChainRowProps> = ({ chain, side }) => {
                                 parentSans={runningSans(chain, i)}
                                 edge={edge}
                                 side={side}
+                                showOpenLink={showOpenLink}
                             />
                         </li>
                     ))}
@@ -367,9 +373,10 @@ interface TailEdgeRowProps {
     parentSans: string[];
     edge: EditedEdge;
     side: 'added' | 'removed';
+    showOpenLink?: boolean;
 }
 
-const TailEdgeRow: React.FC<TailEdgeRowProps> = ({ parentSans, edge, side }) => {
+const TailEdgeRow: React.FC<TailEdgeRowProps> = ({ parentSans, edge, side, showOpenLink = true }) => {
     const parentPgn = pgnFromSans(parentSans);
     const fullPgn = pgnFromSans([...parentSans, edge.san]);
     const pgnLabel = fullPgn || [...parentSans, edge.san].join(' ');
@@ -379,7 +386,7 @@ const TailEdgeRow: React.FC<TailEdgeRowProps> = ({ parentSans, edge, side }) => 
             <div className="explorer-review-chain-body">
                 <div className="explorer-review-chain-pgn">{pgnLabel}</div>
                 <div className="explorer-review-chain-fen">FEN: <code>{edge.to}</code></div>
-                {side === 'added' && (
+                {side === 'added' && showOpenLink && (
                     <OpenInExplorerLink fen={edge.to} orientation={edge.orientation} />
                 )}
             </div>

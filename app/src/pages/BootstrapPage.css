@@ -257,6 +257,91 @@
     background: var(--cta-green-hover, #276b2b);
 }
 
+.bootstrap-proceed:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.bootstrap-summary-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.bootstrap-summary-hint {
+    margin: 0.1rem 0 0;
+    color: #888;
+    font-size: 0.8rem;
+}
+
+.bootstrap-open-explorer {
+    background: transparent;
+    border: none;
+    color: #2e7d32;
+    font-size: 0.9rem;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.bootstrap-open-explorer:hover {
+    color: var(--cta-green-hover, #276b2b);
+}
+
+.bootstrap-open-explorer:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* ── Show-repertoire disclosure ─────────────────────────────────── */
+
+.bootstrap-show-lines {
+    background: transparent;
+    border: 1px solid #d6d6d6;
+    border-radius: var(--cta-radius, 8px);
+    padding: 0.5rem 1rem;
+    margin-bottom: 1.25rem;
+    color: #444;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.bootstrap-show-lines:hover {
+    background: #f0f0f0;
+}
+
+.bootstrap-show-lines:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.bootstrap-lines {
+    text-align: left;
+    margin: 0 0 1.5rem;
+}
+
+.bootstrap-lines-group {
+    margin-bottom: 1.25rem;
+}
+
+.bootstrap-lines-title {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #777;
+    margin: 0 0 0.6rem;
+}
+
+.bootstrap-lines-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
 /* ── Messages (empty / error / no-accounts) ─────────────────────── */
 
 .bootstrap-message {
