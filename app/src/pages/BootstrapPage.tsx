@@ -69,8 +69,6 @@ const BootstrapPage: React.FC = () => {
     const [repData, setRepData] = useState<RepertoireData | null>(null);
     const [saveInFlight, setSaveInFlight] = useState(false);
 
-    const [menuOpen, setMenuOpen] = useState(false);
-
     // StrictMode-safe single run (see DashboardPage's deferred-abort note).
     const startedRef = useRef(false);
     const mountedRef = useRef(true);
@@ -210,7 +208,6 @@ const BootstrapPage: React.FC = () => {
     }, [navigate]);
 
     const handleDownloadRaw = useCallback(() => {
-        setMenuOpen(false);
         if (!games) return;
         const ndjson = serializeBootstrapGames(games);
         const blob = new Blob([ndjson], { type: 'application/x-ndjson' });
@@ -223,6 +220,19 @@ const BootstrapPage: React.FC = () => {
         a.remove();
         URL.revokeObjectURL(url);
     }, [games]);
+
+    // Hidden debuggability hatch: Shift+Alt+D dumps the analyzed games as NDJSON.
+    // Intentionally undiscoverable — no UI affordance — so end users never see it.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.shiftKey && e.altKey && (e.key === 'd' || e.key === 'D')) {
+                e.preventDefault();
+                handleDownloadRaw();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [handleDownloadRaw]);
 
     const handleProceedToReview = useCallback(() => {
         if (!selection) return;
@@ -280,32 +290,6 @@ const BootstrapPage: React.FC = () => {
 
     return (
         <div className="bootstrap-page">
-            <div className="bootstrap-topbar">
-                <Link className="bootstrap-back-link" to="/">← Dashboard</Link>
-                {games && (
-                    <div className="bootstrap-menu">
-                        <button
-                            type="button"
-                            className="bootstrap-menu-btn"
-                            aria-haspopup="menu"
-                            aria-expanded={menuOpen}
-                            aria-label="More options"
-                            title="More options"
-                            onClick={() => setMenuOpen(o => !o)}
-                        >
-                            …
-                        </button>
-                        {menuOpen && (
-                            <div className="bootstrap-menu-popover" role="menu">
-                                <button type="button" role="menuitem" onClick={handleDownloadRaw}>
-                                    Download raw input
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
             {stage === 'running' && (
                 <ProgressPanel progress={progress} onCancel={handleCancel} />
             )}
