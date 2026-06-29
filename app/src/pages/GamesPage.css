@@ -411,6 +411,76 @@
     color: #666;
 }
 
+/* ─── Verdict bar (tile headline) ─── */
+.game-verdict-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0.1rem 0 0.25rem;
+}
+
+.game-verdict-pill {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1;
+    padding: 0.28rem 0.55rem;
+    border-radius: 4px;
+    color: #fff;
+    white-space: nowrap;
+}
+
+.game-verdict-pill-clean {
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 600;
+    color: #1e8449;
+    background: transparent !important;
+    padding-left: 0;
+}
+
+.game-verdict-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+}
+
+.game-verdict-action {
+    background: none;
+    border: 1px solid #cfcfcf;
+    border-radius: 999px;
+    padding: 0.18rem 0.6rem;
+    font-size: 0.76rem;
+    color: #666;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.game-verdict-action:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.game-verdict-actions .game-review-toggle {
+    margin-left: 0;
+}
+
+.game-verdict-action-primary {
+    border-color: rgb(0, 130, 210);
+    color: rgb(0, 130, 210);
+}
+
+.game-verdict-action-primary:hover {
+    background: rgba(0, 130, 210, 0.08);
+    color: rgb(0, 110, 180);
+}
+
 .game-right-column {
     display: flex;
     flex-direction: column;

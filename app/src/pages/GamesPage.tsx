@@ -524,7 +524,9 @@ const GameRow: React.FC<GameRowProps> = ({
     const eotSummary = useMemo(() => {
         if (!annotation) return null;
         const moves = annotation.moves;
+        let fullmove = 1;
         for (let i = 0; i < moves.length; i++) {
+            if (moves[i].moveNumber !== undefined) fullmove = moves[i].moveNumber!;
             if (moves[i].highlight === 'out-of-repertoire-response' && moves[i].evalDrop && moves[i].evalDrop!.category !== 'ok') {
                 let opponentMove: string | null = null;
                 for (let j = i - 1; j >= 0; j--) {
@@ -533,8 +535,10 @@ const GameRow: React.FC<GameRowProps> = ({
                         break;
                     }
                 }
+                const isWhite = moves[i].moveNumber !== undefined;
                 return {
                     userSan: moves[i].san,
+                    moveLabel: isWhite ? `${fullmove}.` : `${fullmove}…`,
                     opponentSan: opponentMove,
                     category: moves[i].evalDrop!.category,
                     drop: moves[i].evalDrop!.evalDrop,
@@ -542,6 +546,19 @@ const GameRow: React.FC<GameRowProps> = ({
             }
         }
         return null;
+    }, [annotation]);
+
+    const deviationMoveLabel = useMemo(() => {
+        if (!annotation) return '';
+        const moves = annotation.moves;
+        let fullmove = 1;
+        for (const m of moves) {
+            if (m.moveNumber !== undefined) fullmove = m.moveNumber;
+            if (m.highlight === 'deviation' && m.isUserMove) {
+                return m.moveNumber !== undefined ? `${fullmove}.` : `${fullmove}…`;
+            }
+        }
+        return '';
     }, [annotation]);
 
     const resultLabel = meta.result.toUpperCase();
@@ -567,6 +584,18 @@ const GameRow: React.FC<GameRowProps> = ({
             : pending
                 ? ''
                 : ' game-row-clean';
+
+    // The verdict headline — leads each tile so the takeaway is the first thing
+    // the eye lands on. EOT eval-drop categories outrank a plain deviation; a
+    // game with neither is "clean".
+    const verdict: { label: string; color: string } = eotSummary
+        ? {
+            label: eotSummary.category.charAt(0).toUpperCase() + eotSummary.category.slice(1),
+            color: EOT_ICON_COLORS[eotSummary.category],
+        }
+        : hasDeviation
+            ? { label: 'Off your repertoire', color: '#9b59b6' }
+            : { label: 'No mistakes', color: '#27ae60' };
 
     useEffect(() => {
         if (!menuOpen) return;
@@ -609,6 +638,41 @@ const GameRow: React.FC<GameRowProps> = ({
                 )}
             </div>
             <div className="game-info">
+                {!pending && (
+                    <div className="game-verdict-bar">
+                        <span
+                            className={`game-verdict-pill${isMistake ? '' : ' game-verdict-pill-clean'}`}
+                            style={{ backgroundColor: verdict.color }}
+                        >
+                            {verdict.label}
+                        </span>
+                        <div className="game-verdict-actions">
+                            {eotSummary && suggestion?.status !== 'loading' && !hasSuggestion && !hasDeviation && (
+                                <button
+                                    type="button"
+                                    className="game-verdict-action game-verdict-action-primary suggest-fix-link"
+                                    onClick={() => onSuggestFix(record, userLower)}
+                                    title="Propose a line to add to your repertoire"
+                                >
+                                    Suggest a fix
+                                </button>
+                            )}
+                            {isMistake && (
+                                <button
+                                    type="button"
+                                    className={`game-review-toggle${reviewed ? ' game-review-toggle-done' : ''}`}
+                                    onClick={() => onToggleReviewed(record)}
+                                    title={reviewed
+                                        ? 'Marked as reviewed — click to move back to your review queue'
+                                        : 'Mark this game as reviewed'}
+                                >
+                                    {reviewed ? '✓ Reviewed' : 'Mark reviewed'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 <div className="game-header-row">
                     <div className="game-players">
                         {formatPlayerLabel(meta.whiteName, meta.whiteRating, whiteIsUser)}
@@ -650,18 +714,6 @@ const GameRow: React.FC<GameRowProps> = ({
                     {meta.openingName && <span className="game-opening">{meta.openingName}</span>}
                     {reannotating && <span className="game-reannotating-badge">Re-annotating…</span>}
                     {pending && <span className="game-pending-badge">Analyzing…</span>}
-                    {!pending && isMistake && (
-                        <button
-                            type="button"
-                            className={`game-review-toggle${reviewed ? ' game-review-toggle-done' : ''}`}
-                            onClick={() => onToggleReviewed(record)}
-                            title={reviewed
-                                ? 'Marked as reviewed — click to move back to your review queue'
-                                : 'Mark this game as reviewed'}
-                        >
-                            {reviewed ? '✓ Reviewed' : 'Mark reviewed'}
-                        </button>
-                    )}
                 </div>
 
                 {pending ? (
@@ -716,7 +768,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                 <strong>
                                     {annotation.deviation.repertoireMoves.map(m => m.san).join(', ') || '?'}
                                 </strong>{' '}but you played{' '}
-                                <strong>{annotation.deviation.userMove.san}</strong>
+                                <strong>{deviationMoveLabel} {annotation.deviation.userMove.san}</strong>
                             </div>
                         )}
 
@@ -726,7 +778,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                     <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
                                     <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                                 </svg>
-                                Out of repertoire – you played <strong>{eotSummary.userSan}</strong> (<strong className="eot-category" style={{ color: EOT_ICON_COLORS[eotSummary.category] }}>{eotSummary.category}</strong>)
+                                You played <strong>{eotSummary.moveLabel} {eotSummary.userSan}</strong> (<strong className="eot-category" style={{ color: EOT_ICON_COLORS[eotSummary.category] }}>{eotSummary.category}</strong>)
                                 {allowAnalyzeAction && !analyzeProgress && (
                                     <a
                                         className="analyze-opponent-link"
@@ -736,21 +788,6 @@ const GameRow: React.FC<GameRowProps> = ({
                                     >
                                         Analyze opponent
                                     </a>
-                                )}
-                                {suggestion?.status !== 'loading' && !hasSuggestion && !hasDeviation && (
-                                    <>
-                                        {allowAnalyzeAction && !analyzeProgress && (
-                                            <span className="game-action-sep" aria-hidden="true">|</span>
-                                        )}
-                                        <a
-                                            className="analyze-opponent-link suggest-fix-link"
-                                            role="button"
-                                            onClick={() => onSuggestFix(record, userLower)}
-                                            title="Propose a line to add to your repertoire"
-                                        >
-                                            Suggest a fix
-                                        </a>
-                                    </>
                                 )}
                             </div>
                         )}
