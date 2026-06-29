@@ -339,7 +339,7 @@
 /* Analyzed row with no mistakes — green border so every tile has one,
    matching the colored borders used for deviation/EOT rows. */
 .game-row-clean {
-    border-color: #27ae60;
+    border-color: #1e8449;
 }
 
 .game-row-deviation {
