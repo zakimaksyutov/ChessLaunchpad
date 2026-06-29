@@ -9,6 +9,7 @@ import { RepertoireData } from '../models/RepertoireData';
 import { findRecord } from '../services/GameRecordStore';
 import { takeBootstrapHandoff } from '../services/BootstrapHandoff';
 import { BootstrapSelection } from '../services/RepertoireBootstrapService';
+import { trackEvent } from '../AppInsights';
 import {
     ExplorerService,
     Orientation,
@@ -868,6 +869,11 @@ const ExplorerPage: React.FC = () => {
         parentFen: string | null;
         parentOrientation: Orientation | null;
     } | null>(null);
+    // How the current edit session was initiated, for telemetry attribution.
+    // Set by each of the three edit-mode entry points (manual button, /games
+    // "Add to repertoire" addpgn link, /bootstrap handoff); read by the
+    // Save/Review/Discard events so a save can be tied back to its funnel.
+    const editSourceRef = useRef<'manual' | 'bootstrap' | 'gamesSuggest'>('manual');
     useEffect(() => {
         if (!data) return;
         const addPgn = searchParams.get('addpgn');
@@ -910,6 +916,7 @@ const ExplorerPage: React.FC = () => {
             );
             setPendingModel(model);
             setMode('edit');
+            editSourceRef.current = 'gamesSuggest';
             bumpPending();
             setPgnToast({
                 kind: 'success',
@@ -980,6 +987,7 @@ const ExplorerPage: React.FC = () => {
         }
         setPendingModel(model);
         setMode('edit');
+        editSourceRef.current = 'bootstrap';
         bumpPending();
 
         if (searchParams.get('review') !== '1') {
@@ -1107,10 +1115,17 @@ const ExplorerPage: React.FC = () => {
     /** Open the Review view by pushing a `?review=1` history entry. */
     const enterReviewView = useCallback(() => {
         if (searchParams.get('review') === '1') return;
+        const c = pendingModel?.computeCounts();
+        trackEvent('ExplorerReviewOpened', {
+            source: editSourceRef.current,
+            added: c?.added ?? 0,
+            removed: c?.removed ?? 0,
+            changed: c?.changed ?? 0,
+        });
         const next = new URLSearchParams(searchParams);
         next.set('review', '1');
         setSearchParams(next); // push — so browser Back returns to main
-    }, [searchParams, setSearchParams]);
+    }, [searchParams, setSearchParams, pendingModel]);
 
     /** Cancel/back from Review explicitly — go through the same back-stack pop. */
     const exitReviewView = useCallback(() => {
@@ -1152,6 +1167,8 @@ const ExplorerPage: React.FC = () => {
             setPendingModel(new PendingEditModel(reps, cards));
         }
         setMode('edit');
+        editSourceRef.current = 'manual';
+        trackEvent('ExplorerEditStarted');
         stripReviewParam();
     }, [data, pendingModel, stripReviewParam]);
 
@@ -1392,6 +1409,8 @@ const ExplorerPage: React.FC = () => {
     /** Sticky-bar Save handler. */
     const handleSave = useCallback(async () => {
         if (!pendingModel || !data) return;
+        const source = editSourceRef.current;
+        const c = pendingModel.computeCounts();
         setSaveInFlight(true);
         setSaveError(null);
         try {
@@ -1434,6 +1453,12 @@ const ExplorerPage: React.FC = () => {
             };
             const wire = RepertoireDataUtils.prepareDataForSave(blobInMemory);
             await dal.storeRepertoireData(wire);
+            trackEvent('ExplorerSaved', {
+                source,
+                added: c.added,
+                removed: c.removed,
+                changed: c.changed,
+            });
             // Reload to the canonical persisted state so the in-memory model
             // and the persisted blob agree.
             dataRef.current = null;
@@ -1444,6 +1469,7 @@ const ExplorerPage: React.FC = () => {
             await fetchAll(true);
         } catch (err: unknown) {
             if (err instanceof DataAccessError && err.statusCode === 412) {
+                trackEvent('ExplorerSaveConflict', { source });
                 // The app-root <ConflictModal> already fired (via
                 // SessionStore.save's notifyConflict) and is showing the
                 // Reload prompt. Don't duplicate the message with a
@@ -1451,6 +1477,10 @@ const ExplorerPage: React.FC = () => {
                 // flow and will hard-reload the page on confirm.
             } else {
                 const msg = err instanceof Error ? err.message : String(err);
+                trackEvent('ExplorerSaveFailed', {
+                    source,
+                    statusCode: err instanceof DataAccessError ? err.statusCode : undefined,
+                });
                 setSaveError(`Save failed: ${msg}`);
             }
         } finally {
@@ -1462,6 +1492,12 @@ const ExplorerPage: React.FC = () => {
     const requestDiscard = useCallback(() => {
         if (!pendingModel || pendingModel.isEmpty()) {
             // Trivial discard: nothing to confirm.
+            trackEvent('ExplorerEditDiscarded', {
+                source: editSourceRef.current,
+                added: 0,
+                removed: 0,
+                changed: 0,
+            });
             setPendingModel(null);
             setMode('read');
             if (returnToGamesAfterSuggest(false)) return;
@@ -1472,12 +1508,19 @@ const ExplorerPage: React.FC = () => {
     }, [pendingModel, stripReviewParam, returnToGamesAfterSuggest]);
 
     const confirmDiscard = useCallback(() => {
+        const c = pendingModel?.computeCounts();
+        trackEvent('ExplorerEditDiscarded', {
+            source: editSourceRef.current,
+            added: c?.added ?? 0,
+            removed: c?.removed ?? 0,
+            changed: c?.changed ?? 0,
+        });
         setDiscardPrompt(false);
         setPendingModel(null);
         setMode('read');
         if (returnToGamesAfterSuggest(false)) return;
         stripReviewParam();
-    }, [stripReviewParam, returnToGamesAfterSuggest]);
+    }, [pendingModel, stripReviewParam, returnToGamesAfterSuggest]);
 
     // ── PGN export ─────────────────────────────────────────────────
 
@@ -1510,6 +1553,10 @@ const ExplorerPage: React.FC = () => {
             a.download = `Repertoire-${colorLabel}-${username}-${dateStamp}-${positionCount} positions.pgn`;
             a.click();
             URL.revokeObjectURL(url);
+            trackEvent('ExplorerExportPgn', {
+                orientation: resolvedOrientation,
+                positionCount,
+            });
             setPgnToast({
                 kind: 'success',
                 text: `Exported ${positionCount} ${colorLabel.toLowerCase()} positions as PGN.`,
@@ -1527,7 +1574,7 @@ const ExplorerPage: React.FC = () => {
      * Edit-mode UI, which only renders when `pendingModel` is non-null —
      * hence the `!` assertion below rather than a user-visible guard.
      */
-    const applyParsedPgn = useCallback((pgnText: string): string => {
+    const applyParsedPgn = useCallback((pgnText: string, source: 'paste' | 'file'): string => {
         // Paste-box snippets may omit the `[Repertoire]` header; default
         // to the orientation being edited.
         const decoded = decodeRepertoirePgn(pgnText, {
@@ -1547,6 +1594,12 @@ const ExplorerPage: React.FC = () => {
             decoded.annotationsByFen,
         );
         bumpPending();
+        trackEvent('ExplorerImportPgn', {
+            source,
+            orientation: decoded.orientation,
+            addedEdges: result.addedEdges,
+            replacedAnnotations: result.replacedAnnotations,
+        });
         const colorLabel = decoded.orientation === 'white' ? 'White' : 'Black';
         return `Staged into your ${colorLabel} edits: ${result.addedEdges} move${
             result.addedEdges === 1 ? '' : 's'
@@ -1567,7 +1620,7 @@ const ExplorerPage: React.FC = () => {
         setPgnToast(null);
         try {
             const text = await file.text();
-            const msg = applyParsedPgn(text);
+            const msg = applyParsedPgn(text, 'file');
             setPgnToast({ kind: 'success', text: msg });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -1585,7 +1638,7 @@ const ExplorerPage: React.FC = () => {
         setImportBusy(true);
         setPgnToast(null);
         try {
-            const msg = applyParsedPgn(pasteText);
+            const msg = applyParsedPgn(pasteText, 'paste');
             setPgnToast({ kind: 'success', text: msg });
             setPasteText('');
         } catch (err: unknown) {
@@ -2005,6 +2058,7 @@ const ExplorerPage: React.FC = () => {
                                                         rel="noopener noreferrer"
                                                         aria-label="Open in Lichess analysis board"
                                                         title="Open in Lichess analysis board"
+                                                        onClick={() => trackEvent('ExplorerOpenInLichess', { orientation: resolvedOrientation })}
                                                     >
                                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                                             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
