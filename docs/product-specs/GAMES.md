@@ -141,10 +141,11 @@ Each row shows:
 - **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start. When the user deviated, **green arrows** mark the repertoire moves and a **red arrow** marks the move played.
 - **Players** — White / Black names with ratings; the user's side is visually emphasized.
 - **Right column** — Result · Rated/Casual · Speed · Time control · Date · "View on platform" link.
+- **Verdict bar** — leads the tile: a colored pill states the takeaway (*Mistake* / *Inaccuracy* / *Blunder* for EOT eval-drops, *Off your repertoire* for a deviation, *No opening mistakes* when clean), with the row's actions (**Suggest a fix**, **Mark reviewed**) right-aligned beside it.
 - **Opening name** (from `o`).
 - **Annotated PGN** with per-move highlighting (see below).
 - **Deviation summary** when the user deviated from repertoire — names the expected repertoire move(s) and the move actually played.
-- **End-of-theory (EOT) summary** when the opponent left repertoire and the user's response was an eval drop (inaccuracy/mistake/blunder).
+- **End-of-theory (EOT) summary** when the opponent left repertoire and the user's response was an eval drop — names the user's move with its move number and category (e.g. "You played 15… Be7 (Mistake)").
 - **Opponent analysis** result if `op` is present and not stale (see below).
 
 ### Move highlighting
@@ -170,7 +171,7 @@ Each row's left border is color-coded for at-a-glance status: purple for user-de
 
 A filter bar selects one of four views — **To review** (default; unreviewed mistakes), **Reviewed**, **All mistakes**, **All games** — each with a live count. The choice is remembered per user on the device.
 
-Each mistake row has a **Mark reviewed** toggle that sets a persistent `rv` flag, so the decision syncs across devices and the row leaves the **To review** queue. It's a user decision independent of the annotation: **Re-annotate does not clear it**, and clean games never carry it.
+Each mistake row offers a **Mark reviewed** toggle (in the verdict bar) that sets a persistent `rv` flag, so the decision syncs across devices and the row leaves the **To review** queue. It's a user decision independent of the annotation: **Re-annotate does not clear it**, and clean games never carry it.
 
 ## Opponent Analysis (`op`)
 
@@ -205,7 +206,7 @@ A **threat-level** label is derived from `nb` (`0–2` low, `3–9` moderate, `1
 
 ## Repertoire Suggestion (`sg`)
 
-On **EOT** rows, a **"Suggest a fix"** link (beside "Analyze opponent") proposes a concrete line to add so the user is ready next time. It is **not** shown on deviation rows — the user's own repertoire already holds the intended move. Like masters verdicts it **requires a connected Lichess account** (the masters explorer needs OAuth); without a token the result area shows a connect-Lichess prompt instead.
+On **EOT** rows, a **"Suggest a fix"** action (in the verdict bar) proposes a concrete line to add so the user is ready next time. It is **not** shown on deviation rows — the user's own repertoire already holds the intended move. Like masters verdicts it **requires a connected Lichess account** (the masters explorer needs OAuth); without a token the result area shows a connect-Lichess prompt instead.
 
 The algorithm (see `GameSuggestionService`) walks the game from the start and, at the first out-of-repertoire user move, either keeps a sufficiently sound user move or substitutes a stronger masters move, closing the corrected line out shortly after. At the annotation-flagged inaccuracy ply, a kept user move must be the masters favorite — otherwise it is substituted, so the fix never re-proposes the badged move. The result is a suggested **PGN** rendered below the tile:
 
