@@ -432,7 +432,7 @@ const DashboardPage: React.FC = () => {
                     <div className="dashboard-widget">
                         <h3 className="widget-title">📚 Repertoire</h3>
                         <div className="widget-stats">
-                            <StatRow label="Total cards" value={cards.total} />
+                            <StatRow label="Total moves" value={cards.total} />
                             <StatRow label="New" value={cards.newCount} />
                             <StatRow label="Learning" value={cards.learning} />
                             <StatRow label="Due review" value={cards.reviewDue} />

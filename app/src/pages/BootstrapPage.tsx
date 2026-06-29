@@ -100,6 +100,18 @@ const BootstrapPage: React.FC = () => {
         [saveModel],
     );
 
+    // "Moves to learn" = your-move edges only (each gets an FSRS card); opponent
+    // replies aren't drilled, so they don't count. Surfaced instead of raw edge
+    // counts so the number matches the new cards the user sees in training.
+    const movesToLearn = useMemo(() => {
+        if (!saveModel) return { white: 0, black: 0 };
+        const count = (color: Orientation) => {
+            const rep = saveModel.currentRepertoires.find(r => r.orientation === color);
+            return rep ? Object.keys(extractFsrsCardsFromRepertoires([rep])).length : 0;
+        };
+        return { white: count('white'), black: count('black') };
+    }, [saveModel]);
+
     const run = useCallback(async () => {
         const ctrl = new AbortController();
         abortRef.current = ctrl;
@@ -297,8 +309,8 @@ const BootstrapPage: React.FC = () => {
             {stage === 'summary' && selection && (
                 <SummaryPanel
                     gamesAnalyzed={games?.length ?? 0}
-                    whiteCount={selection.white.length}
-                    blackCount={selection.black.length}
+                    whiteCount={movesToLearn.white}
+                    blackCount={movesToLearn.black}
                     chains={addedChains}
                     saveInFlight={saveInFlight}
                     onSaveAndTrain={handleSaveAndTrain}
@@ -369,7 +381,6 @@ const SummaryPanel: React.FC<{
     const [showLines, setShowLines] = useState(false);
     const whiteChains = chains.filter(c => c.orientation === 'white');
     const blackChains = chains.filter(c => c.orientation === 'black');
-    const lineCount = chains.length;
     return (
         <div className="bootstrap-summary">
             <div className="bootstrap-summary-emoji" aria-hidden="true">🎉</div>
@@ -384,7 +395,7 @@ const SummaryPanel: React.FC<{
                     <dd>{gamesAnalyzed}</dd>
                 </div>
                 <div className="bootstrap-summary-stat">
-                    <dt>Lines proposed</dt>
+                    <dt>Moves to learn</dt>
                     <dd>{total}</dd>
                 </div>
                 <div className="bootstrap-summary-stat">
@@ -426,7 +437,7 @@ const SummaryPanel: React.FC<{
                 disabled={saveInFlight}
                 onClick={() => setShowLines(v => !v)}
             >
-                {showLines ? 'Hide repertoire' : `Show repertoire (${lineCount} line${lineCount === 1 ? '' : 's'})`}
+                {showLines ? 'Hide repertoire' : `Show repertoire (${total} move${total === 1 ? '' : 's'})`}
             </button>
             {showLines && (
                 <div className="bootstrap-lines" id="bootstrap-lines">
