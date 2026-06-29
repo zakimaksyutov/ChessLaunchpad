@@ -641,7 +641,7 @@ const GameRow: React.FC<GameRowProps> = ({
                 {!pending && (
                     <div className="game-verdict-bar">
                         <span
-                            className={`game-verdict-pill${isMistake ? '' : ' game-verdict-pill-clean'}`}
+                            className="game-verdict-pill"
                             style={{ backgroundColor: verdict.color }}
                         >
                             {verdict.label}
