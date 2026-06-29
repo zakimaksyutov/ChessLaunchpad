@@ -172,7 +172,10 @@
 }
 
 .bootstrap-proceed {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
     padding: 0.7rem 1.6rem;
     background: var(--cta-green, #2e7d32);
     color: #fff;
@@ -184,7 +187,7 @@
 }
 
 .bootstrap-proceed:hover {
-    background: var(--cta-green-hover, #276b2b);
+    background: var(--cta-green-hover, #1b5e20);
 }
 
 .bootstrap-proceed:disabled {

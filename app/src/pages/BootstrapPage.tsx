@@ -416,7 +416,7 @@ const SummaryPanel: React.FC<{
                     disabled={saveInFlight}
                     aria-busy={saveInFlight}
                 >
-                    {saveInFlight ? 'Saving…' : 'Save & start training →'}
+                    {saveInFlight ? 'Saving…' : 'Save & start training'}
                 </button>
                 <button
                     type="button"
