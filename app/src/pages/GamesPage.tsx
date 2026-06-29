@@ -595,7 +595,7 @@ const GameRow: React.FC<GameRowProps> = ({
         }
         : hasDeviation
             ? { label: 'Off your repertoire', color: '#9b59b6' }
-            : { label: 'No mistakes', color: '#27ae60' };
+            : { label: 'No opening mistakes', color: '#1e8449' };
 
     useEffect(() => {
         if (!menuOpen) return;
