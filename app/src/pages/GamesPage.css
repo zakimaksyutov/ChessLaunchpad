@@ -575,48 +575,24 @@
     user-select: none;
 }
 
-.move-token {
-    border-radius: 3px;
-    padding: 1px 2px;
-}
+/* Every move renders in the regular text color — the narrative section header
+   above each run is the signal, so the per-move colored backgrounds were
+   dropped to cut visual noise. */
 
-.move-in-repertoire {
-    background-color: #c8f7c5;
-}
-
-/* In-repertoire user moves deep-link into the Explorer. Keep the move styling
-   intact (inherit color, no underline) and only signal interactivity via the
-   pointer cursor on hover — intentionally low-discoverability. */
+/* In-repertoire user moves deep-link into the Explorer. Underline them (in the
+   regular text color) so the link affordance is discoverable. */
 .move-link {
     color: inherit;
-    text-decoration: none;
     cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: #c4c4c4;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
 }
 
 .move-link:hover {
-    text-decoration: none;
-}
-
-.move-deviation {
-    border: 2px solid #9b59b6;
-    border-radius: 3px;
-    font-weight: 600;
-}
-
-.move-eot-inaccuracy {
-    background-color: #fff3cd;
-}
-
-.move-eot-mistake {
-    background-color: #f8d7da;
-}
-
-.move-eot-blunder {
-    background-color: #e2d4f0;
-}
-
-.move-out-of-theory {
-    background-color: transparent;
+    color: inherit;
+    text-decoration-color: #888;
 }
 
 .move-opponent {
@@ -625,8 +601,8 @@
 
 /* ─── Narrative PGN sections ───
    The annotated line is grouped into labeled phases (In your repertoire /
-   Off your prep / pivot / Back in your repertoire / Out of theory) so the
-   per-move colors become reinforcement rather than the only signal. */
+   Off your prep / pivot / Back in your repertoire / The game continues) so the
+   section header carries the meaning rather than per-move color. */
 .game-sections {
     display: flex;
     flex-direction: column;
