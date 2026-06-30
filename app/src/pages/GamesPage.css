@@ -1,3 +1,34 @@
+/* ─── Games palette ───
+   Single source of truth for the tile color scheme. Both this stylesheet and
+   the inline styles in GamesPage.tsx (PIVOT_COLORS / sectionHeaderInfo /
+   THREAT_LEVEL_COLORS) read these vars via var(--…), so a palette tweak is one
+   edit here and the badge / tile border / error-ply outline / section accent
+   can never drift apart. All are dark enough to clear WCAG AA as small text on
+   white. */
+:root {
+    /* Verdict / pivot scale — badge fill, tile border, error-ply outline, and
+       pivot section accent all share these. Deviation == blunder on purpose:
+       same "you left your prep" severity, so they read as one color. */
+    --verdict-clean: #1e8449;
+    --pivot-ok: #888;
+    --pivot-inaccuracy: #8a6a0a;
+    --pivot-mistake: #c0392b;
+    --pivot-blunder: #7b3f9e;
+    --pivot-deviation: var(--pivot-blunder);
+
+    /* Non-pivot section-header accents (no per-move border equivalent). */
+    --section-in-book: var(--verdict-clean);
+    --section-off-prep: #5e6672;
+    --section-out-of-theory: #757575;
+
+    /* Opponent-threat scale (opponent-analysis panel) — a separate scale that
+       happens to share some hues; kept independent so it can diverge. */
+    --threat-low: #27ae60;
+    --threat-moderate: #b8860b;
+    --threat-high: #c0392b;
+    --threat-very-high: #7b3f9e;
+}
+
 .games-page {
     display: flex;
     flex-direction: column;
@@ -337,27 +368,25 @@
 }
 
 /* Analyzed row with no mistakes — green border so every tile has one,
-   matching the colored borders used for deviation/EOT rows. These border
-   colors mirror PIVOT_COLORS in GamesPage.tsx (badge + section accents) — keep
-   the two in sync. */
+   matching the colored borders used for deviation/EOT rows. */
 .game-row-clean {
-    border-color: #1e8449;
+    border-color: var(--verdict-clean);
 }
 
 .game-row-deviation {
-    border-color: #9b59b6;
+    border-color: var(--pivot-deviation);
 }
 
 .game-row-eot-inaccuracy {
-    border-color: #8a6a0a;
+    border-color: var(--pivot-inaccuracy);
 }
 
 .game-row-eot-mistake {
-    border-color: #c0392b;
+    border-color: var(--pivot-mistake);
 }
 
 .game-row-eot-blunder {
-    border-color: #7b3f9e;
+    border-color: var(--pivot-blunder);
 }
 
 .game-mini-board {
@@ -615,19 +644,19 @@
 }
 
 .move-deviation {
-    border-color: #9b59b6;
+    border-color: var(--pivot-deviation);
 }
 
 .move-eot-inaccuracy {
-    border-color: #8a6a0a;
+    border-color: var(--pivot-inaccuracy);
 }
 
 .move-eot-mistake {
-    border-color: #c0392b;
+    border-color: var(--pivot-mistake);
 }
 
 .move-eot-blunder {
-    border-color: #7b3f9e;
+    border-color: var(--pivot-blunder);
 }
 
 /* ─── Narrative PGN sections ───
@@ -735,19 +764,19 @@
 }
 
 .opp-threat-low {
-    border-left-color: #27ae60;
+    border-left-color: var(--threat-low);
 }
 
 .opp-threat-moderate {
-    border-left-color: #b8860b;
+    border-left-color: var(--threat-moderate);
 }
 
 .opp-threat-high {
-    border-left-color: #c0392b;
+    border-left-color: var(--threat-high);
 }
 
 .opp-threat-very-high {
-    border-left-color: #7b3f9e;
+    border-left-color: var(--threat-very-high);
 }
 
 .opponent-analysis-header {

@@ -229,22 +229,24 @@ const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
 /**
  * Accent color per pivot category, shared by the tile's verdict badge (filled
  * background, white text) and the narrative section header (text + border on
- * white) so the two never drift. Dark enough to clear WCAG AA as small text on
- * white. `ok` never pivots — it's only here to satisfy the EvalDropCategory record.
+ * white) so the two never drift. Values resolve to the `--pivot-*` custom
+ * properties defined in GamesPage.css — the single source the CSS tile borders
+ * and error-ply outlines also read, so the whole scheme tweaks in one place.
+ * `ok` never pivots — it's only here to satisfy the EvalDropCategory record.
  */
 const PIVOT_COLORS: Record<EvalDropCategory | 'deviation', string> = {
-    ok: '#888',
-    deviation: '#9b59b6',
-    inaccuracy: '#8a6a0a',
-    mistake: '#c0392b',
-    blunder: '#7b3f9e',
+    ok: 'var(--pivot-ok)',
+    deviation: 'var(--pivot-deviation)',
+    inaccuracy: 'var(--pivot-inaccuracy)',
+    mistake: 'var(--pivot-mistake)',
+    blunder: 'var(--pivot-blunder)',
 };
 
 const THREAT_LEVEL_COLORS: Record<string, string> = {
-    'low': '#27ae60',
-    'moderate': '#b8860b',
-    'high': '#c0392b',
-    'very-high': '#7b3f9e',
+    'low': 'var(--threat-low)',
+    'moderate': 'var(--threat-moderate)',
+    'high': 'var(--threat-high)',
+    'very-high': 'var(--threat-very-high)',
 };
 
 const THREAT_LEVEL_LABELS: Record<string, string> = {
@@ -279,13 +281,13 @@ function getMoveClassName(move: AnnotatedMove): string {
 function sectionHeaderInfo(section: GameSection): { label: string; color: string } {
     switch (section.kind) {
         case 'in-repertoire':
-            return { label: 'In your repertoire', color: '#1e8449' };
+            return { label: 'In your repertoire', color: 'var(--section-in-book)' };
         case 'off-prep':
-            return { label: 'Off your prep — still book theory', color: '#5e6672' };
+            return { label: 'Off your prep — still book theory', color: 'var(--section-off-prep)' };
         case 'back-to-repertoire':
-            return { label: 'Back in your repertoire', color: '#1e8449' };
+            return { label: 'Back in your repertoire', color: 'var(--section-in-book)' };
         case 'out-of-theory':
-            return { label: 'The game continues', color: '#757575' };
+            return { label: 'The game continues', color: 'var(--section-out-of-theory)' };
         case 'pivot': {
             const kind = section.pivotKind ?? 'mistake';
             const label = kind === 'deviation'
@@ -327,12 +329,12 @@ const OpponentAnalysisDisplay: React.FC<{ analysis: OpponentAnalysisResult }> = 
                 <svg className="opponent-analysis-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     {isLow ? (
                         <>
-                            <circle cx="12" cy="12" r="10" fill={color} />
+                            <circle cx="12" cy="12" r="10" style={{ fill: color }} />
                             <text x="12" y="17" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">i</text>
                         </>
                     ) : (
                         <>
-                            <path d="M12 2L1 21h22L12 2z" fill={color} />
+                            <path d="M12 2L1 21h22L12 2z" style={{ fill: color }} />
                             <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                         </>
                     )}
@@ -668,7 +670,7 @@ const GameRow: React.FC<GameRowProps> = ({
         }
         : hasDeviation
             ? { label: 'Off your repertoire', color: PIVOT_COLORS.deviation }
-            : { label: 'No opening mistakes', color: '#1e8449' };
+            : { label: 'No opening mistakes', color: 'var(--verdict-clean)' };
 
     useEffect(() => {
         if (!menuOpen) return;
@@ -865,7 +867,7 @@ const GameRow: React.FC<GameRowProps> = ({
                         {annotation?.deviation && (
                             <div className="game-deviation-summary">
                                 <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2L1 21h22L12 2z" fill="#9b59b6"/>
+                                    <path d="M12 2L1 21h22L12 2z" style={{ fill: 'var(--pivot-deviation)' }}/>
                                     <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                                 </svg>
                                 Repertoire has{' '}
