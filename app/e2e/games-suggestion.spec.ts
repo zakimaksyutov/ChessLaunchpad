@@ -148,9 +148,9 @@ async function openGames(page: Page) {
   await page.getByRole('button', { name: /All games/ }).click();
 }
 
-/** The `.game-row` that carries an end-of-theory summary. */
+/** The `.game-row` that reached end-of-theory with an eval-drop mistake. */
 function eotRow(page: Page) {
-  return page.locator('.game-row').filter({ has: page.locator('.game-eot-summary') });
+  return page.locator('.game-row[class*="game-row-eot-"]');
 }
 
 test.describe('Games — Suggest a fix', () => {

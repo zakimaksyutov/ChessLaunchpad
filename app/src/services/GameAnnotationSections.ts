@@ -152,7 +152,7 @@ export function partitionAnnotationIntoSections(annotation: GameAnnotation): Gam
                 ? nextKind
                 : prevKind;
         // An opponent move must never form/join the lone `pivot` section — that
-        // would put the opponent's move under a "Your blunder" header and break
+        // would put the opponent's move under a "Blunder" header and break
         // the "pivot stands alone" invariant. The only way this arises is the
         // opening opponent move when Black's very first move is the pivot.
         // Attribute it to the phase its own move created: a deviation pivot

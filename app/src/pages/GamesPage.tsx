@@ -266,7 +266,7 @@ function getMoveClassName(move: AnnotatedMove): string {
 
 /**
  * Header label + accent color for a PGN section. Section headers carry the
- * narrative ("In your repertoire", "Your blunder", …) so the per-move color
+ * narrative ("In your repertoire", "Blunder", …) so the per-move color
  * scheme becomes reinforcement rather than the only signal for new users.
  */
 function sectionHeaderInfo(section: GameSection): { label: string; color: string } {
@@ -290,7 +290,7 @@ function sectionHeaderInfo(section: GameSection): { label: string; color: string
                 mistake: '#c0392b',
                 blunder: '#7b3f9e',
             };
-            return { label: `Your ${kind}`, color: PIVOT_LABEL_COLOR[kind] ?? '#c0392b' };
+            return { label: kind.charAt(0).toUpperCase() + kind.slice(1), color: PIVOT_LABEL_COLOR[kind] ?? '#c0392b' };
         }
     }
 }
@@ -691,7 +691,7 @@ const GameRow: React.FC<GameRowProps> = ({
     // Render one PGN move token (move number + colored SAN, with an Explorer
     // deep-link on in-repertoire user moves). Shared by the flat and sectioned
     // PGN layouts. `isLead` forces a move number on the first move of a section
-    // even when it's a black move (so a section like "Your mistake" reads
+    // even when it's a black move (so a section like "Mistake" reads
     // "15… Be7", not a context-free "Be7").
     const renderMoveToken = (move: AnnotatedMove, key: React.Key, isLead = false): React.ReactNode => {
         const explorerLink =
@@ -875,23 +875,16 @@ const GameRow: React.FC<GameRowProps> = ({
                             </div>
                         )}
 
-                        {eotSummary && (
+                        {allowAnalyzeAction && !analyzeProgress && (
                             <div className="game-eot-summary">
-                                <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
-                                    <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
-                                </svg>
-                                You played <strong>{eotSummary.moveLabel} {eotSummary.userSan}</strong>
-                                {allowAnalyzeAction && !analyzeProgress && (
-                                    <a
-                                        className="analyze-opponent-link"
-                                        role="button"
-                                        onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(record)}
-                                        aria-disabled={analyzeDisabled}
-                                    >
-                                        Analyze opponent
-                                    </a>
-                                )}
+                                <a
+                                    className="analyze-opponent-link"
+                                    role="button"
+                                    onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(record)}
+                                    aria-disabled={analyzeDisabled}
+                                >
+                                    Analyze opponent
+                                </a>
                             </div>
                         )}
 
