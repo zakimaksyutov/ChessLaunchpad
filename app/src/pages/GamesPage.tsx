@@ -510,13 +510,20 @@ const GameRow: React.FC<GameRowProps> = ({
     }, [meta.createdAt]);
 
     const boardAnnotations: ChessControlAnnotation[] = useMemo(() => {
-        if (!annotation?.deviation) return [];
-        const arrows: ChessControlAnnotation[] = [];
-        for (const rm of annotation.deviation.repertoireMoves) {
-            arrows.push({ color: 'green', from: rm.from as Square, to: rm.to as Square });
+        if (annotation?.deviation) {
+            const arrows: ChessControlAnnotation[] = [];
+            for (const rm of annotation.deviation.repertoireMoves) {
+                arrows.push({ color: 'green', from: rm.from as Square, to: rm.to as Square });
+            }
+            arrows.push({ color: 'red', from: annotation.deviation.userMove.from as Square, to: annotation.deviation.userMove.to as Square });
+            return arrows;
         }
-        arrows.push({ color: 'red', from: annotation.deviation.userMove.from as Square, to: annotation.deviation.userMove.to as Square });
-        return arrows;
+        // EOT eval-drop row: a single red arrow on the bad move, drawn on the
+        // position before it (mirrors the deviation treatment, no green arrows).
+        if (annotation?.evalDropArrow) {
+            return [{ color: 'red', from: annotation.evalDropArrow.from as Square, to: annotation.evalDropArrow.to as Square }];
+        }
+        return [];
     }, [annotation]);
 
     const boardFen = annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

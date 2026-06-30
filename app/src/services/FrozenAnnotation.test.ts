@@ -74,6 +74,13 @@ async function expectRoundTrip(
     } else {
         expect(thawed!.deviation).toBeUndefined();
     }
+
+    if (live!.evalDropArrow) {
+        expect(thawed!.evalDropArrow).toBeDefined();
+        expect(thawed!.evalDropArrow).toMatchObject(live!.evalDropArrow);
+    } else {
+        expect(thawed!.evalDropArrow).toBeUndefined();
+    }
     return { fan, thawed: thawed! };
 }
 
@@ -150,8 +157,11 @@ describe('frozen-annotation round trip (annotateRecord -> freeze -> thaw)', () =
         const bc4 = thawed.moves.find(m => m.san === 'Bc4')!;
         expect(bc4.highlight).toBe('out-of-repertoire-response');
         expect(bc4.evalDrop?.category).toBe('inaccuracy');
-        // Anchor = the first post-theory position (after Bc4 = 5 plies).
-        expect(fan.mb).toBe(5);
+        // Anchor = the position BEFORE the bad move Bc4 (after e4 e5 Nf3 a6 = 4 plies).
+        expect(fan.mb).toBe(4);
+        // The bad move is marked with a red arrow on that position.
+        expect(thawed.evalDropArrow).toMatchObject({ from: 'f1', to: 'c4', san: 'Bc4' });
+        expect(thawed.deviation).toBeUndefined();
     });
 
     it('round-trips a move from a user-to-move leaf as a graded post-theory move, not a deviation', async () => {
@@ -238,6 +248,24 @@ describe('buildAnnotationFromFrozen — code -> highlight reconstruction', () =>
         // Mini board is the position before the deviation (after e4 e5).
         const expectedFen = (() => { const c = new Chess(); c.move('e4'); c.move('e5'); return c.fen(); })();
         expect(ann.miniBoardFen).toBe(expectedFen);
+    });
+
+    it('anchors an EOT eval-drop before the bad move with a red arrow even when mb points after (legacy fan)', async () => {
+        const sans = ['e4', 'e5', 'Nf3', 'a6', 'Bc4'];
+        // Legacy fan: `mb` points AFTER the bad move (the pre-change anchor).
+        // Thaw must still render the position before Bc4 with a red arrow on it,
+        // derived from the `hl` codes rather than the stale `mb`.
+        const fan: FrozenAnnotation = { hl: [0, 0, 3], mb: 5 };
+        const ann = buildAnnotationFromFrozen(fan, sans, 'white');
+        expect(ann.evalDropArrow).toMatchObject({ from: 'f1', to: 'c4', san: 'Bc4' });
+        expect(ann.deviation).toBeUndefined();
+        const expectedFen = (() => {
+            const c = new Chess();
+            ['e4', 'e5', 'Nf3', 'a6'].forEach(m => c.move(m));
+            return c.fen();
+        })();
+        expect(ann.miniBoardFen).toBe(expectedFen);
+        expect(ann.miniBoardPly).toBe(4);
     });
 });
 

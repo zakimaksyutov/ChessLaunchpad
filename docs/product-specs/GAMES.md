@@ -111,7 +111,7 @@ The **starting position is always treated as book** (seeded into the analysis pa
 
 - **`hl`** holds one **highlight code per user move** across the frozen display window (opponent moves carry no code — they always render neutral). `hl.length` *is* the window: render replays `m`, assigns codes to user moves in order, and shows moves through the last user move in `hl`. Codes: `0` in-repertoire, `1` deviation, `2` post-theory ok, `3` inaccuracy (≥ 30 cp), `4` mistake (≥ 50 cp), `5` blunder (≥ 70 cp), `7` out-of-theory. (`6`, out-of-repertoire, applies only to opponent moves and is never stored.)
 - **`alt`** carries the repertoire move(s) available at the deviation, as SAN, for the green arrows and the deviation summary — present only when `hl` contains a `1`. Render parses each at the deviation position to recover `{from, to}`.
-- **`mb`** is the mini-board anchor ply: the half-move depth of the position shown on the row's mini board. For a deviation it's the position *before* the code-`1` ply (where the arrows are drawn).
+- **`mb`** is the mini-board anchor ply: the half-move depth of the position shown on the row's mini board. For a deviation (code `1`) or an EOT eval-drop (code `3`/`4`/`5`) it's the position *before* that move, where the arrows are drawn. The EOT anchor is re-derived from `hl` + `m` (not `mb`), so older records whose `mb` points *after* the bad move still render correctly.
 - **No automatic invalidation.** `fan` is not recomputed when the repertoire changes — that's the whole point of freezing it. The user applies their current repertoire to a game deliberately via **Re-annotate**.
 
 ### Masters theory + the Lichess OAuth requirement
@@ -138,7 +138,7 @@ For **Lichess** records, Re-annotate first re-fetches the game from `/api/game/e
 
 Each row shows:
 
-- **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start. When the user deviated, **green arrows** mark the repertoire moves and a **red arrow** marks the move played.
+- **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start, always shown *before* the relevant move. A **red arrow** marks the move played; a deviation also draws **green arrows** for the repertoire move(s).
 - **Players** — White / Black names with ratings; the user's side is visually emphasized.
 - **Right column** — Result · Rated/Casual · Speed · Time control · Date · "View on platform" link.
 - **Verdict bar** — leads the tile: a colored pill states the takeaway (*Mistake* / *Inaccuracy* / *Blunder* for EOT eval-drops, *Off your repertoire* for a deviation, *No opening mistakes* when clean), with the row's actions (**Suggest a fix**, **Mark reviewed**) right-aligned beside it.
