@@ -599,6 +599,35 @@
     color: #999;
 }
 
+/* The pivotal ply — the deviation or the eval-drop that ended your prep — gets
+   a colored outline (matching its section-header accent) so the eye lands on
+   the exact move in question. Exactly one move per game carries these classes. */
+.move-deviation,
+.move-eot-inaccuracy,
+.move-eot-mistake,
+.move-eot-blunder {
+    border: 2px solid;
+    border-radius: 3px;
+    padding: 1px 3px;
+    font-weight: 600;
+}
+
+.move-deviation {
+    border-color: #9b59b6;
+}
+
+.move-eot-inaccuracy {
+    border-color: #8a6a0a;
+}
+
+.move-eot-mistake {
+    border-color: #c0392b;
+}
+
+.move-eot-blunder {
+    border-color: #7b3f9e;
+}
+
 /* ─── Narrative PGN sections ───
    The annotated line is grouped into labeled phases (In your repertoire /
    Off your prep / pivot / Back in your repertoire / The game continues) so the
