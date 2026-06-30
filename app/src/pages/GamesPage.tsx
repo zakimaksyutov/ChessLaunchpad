@@ -278,7 +278,7 @@ function sectionHeaderInfo(section: GameSection): { label: string; color: string
         case 'back-to-repertoire':
             return { label: 'Back in your repertoire', color: '#1e8449' };
         case 'out-of-theory':
-            return { label: 'Out of theory', color: '#757575' };
+            return { label: 'The game continues', color: '#757575' };
         case 'pivot': {
             const kind = section.pivotKind ?? 'mistake';
             if (kind === 'deviation') return { label: 'You left your repertoire', color: '#9b59b6' };
