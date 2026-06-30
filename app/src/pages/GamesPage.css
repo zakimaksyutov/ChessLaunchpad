@@ -735,11 +735,6 @@
     text-decoration: underline;
 }
 
-.game-overflow-done {
-    color: #888 !important;
-    cursor: default !important;
-}
-
 /* Analyze opponent inline link */
 .analyze-opponent-link {
     color: rgb(0, 130, 210);

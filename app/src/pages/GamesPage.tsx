@@ -697,11 +697,6 @@ const GameRow: React.FC<GameRowProps> = ({
                                             <button onClick={() => { setMenuOpen(false); onReannotate(record, userLower); }}>
                                                 Re-annotate
                                             </button>
-                                            {showOpponentAnalysis && (
-                                                <button disabled className="game-overflow-done">
-                                                    Opponent analysis ✓
-                                                </button>
-                                            )}
                                         </div>
                                     )}
                                 </div>
