@@ -226,9 +226,16 @@ const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
     blunder: 'move-eot-blunder',
 };
 
-const EOT_ICON_COLORS: Record<EvalDropCategory, string> = {
+/**
+ * Accent color per pivot category, shared by the tile's verdict badge (filled
+ * background, white text) and the narrative section header (text + border on
+ * white) so the two never drift. Dark enough to clear WCAG AA as small text on
+ * white. `ok` never pivots — it's only here to satisfy the EvalDropCategory record.
+ */
+const PIVOT_COLORS: Record<EvalDropCategory | 'deviation', string> = {
     ok: '#888',
-    inaccuracy: '#b8860b',
+    deviation: '#9b59b6',
+    inaccuracy: '#8a6a0a',
     mistake: '#c0392b',
     blunder: '#7b3f9e',
 };
@@ -281,16 +288,10 @@ function sectionHeaderInfo(section: GameSection): { label: string; color: string
             return { label: 'The game continues', color: '#757575' };
         case 'pivot': {
             const kind = section.pivotKind ?? 'mistake';
-            if (kind === 'deviation') return { label: 'You left your repertoire', color: '#9b59b6' };
-            // EvalDropCategory ('inaccuracy' | 'mistake' | 'blunder'); 'ok' never
-            // pivots. These are darker than EOT_ICON_COLORS (the bright board /
-            // dot palette) so the small uppercase label clears WCAG AA on white.
-            const PIVOT_LABEL_COLOR: Record<string, string> = {
-                inaccuracy: '#8a6a0a',
-                mistake: '#c0392b',
-                blunder: '#7b3f9e',
-            };
-            return { label: kind.charAt(0).toUpperCase() + kind.slice(1), color: PIVOT_LABEL_COLOR[kind] ?? '#c0392b' };
+            const label = kind === 'deviation'
+                ? 'You left your repertoire'
+                : kind.charAt(0).toUpperCase() + kind.slice(1);
+            return { label, color: PIVOT_COLORS[kind] };
         }
     }
 }
@@ -663,10 +664,10 @@ const GameRow: React.FC<GameRowProps> = ({
     const verdict: { label: string; color: string } = eotSummary
         ? {
             label: eotSummary.category.charAt(0).toUpperCase() + eotSummary.category.slice(1),
-            color: EOT_ICON_COLORS[eotSummary.category],
+            color: PIVOT_COLORS[eotSummary.category],
         }
         : hasDeviation
-            ? { label: 'Off your repertoire', color: '#9b59b6' }
+            ? { label: 'Off your repertoire', color: PIVOT_COLORS.deviation }
             : { label: 'No opening mistakes', color: '#1e8449' };
 
     useEffect(() => {

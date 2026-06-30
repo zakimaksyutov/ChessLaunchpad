@@ -337,7 +337,9 @@
 }
 
 /* Analyzed row with no mistakes — green border so every tile has one,
-   matching the colored borders used for deviation/EOT rows. */
+   matching the colored borders used for deviation/EOT rows. These border
+   colors mirror PIVOT_COLORS in GamesPage.tsx (badge + section accents) — keep
+   the two in sync. */
 .game-row-clean {
     border-color: #1e8449;
 }
@@ -347,7 +349,7 @@
 }
 
 .game-row-eot-inaccuracy {
-    border-color: #b8860b;
+    border-color: #8a6a0a;
 }
 
 .game-row-eot-mistake {
