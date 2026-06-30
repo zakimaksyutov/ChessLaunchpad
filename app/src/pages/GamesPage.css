@@ -643,6 +643,16 @@
     padding-left: 0.6rem;
 }
 
+/* The error (pivot) section gets a thicker accent line to pull the eye. It's
+   shifted 1px left (margin) so the thicker line stays centered on the same axis
+   as the other sections' 2px lines, and padding-left is reduced so the section
+   text still lines up with the other sections. */
+.game-section-pivot {
+    border-left-width: 4px;
+    margin-left: -1px;
+    padding-left: calc(0.6rem - 1px);
+}
+
 .game-section-header {
     display: flex;
     align-items: flex-start;
