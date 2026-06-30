@@ -23,6 +23,10 @@ import {
     GameAnnotation,
 } from '../services/GameAnnotationService';
 import {
+    partitionAnnotationIntoSections,
+    GameSection,
+} from '../services/GameAnnotationSections';
+import {
     annotateRecordFromFrozen,
     getRecordMetadata,
     getRecordOpponentName,
@@ -259,6 +263,38 @@ function getMoveClassName(move: AnnotatedMove): string {
             return 'move-token move-out-of-theory';
     }
 }
+
+/**
+ * Header label + accent color for a PGN section. Section headers carry the
+ * narrative ("In your repertoire", "Your blunder", …) so the per-move color
+ * scheme becomes reinforcement rather than the only signal for new users.
+ */
+function sectionHeaderInfo(section: GameSection): { label: string; color: string } {
+    switch (section.kind) {
+        case 'in-repertoire':
+            return { label: 'In your repertoire', color: '#1e8449' };
+        case 'off-prep':
+            return { label: 'Off your prep — still book theory', color: '#5e6672' };
+        case 'back-to-repertoire':
+            return { label: 'Back in your repertoire', color: '#1e8449' };
+        case 'out-of-theory':
+            return { label: 'Out of theory', color: '#757575' };
+        case 'pivot': {
+            const kind = section.pivotKind ?? 'mistake';
+            if (kind === 'deviation') return { label: 'You left your repertoire', color: '#9b59b6' };
+            // EvalDropCategory ('inaccuracy' | 'mistake' | 'blunder'); 'ok' never
+            // pivots. These are darker than EOT_ICON_COLORS (the bright board /
+            // dot palette) so the small uppercase label clears WCAG AA on white.
+            const PIVOT_LABEL_COLOR: Record<string, string> = {
+                inaccuracy: '#8a6a0a',
+                mistake: '#c0392b',
+                blunder: '#7b3f9e',
+            };
+            return { label: `Your ${kind}`, color: PIVOT_LABEL_COLOR[kind] ?? '#c0392b' };
+        }
+    }
+}
+
 
 function formatPlayerLabel(name: string, rating: number | undefined, isUser: boolean): React.ReactNode {
     return (
@@ -528,6 +564,35 @@ const GameRow: React.FC<GameRowProps> = ({
 
     const boardFen = annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+    // Narrative sections for the PGN (in-repertoire / off-prep / pivot /
+    // back-to-repertoire / out-of-theory). Headers carry the meaning so the
+    // per-move colors become reinforcement. A single-section game (e.g. fully
+    // in book) renders the flat PGN with no section chrome.
+    const sections = useMemo(
+        () => (annotation ? partitionAnnotationIntoSections(annotation) : []),
+        [annotation],
+    );
+    // Show section chrome for any multi-section game, and for a single section
+    // that isn't the plain "In your repertoire" case — so a wholly off-prep or
+    // out-of-theory game still surfaces its narrative label (a fully in-book
+    // game stays chrome-free).
+    const showSections =
+        sections.length > 1 ||
+        (sections.length === 1 && sections[0].kind !== 'in-repertoire');
+
+    // Fullmove number for every move (black moves inherit their pair's number).
+    // Used to label a section's leading black move, which otherwise carries no
+    // number (only white moves do).
+    const fullMoveByMove = useMemo(() => {
+        const map = new Map<AnnotatedMove, number>();
+        let current = 1;
+        for (const m of annotation?.moves ?? []) {
+            if (m.moveNumber !== undefined) current = m.moveNumber;
+            map.set(m, current);
+        }
+        return map;
+    }, [annotation]);
+
     const eotSummary = useMemo(() => {
         if (!annotation) return null;
         const moves = annotation.moves;
@@ -622,6 +687,44 @@ const GameRow: React.FC<GameRowProps> = ({
     // Like Analyze opponent, the "Suggest a fix" link hides once one exists;
     // error / connect states keep the link so the user can retry.
     const hasSuggestion = suggestion?.status === 'ready' && suggestion.result.plies.length > 0;
+
+    // Render one PGN move token (move number + colored SAN, with an Explorer
+    // deep-link on in-repertoire user moves). Shared by the flat and sectioned
+    // PGN layouts. `isLead` forces a move number on the first move of a section
+    // even when it's a black move (so a section like "Your mistake" reads
+    // "15… Be7", not a context-free "Be7").
+    const renderMoveToken = (move: AnnotatedMove, key: React.Key, isLead = false): React.ReactNode => {
+        const explorerLink =
+            move.isUserMove && move.highlight === 'in-repertoire' && move.fenAfter
+                ? `?o=${meta.userColor}&fen=${encodeURIComponent(move.fenAfter)}`
+                : null;
+        const numberLabel =
+            move.moveNumber !== undefined
+                ? `${move.moveNumber}.`
+                : isLead
+                    ? `${fullMoveByMove.get(move) ?? ''}…`
+                    : null;
+        return (
+            <React.Fragment key={key}>
+                {numberLabel && (
+                    <span className="move-number">{numberLabel}&nbsp;</span>
+                )}
+                {explorerLink ? (
+                    <Link
+                        className={`${getMoveClassName(move)} move-link`}
+                        to={{ pathname: '/explorer', search: explorerLink }}
+                        title="Open in Explorer"
+                        onClick={() => trackEvent('GamesOpenInExplorer', { IsGameWithMistake: isMistake })}
+                    >
+                        {move.san}
+                    </Link>
+                ) : (
+                    <span className={getMoveClassName(move)}>{move.san}</span>
+                )}
+                {' '}
+            </React.Fragment>
+        );
+    };
 
     return (
         <div
@@ -728,36 +831,34 @@ const GameRow: React.FC<GameRowProps> = ({
                 ) : (
                     <>
                         {annotation && annotation.moves.length > 0 && (
-                            <div className="game-pgn">
-                                {annotation.moves.map((move, idx) => {
-                                    const explorerLink =
-                                        move.isUserMove &&
-                                        move.highlight === 'in-repertoire' &&
-                                        move.fenAfter
-                                            ? `?o=${meta.userColor}&fen=${encodeURIComponent(move.fenAfter)}`
-                                            : null;
-                                    return (
-                                        <React.Fragment key={idx}>
-                                            {move.moveNumber !== undefined && (
-                                                <span className="move-number">{move.moveNumber}.&nbsp;</span>
-                                            )}
-                                            {explorerLink ? (
-                                                <Link
-                                                    className={`${getMoveClassName(move)} move-link`}
-                                                    to={{ pathname: '/explorer', search: explorerLink }}
-                                                    title="Open in Explorer"
-                                                    onClick={() => trackEvent('GamesOpenInExplorer', { IsGameWithMistake: isMistake })}
-                                                >
-                                                    {move.san}
-                                                </Link>
-                                            ) : (
-                                                <span className={getMoveClassName(move)}>{move.san}</span>
-                                            )}
-                                            {' '}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </div>
+                            showSections ? (
+                                <div className="game-sections">
+                                    {sections.map((section, sIdx) => {
+                                        const { label, color } = sectionHeaderInfo(section);
+                                        return (
+                                            <div
+                                                key={sIdx}
+                                                className={`game-section game-section-${section.kind}`}
+                                                style={{ borderLeftColor: color }}
+                                                role="group"
+                                                aria-label={label}
+                                            >
+                                                <div className="game-section-header">
+                                                    <span className="game-section-dot" style={{ backgroundColor: color }} aria-hidden="true" />
+                                                    <span className="game-section-label" style={{ color }}>{label}</span>
+                                                </div>
+                                                <div className="game-pgn game-section-moves">
+                                                    {section.moves.map((move, mIdx) => renderMoveToken(move, `${sIdx}-${mIdx}`, mIdx === 0))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="game-pgn">
+                                    {annotation.moves.map((move, idx) => renderMoveToken(move, idx))}
+                                </div>
+                            )
                         )}
 
                         {annotation?.deviation && (
@@ -780,7 +881,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                     <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
                                     <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                                 </svg>
-                                You played <strong>{eotSummary.moveLabel} {eotSummary.userSan}</strong> (<strong className="eot-category" style={{ color: EOT_ICON_COLORS[eotSummary.category] }}>{eotSummary.category}</strong>)
+                                You played <strong>{eotSummary.moveLabel} {eotSummary.userSan}</strong>
                                 {allowAnalyzeAction && !analyzeProgress && (
                                     <a
                                         className="analyze-opponent-link"

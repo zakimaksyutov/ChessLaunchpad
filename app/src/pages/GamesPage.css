@@ -271,7 +271,7 @@
    hydrates, the row's height barely changes. */
 .game-row-pending {
     background: #fafbfc;
-    min-height: 236px;
+    min-height: 270px;
 }
 
 .game-mini-board-skeleton {
@@ -621,6 +621,48 @@
 
 .move-opponent {
     color: #999;
+}
+
+/* ─── Narrative PGN sections ───
+   The annotated line is grouped into labeled phases (In your repertoire /
+   Off your prep / pivot / Back in your repertoire / Out of theory) so the
+   per-move colors become reinforcement rather than the only signal. */
+.game-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.game-section {
+    border-left: 2px solid #ececf0;
+    padding-left: 0.6rem;
+}
+
+.game-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    line-height: 1.2;
+}
+
+.game-section-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 0.18rem;
+}
+
+.game-section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* Tighten the per-section PGN block (overrides the standalone .game-pgn gap). */
+.game-section-moves.game-pgn {
+    margin-top: 0.1rem;
 }
 
 .game-deviation-summary {
