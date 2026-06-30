@@ -271,7 +271,7 @@
    hydrates, the row's height barely changes. */
 .game-row-pending {
     background: #fafbfc;
-    min-height: 152px;
+    min-height: 236px;
 }
 
 .game-mini-board-skeleton {
@@ -360,8 +360,8 @@
 
 .game-mini-board {
     flex-shrink: 0;
-    width: 120px;
-    height: 120px;
+    width: 200px;
+    height: 200px;
 }
 
 .game-info {
