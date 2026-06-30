@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { Chess, Move } from 'chess.js';
-import { EvalDrop, EvalDropCategory } from '../services/EvalDropService';
 
 // Each halfmove token: "1. d4" or "d5" etc.
 interface MoveToken {
@@ -16,7 +15,6 @@ interface PgnControlProps {
     onClickMove?: (fen: string, previousFen: string, moveSan: string, anchorRect: DOMRect) => void;
     onRightClickMove?: (fen: string, event: React.MouseEvent) => void; // Called when user right-clicks a particular halfmove
     selectedFen?: string | null; // If this half-move is selected
-    evalDrops?: Map<string, EvalDrop>; // Optional eval-drop data for move highlighting
 }
 
 /**
@@ -64,20 +62,12 @@ function parsePgnWithMoveNumbers(pgn: string): MoveToken[] {
     return tokens;
 }
 
-const EVAL_DROP_COLORS: Record<EvalDropCategory, string> = {
-    ok: 'transparent',
-    inaccuracy: '#fff3cd',   // soft yellow
-    mistake: '#f8d7da',      // soft red
-    blunder: '#e2d4f0',      // soft purple
-};
-
 const PgnControl: React.FC<PgnControlProps> = ({
     pgn,
     onLeavePgn,
     onClickMove,
     selectedFen,
-    onRightClickMove,
-    evalDrops
+    onRightClickMove
 }) => {
     const moveTokens: MoveToken[] = useMemo(() => parsePgnWithMoveNumbers(pgn), [pgn]);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -92,11 +82,7 @@ const PgnControl: React.FC<PgnControlProps> = ({
                     const isHovered = (hoveredIndex === idx);
                     const isSelected = (selectedFen === token.fen);
 
-                    // Eval-drop background (if data available)
-                    const evalDrop = evalDrops?.get(token.fen);
-                    const evalBg = evalDrop ? EVAL_DROP_COLORS[evalDrop.category] : 'transparent';
-
-                    const backgroundColor = isHovered ? 'blue' : (isSelected ? 'lightblue' : evalBg);
+                    const backgroundColor = isHovered ? 'blue' : (isSelected ? 'lightblue' : 'transparent');
                     const color = isHovered ? 'white' : 'black';
 
                     return (
@@ -106,8 +92,6 @@ const PgnControl: React.FC<PgnControlProps> = ({
                                 cursor: 'pointer',
                                 backgroundColor,
                                 color,
-                                borderRadius: evalDrop && evalDrop.category !== 'ok' ? '3px' : undefined,
-                                padding: evalDrop && evalDrop.category !== 'ok' ? '1px 2px' : undefined,
                             }}
                             onMouseEnter={() => {
                                 setHoveredIndex(idx);
