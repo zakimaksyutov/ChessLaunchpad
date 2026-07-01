@@ -581,6 +581,15 @@
     background: #f5f5f5;
 }
 
+.game-overflow-dropdown button:disabled {
+    color: #b0b0b0;
+    cursor: not-allowed;
+}
+
+.game-overflow-dropdown button:disabled:hover {
+    background: none;
+}
+
 .game-opening {
     color: #555;
     font-size: 0.82rem;
@@ -721,12 +730,6 @@
     font-weight: 400;
 }
 
-.game-eot-summary {
-    font-size: 0.82rem;
-    color: #333;
-    margin-top: 0.15rem;
-}
-
 .eot-category {
     text-transform: capitalize;
     font-weight: 700;
@@ -828,25 +831,6 @@
 
 .opponent-game-link:hover {
     text-decoration: underline;
-}
-
-/* Analyze opponent inline link */
-.analyze-opponent-link {
-    color: rgb(0, 130, 210);
-    font-size: 0.78rem;
-    cursor: pointer;
-    text-decoration: none;
-    white-space: nowrap;
-}
-
-.analyze-opponent-link:hover {
-    text-decoration: underline;
-}
-
-.analyze-opponent-link[aria-disabled="true"] {
-    opacity: 0.4;
-    cursor: not-allowed;
-    pointer-events: none;
 }
 
 /* ─── Suggest a fix ─── */

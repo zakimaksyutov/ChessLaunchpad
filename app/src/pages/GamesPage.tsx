@@ -890,6 +890,14 @@ const GameRow: React.FC<GameRowProps> = ({
                                     >⋯</button>
                                     {menuOpen && (
                                         <div className="game-overflow-dropdown">
+                                            {allowAnalyzeAction && !analyzeProgress && (
+                                                <button
+                                                    disabled={analyzeDisabled}
+                                                    onClick={() => { setMenuOpen(false); onAnalyzeOpponent(record); }}
+                                                >
+                                                    Analyze opponent
+                                                </button>
+                                            )}
                                             <button onClick={() => { setMenuOpen(false); onReannotate(record, userLower); }}>
                                                 Re-annotate
                                             </button>
@@ -959,19 +967,6 @@ const GameRow: React.FC<GameRowProps> = ({
                                     {annotation.moves.map((move, idx) => renderMoveToken(move, idx))}
                                 </div>
                             )
-                        )}
-
-                        {allowAnalyzeAction && !analyzeProgress && (
-                            <div className="game-eot-summary">
-                                <a
-                                    className="analyze-opponent-link"
-                                    role="button"
-                                    onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(record)}
-                                    aria-disabled={analyzeDisabled}
-                                >
-                                    Analyze opponent
-                                </a>
-                            </div>
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (

@@ -199,6 +199,31 @@ test.describe('Games — Suggest a fix', () => {
     await expect(eot.locator('.suggest-fix-ready')).toHaveCount(0);
   });
 
+  test('offers "Analyze opponent" in the overflow menu on EOT rows only', async ({ page }) => {
+    const fixture = fixtureWith([eotRecord('eot1'), deviationRecord('dev1')]);
+    await setupMockEnvironment(page, fixture, USERNAME);
+    await setupMockLichess(page, USERNAME);
+
+    await openGames(page);
+
+    // EOT row: the "⋯" menu carries "Analyze opponent" alongside Re-annotate,
+    // and the old inline link is gone.
+    const eot = eotRow(page);
+    await eot.getByRole('button', { name: 'Game options' }).click();
+    const eotMenu = eot.locator('.game-overflow-dropdown');
+    await expect(eotMenu.getByRole('button', { name: 'Analyze opponent' })).toBeVisible();
+    await expect(eotMenu.getByRole('button', { name: 'Re-annotate' })).toBeVisible();
+    await expect(eot.locator('.analyze-opponent-link')).toHaveCount(0);
+    await eot.getByRole('button', { name: 'Game options' }).click();
+
+    // Deviation row: no EOT eval-drop, so the menu has Re-annotate only.
+    const deviation = page.locator('.game-row.game-row-deviation');
+    await deviation.getByRole('button', { name: 'Game options' }).click();
+    const devMenu = deviation.locator('.game-overflow-dropdown');
+    await expect(devMenu.getByRole('button', { name: 'Re-annotate' })).toBeVisible();
+    await expect(devMenu.getByRole('button', { name: 'Analyze opponent' })).toHaveCount(0);
+  });
+
   test('computes, renders and persists a suggested fix when connected', async ({ page }) => {
     const fixture = fixtureWith([eotRecord('eot1')]);
     const { saves } = await setupMockEnvironment(page, fixture, USERNAME);
