@@ -714,10 +714,11 @@
     margin-top: 0.1rem;
 }
 
-.game-deviation-summary {
-    font-size: 0.82rem;
-    color: #333;
-    margin-top: 0.25rem;
+/* Inline parenthetical after the deviation pivot's move: "(your repertoire
+   defined 2… e6)". Inherits the regular move text color/weight so it reads as a
+   plain aside rather than a styled move. */
+.repertoire-note {
+    font-weight: 400;
 }
 
 .game-eot-summary {
@@ -846,14 +847,6 @@
     opacity: 0.4;
     cursor: not-allowed;
     pointer-events: none;
-}
-
-.game-deviation-icon {
-    display: inline-block;
-    width: 1.15em;
-    height: 1.15em;
-    margin-right: 0.3em;
-    vertical-align: -0.15em;
 }
 
 /* ─── Suggest a fix ─── */

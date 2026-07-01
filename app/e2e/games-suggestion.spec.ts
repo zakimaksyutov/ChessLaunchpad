@@ -166,7 +166,7 @@ test.describe('Games — Suggest a fix', () => {
     await expect(eot).toHaveCount(1);
     await expect(eot.locator('.suggest-fix-link')).toBeVisible();
 
-    const deviation = page.locator('.game-row').filter({ has: page.locator('.game-deviation-summary') });
+    const deviation = page.locator('.game-row.game-row-deviation');
     await expect(deviation).toHaveCount(1);
     await expect(deviation.locator('.suggest-fix-link')).toHaveCount(0);
 
