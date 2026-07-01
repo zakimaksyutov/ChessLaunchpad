@@ -340,11 +340,13 @@ test.describe('Games — Suggest a fix', () => {
     const ready = eot.locator('.suggest-fix-ready');
     await expect(ready).toBeVisible();
 
-    // The pivot section still shows only the flagged move (no backward extension);
-    // the replaced move (Nc3) is outside the window, so it isn't in any section.
+    // The pivot section's move list still shows only the flagged move (no
+    // backward extension); the replaced move (Nc3) is outside the window, so it
+    // isn't in any section's moves.
     const pivot = eot.locator('.game-section-pivot');
-    await expect(pivot).toContainText('Bxc6');
-    await expect(pivot).not.toContainText('Nc3');
+    const pivotMoves = pivot.locator('.game-section-moves');
+    await expect(pivotMoves).toContainText('Bxc6');
+    await expect(pivotMoves).not.toContainText('Nc3');
 
     // The inline context line names the replaced move; the delta shows the fix.
     const context = ready.locator('.suggest-fix-explainer');

@@ -944,6 +944,12 @@ const GameRow: React.FC<GameRowProps> = ({
                                                         </span>
                                                     )}
                                                 </div>
+                                                {/* The repertoire-fix suggestion belongs to the mistake:
+                                                    render it inside the pivot section so the fix reads as
+                                                    part of the problem it corrects. */}
+                                                {section.kind === 'pivot' && eotSummary && !hasDeviation && suggestion && (
+                                                    <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} />
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -966,10 +972,6 @@ const GameRow: React.FC<GameRowProps> = ({
                                     Analyze opponent
                                 </a>
                             </div>
-                        )}
-
-                        {eotSummary && !hasDeviation && suggestion && (
-                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} />
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (
