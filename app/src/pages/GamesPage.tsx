@@ -24,6 +24,7 @@ import {
 } from '../services/GameAnnotationService';
 import {
     partitionAnnotationIntoSections,
+    findPivotMoveIndex,
     GameSection,
 } from '../services/GameAnnotationSections';
 import {
@@ -377,9 +378,10 @@ type SuggestionState =
     | { status: 'ready'; result: SuggestionResult };
 
 function suggestionMoveClass(ply: SuggestionPly): string {
-    // Match the main game tile PGN (`getMoveClassName`): opponent plies are
-    // always greyed, and only the user's own in-repertoire plies get the
-    // green background — repertoire membership of opponent plies is not shown.
+    // Mirror the main game tile PGN (`getMoveClassName`): opponent plies are
+    // greyed. Per-move background highlights were dropped branch-wide, so
+    // in-repertoire and plain user plies now render identically — only the
+    // diverging `isNew` plies are bolded (via `suggest-fix-new`).
     const base = !ply.isUserMove
         ? 'move-token move-opponent'
         : ply.inRepertoire
@@ -393,7 +395,21 @@ const SuggestionDisplay: React.FC<{
     orientation: 'white' | 'black';
     rowKey: string;
     applied: boolean;
-}> = ({ state, orientation, rowKey, applied }) => {
+    /**
+     * True when the fix diverges *before* the flagged mistake (Case 2): the
+     * pivot section has already absorbed the [divergence … mistake] span, so we
+     * add a one-line explainer naming the earlier move the fix improves on.
+     */
+    earlyDivergence: boolean;
+    /**
+     * True when the replaced move is visible in the sections above (Cases 1 & 2:
+     * the divergence sits within the annotation window, in the pivot or extended
+     * pivot section). When false the fix diverged at a later move outside the
+     * window, so nothing above names the replaced move — we surface an inline
+     * "instead of X" note instead.
+     */
+    replacedShownAbove: boolean;
+}> = ({ state, orientation, rowKey, applied, earlyDivergence, replacedShownAbove }) => {
     if (state.status === 'loading') {
         return (
             <div className="suggest-fix-result suggest-fix-loading" role="status" aria-live="polite">
@@ -432,24 +448,68 @@ const SuggestionDisplay: React.FC<{
     // to add (the user added an identical fix from an earlier same-opening
     // game). Show a confirmation instead of the "Add to repertoire" action.
     const fullyInRepertoire = isSuggestionFullyInRepertoire(result);
-    // The first diverging ply (the corrected move) carries the "instead of X" note.
+
+    // Only the changed tail is shown — everything before the divergence is
+    // identical to the played game already printed in the sections above.
+    // `firstNewIdx` is both the corrected move's ply index and, because the
+    // suggestion replays the game 1:1 up to it, the fullmove math anchor. A
+    // missing divergence (`-1`) means the line never differs; fall back to the
+    // whole line so we still show something.
     const firstNewIdx = result.plies.findIndex(p => p.isNew);
+    const deltaStart = firstNewIdx < 0 ? 0 : firstNewIdx;
+    const deltaPlies = result.plies.slice(deltaStart);
+
+    // "Replaced" move label ("14…" / "14.") for the corrected ply — used by the
+    // context line that names the move the fix improves on.
+    const replacedIsWhite = deltaStart % 2 === 0;
+    const replacedMoveNo = Math.floor(deltaStart / 2) + 1;
+    const replacedLabel = replacedIsWhite ? `${replacedMoveNo}.` : `${replacedMoveNo}…`;
+
+    // Context line naming the replaced move. Three cases (see the section
+    // rework in GAMES.md):
+    //   • Case 2 (early divergence): the fix corrects a move before the flagged
+    //     one — say so, since the pivot section spans the whole run.
+    //   • Case 3 (divergence after the pivot / outside the frozen window): the
+    //     replaced move isn't shown in any section, so name it inline.
+    //   • Case 1 (divergence at the flagged move): the pivot section already
+    //     shows it right above — no extra line.
+    // Wording stays category-agnostic ("stronger move was available"); the row
+    // may be an inaccuracy or blunder, not only a "mistake".
+    const replaced = result.replacedUserSan;
+    let contextLine: string | null = null;
+    if (replaced && earlyDivergence) {
+        contextLine = `A stronger move than ${replacedLabel} ${replaced} was available — the fix starts here.`;
+    } else if (replaced && !replacedShownAbove) {
+        contextLine = `Instead of ${replacedLabel} ${replaced}:`;
+    }
+
     return (
         <div className="suggest-fix-result suggest-fix-ready">
             <div className="suggest-fix-label">Suggested line</div>
+            {contextLine && (
+                <div className="suggest-fix-explainer">{contextLine}</div>
+            )}
             <div className="game-pgn suggest-fix-pgn">
-                {result.plies.map((ply, idx) => (
-                    <React.Fragment key={idx}>
-                        {ply.moveNumber !== undefined && (
-                            <span className="move-number">{ply.moveNumber}.&nbsp;</span>
-                        )}
-                        <span className={suggestionMoveClass(ply)}>{ply.san}</span>
-                        {idx === firstNewIdx && result.replacedUserSan && (
-                            <span className="suggest-fix-instead">&nbsp;(instead of {result.replacedUserSan})</span>
-                        )}
-                        {' '}
-                    </React.Fragment>
-                ))}
+                {deltaPlies.map((ply, idx) => {
+                    const absIdx = deltaStart + idx;
+                    // Lead a black move with its fullmove number ("14…"); white
+                    // moves already carry their number.
+                    const numberLabel =
+                        ply.moveNumber !== undefined
+                            ? `${ply.moveNumber}.`
+                            : idx === 0
+                                ? `${Math.floor(absIdx / 2) + 1}…`
+                                : null;
+                    return (
+                        <React.Fragment key={idx}>
+                            {numberLabel && (
+                                <span className="move-number">{numberLabel}&nbsp;</span>
+                            )}
+                            <span className={suggestionMoveClass(ply)}>{ply.san}</span>
+                            {' '}
+                        </React.Fragment>
+                    );
+                })}
             </div>
             <div className="suggest-fix-actions">
                 <a
@@ -567,13 +627,36 @@ const GameRow: React.FC<GameRowProps> = ({
 
     const boardFen = annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+    // A ready repertoire-fix suggestion's divergence, mapped back onto the game.
+    // `firstNewIdx` is the suggestion ply where the corrected line starts — and,
+    // because the suggestion replays the played game 1:1 up to that point, it is
+    // also the game ply index (and thus the `annotation.moves` index) of the
+    // replaced user move. `early` is true when that sits before the flagged
+    // pivot (Case 2: the fix corrects a move earlier than the mistake).
+    const suggestionDivergence = useMemo(() => {
+        if (!annotation || !suggestion || suggestion.status !== 'ready') return null;
+        const r = suggestion.result;
+        if (r.replacedUserSan === undefined) return null;
+        const firstNewIdx = r.plies.findIndex(p => p.isNew);
+        if (firstNewIdx < 0 || firstNewIdx >= annotation.moves.length) return null;
+        const pivotIndex = findPivotMoveIndex(annotation.moves);
+        return { firstNewIdx, pivotIndex, early: pivotIndex >= 0 && firstNewIdx < pivotIndex };
+    }, [annotation, suggestion]);
+
     // Narrative sections for the PGN (in-repertoire / off-prep / pivot /
     // back-to-repertoire / out-of-theory). Headers carry the meaning so the
     // per-move colors become reinforcement. A single-section game (e.g. fully
-    // in book) renders the flat PGN with no section chrome.
+    // in book) renders the flat PGN with no section chrome. When a fix diverges
+    // before the mistake, the pivot section is extended back to it so its border
+    // covers the whole problem zone.
     const sections = useMemo(
-        () => (annotation ? partitionAnnotationIntoSections(annotation) : []),
-        [annotation],
+        () => (annotation
+            ? partitionAnnotationIntoSections(
+                annotation,
+                suggestionDivergence?.early ? suggestionDivergence.firstNewIdx : undefined,
+            )
+            : []),
+        [annotation, suggestionDivergence],
     );
     // Show section chrome for any multi-section game, and for a single section
     // that isn't the plain "In your repertoire" case — so a wholly off-prep or
@@ -886,7 +969,7 @@ const GameRow: React.FC<GameRowProps> = ({
                         )}
 
                         {eotSummary && !hasDeviation && suggestion && (
-                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} />
+                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} />
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (

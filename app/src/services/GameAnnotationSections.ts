@@ -54,6 +54,19 @@ function isPivotMove(m: AnnotatedMove): boolean {
 }
 
 /**
+ * Index (into `moves`) of the pivotal move — the first deviation or first
+ * notable eval drop — or `-1` when the game has neither. Mirrors the pivot the
+ * partitioner picks, exposed so callers (e.g. the Games tile) can align a
+ * suggestion's divergence ply against the pivot without re-deriving it.
+ */
+export function findPivotMoveIndex(moves: AnnotatedMove[]): number {
+    for (let i = 0; i < moves.length; i++) {
+        if (moves[i].isUserMove && isPivotMove(moves[i])) return i;
+    }
+    return -1;
+}
+
+/**
  * Classify a USER move into a section kind. `leftBook` (have we left the
  * in-repertoire phase yet, via off-prep / pivot / out-of-theory) distinguishes
  * a green move that's still original prep (`in-repertoire`) from one reached by
@@ -97,8 +110,20 @@ const OPPONENT_LED_KINDS: ReadonlySet<GameSectionKind> = new Set<GameSectionKind
  * Partition a thawed annotation into ordered narrative sections. Pure function
  * of `annotation.moves`; returns `[]` for an empty move list. Opponent moves
  * carry no frozen code, so they're placed by the surrounding user-move kinds.
+ *
+ * `pivotStartIndex` optionally **extends the pivot section backward** to begin
+ * at that ply: when a repertoire-fix suggestion corrects a move *earlier* than
+ * the flagged mistake, the whole span [pivotStartIndex … the flagged move] is
+ * pulled into the one red "pivot" section so its border covers the entire
+ * problem zone (see `docs/product-specs/GAMES.md`). Ignored unless it points
+ * strictly before the natural pivot (`0 <= pivotStartIndex < pivotIdx`); the
+ * divergence is always an out-of-repertoire user move, so this never swallows
+ * the in-repertoire prefix.
  */
-export function partitionAnnotationIntoSections(annotation: GameAnnotation): GameSection[] {
+export function partitionAnnotationIntoSections(
+    annotation: GameAnnotation,
+    pivotStartIndex?: number,
+): GameSection[] {
     const moves = annotation.moves;
     if (moves.length === 0) return [];
 
@@ -163,6 +188,21 @@ export function partitionAnnotationIntoSections(annotation: GameAnnotation): Gam
             kind = pivotKind === 'deviation' ? 'in-repertoire' : 'off-prep';
         }
         kinds[i] = kind;
+    }
+
+    // Pass 2.5 — optionally extend the pivot backward to the suggestion's
+    // divergence ply, so the red section's border spans the whole problem zone
+    // [divergence … flagged move]. Interior opponent moves come along (they're
+    // bounded by user moves on both ends, so the section still opens and closes
+    // on a user move). No-op unless the divergence sits strictly before the
+    // natural pivot.
+    if (
+        pivotStartIndex !== undefined &&
+        pivotIdx >= 0 &&
+        pivotStartIndex >= 0 &&
+        pivotStartIndex < pivotIdx
+    ) {
+        for (let k = pivotStartIndex; k <= pivotIdx; k++) kinds[k] = 'pivot';
     }
 
     // Pass 3 — coalesce contiguous same-kind moves into sections.

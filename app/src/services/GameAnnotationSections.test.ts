@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     partitionAnnotationIntoSections,
+    findPivotMoveIndex,
     GameSection,
     GameSectionKind,
 } from './GameAnnotationSections';
@@ -170,5 +171,54 @@ describe('partitionAnnotationIntoSections', () => {
         expect(sections[1].moves.map(m => m.san)).toEqual(['Nc6', 'Bc4', 'Bc5']);
         expect(sections[2].moves.map(m => m.san)).toEqual(['d3']);
         expect(sections[2].pivotKind).toBe('mistake');
+    });
+});
+
+describe('findPivotMoveIndex', () => {
+    it('returns the first eval-drop user move index', () => {
+        expect(findPivotMoveIndex(mk('u0 o u0 o u2 o u4').moves)).toBe(6);
+    });
+
+    it('returns the first deviation user move index', () => {
+        expect(findPivotMoveIndex(mk('u0 o u1 o u7').moves)).toBe(2);
+    });
+
+    it('returns -1 when there is no pivot', () => {
+        expect(findPivotMoveIndex(mk('u0 o u0 o u2').moves)).toBe(-1);
+    });
+});
+
+describe('partitionAnnotationIntoSections — pivotStartIndex (fix-diverges-early)', () => {
+    // Base game: in-repertoire → off-prep (ok) → mistake. The off-prep user move
+    // (san u4) is at ply 4; the mistake (san u6) at ply 6.
+    const SPEC = 'u0 o u0 o u2 o u4';
+
+    it('extends the pivot section back to the divergence ply', () => {
+        const sections = partitionAnnotationIntoSections(mk(SPEC), 4);
+        expect(kinds(sections)).toEqual(['in-repertoire', 'off-prep', 'pivot']);
+        // The off-prep user move + its opponent reply + the mistake are pulled
+        // into the one red pivot section; off-prep keeps only the opponent move
+        // that took the game off book.
+        expect(sections[2].moves.map(m => m.san)).toEqual(['u4', 'o5', 'u6']);
+        expect(sections[1].moves.map(m => m.san)).toEqual(['o3']);
+        expect(sections[2].pivotKind).toBe('mistake');
+    });
+
+    it('covers every move exactly once after extension', () => {
+        const ann = mk(SPEC);
+        const sections = partitionAnnotationIntoSections(ann, 4);
+        expect(flat(sections)).toEqual(ann.moves.map(m => m.san));
+    });
+
+    it('is a no-op when pivotStartIndex is at or after the natural pivot', () => {
+        const base = partitionAnnotationIntoSections(mk(SPEC));
+        expect(partitionAnnotationIntoSections(mk(SPEC), 6)).toEqual(base);
+        expect(partitionAnnotationIntoSections(mk(SPEC), 99)).toEqual(base);
+    });
+
+    it('is a no-op when the game has no pivot', () => {
+        const noPivot = 'u0 o u0 o u2';
+        const base = partitionAnnotationIntoSections(mk(noPivot));
+        expect(partitionAnnotationIntoSections(mk(noPivot), 2)).toEqual(base);
     });
 });

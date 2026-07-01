@@ -896,17 +896,19 @@
     margin-top: 0;
 }
 
+/* Case-2 explainer: names the earlier move the fix corrects when the
+   divergence sits before the flagged mistake. Muted, sits between the
+   "Suggested line" label and the delta. */
+.suggest-fix-explainer {
+    color: #555;
+    font-size: 0.78rem;
+    margin-bottom: 0.3rem;
+}
+
 /* Moves that differ from the played game (the corrected move + continuation)
    are bolded; everything before reads as "same as you played". */
 .suggest-fix-new {
     font-weight: 700;
-}
-
-/* "(instead of X)" — muted, non-bold, mirrors the PGN parenthetical. */
-.suggest-fix-instead {
-    color: #777;
-    font-weight: 400;
-    font-style: italic;
 }
 
 .suggest-fix-actions {

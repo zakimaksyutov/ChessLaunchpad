@@ -108,6 +108,27 @@ function eotRecord(id: string, sg?: GameRecord['sg']): GameRecord {
   return record(id, 'e4 e5 Nf3 Nc6 Bb5 a6 Bxc6', { hl: [0, 0, 0, 4], mb: 6 }, sg);
 }
 
+/**
+ * EOT mistake where the fix diverges *before* the flagged move (Case 2): the
+ * user's 4.Ba4 is a sound-but-weaker post-theory move (code 2) and 5.Bb3 is the
+ * flagged mistake (code 4). A suggestion that corrects 4.Ba4 diverges at ply 6,
+ * before the mistake at ply 8, so the pivot section is extended to span
+ * [Ba4 … Bb3] and the suggestion shows an explainer.
+ */
+function eotEarlyRecord(id: string, sg?: GameRecord['sg']): GameRecord {
+  return record(id, 'e4 e5 Nf3 Nc6 Bb5 a6 Ba4 b5 Bb3', { hl: [0, 0, 0, 2, 4], mb: 8 }, sg);
+}
+
+/**
+ * EOT mistake whose frozen window stops at the flagged move (4.Bxc6, ply 6),
+ * but the game continues (…dxc6 Nc3). Used with a suggestion that keeps the
+ * flagged move and diverges *later* (Case 3), so the replaced move sits outside
+ * the rendered sections and must be named inline by the suggestion.
+ */
+function eotKeptRecord(id: string, sg?: GameRecord['sg']): GameRecord {
+  return record(id, 'e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 Nc3', { hl: [0, 0, 0, 4], mb: 6 }, sg);
+}
+
 /** Deviation mistake: user plays 3.Bc4 instead of the repertoire's 3.Bb5. */
 function deviationRecord(id: string): GameRecord {
   return record(id, 'e4 e5 Nf3 Nc6 Bc4', { hl: [0, 0, 1], alt: ['Bb5'], mb: 4 });
@@ -195,13 +216,18 @@ test.describe('Games — Suggest a fix', () => {
     const ready = eot.locator('.suggest-fix-ready');
     await expect(ready).toBeVisible({ timeout: 20_000 });
 
-    // Corrected move bolded, with the "instead of X" note naming the replaced ply.
+    // The suggestion shows only the corrected delta (not the replayed prefix):
+    // Ba4 is the bold corrected move, followed by its short continuation. The
+    // replaced move (Bxc6) is named by the red "Mistake" section above.
     const pgn = ready.locator('.suggest-fix-pgn');
     await expect(pgn).toContainText('Ba4');
     await expect(pgn).toContainText('O-O');
+    await expect(pgn).not.toContainText('Bxc6');
     const newMove = ready.locator('.suggest-fix-new').first();
     await expect(newMove).toHaveText('Ba4');
-    await expect(ready.locator('.suggest-fix-instead')).toContainText('instead of Bxc6');
+    await expect(eot.locator('.game-section-pivot')).toContainText('Bxc6');
+    // Case 1 (fix diverges at the flagged move): no earlier-divergence explainer.
+    await expect(ready.locator('.suggest-fix-explainer')).toHaveCount(0);
 
     // Add-to-repertoire is offered (the line isn't already in the repertoire).
     await expect(ready.getByRole('link', { name: 'Add to repertoire' })).toBeVisible();
@@ -243,7 +269,8 @@ test.describe('Games — Suggest a fix', () => {
     const ready = eot.locator('.suggest-fix-ready');
     // Saved suggestion shows immediately; the "Suggest a fix" link is hidden.
     await expect(ready).toBeVisible();
-    await expect(ready.locator('.suggest-fix-instead')).toContainText('instead of Bxc6');
+    await expect(ready.locator('.suggest-fix-pgn')).toContainText('Ba4');
+    await expect(eot.locator('.game-section-pivot')).toContainText('Bxc6');
     await expect(eot.locator('.suggest-fix-link')).toHaveCount(0);
 
     // "Add to repertoire" deep-links into the Explorer review/save flow.
@@ -253,6 +280,77 @@ test.describe('Games — Suggest a fix', () => {
     expect(hash).toContain('from=games');
     expect(hash).toContain('addpgn=');
     expect(decodeURIComponent(hash)).toContain('Ba4');
+  });
+
+  test('hydrates an early-divergence (Case 2) fix: extends the pivot section and shows the explainer', async ({ page }) => {
+    // The fix corrects 4.Ba4 (ply 6) though the flagged mistake is 5.Bb3 (ply 8).
+    const sg = {
+      ply: 8,
+      pl: [
+        { s: 'e4', r: 1 as const }, { s: 'e5' }, { s: 'Nf3', r: 1 as const }, { s: 'Nc6' },
+        { s: 'Bb5', r: 1 as const }, { s: 'a6' },
+        { s: 'Bxc6', n: 1 as const }, { s: 'dxc6', n: 1 as const }, { s: 'O-O', n: 1 as const },
+      ],
+      pgn: '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Bxc6 dxc6 5. O-O',
+      rep: 'Ba4',
+      at: Date.now(),
+    };
+    await setupMockEnvironment(page, fixtureWith([eotEarlyRecord('eot1', sg)]), USERNAME);
+    await setupMockLichess(page, USERNAME);
+
+    await openGames(page);
+
+    const eot = eotRow(page);
+    const ready = eot.locator('.suggest-fix-ready');
+    await expect(ready).toBeVisible();
+
+    // The red "Mistake" section absorbs the whole problem span [Ba4 … Bb3].
+    const pivot = eot.locator('.game-section-pivot');
+    await expect(pivot).toContainText('Ba4');
+    await expect(pivot).toContainText('Bb3');
+
+    // The suggestion shows only the corrected delta (Bxc6 …), not the mistake,
+    // plus an explainer naming the earlier move it improves on.
+    await expect(ready.locator('.suggest-fix-explainer')).toContainText('Ba4');
+    await expect(ready.locator('.suggest-fix-pgn')).toContainText('Bxc6');
+    await expect(ready.locator('.suggest-fix-pgn')).not.toContainText('Bb3');
+  });
+
+  test('names the replaced move inline when the fix diverges after the flagged move (Case 3)', async ({ page }) => {
+    // Flagged mistake = 4.Bxc6 (ply 6, end of the frozen window). The fix keeps
+    // it and corrects a later move, 5.Nc3 (ply 8) — outside the window, so no
+    // section shows it and the suggestion must name it inline.
+    const sg = {
+      ply: 6,
+      pl: [
+        { s: 'e4', r: 1 as const }, { s: 'e5' }, { s: 'Nf3', r: 1 as const }, { s: 'Nc6' },
+        { s: 'Bb5', r: 1 as const }, { s: 'a6' }, { s: 'Bxc6' }, { s: 'dxc6' },
+        { s: 'O-O', n: 1 as const }, { s: 'Nf6', n: 1 as const },
+      ],
+      pgn: '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Bxc6 dxc6 5. O-O Nf6',
+      rep: 'Nc3',
+      at: Date.now(),
+    };
+    await setupMockEnvironment(page, fixtureWith([eotKeptRecord('eot1', sg)]), USERNAME);
+    await setupMockLichess(page, USERNAME);
+
+    await openGames(page);
+
+    const eot = eotRow(page);
+    const ready = eot.locator('.suggest-fix-ready');
+    await expect(ready).toBeVisible();
+
+    // The pivot section still shows only the flagged move (no backward extension);
+    // the replaced move (Nc3) is outside the window, so it isn't in any section.
+    const pivot = eot.locator('.game-section-pivot');
+    await expect(pivot).toContainText('Bxc6');
+    await expect(pivot).not.toContainText('Nc3');
+
+    // The inline context line names the replaced move; the delta shows the fix.
+    const context = ready.locator('.suggest-fix-explainer');
+    await expect(context).toContainText('Instead of');
+    await expect(context).toContainText('Nc3');
+    await expect(ready.locator('.suggest-fix-pgn')).toContainText('O-O');
   });
 
   /**
