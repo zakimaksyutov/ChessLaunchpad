@@ -220,8 +220,11 @@ const SyncStatusIndicator: React.FC<{
     );
 };
 
+// Modifier class per eval-drop category for a post-theory user move. An `ok`
+// drop carries no modifier (base `move-token` only); inaccuracy+ get the colored
+// pivot outline.
 const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
-    ok: 'move-out-of-theory',
+    ok: '',
     inaccuracy: 'move-eot-inaccuracy',
     mistake: 'move-eot-mistake',
     blunder: 'move-eot-blunder',
@@ -261,16 +264,17 @@ function getMoveClassName(move: AnnotatedMove): string {
     if (!move.isUserMove) return 'move-token move-opponent';
     switch (move.highlight) {
         case 'in-repertoire':
-            return 'move-token move-in-repertoire';
+            return 'move-token';
         case 'deviation':
             return 'move-token move-deviation';
         case 'out-of-repertoire-response': {
             const category = move.evalDrop?.category ?? 'ok';
-            return `move-token ${END_OF_THEORY_CLASSES[category]}`;
+            const modifier = END_OF_THEORY_CLASSES[category];
+            return modifier ? `move-token ${modifier}` : 'move-token';
         }
         case 'out-of-repertoire':
         case 'out-of-theory':
-            return 'move-token move-out-of-theory';
+            return 'move-token';
     }
 }
 
@@ -379,14 +383,10 @@ type SuggestionState =
 
 function suggestionMoveClass(ply: SuggestionPly): string {
     // Mirror the main game tile PGN (`getMoveClassName`): opponent plies are
-    // greyed. Per-move background highlights were dropped branch-wide, so
-    // in-repertoire and plain user plies now render identically — only the
-    // diverging `isNew` plies are bolded (via `suggest-fix-new`).
-    const base = !ply.isUserMove
-        ? 'move-token move-opponent'
-        : ply.inRepertoire
-            ? 'move-token move-in-repertoire'
-            : 'move-token';
+    // greyed; every user ply renders as plain text. Per-move background
+    // highlights were dropped branch-wide, so only the diverging `isNew` plies
+    // are distinguished (bolded via `suggest-fix-new`).
+    const base = ply.isUserMove ? 'move-token' : 'move-token move-opponent';
     return ply.isNew ? `${base} suggest-fix-new` : base;
 }
 
@@ -679,28 +679,15 @@ const GameRow: React.FC<GameRowProps> = ({
         return map;
     }, [annotation]);
 
+    // The row's EOT verdict: the category of the first notable (non-`ok`)
+    // post-theory user eval-drop, or null when there's none. Only the category
+    // is needed now (row class, verdict badge, gating the Suggest-a-fix /
+    // Analyze-opponent actions); the move text lives in the narrative sections.
     const eotSummary = useMemo(() => {
         if (!annotation) return null;
-        const moves = annotation.moves;
-        let fullmove = 1;
-        for (let i = 0; i < moves.length; i++) {
-            if (moves[i].moveNumber !== undefined) fullmove = moves[i].moveNumber!;
-            if (moves[i].highlight === 'out-of-repertoire-response' && moves[i].evalDrop && moves[i].evalDrop!.category !== 'ok') {
-                let opponentMove: string | null = null;
-                for (let j = i - 1; j >= 0; j--) {
-                    if (!moves[j].isUserMove) {
-                        opponentMove = moves[j].san;
-                        break;
-                    }
-                }
-                const isWhite = moves[i].moveNumber !== undefined;
-                return {
-                    userSan: moves[i].san,
-                    moveLabel: isWhite ? `${fullmove}.` : `${fullmove}…`,
-                    opponentSan: opponentMove,
-                    category: moves[i].evalDrop!.category,
-                    drop: moves[i].evalDrop!.evalDrop,
-                };
+        for (const m of annotation.moves) {
+            if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
+                return { category: m.evalDrop.category };
             }
         }
         return null;
