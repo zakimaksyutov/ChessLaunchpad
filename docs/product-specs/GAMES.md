@@ -27,9 +27,9 @@ On opening `/games` (logged-in, with linked accounts):
 
 1. **Render immediately** from records that already have `fan`, newest first.
 2. **Background ingest** — run the same ingest pipeline the Dashboard runs. New games land as new records; the 100-record retention cap is enforced inside the ingest write path (see below). The two entry points (Dashboard auto, Games page) share the same pipeline, so neither can leave the blob over-cap.
-3. **Plan** — enumerate records lacking `fan`, oldest-first. No network and no per-game gating: every queued game runs. Analysis resolves evals and masters verdicts **on demand** in a single engine walk per game, and the walk itself defers any game that reaches a masters-needing position with no Lichess token connected — see "Move highlighting" and "Masters theory" below.
+3. **Plan** — enumerate records lacking `fan`, newest-first. No network and no per-game gating: every queued game runs. Analysis resolves evals and masters verdicts **on demand** in a single engine walk per game, and the walk itself defers any game that reaches a masters-needing position with no Lichess token connected — see "Move highlighting" and "Masters theory" below.
 4. **Reserve placeholders** — every queued record gets a **skeleton row** in its final sorted slot before the analyze loop begins. This prevents the "rows pop in newest-first, push everything down" jumping effect as each game's `fan` lands.
-5. **Analyze sequentially, oldest-first**. Each game's frozen annotation is computed (full engine run, then frozen), written back optimistically to the in-memory tree, and the row hydrates from skeleton to content in place. Annotations flush to the backend in batches.
+5. **Analyze sequentially, newest-first**. Each game's frozen annotation is computed (full engine run, then frozen), written back optimistically to the in-memory tree, and the row hydrates from skeleton to content in place. Annotations flush to the backend in batches.
 6. A manual **Sync** button (next to the header) re-runs the same pipeline; the auto-trigger and the button share a single-flight lock.
 
 A **sticky session ordering** keeps already-rendered rows in their slot for the duration of the session; newly arriving rows are placed by their timestamp relative to the current bounds. Without this, an evicted-then-re-ingested game could jump in the list.
@@ -46,7 +46,7 @@ A pass analyzes each queued game in **one async engine walk** that resolves eval
 sync / open /games
    │
    ▼
-ingest games  ──▶  plan: list records lacking `fan`, oldest-first   (no network)
+ingest games  ──▶  plan: list records lacking `fan`, newest-first   (no network)
    │
    ▼
 for each game, sequentially (cloud-eval + masters caches shared across the pass):
