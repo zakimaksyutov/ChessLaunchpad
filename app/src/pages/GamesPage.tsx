@@ -385,9 +385,11 @@ function suggestionMoveClass(ply: SuggestionPly): string {
     // Mirror the main game tile PGN (`getMoveClassName`): opponent plies are
     // greyed; every user ply renders as plain text. Per-move background
     // highlights were dropped branch-wide, so only the diverging `isNew` plies
-    // are distinguished (bolded via `suggest-fix-new`).
+    // are distinguished (bolded via `suggest-fix-new`). When the fix diverges
+    // before the flagged mistake the fragment also includes opponent plies —
+    // those stay regular weight; only the user's own moves are bolded.
     const base = ply.isUserMove ? 'move-token' : 'move-token move-opponent';
-    return ply.isNew ? `${base} suggest-fix-new` : base;
+    return ply.isNew && ply.isUserMove ? `${base} suggest-fix-new` : base;
 }
 
 const SuggestionDisplay: React.FC<{
