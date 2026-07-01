@@ -232,6 +232,73 @@ export function isSuggestionFullyInRepertoire(result: SuggestionResult): boolean
     return result.plies.length > 0 && result.plies.every(p => p.inRepertoire);
 }
 
+/**
+ * Board arrows for a ready suggestion, drawn on the position the fix diverges
+ * from. `firstNewIdx` (the first `isNew` ply) is both the corrected move's index
+ * and — because the suggestion replays the played game 1:1 up to it — the game
+ * ply index of the user's replaced move. So the same position anchors both the
+ * red arrow (what the user actually played there) and the green arrow (the
+ * suggested replacement). Case 1 (fix at the flagged move) and Case 2 (earlier
+ * divergence) differ only in where that index lands.
+ */
+export interface SuggestionBoardArrows {
+    /** FEN of the position before the divergence — the mini board anchor. */
+    fen: string;
+    /** The user's actually-played move at the divergence ply (red arrow). */
+    playedMove?: { from: string; to: string };
+    /** The suggested replacement move at the divergence ply (green arrow). */
+    suggestedMove: { from: string; to: string };
+}
+
+/**
+ * Derive the mini-board anchor + arrows for a ready suggestion by replaying the
+ * played game's SANs to the divergence and parsing the played / suggested moves
+ * for their squares. Returns `null` when the line never diverges, the index is
+ * out of range, or the suggested move can't be parsed at that position (the
+ * caller then falls back to the annotation's default board). Pure — recomputed
+ * from the persisted suggestion + `record.m`, so it survives reloads without a
+ * dedicated persisted field.
+ */
+export function deriveSuggestionBoardArrows(
+    sans: string[],
+    result: SuggestionResult,
+): SuggestionBoardArrows | null {
+    const firstNewIdx = result.plies.findIndex(p => p.isNew);
+    if (firstNewIdx < 0 || firstNewIdx >= sans.length) return null;
+    const suggestedSan = result.plies[firstNewIdx]?.san;
+    if (!suggestedSan) return null;
+
+    const replay = new Chess();
+    for (let k = 0; k < firstNewIdx; k++) {
+        try {
+            if (!replay.move(sans[k])) return null;
+        } catch {
+            return null;
+        }
+    }
+    const fen = replay.fen();
+
+    let suggestedMove: { from: string; to: string } | undefined;
+    try {
+        const probe = new Chess(fen);
+        const m = probe.move(suggestedSan);
+        if (m) suggestedMove = { from: m.from, to: m.to };
+    } catch {
+        /* unparseable suggested move — fall through to the null guard below */
+    }
+    if (!suggestedMove) return null;
+
+    let playedMove: { from: string; to: string } | undefined;
+    try {
+        const played = replay.move(sans[firstNewIdx]);
+        if (played) playedMove = { from: played.from, to: played.to };
+    } catch {
+        /* keep the green arrow even if the played move can't be re-parsed */
+    }
+
+    return { fen, playedMove, suggestedMove };
+}
+
 // ---------------------------------------------------------------------------
 // Move scoring
 // ---------------------------------------------------------------------------

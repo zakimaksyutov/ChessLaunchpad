@@ -66,6 +66,7 @@ import {
     toPersistedSuggestion,
     fromPersistedSuggestion,
     isSuggestionFullyInRepertoire,
+    deriveSuggestionBoardArrows,
     SuggestionResult,
     SuggestionPly,
     MastersProvider,
@@ -610,7 +611,33 @@ const GameRow: React.FC<GameRowProps> = ({
         return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     }, [meta.createdAt]);
 
+    // When a repertoire fix is ready, re-anchor the mini board to the position
+    // the suggestion diverges from and draw the played (red) + suggested (green)
+    // moves there. For a fix at the flagged ply (Case 1) this is the same
+    // position `evalDropArrow` already used — now with a green arrow added; for
+    // an earlier fix (Case 2) the board also moves back to that earlier
+    // position. Recomputed from the persisted suggestion + `record.m`, so it
+    // survives reloads without a dedicated persisted field. Never applied to
+    // deviation rows (they don't offer a suggestion).
+    const suggestionBoard = useMemo(() => {
+        if (!annotation || annotation.deviation) return null;
+        if (!suggestion || suggestion.status !== 'ready') return null;
+        const sans = record.m.split(/\s+/).filter(Boolean);
+        return deriveSuggestionBoardArrows(sans, suggestion.result);
+    }, [annotation, suggestion, record.m]);
+
     const boardAnnotations: ChessControlAnnotation[] = useMemo(() => {
+        // A ready suggestion re-anchors the board: green for the suggested move,
+        // red for the move actually played there.
+        if (suggestionBoard) {
+            const arrows: ChessControlAnnotation[] = [
+                { color: 'green', from: suggestionBoard.suggestedMove.from as Square, to: suggestionBoard.suggestedMove.to as Square },
+            ];
+            if (suggestionBoard.playedMove) {
+                arrows.push({ color: 'red', from: suggestionBoard.playedMove.from as Square, to: suggestionBoard.playedMove.to as Square });
+            }
+            return arrows;
+        }
         if (annotation?.deviation) {
             const arrows: ChessControlAnnotation[] = [];
             for (const rm of annotation.deviation.repertoireMoves) {
@@ -625,9 +652,9 @@ const GameRow: React.FC<GameRowProps> = ({
             return [{ color: 'red', from: annotation.evalDropArrow.from as Square, to: annotation.evalDropArrow.to as Square }];
         }
         return [];
-    }, [annotation]);
+    }, [annotation, suggestionBoard]);
 
-    const boardFen = annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const boardFen = suggestionBoard?.fen ?? annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
     // A ready repertoire-fix suggestion's divergence, mapped back onto the game.
     // `firstNewIdx` is the suggestion ply where the corrected line starts — and,

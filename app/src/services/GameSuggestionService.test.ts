@@ -6,9 +6,12 @@ import {
     toPersistedSuggestion,
     fromPersistedSuggestion,
     isSuggestionFullyInRepertoire,
+    deriveSuggestionBoardArrows,
     GOOD_SCORE_THRESHOLD,
     MastersProvider,
     CloudEvalCpProvider,
+    SuggestionResult,
+    SuggestionPly,
 } from './GameSuggestionService';
 import { MastersPositionResult } from './MastersExplorerService';
 import { normalizeFenResetHalfmoveClock } from '../utils/FenUtils';
@@ -689,5 +692,66 @@ describe('isSuggestionFullyInRepertoire', () => {
 
         expect(result.plies.map(p => p.san)).toEqual(['d4', 'd5', 'Nf3', 'Nf6', 'c4', 'e6']);
         expect(isSuggestionFullyInRepertoire(result)).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// deriveSuggestionBoardArrows
+// ---------------------------------------------------------------------------
+
+describe('deriveSuggestionBoardArrows', () => {
+    /** Minimal SuggestionResult — only `plies[i].san` / `.isNew` are read. */
+    function mkResult(plies: [san: string, isNew: boolean][]): SuggestionResult {
+        return {
+            plies: plies.map(([san, isNew], idx): SuggestionPly => ({
+                san,
+                isWhiteMove: idx % 2 === 0,
+                isUserMove: idx % 2 === 0,
+                inRepertoire: false,
+                moveNumber: idx % 2 === 0 ? Math.floor(idx / 2) + 1 : undefined,
+                isNew,
+            })),
+            pgn: '',
+            explorerPgn: '',
+            orientation: 'white',
+        };
+    }
+
+    const GAME = ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Bxc6'];
+
+    it('Case 1 — fix at the flagged ply: anchors before it, green = suggested, red = played', () => {
+        // Diverges at ply 6 (Bxc6 → the suggested Ba4).
+        const result = mkResult([
+            ['e4', false], ['e5', false], ['Nf3', false], ['Nc6', false],
+            ['Bb5', false], ['a6', false], ['Ba4', true],
+        ]);
+        const board = deriveSuggestionBoardArrows(GAME, result);
+        expect(board).not.toBeNull();
+        expect(board!.suggestedMove).toEqual({ from: 'b5', to: 'a4' });
+        expect(board!.playedMove).toEqual({ from: 'b5', to: 'c6' });
+
+        const anchor = new Chess();
+        ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6'].forEach(s => anchor.move(s));
+        expect(board!.fen).toBe(anchor.fen());
+    });
+
+    it('Case 2 — earlier divergence: re-anchors back to the earlier position with both arrows', () => {
+        // Diverges at ply 4 (Bb5 → the suggested Bc4), before the flagged Bxc6.
+        const result = mkResult([
+            ['e4', false], ['e5', false], ['Nf3', false], ['Nc6', false], ['Bc4', true],
+        ]);
+        const board = deriveSuggestionBoardArrows(GAME, result);
+        expect(board).not.toBeNull();
+        expect(board!.suggestedMove).toEqual({ from: 'f1', to: 'c4' });
+        expect(board!.playedMove).toEqual({ from: 'f1', to: 'b5' });
+
+        const anchor = new Chess();
+        ['e4', 'e5', 'Nf3', 'Nc6'].forEach(s => anchor.move(s));
+        expect(board!.fen).toBe(anchor.fen());
+    });
+
+    it('returns null when the suggested line never diverges', () => {
+        const result = mkResult([['e4', false], ['e5', false]]);
+        expect(deriveSuggestionBoardArrows(['e4', 'e5'], result)).toBeNull();
     });
 });
