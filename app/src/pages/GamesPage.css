@@ -1,3 +1,34 @@
+/* ─── Games palette ───
+   Single source of truth for the tile color scheme. Both this stylesheet and
+   the inline styles in GamesPage.tsx (PIVOT_COLORS / sectionHeaderInfo /
+   THREAT_LEVEL_COLORS) read these vars via var(--…), so a palette tweak is one
+   edit here and the badge / tile border / error-ply outline / section accent
+   can never drift apart. All are dark enough to clear WCAG AA as small text on
+   white. */
+:root {
+    /* Verdict / pivot scale — badge fill, tile border, error-ply outline, and
+       pivot section accent all share these. Deviation == blunder on purpose:
+       same "you left your prep" severity, so they read as one color. */
+    --verdict-clean: #1e8449;
+    --pivot-ok: #888;
+    --pivot-inaccuracy: #8a6a0a;
+    --pivot-mistake: #c0392b;
+    --pivot-blunder: #7b3f9e;
+    --pivot-deviation: var(--pivot-blunder);
+
+    /* Non-pivot section-header accents (no per-move border equivalent). */
+    --section-in-book: var(--verdict-clean);
+    --section-off-prep: #5e6672;
+    --section-out-of-theory: #757575;
+
+    /* Opponent-threat scale (opponent-analysis panel) — a separate scale that
+       happens to share some hues; kept independent so it can diverge. */
+    --threat-low: #27ae60;
+    --threat-moderate: #b8860b;
+    --threat-high: #c0392b;
+    --threat-very-high: #7b3f9e;
+}
+
 .games-page {
     display: flex;
     flex-direction: column;
@@ -271,7 +302,7 @@
    hydrates, the row's height barely changes. */
 .game-row-pending {
     background: #fafbfc;
-    min-height: 152px;
+    min-height: 270px;
 }
 
 .game-mini-board-skeleton {
@@ -339,29 +370,32 @@
 /* Analyzed row with no mistakes — green border so every tile has one,
    matching the colored borders used for deviation/EOT rows. */
 .game-row-clean {
-    border-color: #1e8449;
+    border-color: var(--verdict-clean);
 }
 
 .game-row-deviation {
-    border-color: #9b59b6;
+    border-color: var(--pivot-deviation);
 }
 
 .game-row-eot-inaccuracy {
-    border-color: #b8860b;
+    border-color: var(--pivot-inaccuracy);
 }
 
 .game-row-eot-mistake {
-    border-color: #c0392b;
+    border-color: var(--pivot-mistake);
 }
 
 .game-row-eot-blunder {
-    border-color: #7b3f9e;
+    border-color: var(--pivot-blunder);
 }
 
 .game-mini-board {
     flex-shrink: 0;
-    width: 120px;
-    height: 120px;
+    width: 200px;
+    height: 200px;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
 .game-info {
@@ -547,6 +581,15 @@
     background: #f5f5f5;
 }
 
+.game-overflow-dropdown button:disabled {
+    color: #b0b0b0;
+    cursor: not-allowed;
+}
+
+.game-overflow-dropdown button:disabled:hover {
+    background: none;
+}
+
 .game-opening {
     color: #555;
     font-size: 0.82rem;
@@ -572,64 +615,119 @@
     user-select: none;
 }
 
-.move-token {
-    border-radius: 3px;
-    padding: 1px 2px;
-}
+/* Every move renders in the regular text color — the narrative section header
+   above each run is the signal, so the per-move colored backgrounds were
+   dropped to cut visual noise. */
 
-.move-in-repertoire {
-    background-color: #c8f7c5;
-}
-
-/* In-repertoire user moves deep-link into the Explorer. Keep the move styling
-   intact (inherit color, no underline) and only signal interactivity via the
-   pointer cursor on hover — intentionally low-discoverability. */
+/* In-repertoire user moves deep-link into the Explorer. Underline them (in the
+   regular text color) so the link affordance is discoverable. */
 .move-link {
     color: inherit;
-    text-decoration: none;
     cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: #c4c4c4;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
 }
 
 .move-link:hover {
-    text-decoration: none;
-}
-
-.move-deviation {
-    border: 2px solid #9b59b6;
-    border-radius: 3px;
-    font-weight: 600;
-}
-
-.move-eot-inaccuracy {
-    background-color: #fff3cd;
-}
-
-.move-eot-mistake {
-    background-color: #f8d7da;
-}
-
-.move-eot-blunder {
-    background-color: #e2d4f0;
-}
-
-.move-out-of-theory {
-    background-color: transparent;
+    color: inherit;
+    text-decoration-color: #888;
 }
 
 .move-opponent {
     color: #999;
 }
 
-.game-deviation-summary {
-    font-size: 0.82rem;
-    color: #333;
-    margin-top: 0.25rem;
+/* The pivotal ply — the deviation or the eval-drop that ended your prep — gets
+   a colored outline (matching its section-header accent) so the eye lands on
+   the exact move in question. Exactly one move per game carries these classes. */
+.move-deviation,
+.move-eot-inaccuracy,
+.move-eot-mistake,
+.move-eot-blunder {
+    border: 2px solid;
+    border-radius: 3px;
+    padding: 1px 3px;
+    font-weight: 600;
 }
 
-.game-eot-summary {
-    font-size: 0.82rem;
-    color: #333;
-    margin-top: 0.15rem;
+.move-deviation {
+    border-color: var(--pivot-deviation);
+}
+
+.move-eot-inaccuracy {
+    border-color: var(--pivot-inaccuracy);
+}
+
+.move-eot-mistake {
+    border-color: var(--pivot-mistake);
+}
+
+.move-eot-blunder {
+    border-color: var(--pivot-blunder);
+}
+
+/* ─── Narrative PGN sections ───
+   The annotated line is grouped into labeled phases (In your repertoire /
+   Off your prep / pivot / Back in your repertoire / The game continues) so the
+   section header carries the meaning rather than per-move color. */
+.game-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    /* Breathing room below the opening name (.game-details-row) so the first
+       section header doesn't crowd it. */
+    margin-top: 0.7rem;
+}
+
+.game-section {
+    border-left: 2px solid #ececf0;
+    padding-left: 0.6rem;
+}
+
+/* The error (pivot) section gets a thicker accent line to pull the eye. It's
+   shifted 1px left (margin) so the thicker line stays centered on the same axis
+   as the other sections' 2px lines, and padding-left is reduced so the section
+   text still lines up with the other sections. */
+.game-section-pivot {
+    border-left-width: 4px;
+    margin-left: -1px;
+    padding-left: calc(0.6rem - 1px);
+}
+
+.game-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    line-height: 1.2;
+}
+
+.game-section-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 0.18rem;
+}
+
+.game-section-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* Tighten the per-section PGN block (overrides the standalone .game-pgn gap). */
+.game-section-moves.game-pgn {
+    margin-top: 0.1rem;
+}
+
+/* Inline parenthetical after the deviation pivot's move: "(your repertoire
+   defined 2… e6)". Inherits the regular move text color/weight so it reads as a
+   plain aside rather than a styled move. */
+.repertoire-note {
+    font-weight: 400;
 }
 
 .eot-category {
@@ -673,19 +771,19 @@
 }
 
 .opp-threat-low {
-    border-left-color: #27ae60;
+    border-left-color: var(--threat-low);
 }
 
 .opp-threat-moderate {
-    border-left-color: #b8860b;
+    border-left-color: var(--threat-moderate);
 }
 
 .opp-threat-high {
-    border-left-color: #c0392b;
+    border-left-color: var(--threat-high);
 }
 
 .opp-threat-very-high {
-    border-left-color: #7b3f9e;
+    border-left-color: var(--threat-very-high);
 }
 
 .opponent-analysis-header {
@@ -735,39 +833,6 @@
     text-decoration: underline;
 }
 
-.game-overflow-done {
-    color: #888 !important;
-    cursor: default !important;
-}
-
-/* Analyze opponent inline link */
-.analyze-opponent-link {
-    color: rgb(0, 130, 210);
-    font-size: 0.78rem;
-    cursor: pointer;
-    text-decoration: none;
-    margin-left: 0.5em;
-    white-space: nowrap;
-}
-
-.analyze-opponent-link:hover {
-    text-decoration: underline;
-}
-
-.analyze-opponent-link[aria-disabled="true"] {
-    opacity: 0.4;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
-.game-deviation-icon {
-    display: inline-block;
-    width: 1.15em;
-    height: 1.15em;
-    margin-right: 0.3em;
-    vertical-align: -0.15em;
-}
-
 /* ─── Suggest a fix ─── */
 
 /* "Suggest a fix" reuses the blue inline-link styling of "Analyze opponent".
@@ -815,17 +880,19 @@
     margin-top: 0;
 }
 
+/* Case-2 explainer: names the earlier move the fix corrects when the
+   divergence sits before the flagged mistake. Muted, sits between the
+   "Suggested line" label and the delta. */
+.suggest-fix-explainer {
+    color: #555;
+    font-size: 0.78rem;
+    margin-bottom: 0.3rem;
+}
+
 /* Moves that differ from the played game (the corrected move + continuation)
    are bolded; everything before reads as "same as you played". */
 .suggest-fix-new {
     font-weight: 700;
-}
-
-/* "(instead of X)" — muted, non-bold, mirrors the PGN parenthetical. */
-.suggest-fix-instead {
-    color: #777;
-    font-weight: 400;
-    font-style: italic;
 }
 
 .suggest-fix-actions {

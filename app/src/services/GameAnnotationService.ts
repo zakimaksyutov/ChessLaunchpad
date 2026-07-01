@@ -239,6 +239,13 @@ export interface GameAnnotation {
     miniBoardOrientation: 'white' | 'black';
     /** Deviation details for arrow display on the mini board */
     deviation?: DeviationInfo;
+    /**
+     * Red-arrow move for an end-of-theory eval-drop row (inaccuracy / mistake /
+     * blunder): the user's bad move, shown on the position *before* it — the
+     * same treatment a deviation gets, minus the green repertoire arrows.
+     * Mutually exclusive with `deviation`; absent on clean rows.
+     */
+    evalDropArrow?: { from: string; to: string; san: string };
 }
 
 /**
@@ -463,13 +470,19 @@ export async function annotateGame(
 
     // Track first notable event for mini board
     let firstPostTheoryFen: string | null = null;
-    let firstEvalDropFen: string | null = null;
+    // Eval-drop mini-board anchor: the position BEFORE the user's first notable
+    // (non-ok) post-theory eval-drop, plus the dropping move itself — so the row
+    // shows that position with a red arrow on the bad move (mirroring how a
+    // deviation is shown). A deviation takes priority and uses its own anchor,
+    // so these stay unset on a deviation row.
+    let firstEvalDropBeforeFen: string | null = null;
+    let firstEvalDropMove: { from: string; to: string; san: string } | undefined;
     let lastInRepertoireFen: string | null = null;
     let deviation: DeviationInfo | undefined;
     // Ply depths matching each mini-board candidate FEN above, so the frozen
     // annotation can store an anchor index (`fan.mb`) instead of a FEN.
     let firstPostTheoryPly = 0;
-    let firstEvalDropPly = 0;
+    let firstEvalDropBeforePly = 0;
     let lastInRepertoirePly = 0;
     let deviationPly = 0;
 
@@ -536,9 +549,10 @@ export async function annotateGame(
                     evalSource = evalResult.source;
                     reason += `, evalDrop=${drop.toFixed(2)} (${category}) [source: ${evalResult.source}]`;
 
-                    if (!firstEvalDropFen && category !== 'ok') {
-                        firstEvalDropFen = fenAfter;
-                        firstEvalDropPly = i + 1;
+                    if (!firstEvalDropBeforeFen && category !== 'ok') {
+                        firstEvalDropBeforeFen = fenBefore;
+                        firstEvalDropBeforePly = i;
+                        firstEvalDropMove = { from: allMoves[i].from, to: allMoves[i].to, san: allMoves[i].san };
                     }
 
                     // Stop after the first notable eval drop, same as a post-theory response.
@@ -576,11 +590,6 @@ export async function annotateGame(
                     evalDrop = { evalDrop: drop, category };
                     evalSource = evalResult.source;
                     reason += `, evalDrop=${drop.toFixed(2)} (${category}) [source: ${evalResult.source}]`;
-
-                    if (!firstEvalDropFen && category !== 'ok') {
-                        firstEvalDropFen = fenAfter;
-                        firstEvalDropPly = i + 1;
-                    }
                 } else {
                     reason += ', no eval data for drop calc';
                 }
@@ -652,9 +661,10 @@ export async function annotateGame(
                 evalSource = evalResult.source;
                 reason += `, evalDrop=${drop.toFixed(2)} (${category}) [source: ${evalResult.source}]`;
 
-                if (!firstEvalDropFen && category !== 'ok') {
-                    firstEvalDropFen = fenAfter;
-                    firstEvalDropPly = i + 1;
+                if (!firstEvalDropBeforeFen && category !== 'ok') {
+                    firstEvalDropBeforeFen = fenBefore;
+                    firstEvalDropBeforePly = i;
+                    firstEvalDropMove = { from: allMoves[i].from, to: allMoves[i].to, san: allMoves[i].san };
                 }
 
                 // Stop after first notable eval drop — only the first inaccuracy/mistake/blunder matters
@@ -732,15 +742,16 @@ export async function annotateGame(
 
     // Determine mini board position (spec §3.3)
     // Priority: user deviation > first eval-drop > end of theory > last in-repertoire > start.
-    // For user deviations, show the position BEFORE the deviation (with arrows).
+    // Deviations and eval-drops both show the position BEFORE the bad move (with
+    // a red arrow on the move played); deviations add green repertoire arrows.
     let miniBoardFen: string;
     let miniBoardPly: number;
     if (deviation) {
         miniBoardFen = deviation.fen;
         miniBoardPly = deviationPly;
-    } else if (firstEvalDropFen) {
-        miniBoardFen = firstEvalDropFen;
-        miniBoardPly = firstEvalDropPly;
+    } else if (firstEvalDropBeforeFen) {
+        miniBoardFen = firstEvalDropBeforeFen;
+        miniBoardPly = firstEvalDropBeforePly;
     } else if (firstPostTheoryFen) {
         miniBoardFen = firstPostTheoryFen;
         miniBoardPly = firstPostTheoryPly;
@@ -758,6 +769,9 @@ export async function annotateGame(
         miniBoardPly,
         miniBoardOrientation: userColor,
         deviation,
+        // Red arrow for an EOT eval-drop row. Unset on a deviation row (which
+        // draws its own arrows) and on clean rows.
+        evalDropArrow: deviation ? undefined : firstEvalDropMove,
     };
 }
 
@@ -1216,7 +1230,8 @@ function finishFrozen(
             break;
         }
     }
-    const miniBoardFen = mbReplay.fen();
+    let miniBoardFen = mbReplay.fen();
+    let miniBoardPly = mb;
 
     let deviation: DeviationInfo | undefined;
     if (deviationPly >= 0) {
@@ -1254,11 +1269,49 @@ function finishFrozen(
         }
     }
 
+    // EOT eval-drop (no deviation): re-anchor the mini board to the position
+    // BEFORE the user's first non-ok post-theory move and mark that move with a
+    // red arrow. Derived from the `hl` codes (the reconstructed `moves`) + `m`
+    // rather than `fan.mb`, so records frozen before this anchor change render
+    // correctly too — their stored `mb` pointed AFTER the bad move.
+    let evalDropArrow: { from: string; to: string; san: string } | undefined;
+    if (!deviation) {
+        const badPly = moves.findIndex(m =>
+            m.isUserMove &&
+            m.highlight === 'out-of-repertoire-response' &&
+            m.evalDrop !== undefined &&
+            m.evalDrop.category !== 'ok',
+        );
+        if (badPly >= 0) {
+            const probe = new Chess();
+            let ok = true;
+            for (let k = 0; k < badPly; k++) {
+                try {
+                    if (!probe.move(sans[k])) { ok = false; break; }
+                } catch {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                miniBoardFen = probe.fen();
+                miniBoardPly = badPly;
+                try {
+                    const played = probe.move(sans[badPly]);
+                    if (played) evalDropArrow = { from: played.from, to: played.to, san: played.san };
+                } catch {
+                    /* leave the board anchored without an arrow */
+                }
+            }
+        }
+    }
+
     return {
         moves,
         miniBoardFen,
-        miniBoardPly: mb,
+        miniBoardPly,
         miniBoardOrientation: userColor,
         deviation,
+        evalDropArrow,
     };
 }

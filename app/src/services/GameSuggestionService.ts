@@ -123,7 +123,11 @@ export interface SuggestionPly {
     san: string;
     isWhiteMove: boolean;
     isUserMove: boolean;
-    /** Resulting FEN is part of the user's repertoire (greenish highlight). */
+    /**
+     * Resulting FEN is part of the user's repertoire. Drives the "Already exists
+     * in the repertoire" confirmation (`isSuggestionFullyInRepertoire`); it is
+     * no longer a visual highlight (per-move backgrounds were dropped).
+     */
     inRepertoire: boolean;
     /** Set only for white moves (1, 2, 3 …). */
     moveNumber?: number;

@@ -23,6 +23,11 @@ import {
     GameAnnotation,
 } from '../services/GameAnnotationService';
 import {
+    partitionAnnotationIntoSections,
+    findPivotMoveIndex,
+    GameSection,
+} from '../services/GameAnnotationSections';
+import {
     annotateRecordFromFrozen,
     getRecordMetadata,
     getRecordOpponentName,
@@ -215,25 +220,37 @@ const SyncStatusIndicator: React.FC<{
     );
 };
 
+// Modifier class per eval-drop category for a post-theory user move. An `ok`
+// drop carries no modifier (base `move-token` only); inaccuracy+ get the colored
+// pivot outline.
 const END_OF_THEORY_CLASSES: Record<EvalDropCategory, string> = {
-    ok: 'move-out-of-theory',
+    ok: '',
     inaccuracy: 'move-eot-inaccuracy',
     mistake: 'move-eot-mistake',
     blunder: 'move-eot-blunder',
 };
 
-const EOT_ICON_COLORS: Record<EvalDropCategory, string> = {
-    ok: '#888',
-    inaccuracy: '#b8860b',
-    mistake: '#c0392b',
-    blunder: '#7b3f9e',
+/**
+ * Accent color per pivot category, shared by the tile's verdict badge (filled
+ * background, white text) and the narrative section header (text + border on
+ * white) so the two never drift. Values resolve to the `--pivot-*` custom
+ * properties defined in GamesPage.css — the single source the CSS tile borders
+ * and error-ply outlines also read, so the whole scheme tweaks in one place.
+ * `ok` never pivots — it's only here to satisfy the EvalDropCategory record.
+ */
+const PIVOT_COLORS: Record<EvalDropCategory | 'deviation', string> = {
+    ok: 'var(--pivot-ok)',
+    deviation: 'var(--pivot-deviation)',
+    inaccuracy: 'var(--pivot-inaccuracy)',
+    mistake: 'var(--pivot-mistake)',
+    blunder: 'var(--pivot-blunder)',
 };
 
 const THREAT_LEVEL_COLORS: Record<string, string> = {
-    'low': '#27ae60',
-    'moderate': '#b8860b',
-    'high': '#c0392b',
-    'very-high': '#7b3f9e',
+    'low': 'var(--threat-low)',
+    'moderate': 'var(--threat-moderate)',
+    'high': 'var(--threat-high)',
+    'very-high': 'var(--threat-very-high)',
 };
 
 const THREAT_LEVEL_LABELS: Record<string, string> = {
@@ -247,18 +264,45 @@ function getMoveClassName(move: AnnotatedMove): string {
     if (!move.isUserMove) return 'move-token move-opponent';
     switch (move.highlight) {
         case 'in-repertoire':
-            return 'move-token move-in-repertoire';
+            return 'move-token';
         case 'deviation':
             return 'move-token move-deviation';
         case 'out-of-repertoire-response': {
             const category = move.evalDrop?.category ?? 'ok';
-            return `move-token ${END_OF_THEORY_CLASSES[category]}`;
+            const modifier = END_OF_THEORY_CLASSES[category];
+            return modifier ? `move-token ${modifier}` : 'move-token';
         }
         case 'out-of-repertoire':
         case 'out-of-theory':
-            return 'move-token move-out-of-theory';
+            return 'move-token';
     }
 }
+
+/**
+ * Header label + accent color for a PGN section. Section headers carry the
+ * narrative ("In your repertoire", "Blunder", …) so the per-move color
+ * scheme becomes reinforcement rather than the only signal for new users.
+ */
+function sectionHeaderInfo(section: GameSection): { label: string; color: string } {
+    switch (section.kind) {
+        case 'in-repertoire':
+            return { label: 'In your repertoire', color: 'var(--section-in-book)' };
+        case 'off-prep':
+            return { label: 'Off your prep — still book theory', color: 'var(--section-off-prep)' };
+        case 'back-to-repertoire':
+            return { label: 'Back in your repertoire', color: 'var(--section-in-book)' };
+        case 'out-of-theory':
+            return { label: 'The game continues', color: 'var(--section-out-of-theory)' };
+        case 'pivot': {
+            const kind = section.pivotKind ?? 'mistake';
+            const label = kind === 'deviation'
+                ? 'You left your repertoire'
+                : kind.charAt(0).toUpperCase() + kind.slice(1);
+            return { label, color: PIVOT_COLORS[kind] };
+        }
+    }
+}
+
 
 function formatPlayerLabel(name: string, rating: number | undefined, isUser: boolean): React.ReactNode {
     return (
@@ -290,12 +334,12 @@ const OpponentAnalysisDisplay: React.FC<{ analysis: OpponentAnalysisResult }> = 
                 <svg className="opponent-analysis-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     {isLow ? (
                         <>
-                            <circle cx="12" cy="12" r="10" fill={color} />
+                            <circle cx="12" cy="12" r="10" style={{ fill: color }} />
                             <text x="12" y="17" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">i</text>
                         </>
                     ) : (
                         <>
-                            <path d="M12 2L1 21h22L12 2z" fill={color} />
+                            <path d="M12 2L1 21h22L12 2z" style={{ fill: color }} />
                             <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
                         </>
                     )}
@@ -338,14 +382,11 @@ type SuggestionState =
     | { status: 'ready'; result: SuggestionResult };
 
 function suggestionMoveClass(ply: SuggestionPly): string {
-    // Match the main game tile PGN (`getMoveClassName`): opponent plies are
-    // always greyed, and only the user's own in-repertoire plies get the
-    // green background — repertoire membership of opponent plies is not shown.
-    const base = !ply.isUserMove
-        ? 'move-token move-opponent'
-        : ply.inRepertoire
-            ? 'move-token move-in-repertoire'
-            : 'move-token';
+    // Mirror the main game tile PGN (`getMoveClassName`): opponent plies are
+    // greyed; every user ply renders as plain text. Per-move background
+    // highlights were dropped branch-wide, so only the diverging `isNew` plies
+    // are distinguished (bolded via `suggest-fix-new`).
+    const base = ply.isUserMove ? 'move-token' : 'move-token move-opponent';
     return ply.isNew ? `${base} suggest-fix-new` : base;
 }
 
@@ -354,7 +395,21 @@ const SuggestionDisplay: React.FC<{
     orientation: 'white' | 'black';
     rowKey: string;
     applied: boolean;
-}> = ({ state, orientation, rowKey, applied }) => {
+    /**
+     * True when the fix diverges *before* the flagged mistake (Case 2): the
+     * pivot section has already absorbed the [divergence … mistake] span, so we
+     * add a one-line explainer naming the earlier move the fix improves on.
+     */
+    earlyDivergence: boolean;
+    /**
+     * True when the replaced move is visible in the sections above (Cases 1 & 2:
+     * the divergence sits within the annotation window, in the pivot or extended
+     * pivot section). When false the fix diverged at a later move outside the
+     * window, so nothing above names the replaced move — we surface an inline
+     * "instead of X" note instead.
+     */
+    replacedShownAbove: boolean;
+}> = ({ state, orientation, rowKey, applied, earlyDivergence, replacedShownAbove }) => {
     if (state.status === 'loading') {
         return (
             <div className="suggest-fix-result suggest-fix-loading" role="status" aria-live="polite">
@@ -393,24 +448,68 @@ const SuggestionDisplay: React.FC<{
     // to add (the user added an identical fix from an earlier same-opening
     // game). Show a confirmation instead of the "Add to repertoire" action.
     const fullyInRepertoire = isSuggestionFullyInRepertoire(result);
-    // The first diverging ply (the corrected move) carries the "instead of X" note.
+
+    // Only the changed tail is shown — everything before the divergence is
+    // identical to the played game already printed in the sections above.
+    // `firstNewIdx` is both the corrected move's ply index and, because the
+    // suggestion replays the game 1:1 up to it, the fullmove math anchor. A
+    // missing divergence (`-1`) means the line never differs; fall back to the
+    // whole line so we still show something.
     const firstNewIdx = result.plies.findIndex(p => p.isNew);
+    const deltaStart = firstNewIdx < 0 ? 0 : firstNewIdx;
+    const deltaPlies = result.plies.slice(deltaStart);
+
+    // "Replaced" move label ("14…" / "14.") for the corrected ply — used by the
+    // context line that names the move the fix improves on.
+    const replacedIsWhite = deltaStart % 2 === 0;
+    const replacedMoveNo = Math.floor(deltaStart / 2) + 1;
+    const replacedLabel = replacedIsWhite ? `${replacedMoveNo}.` : `${replacedMoveNo}…`;
+
+    // Context line naming the replaced move. Three cases (see the section
+    // rework in GAMES.md):
+    //   • Case 2 (early divergence): the fix corrects a move before the flagged
+    //     one — say so, since the pivot section spans the whole run.
+    //   • Case 3 (divergence after the pivot / outside the frozen window): the
+    //     replaced move isn't shown in any section, so name it inline.
+    //   • Case 1 (divergence at the flagged move): the pivot section already
+    //     shows it right above — no extra line.
+    // Wording stays category-agnostic ("stronger move was available"); the row
+    // may be an inaccuracy or blunder, not only a "mistake".
+    const replaced = result.replacedUserSan;
+    let contextLine: string | null = null;
+    if (replaced && earlyDivergence) {
+        contextLine = `A stronger move than ${replacedLabel} ${replaced} was available — the fix starts here.`;
+    } else if (replaced && !replacedShownAbove) {
+        contextLine = `Instead of ${replacedLabel} ${replaced}:`;
+    }
+
     return (
         <div className="suggest-fix-result suggest-fix-ready">
             <div className="suggest-fix-label">Suggested line</div>
+            {contextLine && (
+                <div className="suggest-fix-explainer">{contextLine}</div>
+            )}
             <div className="game-pgn suggest-fix-pgn">
-                {result.plies.map((ply, idx) => (
-                    <React.Fragment key={idx}>
-                        {ply.moveNumber !== undefined && (
-                            <span className="move-number">{ply.moveNumber}.&nbsp;</span>
-                        )}
-                        <span className={suggestionMoveClass(ply)}>{ply.san}</span>
-                        {idx === firstNewIdx && result.replacedUserSan && (
-                            <span className="suggest-fix-instead">&nbsp;(instead of {result.replacedUserSan})</span>
-                        )}
-                        {' '}
-                    </React.Fragment>
-                ))}
+                {deltaPlies.map((ply, idx) => {
+                    const absIdx = deltaStart + idx;
+                    // Lead a black move with its fullmove number ("14…"); white
+                    // moves already carry their number.
+                    const numberLabel =
+                        ply.moveNumber !== undefined
+                            ? `${ply.moveNumber}.`
+                            : idx === 0
+                                ? `${Math.floor(absIdx / 2) + 1}…`
+                                : null;
+                    return (
+                        <React.Fragment key={idx}>
+                            {numberLabel && (
+                                <span className="move-number">{numberLabel}&nbsp;</span>
+                            )}
+                            <span className={suggestionMoveClass(ply)}>{ply.san}</span>
+                            {' '}
+                        </React.Fragment>
+                    );
+                })}
             </div>
             <div className="suggest-fix-actions">
                 <a
@@ -510,39 +609,85 @@ const GameRow: React.FC<GameRowProps> = ({
     }, [meta.createdAt]);
 
     const boardAnnotations: ChessControlAnnotation[] = useMemo(() => {
-        if (!annotation?.deviation) return [];
-        const arrows: ChessControlAnnotation[] = [];
-        for (const rm of annotation.deviation.repertoireMoves) {
-            arrows.push({ color: 'green', from: rm.from as Square, to: rm.to as Square });
+        if (annotation?.deviation) {
+            const arrows: ChessControlAnnotation[] = [];
+            for (const rm of annotation.deviation.repertoireMoves) {
+                arrows.push({ color: 'green', from: rm.from as Square, to: rm.to as Square });
+            }
+            arrows.push({ color: 'red', from: annotation.deviation.userMove.from as Square, to: annotation.deviation.userMove.to as Square });
+            return arrows;
         }
-        arrows.push({ color: 'red', from: annotation.deviation.userMove.from as Square, to: annotation.deviation.userMove.to as Square });
-        return arrows;
+        // EOT eval-drop row: a single red arrow on the bad move, drawn on the
+        // position before it (mirrors the deviation treatment, no green arrows).
+        if (annotation?.evalDropArrow) {
+            return [{ color: 'red', from: annotation.evalDropArrow.from as Square, to: annotation.evalDropArrow.to as Square }];
+        }
+        return [];
     }, [annotation]);
 
     const boardFen = annotation?.miniBoardFen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+    // A ready repertoire-fix suggestion's divergence, mapped back onto the game.
+    // `firstNewIdx` is the suggestion ply where the corrected line starts — and,
+    // because the suggestion replays the played game 1:1 up to that point, it is
+    // also the game ply index (and thus the `annotation.moves` index) of the
+    // replaced user move. `early` is true when that sits before the flagged
+    // pivot (Case 2: the fix corrects a move earlier than the mistake).
+    const suggestionDivergence = useMemo(() => {
+        if (!annotation || !suggestion || suggestion.status !== 'ready') return null;
+        const r = suggestion.result;
+        if (r.replacedUserSan === undefined) return null;
+        const firstNewIdx = r.plies.findIndex(p => p.isNew);
+        if (firstNewIdx < 0 || firstNewIdx >= annotation.moves.length) return null;
+        const pivotIndex = findPivotMoveIndex(annotation.moves);
+        return { firstNewIdx, pivotIndex, early: pivotIndex >= 0 && firstNewIdx < pivotIndex };
+    }, [annotation, suggestion]);
+
+    // Narrative sections for the PGN (in-repertoire / off-prep / pivot /
+    // back-to-repertoire / out-of-theory). Headers carry the meaning so the
+    // per-move colors become reinforcement. A single-section game (e.g. fully
+    // in book) renders the flat PGN with no section chrome. When a fix diverges
+    // before the mistake, the pivot section is extended back to it so its border
+    // covers the whole problem zone.
+    const sections = useMemo(
+        () => (annotation
+            ? partitionAnnotationIntoSections(
+                annotation,
+                suggestionDivergence?.early ? suggestionDivergence.firstNewIdx : undefined,
+            )
+            : []),
+        [annotation, suggestionDivergence],
+    );
+    // Show section chrome for any multi-section game, and for a single section
+    // that isn't the plain "In your repertoire" case — so a wholly off-prep or
+    // out-of-theory game still surfaces its narrative label (a fully in-book
+    // game stays chrome-free).
+    const showSections =
+        sections.length > 1 ||
+        (sections.length === 1 && sections[0].kind !== 'in-repertoire');
+
+    // Fullmove number for every move (black moves inherit their pair's number).
+    // Used to label a section's leading black move, which otherwise carries no
+    // number (only white moves do).
+    const fullMoveByMove = useMemo(() => {
+        const map = new Map<AnnotatedMove, number>();
+        let current = 1;
+        for (const m of annotation?.moves ?? []) {
+            if (m.moveNumber !== undefined) current = m.moveNumber;
+            map.set(m, current);
+        }
+        return map;
+    }, [annotation]);
+
+    // The row's EOT verdict: the category of the first notable (non-`ok`)
+    // post-theory user eval-drop, or null when there's none. Only the category
+    // is needed now (row class, verdict badge, gating the Suggest-a-fix /
+    // Analyze-opponent actions); the move text lives in the narrative sections.
     const eotSummary = useMemo(() => {
         if (!annotation) return null;
-        const moves = annotation.moves;
-        let fullmove = 1;
-        for (let i = 0; i < moves.length; i++) {
-            if (moves[i].moveNumber !== undefined) fullmove = moves[i].moveNumber!;
-            if (moves[i].highlight === 'out-of-repertoire-response' && moves[i].evalDrop && moves[i].evalDrop!.category !== 'ok') {
-                let opponentMove: string | null = null;
-                for (let j = i - 1; j >= 0; j--) {
-                    if (!moves[j].isUserMove) {
-                        opponentMove = moves[j].san;
-                        break;
-                    }
-                }
-                const isWhite = moves[i].moveNumber !== undefined;
-                return {
-                    userSan: moves[i].san,
-                    moveLabel: isWhite ? `${fullmove}.` : `${fullmove}…`,
-                    opponentSan: opponentMove,
-                    category: moves[i].evalDrop!.category,
-                    drop: moves[i].evalDrop!.evalDrop,
-                };
+        for (const m of annotation.moves) {
+            if (m.highlight === 'out-of-repertoire-response' && m.evalDrop && m.evalDrop.category !== 'ok') {
+                return { category: m.evalDrop.category };
             }
         }
         return null;
@@ -591,11 +736,11 @@ const GameRow: React.FC<GameRowProps> = ({
     const verdict: { label: string; color: string } = eotSummary
         ? {
             label: eotSummary.category.charAt(0).toUpperCase() + eotSummary.category.slice(1),
-            color: EOT_ICON_COLORS[eotSummary.category],
+            color: PIVOT_COLORS[eotSummary.category],
         }
         : hasDeviation
-            ? { label: 'Off your repertoire', color: '#9b59b6' }
-            : { label: 'No opening mistakes', color: '#1e8449' };
+            ? { label: 'Off your repertoire', color: PIVOT_COLORS.deviation }
+            : { label: 'No opening mistakes', color: 'var(--verdict-clean)' };
 
     useEffect(() => {
         if (!menuOpen) return;
@@ -615,6 +760,44 @@ const GameRow: React.FC<GameRowProps> = ({
     // Like Analyze opponent, the "Suggest a fix" link hides once one exists;
     // error / connect states keep the link so the user can retry.
     const hasSuggestion = suggestion?.status === 'ready' && suggestion.result.plies.length > 0;
+
+    // Render one PGN move token (move number + colored SAN, with an Explorer
+    // deep-link on in-repertoire user moves). Shared by the flat and sectioned
+    // PGN layouts. `isLead` forces a move number on the first move of a section
+    // even when it's a black move (so a section like "Mistake" reads
+    // "15… Be7", not a context-free "Be7").
+    const renderMoveToken = (move: AnnotatedMove, key: React.Key, isLead = false): React.ReactNode => {
+        const explorerLink =
+            move.isUserMove && move.highlight === 'in-repertoire' && move.fenAfter
+                ? `?o=${meta.userColor}&fen=${encodeURIComponent(move.fenAfter)}`
+                : null;
+        const numberLabel =
+            move.moveNumber !== undefined
+                ? `${move.moveNumber}.`
+                : isLead
+                    ? `${fullMoveByMove.get(move) ?? ''}…`
+                    : null;
+        return (
+            <React.Fragment key={key}>
+                {numberLabel && (
+                    <span className="move-number">{numberLabel}&nbsp;</span>
+                )}
+                {explorerLink ? (
+                    <Link
+                        className={`${getMoveClassName(move)} move-link`}
+                        to={{ pathname: '/explorer', search: explorerLink }}
+                        title="Open in Explorer"
+                        onClick={() => trackEvent('GamesOpenInExplorer', { IsGameWithMistake: isMistake })}
+                    >
+                        {move.san}
+                    </Link>
+                ) : (
+                    <span className={getMoveClassName(move)}>{move.san}</span>
+                )}
+                {' '}
+            </React.Fragment>
+        );
+    };
 
     return (
         <div
@@ -694,14 +877,17 @@ const GameRow: React.FC<GameRowProps> = ({
                                     >⋯</button>
                                     {menuOpen && (
                                         <div className="game-overflow-dropdown">
+                                            {allowAnalyzeAction && !analyzeProgress && (
+                                                <button
+                                                    disabled={analyzeDisabled}
+                                                    onClick={() => { setMenuOpen(false); onAnalyzeOpponent(record); }}
+                                                >
+                                                    Analyze opponent
+                                                </button>
+                                            )}
                                             <button onClick={() => { setMenuOpen(false); onReannotate(record, userLower); }}>
                                                 Re-annotate
                                             </button>
-                                            {showOpponentAnalysis && (
-                                                <button disabled className="game-overflow-done">
-                                                    Opponent analysis ✓
-                                                </button>
-                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -726,74 +912,48 @@ const GameRow: React.FC<GameRowProps> = ({
                 ) : (
                     <>
                         {annotation && annotation.moves.length > 0 && (
-                            <div className="game-pgn">
-                                {annotation.moves.map((move, idx) => {
-                                    const explorerLink =
-                                        move.isUserMove &&
-                                        move.highlight === 'in-repertoire' &&
-                                        move.fenAfter
-                                            ? `?o=${meta.userColor}&fen=${encodeURIComponent(move.fenAfter)}`
-                                            : null;
-                                    return (
-                                        <React.Fragment key={idx}>
-                                            {move.moveNumber !== undefined && (
-                                                <span className="move-number">{move.moveNumber}.&nbsp;</span>
-                                            )}
-                                            {explorerLink ? (
-                                                <Link
-                                                    className={`${getMoveClassName(move)} move-link`}
-                                                    to={{ pathname: '/explorer', search: explorerLink }}
-                                                    title="Open in Explorer"
-                                                    onClick={() => trackEvent('GamesOpenInExplorer', { IsGameWithMistake: isMistake })}
-                                                >
-                                                    {move.san}
-                                                </Link>
-                                            ) : (
-                                                <span className={getMoveClassName(move)}>{move.san}</span>
-                                            )}
-                                            {' '}
-                                        </React.Fragment>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {annotation?.deviation && (
-                            <div className="game-deviation-summary">
-                                <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2L1 21h22L12 2z" fill="#9b59b6"/>
-                                    <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
-                                </svg>
-                                Repertoire has{' '}
-                                <strong>
-                                    {annotation.deviation.repertoireMoves.map(m => m.san).join(', ') || '?'}
-                                </strong>{' '}but you played{' '}
-                                <strong>{deviationMoveLabel} {annotation.deviation.userMove.san}</strong>
-                            </div>
-                        )}
-
-                        {eotSummary && (
-                            <div className="game-eot-summary">
-                                <svg className="game-deviation-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2L1 21h22L12 2z" fill={EOT_ICON_COLORS[eotSummary.category]}/>
-                                    <text x="12" y="18" textAnchor="middle" fill="#fff" fontSize="14" fontWeight="700">!</text>
-                                </svg>
-                                You played <strong>{eotSummary.moveLabel} {eotSummary.userSan}</strong> (<strong className="eot-category" style={{ color: EOT_ICON_COLORS[eotSummary.category] }}>{eotSummary.category}</strong>)
-                                {allowAnalyzeAction && !analyzeProgress && (
-                                    <a
-                                        className="analyze-opponent-link"
-                                        role="button"
-                                        onClick={analyzeDisabled ? undefined : () => onAnalyzeOpponent(record)}
-                                        aria-disabled={analyzeDisabled}
-                                    >
-                                        Analyze opponent
-                                    </a>
-                                )}
-                            </div>
-                        )}
-
-                        {eotSummary && !hasDeviation && suggestion && (
-                            <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} />
+                            showSections ? (
+                                <div className="game-sections">
+                                    {sections.map((section, sIdx) => {
+                                        const { label, color } = sectionHeaderInfo(section);
+                                        return (
+                                            <div
+                                                key={sIdx}
+                                                className={`game-section game-section-${section.kind}`}
+                                                style={{ borderLeftColor: color }}
+                                                role="group"
+                                                aria-label={label}
+                                            >
+                                                <div className="game-section-header">
+                                                    <span className="game-section-dot" style={{ backgroundColor: color }} aria-hidden="true" />
+                                                    <span className="game-section-label" style={{ color }}>{label}</span>
+                                                </div>
+                                                <div className="game-pgn game-section-moves">
+                                                    {section.moves.map((move, mIdx) => renderMoveToken(move, `${sIdx}-${mIdx}`, mIdx === 0))}
+                                                    {section.kind === 'pivot'
+                                                        && section.pivotKind === 'deviation'
+                                                        && annotation?.deviation
+                                                        && annotation.deviation.repertoireMoves.length > 0 && (
+                                                        <span className="repertoire-note">
+                                                            (your repertoire defined {deviationMoveLabel} {annotation.deviation.repertoireMoves.map(m => m.san).join(', ')})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {/* The repertoire-fix suggestion belongs to the mistake:
+                                                    render it inside the pivot section so the fix reads as
+                                                    part of the problem it corrects. */}
+                                                {section.kind === 'pivot' && eotSummary && !hasDeviation && suggestion && (
+                                                    <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="game-pgn">
+                                    {annotation.moves.map((move, idx) => renderMoveToken(move, idx))}
+                                </div>
+                            )
                         )}
 
                         {analyzeProgress && analyzeProgress.phase === 'downloading' && (

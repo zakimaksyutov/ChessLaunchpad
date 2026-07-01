@@ -111,7 +111,7 @@ The **starting position is always treated as book** (seeded into the analysis pa
 
 - **`hl`** holds one **highlight code per user move** across the frozen display window (opponent moves carry no code — they always render neutral). `hl.length` *is* the window: render replays `m`, assigns codes to user moves in order, and shows moves through the last user move in `hl`. Codes: `0` in-repertoire, `1` deviation, `2` post-theory ok, `3` inaccuracy (≥ 30 cp), `4` mistake (≥ 50 cp), `5` blunder (≥ 70 cp), `7` out-of-theory. (`6`, out-of-repertoire, applies only to opponent moves and is never stored.)
 - **`alt`** carries the repertoire move(s) available at the deviation, as SAN, for the green arrows and the deviation summary — present only when `hl` contains a `1`. Render parses each at the deviation position to recover `{from, to}`.
-- **`mb`** is the mini-board anchor ply: the half-move depth of the position shown on the row's mini board. For a deviation it's the position *before* the code-`1` ply (where the arrows are drawn).
+- **`mb`** is the mini-board anchor ply: the half-move depth of the position shown on the row's mini board. For a deviation (code `1`) or an EOT eval-drop (code `3`/`4`/`5`) it's the position *before* that move, where the arrows are drawn. The EOT anchor is re-derived from `hl` + `m` (not `mb`), so older records whose `mb` points *after* the bad move still render correctly.
 - **No automatic invalidation.** `fan` is not recomputed when the repertoire changes — that's the whole point of freezing it. The user applies their current repertoire to a game deliberately via **Re-annotate**.
 
 ### Masters theory + the Lichess OAuth requirement
@@ -138,7 +138,7 @@ For **Lichess** records, Re-annotate first re-fetches the game from `/api/game/e
 
 Each row shows:
 
-- **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start. When the user deviated, **green arrows** mark the repertoire moves and a **red arrow** marks the move played.
+- **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start, always shown *before* the relevant move. A **red arrow** marks the move played; a deviation also draws **green arrows** for the repertoire move(s).
 - **Players** — White / Black names with ratings; the user's side is visually emphasized.
 - **Right column** — Result · Rated/Casual · Speed · Time control · Date · "View on platform" link.
 - **Verdict bar** — leads the tile: a colored pill states the takeaway (*Mistake* / *Inaccuracy* / *Blunder* for EOT eval-drops, *Off your repertoire* for a deviation, *No opening mistakes* when clean), with the row's actions (**Suggest a fix**, **Mark reviewed**) right-aligned beside it.
@@ -208,12 +208,10 @@ A **threat-level** label is derived from `nb` (`0–2` low, `3–9` moderate, `1
 
 On **EOT** rows, a **"Suggest a fix"** action (in the verdict bar) proposes a concrete line to add so the user is ready next time. It is **not** shown on deviation rows — the user's own repertoire already holds the intended move. Like masters verdicts it **requires a connected Lichess account** (the masters explorer needs OAuth); without a token the result area shows a connect-Lichess prompt instead.
 
-The algorithm (see `GameSuggestionService`) walks the game from the start and, at the first out-of-repertoire user move, either keeps a sufficiently sound user move or substitutes a stronger masters move, closing the corrected line out shortly after. At the annotation-flagged inaccuracy ply, a kept user move must be the masters favorite — otherwise it is substituted, so the fix never re-proposes the badged move. The result is a suggested **PGN** rendered below the tile:
+The algorithm (see `GameSuggestionService`) walks the game from the start and, at the first out-of-repertoire user move, either keeps a sufficiently sound user move or substitutes a stronger masters move, closing the corrected line out shortly after. At the annotation-flagged inaccuracy ply, a kept user move must be the masters favorite — otherwise it is substituted, so the fix never re-proposes the badged move. The result renders below the tile as a compact **delta** — only the changed tail (diverging moves **bold**), since the prefix is identical to the played game already shown in the sections:
 
-- In-repertoire user plies keep the **greenish** in-repertoire styling; opponent plies are greyed (matching the main tile).
-- Moves that **differ from the played game** are **bold**; the first carries a muted **"(instead of X)"** note naming the replaced user move.
-- **Open in Lichess Opening Explorer** links to the line (with the replaced move appended as a one-ply variation for comparison).
-- **Add to repertoire** deep-links into the Explorer Review & Save flow; Save/Discard returns to `/games` at the row. When every ply is already in the repertoire there is nothing to add, so the action becomes an **"Already exists in the repertoire"** confirmation.
+- A short context line names the replaced move. If the fix diverges **before** the flagged mistake, the red pivot section extends to span `[divergence … mistake]`; **at** it, the pivot section already shows the move so no line is added; **after** it (rare), an inline *"Instead of X"* names the replaced move.
+- **Open in Lichess Opening Explorer** and **Add to repertoire** use the full line (Explorer appends the replaced move as a one-ply variation). Add-to-repertoire opens the Explorer Review & Save flow; when the line already exists it becomes an **"Already exists in the repertoire"** confirmation.
 
 One suggestion per row, persisted as `sg` on the record (anchored on the EOT user ply like `op`, so it survives reloads and the link hides on return). Re-annotate clears it; a repertoire change that moves the anchored deviation marks it stale and re-offers the action. Committing the suggestion sets `sg.ap`, freezing the annotation and flipping the action to a persistent **"Added to repertoire"** confirmation.
 
