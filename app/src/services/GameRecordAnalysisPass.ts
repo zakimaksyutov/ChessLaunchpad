@@ -88,7 +88,7 @@ export interface AnalyzedGameOutcome {
 
 /**
  * Build the analysis pass plan: enumerate every record across the activity
- * log that lacks `fan`, oldest-first, and attach each to its linked-account
+ * log that lacks `fan`, newest-first, and attach each to its linked-account
  * user. No network — the per-game walk resolves evals and masters verdicts on
  * demand (and defers games that need masters when no token is connected).
  *
@@ -116,13 +116,14 @@ export function buildAnalysisPlan(
     }
 
     const jobs: AnalysisJob[] = [];
-    // Walk oldest-first. Iterate days in ascending order, then sort
-    // within-day by `t` ascending.
-    const sortedDays = [...activity.practiceLog].sort((a, b) => a.date.localeCompare(b.date));
+    // Walk newest-first. Iterate days in descending order, then sort
+    // within-day by `t` descending — so analysis starts from the newest
+    // game (the top of the /games list) and works down toward the oldest.
+    const sortedDays = [...activity.practiceLog].sort((a, b) => b.date.localeCompare(a.date));
     for (const day of sortedDays) {
         const records = day.games?.records;
         if (!records || records.length === 0) continue;
-        const sortedRecords = [...records].sort((a, b) => a.t - b.t);
+        const sortedRecords = [...records].sort((a, b) => b.t - a.t);
         for (const record of sortedRecords) {
             if (record.fan !== undefined) continue;
 

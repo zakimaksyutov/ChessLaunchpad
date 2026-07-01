@@ -106,12 +106,12 @@ describe('buildAnalysisPlan', () => {
         expect(plan).toEqual([]);
     });
 
-    it('includes records lacking fan, sorted oldest-first, with owner + fens attached', async () => {
+    it('includes records lacking fan, sorted newest-first, with owner + fens attached', async () => {
         const data = makeData();
         appendGameRecord(data.activity!, rec({ id: 'old', t: BASE_DATE - 1000 * 60 * 60 * 24 }));
         appendGameRecord(data.activity!, rec({ id: 'new', t: BASE_DATE }));
         const plan = await buildAnalysisPlan(data);
-        expect(plan.map(j => j.record.id)).toEqual(['old', 'new']);
+        expect(plan.map(j => j.record.id)).toEqual(['new', 'old']);
         expect(plan[0].userLower).toBe('me');
         expect(plan[0].repertoireFens).toBeInstanceOf(Set);
     });
