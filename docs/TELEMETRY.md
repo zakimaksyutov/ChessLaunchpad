@@ -29,6 +29,7 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `BootstrapCompleted` | Bootstrap selection finishes (`gamesAnalyzed`, `linesProposed`). |
 | `BootstrapSaved` | User clicks "Save & start training" on the post-analysis summary; the proposed lines are persisted directly and the user is sent to `/training` (`gamesAnalyzed`, `linesProposed`, `added`). |
 | `BootstrapReviewOpened` | User clicks "Review & edit lines first" on the post-analysis summary; hands the proposed lines to Explorer's Review & Save view (`gamesAnalyzed`, `linesProposed`). |
+| `BootstrapDismissed` | User clicks "Not now" on the post-analysis summary; returns to the Dashboard without saving. The analysis stays cached in memory so re-entering `/bootstrap` restores the summary (`gamesAnalyzed`, `linesProposed`). |
 | `ExplorerEditStarted` | User enters Explorer Edit mode via the "Edit repertoire" button (manual edit session). |
 | `ExplorerReviewOpened` | User opens the Explorer "Review & Save" view from a manual edit (`source`, `added`, `removed`, `changed`). |
 | `ExplorerSaved` | A pending Explorer edit is persisted successfully (`source`, `added`, `removed`, `changed`). |

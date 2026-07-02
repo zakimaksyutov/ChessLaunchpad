@@ -227,6 +227,25 @@
     cursor: default;
 }
 
+.bootstrap-not-now {
+    margin-top: 0.35rem;
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.bootstrap-not-now:hover {
+    color: #555;
+}
+
+.bootstrap-not-now:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 /* ── Show-repertoire disclosure ─────────────────────────────────── */
 
 .bootstrap-show-lines {
