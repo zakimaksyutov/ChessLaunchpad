@@ -216,7 +216,7 @@ The algorithm (see `GameSuggestionService`) walks the game from the start and, a
 
 ### Keep my move (early-divergence only)
 
-When the fix diverges **before** the flagged mistake, the replaced move often isn't the mistake itself. That move gets a blue **"your move"** outline and a low-emphasis **"I want to keep playing X"** control above the suggested line. It recomputes the fix keeping that move, so the walk resumes past it — repeating until it reaches the flagged move or leaves master theory (an honest *"no strong book line from here"* note). Kept variants are **session-only** (never persisted); the row's canonical saved fix stays the earliest-divergence one.
+When the fix diverges **before** the flagged mistake, the replaced move often isn't the mistake itself. That move gets a blue **"your move"** outline and a low-emphasis **"I want to keep playing X"** control above the suggested line. It recomputes the fix keeping that move, so the walk resumes past it — repeating until it reaches the flagged move or leaves master theory (an honest *"no strong book line from here"* note). A kept variant with a fix **replaces the row's saved `sg`** (so it survives navigation/reload and the Add flow stamps the shown line); a dead-end keep stays session-only. Once the suggestion is **applied**, the keep control is hidden.
 
 One suggestion per row, persisted as `sg` on the record (anchored on the EOT user ply like `op`, so it survives reloads and the link hides on return). Re-annotate clears it; a repertoire change that moves the anchored deviation marks it stale and re-offers the action. Committing the suggestion sets `sg.ap`, freezing the annotation and flipping the action to a persistent **"Added to repertoire"** confirmation.
 

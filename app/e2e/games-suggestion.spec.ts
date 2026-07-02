@@ -362,7 +362,7 @@ test.describe('Games — Suggest a fix', () => {
       rep: 'Ba4',
       at: Date.now(),
     };
-    await setupMockEnvironment(page, fixtureWith([eotEarlyRecord('eot1', sg)]), USERNAME);
+    const { saves } = await setupMockEnvironment(page, fixtureWith([eotEarlyRecord('eot1', sg)]), USERNAME);
     await setupMockLichess(page, USERNAME);
     await setupLichessToken(page);
     // After keeping 4.Ba4 the walk resumes at 5.Bb3 (the flagged mistake). Bb3
@@ -391,6 +391,16 @@ test.describe('Games — Suggest a fix', () => {
     await expect(ready.locator('.suggest-fix-pgn')).not.toContainText('Bb3');
     await expect(ready.locator('.suggest-fix-explainer')).toHaveCount(0);
     await expect(ready.locator('.suggest-fix-keep')).toHaveCount(0);
+
+    // The kept variant is persisted (overwriting the original saved fix), so it
+    // survives navigation and the Add-to-repertoire flow stamps the right line.
+    await expect
+      .poll(() => findSavedRecord(saves, 'eot1')?.sg?.rep, { timeout: 10_000 })
+      .toBe('Bb3');
+    const saved = findSavedRecord(saves, 'eot1')!.sg!;
+    expect(saved.pgn).toContain('c3');
+    expect(saved.pl.some(p => p.s === 'c3' && p.n === 1)).toBe(true);
+    expect(saved.pl.some(p => p.s === 'Ba4' && p.n !== 1)).toBe(true); // kept, not "new"
   });
 
   test('keep-my-move shows the "no book line" fallback when the kept move leaves master theory', async ({ page }) => {

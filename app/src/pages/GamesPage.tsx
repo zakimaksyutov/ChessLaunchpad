@@ -750,13 +750,13 @@ const GameRow: React.FC<GameRowProps> = ({
             } ${earlyReplacedMove.san}`
             : '';
 
-    // The keep control only makes sense for an early divergence with a real
-    // replaced move; a kept variant is an exploration, so it always offers Add.
+    // The keep control shows for an early divergence with a real replaced move,
+    // but never once the suggestion is applied — after "Add to repertoire" the
+    // line is committed and there's nothing left to keep/change.
     const handleKeep =
-        suggestionDivergence?.early && keptMoveLabel
+        suggestionDivergence?.early && keptMoveLabel && !suggestionApplied
             ? () => onKeepMove(record, userLower, suggestionDivergence.firstNewIdx, keptMoveLabel)
             : null;
-    const isKeptVariant = suggestion?.status === 'ready' && !!suggestion.keptLabel;
 
     // Narrative sections for the PGN (in-repertoire / off-prep / pivot /
     // back-to-repertoire / out-of-theory). Headers carry the meaning so the
@@ -1062,7 +1062,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                                     render it inside the pivot section so the fix reads as
                                                     part of the problem it corrects. */}
                                                 {section.kind === 'pivot' && eotSummary && !hasDeviation && suggestion && (
-                                                    <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied && !isKeptVariant} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} onKeep={handleKeep} />
+                                                    <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} onKeep={handleKeep} />
                                                 )}
                                             </div>
                                         );
@@ -2089,12 +2089,15 @@ const GamesPage: React.FC = () => {
             // result — same no-412-retry posture as Analyze opponent. Anchored
             // on the EOT user ply so a later repertoire change can stale it.
             //
-            // A "keep my move" variant is a live exploration, not the row's
-            // canonical fix — it stays session-only so the best (earliest)
-            // fix remains the saved one and reload reverts cleanly.
+            // "Keep my move" variants persist too, so they survive navigation
+            // and the "Add to repertoire" flow stamps the *shown* line (not the
+            // original) as applied. The one exception is a keep that found no
+            // better line (no `replacedUserSan`): a dead-end stays session-only
+            // so it never overwrites the row's real fix.
             if (result.plies.length > 0) {
                 trackEvent(keep ? 'GamesKeepPlayedMove' : 'GamesFixSuggested');
-                if (!keep && eot) {
+                const persistable = !keep || result.replacedUserSan !== undefined;
+                if (eot && persistable) {
                     try {
                         const sg = toPersistedSuggestion(result, eot.targetPly);
                         const fresh = await persistSuggestion(dal, record.id, record.p, sg, signal);
