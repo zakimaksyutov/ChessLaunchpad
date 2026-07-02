@@ -246,6 +246,18 @@ const BootstrapPage: React.FC = () => {
         return () => window.removeEventListener('keydown', onKey);
     }, [handleDownloadRaw]);
 
+    // "Not now" from the summary: leave the analysis intact in the module-level
+    // cache so re-entering /bootstrap restores the summary instantly (same as a
+    // Back navigation). Nothing is persisted yet, so this dismisses rather than
+    // discards.
+    const handleDismiss = useCallback(() => {
+        trackEvent('BootstrapDismissed', {
+            gamesAnalyzed: games?.length ?? 0,
+            linesProposed: proposedCount,
+        });
+        navigate('/');
+    }, [games, proposedCount, navigate]);
+
     const handleProceedToReview = useCallback(() => {
         if (!selection) return;
         trackEvent('BootstrapReviewOpened', {
@@ -315,6 +327,7 @@ const BootstrapPage: React.FC = () => {
                     saveInFlight={saveInFlight}
                     onSaveAndTrain={handleSaveAndTrain}
                     onOpenInExplorer={handleProceedToReview}
+                    onDismiss={handleDismiss}
                 />
             )}
 
@@ -376,7 +389,8 @@ const SummaryPanel: React.FC<{
     saveInFlight: boolean;
     onSaveAndTrain: () => void;
     onOpenInExplorer: () => void;
-}> = ({ gamesAnalyzed, whiteCount, blackCount, chains, saveInFlight, onSaveAndTrain, onOpenInExplorer }) => {
+    onDismiss: () => void;
+}> = ({ gamesAnalyzed, whiteCount, blackCount, chains, saveInFlight, onSaveAndTrain, onOpenInExplorer, onDismiss }) => {
     const total = whiteCount + blackCount;
     const [showLines, setShowLines] = useState(false);
     const whiteChains = chains.filter(c => c.orientation === 'white');
@@ -427,6 +441,14 @@ const SummaryPanel: React.FC<{
                     Review &amp; edit lines first
                 </button>
                 <p className="bootstrap-summary-hint">You can edit your repertoire anytime in Explorer.</p>
+                <button
+                    type="button"
+                    className="bootstrap-not-now"
+                    onClick={onDismiss}
+                    disabled={saveInFlight}
+                >
+                    Not now
+                </button>
             </div>
 
             <button
