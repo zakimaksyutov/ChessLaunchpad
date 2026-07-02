@@ -274,7 +274,7 @@ describe('annotateGame', () => {
             const result = await annotateGame(gameData, 'user', repertoireFens, evals, 30, 'lichess');
 
             expect(result).not.toBeNull();
-            // Mini board should show position after d4 (first post-theory fen)
+            // Mini board should show position after d4 (end-of-theory fen)
             expect(result!.miniBoardFen).toBe(fens[5]);
         });
 
@@ -646,6 +646,39 @@ describe('annotateGame', () => {
             // which ranks higher than the earlier out-of-repertoire-response (c4)
             const fens = replayFens(['d4', 'e6', 'c4', 'd5', 'Nc3', 'Nf6']);
             expect(result!.miniBoardFen).toBe(fens[6]); // FEN before Bf4 (deviation.fen)
+        });
+
+        it('clean game: mini board anchors at the END of theory, not the first off-prep departure', async () => {
+            // Repertoire (white user): the Ruy Lopez Morphy — 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6.
+            // Game: 1. e4 e5 2. Nf3 a6 (opponent off-prep but still book) 3. Bb5 Nc6 —
+            // where 3...Nc6 transposes back into the repertoire (same position as
+            // 3...a6 in the Ruy). The game leaves prep at a6, dips through an
+            // off-prep response (Bb5), then returns to book on the final move. A
+            // clean game must anchor at that LAST in-book position, not the earlier
+            // off-prep position it passed through.
+            const repFens = buildRepertoireFens([
+                ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6'],
+            ]);
+
+            const gameData = makeGameData('e4 e5 Nf3 a6 Bb5 Nc6', 'user', 'opp');
+            const fens = replayFens(['e4', 'e5', 'Nf3', 'a6', 'Bb5', 'Nc6']);
+            const evals = makeEvals({
+                [compact(fens[3])]: [20],  // after Nf3 (before a6)
+                [compact(fens[4])]: [20],  // after a6 → opponent drop 0 (< 15, in theory)
+                [compact(fens[5])]: [15],  // after Bb5 → user drop 5 (ok)
+            });
+
+            const result = await annotateGame(gameData, 'user', repFens, evals, 30, 'lichess');
+
+            expect(result).not.toBeNull();
+            const moves = result!.moves;
+            expect(moves[3].highlight).toBe('out-of-repertoire');          // a6 — opponent off-prep, still book
+            expect(moves[4].highlight).toBe('out-of-repertoire-response'); // Bb5 — user off-prep response (ok)
+            expect(moves[5].highlight).toBe('in-repertoire');              // Nc6 — transposed back into book
+
+            // End-of-theory anchor = after Nc6 (fens[6]), NOT the earlier off-prep Bb5 (fens[5]).
+            expect(result!.miniBoardFen).toBe(fens[6]);
+            expect(result!.miniBoardFen).not.toBe(fens[5]);
         });
     });
 

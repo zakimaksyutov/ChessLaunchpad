@@ -138,7 +138,7 @@ For **Lichess** records, Re-annotate first re-fetches the game from `/api/game/e
 
 Each row shows:
 
-- **Mini board** — position at the first notable event (in priority): user deviation > first user eval-drop > end of theory > start, always shown *before* the relevant move. A **red arrow** marks the move played; a deviation also draws **green arrows** for the repertoire move(s).
+- **Mini board** — position in priority: user deviation > first user eval-drop > end of theory > start. A deviation or eval-drop sits *before* that move with a **red arrow** on it (a deviation adds **green arrows** for the repertoire move(s)). A **clean** game shows the **end of theory** — the last move still in known theory (repertoire *or* still-book off-prep); after a transposition back into book, the *final* such position, not the first departure.
 - **Players** — White / Black names with ratings; the user's side is visually emphasized.
 - **Right column** — Result · Rated/Casual · Speed · Time control · Date · "View on platform" link.
 - **Verdict bar** — leads the tile: a colored pill states the takeaway (*Mistake* / *Inaccuracy* / *Blunder* for EOT eval-drops, *Off your repertoire* for a deviation, *No opening mistakes* when clean), with the row's actions (**Suggest a fix**, **Mark reviewed**) right-aligned beside it.
