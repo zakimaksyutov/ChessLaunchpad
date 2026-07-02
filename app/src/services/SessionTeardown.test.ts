@@ -3,11 +3,15 @@ import { clearClientSessionKeys } from './SessionTeardown';
 import { persistLichessSession } from '../data/AuthSession';
 import { getLastSyncAt, markSyncedNow } from './SyncThrottle';
 import { getLinkedAccounts, setLinkedAccounts } from './LinkedAccountsService';
+import { getBootstrapResult, setBootstrapResult } from './BootstrapResultCache';
+import { setBootstrapHandoff, takeBootstrapHandoff } from './BootstrapHandoff';
 
 describe('clearClientSessionKeys', () => {
     beforeEach(() => {
         localStorage.clear();
         setLinkedAccounts([]);
+        // Drain any bootstrap state a prior test may have left staged.
+        takeBootstrapHandoff();
     });
 
     it('clears the auto-sync throttle stamp so a re-login is not wrongly throttled', () => {
@@ -32,5 +36,22 @@ describe('clearClientSessionKeys', () => {
         expect(getLinkedAccounts()).toEqual([]);
         expect(localStorage.getItem('lichessJwt')).toBeNull();
         expect(localStorage.getItem('authMode')).toBeNull();
+    });
+
+    it('drops the in-memory bootstrap analysis so it cannot leak to the next user', () => {
+        setBootstrapResult({
+            colors: ['white'],
+            games: [],
+            selection: { white: [{ orientation: 'white', from: 'fen-w', san: 'e4' }], black: [] },
+        });
+        setBootstrapHandoff({
+            white: [{ orientation: 'white', from: 'fen-w', san: 'e4' }],
+            black: [],
+        });
+
+        clearClientSessionKeys();
+
+        expect(getBootstrapResult()).toBeNull();
+        expect(takeBootstrapHandoff()).toBeNull();
     });
 });
