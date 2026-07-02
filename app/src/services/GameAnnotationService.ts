@@ -468,8 +468,11 @@ export async function annotateGame(
     let theoryEndPly = 0;
     let moveNumber = 1;
 
-    // Track first notable event for mini board
-    let firstPostTheoryFen: string | null = null;
+    // End-of-theory mini-board anchor: the position after the LAST move still in
+    // known theory (repertoire or off-prep-but-book). This is the position a
+    // clean game's mini board shows — where the game finally left all book, even
+    // if it dipped out of prep and transposed back into the repertoire earlier.
+    let endOfTheoryFen: string | null = null;
     // Eval-drop mini-board anchor: the position BEFORE the user's first notable
     // (non-ok) post-theory eval-drop, plus the dropping move itself — so the row
     // shows that position with a red arrow on the bad move (mirroring how a
@@ -477,13 +480,11 @@ export async function annotateGame(
     // so these stay unset on a deviation row.
     let firstEvalDropBeforeFen: string | null = null;
     let firstEvalDropMove: { from: string; to: string; san: string } | undefined;
-    let lastInRepertoireFen: string | null = null;
     let deviation: DeviationInfo | undefined;
     // Ply depths matching each mini-board candidate FEN above, so the frozen
     // annotation can store an anchor index (`fan.mb`) instead of a FEN.
-    let firstPostTheoryPly = 0;
+    let endOfTheoryPly = 0;
     let firstEvalDropBeforePly = 0;
-    let lastInRepertoirePly = 0;
     let deviationPly = 0;
 
     for (let i = 0; i < allMoves.length; i++) {
@@ -515,8 +516,6 @@ export async function annotateGame(
         if (repertoireFens.has(normalizedFenAfter)) {
             // Position after move is in repertoire → green (handles transpositions back)
             highlight = 'in-repertoire';
-            lastInRepertoireFen = fenAfter;
-            lastInRepertoirePly = i + 1;
             theoryEndPly = i + 1;
             postTheoryAnalysis = false;
             reason = 'after-FEN in repertoire';
@@ -535,11 +534,6 @@ export async function annotateGame(
                 highlight = 'out-of-repertoire-response';
                 reason = 'before-FEN is a repertoire leaf (no authored continuation) → post-theory analysis';
                 postTheoryAnalysis = true;
-
-                if (!firstPostTheoryFen) {
-                    firstPostTheoryFen = fenAfter;
-                    firstPostTheoryPly = i + 1;
-                }
 
                 const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
                 if (evalResult) {
@@ -575,11 +569,6 @@ export async function annotateGame(
                         repertoireMoves,
                     };
                     deviationPly = i;
-                }
-
-                if (!firstPostTheoryFen) {
-                    firstPostTheoryFen = fenAfter;
-                    firstPostTheoryPly = i + 1;
                 }
 
                 // Compute eval drop for the deviation
@@ -647,11 +636,6 @@ export async function annotateGame(
             // User move after opponent left repertoire but still in theory — evaluate for eval drop
             highlight = 'out-of-repertoire-response';
             reason = 'user move after opponent left repertoire (still in theory)';
-
-            if (!firstPostTheoryFen) {
-                firstPostTheoryFen = fenAfter;
-                firstPostTheoryPly = i + 1;
-            }
 
             const evalResult = await lookupEvals(fenBefore, fenAfter, i, evals, embeddedEvals, cloudEval, cloudEvalSink);
             if (evalResult) {
@@ -722,6 +706,20 @@ export async function annotateGame(
             `  ply ${i}: ${allMoves[i].san} [${isUserMove ? 'USER' : 'OPP'}] → ${highlight} | ${reason}`
         );
 
+        // Track the end-of-theory anchor: the position after the last move still
+        // following known theory (in the repertoire or off-prep-but-still-book).
+        // Transposing back into the repertoire pushes this forward, so a game
+        // that leaves prep and returns anchors at its FINAL departure, not its
+        // first. (A deviation / eval-drop, when present, overrides this below.)
+        if (
+            highlight === 'in-repertoire' ||
+            highlight === 'out-of-repertoire' ||
+            highlight === 'out-of-repertoire-response'
+        ) {
+            endOfTheoryFen = fenAfter;
+            endOfTheoryPly = i + 1;
+        }
+
         moves.push({
             san: allMoves[i].san,
             moveNumber: currentMoveNumber,
@@ -741,9 +739,10 @@ export async function annotateGame(
     if (debugThis) console.groupEnd();
 
     // Determine mini board position (spec §3.3)
-    // Priority: user deviation > first eval-drop > end of theory > last in-repertoire > start.
+    // Priority: user deviation > first eval-drop > end of theory > start.
     // Deviations and eval-drops both show the position BEFORE the bad move (with
     // a red arrow on the move played); deviations add green repertoire arrows.
+    // A clean game shows the end-of-theory position (see `endOfTheoryFen`).
     let miniBoardFen: string;
     let miniBoardPly: number;
     if (deviation) {
@@ -752,12 +751,9 @@ export async function annotateGame(
     } else if (firstEvalDropBeforeFen) {
         miniBoardFen = firstEvalDropBeforeFen;
         miniBoardPly = firstEvalDropBeforePly;
-    } else if (firstPostTheoryFen) {
-        miniBoardFen = firstPostTheoryFen;
-        miniBoardPly = firstPostTheoryPly;
-    } else if (lastInRepertoireFen) {
-        miniBoardFen = lastInRepertoireFen;
-        miniBoardPly = lastInRepertoirePly;
+    } else if (endOfTheoryFen) {
+        miniBoardFen = endOfTheoryFen;
+        miniBoardPly = endOfTheoryPly;
     } else {
         miniBoardFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
         miniBoardPly = 0;
