@@ -142,6 +142,16 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
             {username && (
                 <nav className="header-nav">
                     <NavLink
+                        to="/"
+                        end
+                        className={navLinkClass}
+                        onClick={handleNavClick}
+                        title={editModeTitle}
+                        aria-disabled={inEditMode || undefined}
+                    >
+                        Home
+                    </NavLink>
+                    <NavLink
                         to="/training"
                         className={navLinkClass}
                         onClick={handleNavClick}
