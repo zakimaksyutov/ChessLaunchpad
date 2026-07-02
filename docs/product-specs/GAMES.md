@@ -214,6 +214,10 @@ The algorithm (see `GameSuggestionService`) walks the game from the start and, a
 - A short context line names the replaced move. If the fix diverges **before** the flagged mistake, the red pivot section extends to span `[divergence … mistake]`; **at** it, the pivot section already shows the move so no line is added; **after** it (rare), an inline *"Instead of X"* names the replaced move.
 - **Open in Lichess Opening Explorer** and **Add to repertoire** use the full line (Explorer appends the replaced move as a one-ply variation). Add-to-repertoire opens the Explorer Review & Save flow; when the line already exists it becomes an **"Already exists in the repertoire"** confirmation.
 
+### Keep my move (early-divergence only)
+
+When the fix diverges **before** the flagged mistake, the replaced move often isn't the mistake itself. That move gets a blue **"your move"** outline and a low-emphasis **"I want to keep playing X"** control above the suggested line. It recomputes the fix keeping that move, so the walk resumes past it — repeating until it reaches the flagged move or leaves master theory (an honest *"no strong book line from here"* note). Kept variants are **session-only** (never persisted); the row's canonical saved fix stays the earliest-divergence one.
+
 One suggestion per row, persisted as `sg` on the record (anchored on the EOT user ply like `op`, so it survives reloads and the link hides on return). Re-annotate clears it; a repertoire change that moves the anchored deviation marks it stale and re-offers the action. Committing the suggestion sets `sg.ap`, freezing the annotation and flipping the action to a persistent **"Added to repertoire"** confirmation.
 
 ## Retention

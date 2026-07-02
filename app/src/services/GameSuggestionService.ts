@@ -103,6 +103,15 @@ export interface SuggestionInput {
      * which case re-proposing it as the "fix" would be useless.
      */
     flaggedPlyIndex?: number;
+    /**
+     * User ply indices (0-based, into `sans`) the user has chosen to keep as
+     * played ("I want to keep playing X"). At each of these the walk
+     * force-accepts the user's move without scoring or substituting, so the
+     * divergence is pushed to the next problem *after* the kept move(s). Drives
+     * the /games "keep this move" control, which resumes the fix walk from a
+     * move the user insists on playing.
+     */
+    keptUserPlies?: Set<number>;
     masters: MastersProvider;
     cloudEvalCp: CloudEvalCpProvider;
     signal?: AbortSignal;
@@ -522,7 +531,7 @@ function buildExplorerMovetext(
  * move the annotation already badged as an eval inaccuracy.
  */
 export async function computeSuggestion(input: SuggestionInput): Promise<SuggestionResult> {
-    const { sans, userColor, repertoireFens, flaggedPlyIndex, signal, debug } = input;
+    const { sans, userColor, repertoireFens, flaggedPlyIndex, keptUserPlies, signal, debug } = input;
     const userWhite = userColor === 'white';
 
     const shortFen = (f: string) => f.split(' ').slice(0, 2).join(' ');
@@ -680,6 +689,20 @@ export async function computeSuggestion(input: SuggestionInput): Promise<Suggest
         if ((board.turn() === 'w') !== userWhite) {
             if (!appendMove(sans[i])) return finalize();
             i++;
+            continue;
+        }
+
+        // Force-kept ply: the user insisted on this move ("keep playing X").
+        // Accept it as played without scoring, then advance past the opponent's
+        // reply, so the walk looks for the next problem *after* the kept move.
+        if (keptUserPlies?.has(i)) {
+            if (debug) console.log(`[walk] user ply ${i} "${sans[i]}": force-kept by user request`);
+            if (!appendMove(sans[i])) return finalize();
+            i++;
+            if (i < sans.length) {
+                if (!appendMove(sans[i])) return finalize();
+                i++;
+            }
             continue;
         }
 

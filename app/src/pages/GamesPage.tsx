@@ -380,7 +380,13 @@ type SuggestionState =
     | { status: 'loading' }
     | { status: 'need-lichess' }
     | { status: 'error' }
-    | { status: 'ready'; result: SuggestionResult };
+    /**
+     * `keptLabel` marks a result produced by the "keep this move" control: it
+     * names the move the user kept (e.g. "4… Bd6"), used for the "no book line"
+     * fallback and to force the non-applied Add action (a kept variant is an
+     * exploration, not the row's canonical saved fix).
+     */
+    | { status: 'ready'; result: SuggestionResult; keptLabel?: string };
 
 function suggestionMoveClass(ply: SuggestionPly): string {
     // Mirror the main game tile PGN (`getMoveClassName`): opponent plies are
@@ -412,7 +418,14 @@ const SuggestionDisplay: React.FC<{
      * "instead of X" note instead.
      */
     replacedShownAbove: boolean;
-}> = ({ state, orientation, rowKey, applied, earlyDivergence, replacedShownAbove }) => {
+    /**
+     * When non-null, renders the low-emphasis "I want to keep playing X" control
+     * above the suggested moves; clicking resumes the walk from after the kept
+     * move. Set only for an early divergence (Case 2), where the fix replaces a
+     * move *before* the flagged mistake.
+     */
+    onKeep: (() => void) | null;
+}> = ({ state, orientation, rowKey, applied, earlyDivergence, replacedShownAbove, onKeep }) => {
     if (state.status === 'loading') {
         return (
             <div className="suggest-fix-result suggest-fix-loading" role="status" aria-live="polite">
@@ -445,6 +458,19 @@ const SuggestionDisplay: React.FC<{
             </div>
         );
     }
+
+    // "Keep my move" led nowhere: the walk force-kept the chosen move but found
+    // no stronger book continuation after it (the position has left master
+    // theory). Say so plainly rather than showing a divergence-less "fix".
+    if (state.keptLabel && result.replacedUserSan === undefined) {
+        return (
+            <div className="suggest-fix-result suggest-fix-kept-empty">
+                <span className="suggest-fix-icon" aria-hidden="true">❗</span>
+                You kept {state.keptLabel}. There&apos;s no strong book line to add from
+                here — it leaves master theory.
+            </div>
+        );
+    }
     const lichessUrl = buildLichessAnalysisUrl(result.explorerPgn, orientation);
     const addUrl = `/explorer?o=${orientation}&addpgn=${encodeURIComponent(result.pgn)}&from=games&row=${encodeURIComponent(rowKey)}`;
     // Every ply already in the repertoire ⇒ the line exists; there is nothing
@@ -468,22 +494,30 @@ const SuggestionDisplay: React.FC<{
     const replacedMoveNo = Math.floor(deltaStart / 2) + 1;
     const replacedLabel = replacedIsWhite ? `${replacedMoveNo}.` : `${replacedMoveNo}…`;
 
-    // Context line naming the replaced move. Three cases (see the section
-    // rework in GAMES.md):
+    // Context line naming the replaced move (JSX so the SAN carries the same
+    // blue "your move" outline it wears in the played line above). Three cases
+    // (see the section rework in GAMES.md):
     //   • Case 2 (early divergence): the fix corrects a move before the flagged
-    //     one — say so, since the pivot section spans the whole run.
+    //     one — lead with an ❗ icon and offer the "keep my move" control.
     //   • Case 3 (divergence after the pivot / outside the frozen window): the
-    //     replaced move isn't shown in any section, so name it inline.
+    //     replaced move isn't shown in any section, so name it inline plainly.
     //   • Case 1 (divergence at the flagged move): the pivot section already
     //     shows it right above — no extra line.
     // Wording stays category-agnostic ("stronger move was available"); the row
     // may be an inaccuracy or blunder, not only a "mistake".
     const replaced = result.replacedUserSan;
-    let contextLine: string | null = null;
+    let contextLine: React.ReactNode = null;
     if (replaced && earlyDivergence) {
-        contextLine = `A stronger move than ${replacedLabel} ${replaced} was available — the fix starts here.`;
+        contextLine = (
+            <>
+                <span className="suggest-fix-icon" aria-hidden="true">❗</span>
+                A stronger move than{' '}
+                <span className="move-kept-candidate">{replacedLabel} {replaced}</span>{' '}
+                was available — the fix starts here.
+            </>
+        );
     } else if (replaced && !replacedShownAbove) {
-        contextLine = `Instead of ${replacedLabel} ${replaced}:`;
+        contextLine = <>Instead of {replacedLabel} {replaced}:</>;
     }
 
     return (
@@ -491,6 +525,11 @@ const SuggestionDisplay: React.FC<{
             <div className="suggest-fix-label">Suggested line</div>
             {contextLine && (
                 <div className="suggest-fix-explainer">{contextLine}</div>
+            )}
+            {onKeep && replaced && (
+                <button type="button" className="suggest-fix-keep" onClick={onKeep}>
+                    ↳ I want to keep playing {replacedLabel} {replaced}
+                </button>
             )}
             <div className="game-pgn suggest-fix-pgn">
                 {deltaPlies.map((ply, idx) => {
@@ -578,6 +617,12 @@ interface GameRowProps {
     suggestionApplied: boolean;
     /** Compute (or recompute) a repertoire-fix suggestion for this row. */
     onSuggestFix: (record: GameRecord, userLower: string) => void;
+    /**
+     * "I want to keep playing X" — recompute the fix force-keeping every user
+     * ply through `throughPly`, resuming the walk from after the kept move.
+     * `keptLabel` names that move for the "no book line" fallback.
+     */
+    onKeepMove: (record: GameRecord, userLower: string, throughPly: number, keptLabel: string) => void;
 }
 
 const GameRow: React.FC<GameRowProps> = ({
@@ -597,6 +642,7 @@ const GameRow: React.FC<GameRowProps> = ({
     suggestion,
     suggestionApplied,
     onSuggestFix,
+    onKeepMove,
 }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -671,6 +717,32 @@ const GameRow: React.FC<GameRowProps> = ({
         const pivotIndex = findPivotMoveIndex(annotation.moves);
         return { firstNewIdx, pivotIndex, early: pivotIndex >= 0 && firstNewIdx < pivotIndex };
     }, [annotation, suggestion]);
+
+    // Early-divergence (Case 2) only: the played move the fix replaces gets a
+    // blue "your move" outline in the played line, links it to the same move
+    // named in the explainer, and anchors the "keep playing X" control. Held as
+    // the AnnotatedMove object so `renderMoveToken` can mark it by identity.
+    const earlyReplacedMove =
+        annotation && suggestionDivergence?.early
+            ? annotation.moves[suggestionDivergence.firstNewIdx] ?? null
+            : null;
+
+    // Display label ("4… Bd6") of that replaced move, passed to `onKeepMove` so
+    // the resulting kept state can name it in the "no book line" fallback.
+    const keptMoveLabel =
+        earlyReplacedMove && suggestionDivergence
+            ? `${Math.floor(suggestionDivergence.firstNewIdx / 2) + 1}${
+                suggestionDivergence.firstNewIdx % 2 === 0 ? '.' : '…'
+            } ${earlyReplacedMove.san}`
+            : '';
+
+    // The keep control only makes sense for an early divergence with a real
+    // replaced move; a kept variant is an exploration, so it always offers Add.
+    const handleKeep =
+        suggestionDivergence?.early && keptMoveLabel
+            ? () => onKeepMove(record, userLower, suggestionDivergence.firstNewIdx, keptMoveLabel)
+            : null;
+    const isKeptVariant = suggestion?.status === 'ready' && !!suggestion.keptLabel;
 
     // Narrative sections for the PGN (in-repertoire / off-prep / pivot /
     // back-to-repertoire / out-of-theory). Headers carry the meaning so the
@@ -806,6 +878,10 @@ const GameRow: React.FC<GameRowProps> = ({
                 : isLead
                     ? `${fullMoveByMove.get(move) ?? ''}…`
                     : null;
+        // Blue "your move" outline on the played move the fix diverges from
+        // (Case 2). By object identity, so a repeated SAN elsewhere isn't marked.
+        const moveClass =
+            getMoveClassName(move) + (move === earlyReplacedMove ? ' move-kept-candidate' : '');
         return (
             <React.Fragment key={key}>
                 {numberLabel && (
@@ -813,7 +889,7 @@ const GameRow: React.FC<GameRowProps> = ({
                 )}
                 {explorerLink ? (
                     <Link
-                        className={`${getMoveClassName(move)} move-link`}
+                        className={`${moveClass} move-link`}
                         to={{ pathname: '/explorer', search: explorerLink }}
                         title="Open in Explorer"
                         onClick={() => trackEvent('GamesOpenInExplorer', { IsGameWithMistake: isMistake })}
@@ -821,7 +897,7 @@ const GameRow: React.FC<GameRowProps> = ({
                         {move.san}
                     </Link>
                 ) : (
-                    <span className={getMoveClassName(move)}>{move.san}</span>
+                    <span className={moveClass}>{move.san}</span>
                 )}
                 {' '}
             </React.Fragment>
@@ -972,7 +1048,7 @@ const GameRow: React.FC<GameRowProps> = ({
                                                     render it inside the pivot section so the fix reads as
                                                     part of the problem it corrects. */}
                                                 {section.kind === 'pivot' && eotSummary && !hasDeviation && suggestion && (
-                                                    <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} />
+                                                    <SuggestionDisplay state={suggestion} orientation={meta.userColor ?? 'white'} rowKey={`${record.p}:${record.id}`} applied={suggestionApplied && !isKeptVariant} earlyDivergence={!!suggestionDivergence?.early} replacedShownAbove={!!suggestionDivergence} onKeep={handleKeep} />
                                                 )}
                                             </div>
                                         );
@@ -1917,7 +1993,11 @@ const GamesPage: React.FC = () => {
     // Suggest a fix
     // ─────────────────────────────────────────────────────────────────────
 
-    const handleSuggestFix = useCallback(async (record: GameRecord, userLower: string) => {
+    const handleSuggestFix = useCallback(async (
+        record: GameRecord,
+        userLower: string,
+        keep?: { keptUserPlies: Set<number>; keptLabel: string },
+    ) => {
         const key = `${record.p}:${record.id}`;
 
         // The suggestion algorithm depends on the masters explorer (OAuth-gated);
@@ -1980,22 +2060,27 @@ const GamesPage: React.FC = () => {
                 explorerEvals,
                 embeddedEvals: record.ev,
                 flaggedPlyIndex: eot?.targetPly,
+                keptUserPlies: keep?.keptUserPlies,
                 masters,
                 cloudEvalCp,
                 signal,
                 debug: true,
             });
             if (signal.aborted) return;
-            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'ready', result }));
+            setSuggestionByKey(prev => new Map(prev).set(key, { status: 'ready', result, keptLabel: keep?.keptLabel }));
 
             // Persist so the suggestion survives reloads and the "Suggest a
             // fix" link can hide on return visits (mirrors the saved `op`).
             // Best-effort: a persist failure never downgrades the already-shown
             // result — same no-412-retry posture as Analyze opponent. Anchored
             // on the EOT user ply so a later repertoire change can stale it.
+            //
+            // A "keep my move" variant is a live exploration, not the row's
+            // canonical fix — it stays session-only so the best (earliest)
+            // fix remains the saved one and reload reverts cleanly.
             if (result.plies.length > 0) {
-                trackEvent('GamesFixSuggested');
-                if (eot) {
+                trackEvent(keep ? 'GamesKeepPlayedMove' : 'GamesFixSuggested');
+                if (!keep && eot) {
                     try {
                         const sg = toPersistedSuggestion(result, eot.targetPly);
                         const fresh = await persistSuggestion(dal, record.id, record.p, sg, signal);
@@ -2023,6 +2108,20 @@ const GamesPage: React.FC = () => {
             abort.abort();
         }
     }, [lichessToken, fenSets, explorerEvals, dal, annotationByKey]);
+
+    // "I want to keep playing X": recompute the fix force-keeping every user ply
+    // through the divergence, so the walk resumes from after the kept move. The
+    // set spans 0..throughPly (opponent indices are ignored by the walk).
+    const handleKeepMove = useCallback((
+        record: GameRecord,
+        userLower: string,
+        throughPly: number,
+        keptLabel: string,
+    ) => {
+        const keptUserPlies = new Set<number>();
+        for (let i = 0; i <= throughPly; i++) keptUserPlies.add(i);
+        void handleSuggestFix(record, userLower, { keptUserPlies, keptLabel });
+    }, [handleSuggestFix]);
 
     // ─────────────────────────────────────────────────────────────────────
     // Mark reviewed
@@ -2240,6 +2339,7 @@ const GamesPage: React.FC = () => {
                                 suggestion={suggestionState}
                                 suggestionApplied={suggestionApplied}
                                 onSuggestFix={handleSuggestFix}
+                                onKeepMove={handleKeepMove}
                             />
                         );
                     })}

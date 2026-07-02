@@ -413,6 +413,84 @@ describe('computeSuggestion — flagged inaccuracy ply', () => {
 });
 
 // ---------------------------------------------------------------------------
+// computeSuggestion — keptUserPlies ("I want to keep playing X")
+// ---------------------------------------------------------------------------
+
+describe('computeSuggestion — keptUserPlies', () => {
+    it('force-keeps the chosen user ply and pushes the divergence to the next problem', async () => {
+        const repFens = buildRepFens([['e4'], ['e4', 'e5'], ['e4', 'e5', 'Nf3']]);
+        const sans = ['e4', 'e5', 'Nf3', 'd6', 'h4', 'Nf6', 'h5', 'Nc6'];
+
+        const map = new Map<string, MastersPositionResult | null>();
+        // Position before the user's h4 (ply 4): h4 is NOT a Top-5 master move →
+        // normally substituted here.
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6']), mkMasters([
+            ['d4', 6000, 3000, 1000],
+            ['Bc4', 1000, 800, 700],
+            ['c3', 300, 200, 100],
+            ['Nc3', 200, 100, 80],
+            ['g3', 50, 30, 20],
+        ]));
+        // Position before the user's h5 (ply 6): reached only when h4 is kept.
+        // h5 is not a Top-5 master move → substitute here instead.
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6', 'h4', 'Nf6']), mkMasters([
+            ['Nc3', 6000, 3000, 1000],
+            ['d4', 1000, 800, 700],
+            ['Bc4', 300, 200, 100],
+            ['Be2', 200, 100, 80],
+            ['g3', 50, 30, 20],
+        ]));
+
+        const base = {
+            sans,
+            userColor: 'white' as const,
+            repertoireFens: repFens,
+            explorerEvals: null,
+            masters: mastersFromMap(map),
+            cloudEvalCp: noCloud,
+        };
+
+        // Baseline: the fix diverges at the first off-book user move, h4.
+        const without = await computeSuggestion(base);
+        expect(without.replacedUserSan).toBe('h4');
+        expect(without.plies.map(p => p.san)).not.toContain('h5');
+
+        // Keeping h4 resumes the walk from after it → divergence moves to h5.
+        const kept = await computeSuggestion({ ...base, keptUserPlies: new Set([4]) });
+        expect(kept.replacedUserSan).toBe('h5');
+        const h4 = kept.plies.find(p => p.san === 'h4');
+        expect(h4).toBeDefined();
+        expect(h4!.isNew).toBe(false); // kept as played, not a "new" suggested move
+        expect(kept.plies.map(p => p.san)).toContain('Nc3'); // the substitute at h5
+        expect(kept.plies.map(p => p.san)).not.toContain('h5');
+    });
+
+    it('returns no divergence when the kept move leaves master theory (no book line)', async () => {
+        const repFens = buildRepFens([['e4'], ['e4', 'e5'], ['e4', 'e5', 'Nf3']]);
+        const sans = ['e4', 'e5', 'Nf3', 'd6', 'h4', 'Nf6', 'h5', 'Nc6'];
+
+        const map = new Map<string, MastersPositionResult | null>();
+        map.set(fenAfter(['e4', 'e5', 'Nf3', 'd6']), mkMasters([
+            ['d4', 6000, 3000, 1000],
+        ]));
+        // No masters entry after the kept h4 → the walk stops with no substitution.
+
+        const kept = await computeSuggestion({
+            sans,
+            userColor: 'white',
+            repertoireFens: repFens,
+            explorerEvals: null,
+            keptUserPlies: new Set([4]),
+            masters: mastersFromMap(map),
+            cloudEvalCp: noCloud,
+        });
+
+        expect(kept.replacedUserSan).toBeUndefined();
+        expect(kept.plies.some(p => p.isNew)).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // computeSuggestion — edge cases
 // ---------------------------------------------------------------------------
 

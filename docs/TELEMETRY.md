@@ -23,6 +23,7 @@ ChessLaunchpad sends telemetry to **Azure Application Insights**. All custom eve
 | `GamesOpponentAnalysisStart` | Opponent analysis run begins for a deviation. |
 | `GamesOpponentAnalysisComplete` | Opponent analysis run finishes successfully. |
 | `GamesFixSuggested` | A suggested fix line is produced for a deviation. |
+| `GamesKeepPlayedMove` | User clicks "keep playing X" on an early-divergence fix, resuming the walk from the kept move. |
 | `GamesSuggestedLineAdded` | User clicks "Add to repertoire" on a suggested fix. |
 | `DashboardView` | Dashboard page loads (logged-in home). |
 | `BootstrapStarted` | Repertoire-bootstrap page begins collecting games. |
