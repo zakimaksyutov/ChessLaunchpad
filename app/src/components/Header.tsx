@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { PendingEditNotifier } from '../services/PendingEditNotifier';
 import { clearClientSessionKeys } from '../services/SessionTeardown';
 import { useLichessAuth } from '../LichessAuthContext';
@@ -119,7 +119,8 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
         }
     };
 
-    const navLinkClass = `header-nav-link${inEditMode ? ' header-nav-link-disabled' : ''}`;
+    const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+        `header-nav-link${isActive ? ' header-nav-link-active' : ''}${inEditMode ? ' header-nav-link-disabled' : ''}`;
     const editModeTitle = inEditMode
         ? 'Save or discard your repertoire edits in Explorer first.'
         : undefined;
@@ -140,7 +141,7 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
             {/* Middle Section: Menu items (only if logged in) */}
             {username && (
                 <nav className="header-nav">
-                    <Link
+                    <NavLink
                         to="/training"
                         className={navLinkClass}
                         onClick={handleNavClick}
@@ -148,8 +149,8 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
                         aria-disabled={inEditMode || undefined}
                     >
                         Training
-                    </Link>
-                    <Link
+                    </NavLink>
+                    <NavLink
                         to="/explorer"
                         className={navLinkClass}
                         onClick={handleNavClick}
@@ -157,8 +158,8 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
                         aria-disabled={inEditMode || undefined}
                     >
                         Explorer
-                    </Link>
-                    <Link
+                    </NavLink>
+                    <NavLink
                         to="/games"
                         className={navLinkClass}
                         onClick={handleNavClick}
@@ -166,7 +167,7 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
                         aria-disabled={inEditMode || undefined}
                     >
                         Games
-                    </Link>
+                    </NavLink>
                 </nav>
             )}
 

@@ -32,10 +32,24 @@
   color: white;
   text-decoration: none;
   font-weight: 500;
+  /* Reserve space for the active underline so toggling it never shifts layout. */
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
 }
 
 .header-nav-link:hover {
   text-decoration: underline;
+}
+
+/* Active (current route): persistent underline + bold so the current tab
+   is unambiguous. Distinct from the hover text-decoration underline. */
+.header-nav-link-active {
+  font-weight: 700;
+  border-bottom-color: white;
+}
+
+.header-nav-link-active:hover {
+  text-decoration: none;
 }
 
 /* While Explorer is in Edit mode, the entire header is visually
