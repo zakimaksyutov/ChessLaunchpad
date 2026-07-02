@@ -399,6 +399,20 @@ function suggestionMoveClass(ply: SuggestionPly): string {
     return ply.isNew && ply.isUserMove ? `${base} suggest-fix-new` : base;
 }
 
+/** A white bold-tapered "!" inside a filled blue circle (our own drawing) —
+ *  the attention cue leading the early-divergence explainer / kept-empty note,
+ *  in the "your move" blue accent. */
+const SuggestFixIcon: React.FC = () => (
+    <svg className="suggest-fix-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="11" fill="currentColor" />
+        <path
+            d="M9.8 7.4 Q9.6 5.3 12 5.3 Q14.4 5.3 14.2 7.4 L13.2 13.4 Q13.1 14.6 12 14.6 Q10.9 14.6 10.8 13.4 Z"
+            fill="#fff"
+        />
+        <circle cx="12" cy="17.3" r="1.75" fill="#fff" />
+    </svg>
+);
+
 const SuggestionDisplay: React.FC<{
     state: SuggestionState;
     orientation: 'white' | 'black';
@@ -465,7 +479,7 @@ const SuggestionDisplay: React.FC<{
     if (state.keptLabel && result.replacedUserSan === undefined) {
         return (
             <div className="suggest-fix-result suggest-fix-kept-empty">
-                <span className="suggest-fix-icon" aria-hidden="true">❗</span>
+                <SuggestFixIcon />
                 You kept {state.keptLabel}. There&apos;s no strong book line to add from
                 here — it leaves master theory.
             </div>
@@ -498,7 +512,7 @@ const SuggestionDisplay: React.FC<{
     // blue "your move" outline it wears in the played line above). Three cases
     // (see the section rework in GAMES.md):
     //   • Case 2 (early divergence): the fix corrects a move before the flagged
-    //     one — lead with an ❗ icon and offer the "keep my move" control.
+    //     one — lead with a "!" badge and offer the "keep my move" control.
     //   • Case 3 (divergence after the pivot / outside the frozen window): the
     //     replaced move isn't shown in any section, so name it inline plainly.
     //   • Case 1 (divergence at the flagged move): the pivot section already
@@ -510,7 +524,7 @@ const SuggestionDisplay: React.FC<{
     if (replaced && earlyDivergence) {
         contextLine = (
             <>
-                <span className="suggest-fix-icon" aria-hidden="true">❗</span>
+                <SuggestFixIcon />
                 A stronger move than{' '}
                 <span className="move-kept-candidate">{replacedLabel} {replaced}</span>{' '}
                 was available — the fix starts here.

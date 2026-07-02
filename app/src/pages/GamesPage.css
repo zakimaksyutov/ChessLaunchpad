@@ -905,9 +905,15 @@
     margin-bottom: 0.3rem;
 }
 
-/* Leading ❗ on the explainer / kept-empty note. */
+/* Leading "!" mark on the explainer / kept-empty note — our own white bold "!"
+   inside a filled blue circle (the "your move" accent), tied to the outlined move. */
 .suggest-fix-icon {
-    margin-right: 0.25rem;
+    width: 0.95rem;
+    height: 0.95rem;
+    margin-right: 0.35rem;
+    color: var(--kept-candidate);
+    vertical-align: -0.18em;
+    flex-shrink: 0;
 }
 
 /* "I want to keep playing X" — a low-emphasis control above the suggested line,
