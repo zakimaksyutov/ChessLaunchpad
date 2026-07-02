@@ -14,7 +14,7 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
     const navigate = useNavigate();
-    const { logout: lichessOAuthLogout } = useLichessAuth();
+    const { logout: lichessOAuthLogout, connected: lichessConnected } = useLichessAuth();
 
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -88,15 +88,19 @@ const Header: React.FC<HeaderProps> = ({ username, displayName, onLogout }) => {
         // `data.games[*].watermarkMs`); the boot-time IDB cleanup also
         // sweeps the retired stores.
 
-        // Reset the LinkedAccountsService cache + clear every persisted
-        // session key. The returned mode is captured *before* the clear: a
-        // Lichess-login session must also disconnect (revoke) the underlying
-        // Lichess OAuth connection, since for a Lichess login that connection
-        // *is* the sign-in. A password account that merely linked Lichess in
-        // Settings keeps its connection.
+        // Reset the LinkedAccountsService cache, clear every persisted session
+        // key, and drop the in-memory bootstrap analysis. The returned mode is
+        // captured *before* the clear.
+        //
+        // Disconnect (revoke) the Lichess OAuth connection when either this was
+        // a Lichess login (the connection *is* the sign-in) OR a password
+        // account had linked Lichess in Settings (`lichessConnected`). The token
+        // lives in browser-global localStorage, so leaving it behind would
+        // silently connect the next user who logs in on this browser to the
+        // previous user's Lichess. Mirrors the Settings delete-account flow.
         const mode = clearClientSessionKeys();
 
-        if (mode === 'lichess') {
+        if (mode === 'lichess' || lichessConnected) {
             void lichessOAuthLogout();
         }
 

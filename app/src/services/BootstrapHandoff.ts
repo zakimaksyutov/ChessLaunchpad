@@ -25,3 +25,8 @@ export function takeBootstrapHandoff(): BootstrapSelection | null {
     pending = null;
     return selection;
 }
+
+/** Drop any staged selection without consuming it (logout teardown). */
+export function clearBootstrapHandoff(): void {
+    pending = null;
+}

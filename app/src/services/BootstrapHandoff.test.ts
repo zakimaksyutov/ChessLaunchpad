@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setBootstrapHandoff, takeBootstrapHandoff } from './BootstrapHandoff';
+import { setBootstrapHandoff, takeBootstrapHandoff, clearBootstrapHandoff } from './BootstrapHandoff';
 import { BootstrapSelection } from './RepertoireBootstrapService';
 
 const sel = (): BootstrapSelection => ({
@@ -34,5 +34,11 @@ describe('BootstrapHandoff', () => {
         const latest = sel();
         setBootstrapHandoff(latest);
         expect(takeBootstrapHandoff()).toBe(latest);
+    });
+
+    it('clearBootstrapHandoff drops a staged selection without consuming it', () => {
+        setBootstrapHandoff(sel());
+        clearBootstrapHandoff();
+        expect(takeBootstrapHandoff()).toBeNull();
     });
 });

@@ -13,6 +13,7 @@ import {
     BOOTSTRAP_TARGET_GAMES,
 } from '../services/RepertoireBootstrapService';
 import { setBootstrapHandoff } from '../services/BootstrapHandoff';
+import { getBootstrapResult, setBootstrapResult } from '../services/BootstrapResultCache';
 import { PendingEditModel, Orientation, EditChain } from '../services/PendingEditModel';
 import { extractFsrsCardsFromRepertoires } from '../utils/RepertoiresSerde';
 import { RepertoireDataUtils } from '../utils/RepertoireDataUtils';
@@ -40,21 +41,6 @@ const PHASE_ORDER: RunProgress['phase'][] = ['downloading', 'analyzing', 'discov
 function yieldToPaint(): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, 0));
 }
-
-/**
- * In-memory cache of a completed bootstrap analysis, keyed on the empty-color
- * set it was computed for. Lets a Back navigation to /bootstrap (e.g. from
- * Explorer's review) restore the summary instantly instead of re-running the
- * multi-second download. App-lifetime like BootstrapHandoff — a hard reload
- * clears it. Keyed on colors so a later run for a now-different empty color
- * (e.g. Black after White was already saved) never reuses the wrong proposal.
- */
-interface BootstrapResult {
-    colors: ('white' | 'black')[];
-    games: BootstrapGame[];
-    selection: BootstrapSelection;
-}
-let cachedResult: BootstrapResult | null = null;
 
 const BootstrapPage: React.FC = () => {
     const navigate = useNavigate();
@@ -127,7 +113,7 @@ const BootstrapPage: React.FC = () => {
             // Back to /bootstrap from Explorer's review. Keyed on colors so a run
             // for a now-different empty color (Black after White was saved) never
             // restores the wrong proposal. No telemetry: nothing is re-collected.
-            const cached = cachedResult;
+            const cached = getBootstrapResult();
             if (cached && cached.colors.join(',') === emptyColors.join(',')) {
                 setGames(cached.games);
                 setSelection(cached.selection);
@@ -175,7 +161,7 @@ const BootstrapPage: React.FC = () => {
             });
             // Cache the completed analysis so a Back navigation restores this
             // summary instantly instead of re-downloading (see run() top).
-            cachedResult = { colors: emptyColors, games: collected, selection: sel };
+            setBootstrapResult({ colors: emptyColors, games: collected, selection: sel });
             if (count === 0) {
                 setStage('empty');
                 return;
