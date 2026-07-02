@@ -339,6 +339,100 @@ test.describe('Games — Suggest a fix', () => {
     await expect(ready.locator('.suggest-fix-explainer')).toContainText('Ba4');
     await expect(ready.locator('.suggest-fix-pgn')).toContainText('Bxc6');
     await expect(ready.locator('.suggest-fix-pgn')).not.toContainText('Bb3');
+
+    // Option-3 affordances: the replaced move (4.Ba4) wears the blue "your move"
+    // outline both in the pivot line and inline in the explainer, and a
+    // low-emphasis "keep playing" control names it.
+    await expect(pivot.locator('.game-section-moves .move-kept-candidate')).toContainText('Ba4');
+    await expect(ready.locator('.suggest-fix-explainer .move-kept-candidate')).toContainText('Ba4');
+    await expect(ready.locator('.suggest-fix-keep')).toContainText('Ba4');
+  });
+
+  test('keep-my-move resumes the walk from the kept move and reaches the flagged mistake (Case 2 → Case 1)', async ({ page }) => {
+    // Same early-divergence hydration as above: the saved fix corrects 4.Ba4
+    // (ply 6) though the flagged mistake is 5.Bb3 (ply 8).
+    const sg = {
+      ply: 8,
+      pl: [
+        { s: 'e4', r: 1 as const }, { s: 'e5' }, { s: 'Nf3', r: 1 as const }, { s: 'Nc6' },
+        { s: 'Bb5', r: 1 as const }, { s: 'a6' },
+        { s: 'Bxc6', n: 1 as const }, { s: 'dxc6', n: 1 as const }, { s: 'O-O', n: 1 as const },
+      ],
+      pgn: '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Bxc6 dxc6 5. O-O',
+      rep: 'Ba4',
+      at: Date.now(),
+    };
+    const { saves } = await setupMockEnvironment(page, fixtureWith([eotEarlyRecord('eot1', sg)]), USERNAME);
+    await setupMockLichess(page, USERNAME);
+    await setupLichessToken(page);
+    // After keeping 4.Ba4 the walk resumes at 5.Bb3 (the flagged mistake). Bb3
+    // is absent from the Top-5 here, so it gets substituted (→ 5.c3).
+    const KEEP_POS = fenKey(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'b5']);
+    await setupMockMasters(page, {
+      [KEEP_POS]: [
+        { san: 'c3', white: 900, draws: 50, black: 50 },
+        { san: 'a3', white: 30, draws: 20, black: 20 },
+      ],
+    });
+    await setupMockCloudEval(page);
+
+    await openGames(page);
+
+    const eot = eotRow(page);
+    const ready = eot.locator('.suggest-fix-ready');
+    await expect(ready).toBeVisible();
+
+    // Keep 4.Ba4 → the walk resumes past it and now flags 5.Bb3 directly. The
+    // result becomes a Case-1 fix (diverges at the flagged move): the
+    // earlier-divergence explainer and keep control are gone, and the delta
+    // corrects Bb3 (→ 5.c3), not re-proposing an earlier move.
+    await ready.locator('.suggest-fix-keep').click();
+    await expect(ready.locator('.suggest-fix-pgn')).toContainText('c3', { timeout: 20_000 });
+    await expect(ready.locator('.suggest-fix-pgn')).not.toContainText('Bb3');
+    await expect(ready.locator('.suggest-fix-explainer')).toHaveCount(0);
+    await expect(ready.locator('.suggest-fix-keep')).toHaveCount(0);
+
+    // The kept variant is persisted (overwriting the original saved fix), so it
+    // survives navigation and the Add-to-repertoire flow stamps the right line.
+    await expect
+      .poll(() => findSavedRecord(saves, 'eot1')?.sg?.rep, { timeout: 10_000 })
+      .toBe('Bb3');
+    const saved = findSavedRecord(saves, 'eot1')!.sg!;
+    expect(saved.pgn).toContain('c3');
+    expect(saved.pl.some(p => p.s === 'c3' && p.n === 1)).toBe(true);
+    expect(saved.pl.some(p => p.s === 'Ba4' && p.n !== 1)).toBe(true); // kept, not "new"
+  });
+
+  test('keep-my-move shows the "no book line" fallback when the kept move leaves master theory', async ({ page }) => {
+    const sg = {
+      ply: 8,
+      pl: [
+        { s: 'e4', r: 1 as const }, { s: 'e5' }, { s: 'Nf3', r: 1 as const }, { s: 'Nc6' },
+        { s: 'Bb5', r: 1 as const }, { s: 'a6' },
+        { s: 'Bxc6', n: 1 as const }, { s: 'dxc6', n: 1 as const }, { s: 'O-O', n: 1 as const },
+      ],
+      pgn: '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Bxc6 dxc6 5. O-O',
+      rep: 'Ba4',
+      at: Date.now(),
+    };
+    await setupMockEnvironment(page, fixtureWith([eotEarlyRecord('eot1', sg)]), USERNAME);
+    await setupMockLichess(page, USERNAME);
+    await setupLichessToken(page);
+    // No masters data anywhere: keeping 4.Ba4 immediately leaves master theory,
+    // so the walk finds no stronger continuation.
+    await setupMockMasters(page, {});
+    await setupMockCloudEval(page);
+
+    await openGames(page);
+
+    const eot = eotRow(page);
+    await expect(eot.locator('.suggest-fix-ready')).toBeVisible();
+
+    await eot.locator('.suggest-fix-keep').click();
+    const empty = eot.locator('.suggest-fix-kept-empty');
+    await expect(empty).toBeVisible({ timeout: 20_000 });
+    await expect(empty).toContainText('Ba4');
+    await expect(empty).toContainText('master theory');
   });
 
   test('names the replaced move inline when the fix diverges after the flagged move (Case 3)', async ({ page }) => {

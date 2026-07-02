@@ -21,6 +21,11 @@
     --section-off-prep: #5e6672;
     --section-out-of-theory: #757575;
 
+    /* "Your move" accent — the played move a fix diverges from (Case 2). Blue so
+       it reads as a neutral "this is your move" marker, distinct from the
+       red/purple pivot outlines that mean "this is the error". */
+    --kept-candidate: #2f6fdb;
+
     /* Opponent-threat scale (opponent-analysis panel) — a separate scale that
        happens to share some hues; kept independent so it can diverge. */
     --threat-low: #27ae60;
@@ -668,6 +673,17 @@
     border-color: var(--pivot-blunder);
 }
 
+/* The played move a Case-2 fix diverges from — blue "your move" outline. Same
+   box metrics as the pivot outlines so it aligns, but a calmer color: it marks
+   your move, not the error. Also reused inline in the suggested-line explainer
+   to tie the two mentions of the move together. */
+.move-kept-candidate {
+    border: 2px solid var(--kept-candidate);
+    border-radius: 3px;
+    padding: 1px 3px;
+    font-weight: 600;
+}
+
 /* ─── Narrative PGN sections ───
    The annotated line is grouped into labeled phases (In your repertoire /
    Off your prep / pivot / Back in your repertoire / The game continues) so the
@@ -887,6 +903,45 @@
     color: #555;
     font-size: 0.78rem;
     margin-bottom: 0.3rem;
+}
+
+/* Leading "!" mark on the explainer / kept-empty note — our own white bold "!"
+   inside a filled blue circle (the "your move" accent), tied to the outlined move. */
+.suggest-fix-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    margin-right: 0.35rem;
+    color: var(--kept-candidate);
+    vertical-align: -0.18em;
+    flex-shrink: 0;
+}
+
+/* "I want to keep playing X" — a low-emphasis control above the suggested line,
+   offset and deliberately quieter than the primary Add / Explorer actions so it
+   reads as a secondary "or keep my move" path, not a call to action. */
+.suggest-fix-keep {
+    display: inline-block;
+    margin: 0 0 0.4rem 0.9rem;
+    padding: 0;
+    background: none;
+    border: none;
+    color: #6a7280;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    text-align: left;
+    cursor: pointer;
+}
+
+.suggest-fix-keep:hover {
+    color: var(--kept-candidate);
+    text-decoration: underline;
+}
+
+/* "Keep my move" found nothing better — the position left master theory. */
+.suggest-fix-kept-empty {
+    color: #555;
+    background: #f9f9f9;
+    border-color: #e6e6e6;
 }
 
 /* Moves that differ from the played game (the corrected move + continuation)
